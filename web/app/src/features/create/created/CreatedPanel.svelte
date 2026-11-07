@@ -6,29 +6,28 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { MAX_LABEL_CHARACTERS } from '../../../shared/sent-records/sent-record.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
-  import { Flash } from '../../../shared/ui/flash.svelte.ts';
-  import { FocusTargets } from '../../../shared/ui/focus.ts';
+  import { FocusTargets } from '../../../shared/ui/focus/focus.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
-  import { motionMs } from '../../../shared/ui/motion.ts';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
+  import { Flash } from '../../../shared/ui/transition/flash.svelte.ts';
+  import { motionMs } from '../../../shared/ui/transition/motion.ts';
+  import type { Remembered } from '../composer/composer.svelte.ts';
   import type { Created } from '../create-message.ts';
   import { linkSegments } from './link-segments.ts';
-
-  type Tracking = 'failed' | 'off' | 'remembered' | 'saving';
 
   interface Props {
     readonly created: Created;
     readonly opensMax: number;
     readonly passphrase: string;
-    readonly canTrack: boolean;
-    readonly tracking: Tracking;
-    readonly ontrack: (label: string) => void;
+    readonly canRemember: boolean;
+    readonly remembered: Remembered;
+    readonly onremember: (label: string) => void;
     readonly onanother: () => void;
     readonly leaving: boolean;
   }
 
-  const { created, opensMax, passphrase, canTrack, tracking, ontrack, onanother, leaving }: Props = $props();
+  const { created, opensMax, passphrase, canRemember, remembered, onremember, onanother, leaving }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
   const id = $props.id();
@@ -150,7 +149,7 @@
       <span
         class="absolute -inset-6 rounded-full bg-[radial-gradient(closest-side,oklch(0.67_0.16_252/0.32),transparent)]"
       ></span>
-      <span class="absolute inset-0 rounded-full step-current"></span>
+      <span class="absolute inset-0 rounded-full tile-current"></span>
       <span class="absolute inset-0 rounded-full opacity-0 ring-1 ring-aegis-300/50 motion-safe:animate-burst"></span>
       <Icon name="check" class="relative size-6 text-white" stroke={1.6} />
     </span>
@@ -334,7 +333,7 @@
     </div>
   </div>
 
-  {#if canTrack}
+  {#if canRemember}
     <div
       class={[
         'flex flex-col gap-3 border-t border-white/8 px-4 py-4 text-left transition-[opacity,translate] sm:flex-row sm:items-center sm:gap-4',
@@ -352,7 +351,7 @@
         class="flex flex-row gap-2 sm:items-center"
         onsubmit={(event) => {
           event.preventDefault();
-          ontrack(label);
+          onremember(label);
         }}
       >
         <label class="flex h-11 min-w-0 flex-1 items-center rounded-control px-3.5 well sm:w-56 sm:flex-none md:h-9">
@@ -362,25 +361,30 @@
             bind:value={label}
             maxlength={MAX_LABEL_CHARACTERS}
             autocomplete="off"
-            readonly={tracking === 'saving' || tracking === 'remembered'}
+            readonly={remembered === 'saving' || remembered === 'remembered'}
             placeholder={translate('created.track.placeholder')}
             class="h-full min-w-0 flex-1 bg-transparent text-caption text-ink outline-none placeholder:text-ink-mute"
           />
         </label>
-        <Button variant="tint" size="field" type="submit" disabled={tracking === 'saving' || tracking === 'remembered'}>
+        <Button
+          variant="tint"
+          size="field"
+          type="submit"
+          disabled={remembered === 'saving' || remembered === 'remembered'}
+        >
           <span class="stack place-items-center">
             <span
-              class={['transition-opacity', tracking === 'remembered' && 'opacity-0']}
-              aria-hidden={tracking === 'remembered'}>{translate('created.track.save')}</span
+              class={['transition-opacity', remembered === 'remembered' && 'opacity-0']}
+              aria-hidden={remembered === 'remembered'}>{translate('created.track.save')}</span
             >
             <span
               class={[
                 'transition-[opacity,scale]',
-                tracking === 'remembered' ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+                remembered === 'remembered' ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
               ]}
             >
               <Icon name="check" class="size-4" stroke={2} />
-              <span class="sr-only">{tracking === 'remembered' ? translate('created.track.saved') : ''}</span>
+              <span class="sr-only">{remembered === 'remembered' ? translate('created.track.saved') : ''}</span>
             </span>
           </span>
         </Button>

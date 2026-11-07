@@ -2,10 +2,10 @@ export type ButtonVariant = 'primary' | 'tint' | 'ghost' | 'danger';
 export type ButtonSize = 'tight' | 'compact' | 'field' | 'regular' | 'large';
 
 export const BUTTON_VARIANTS: Readonly<Record<ButtonVariant, string>> = {
-  primary: 'btn-primary hover-lift',
-  tint: 'btn-tint',
-  ghost: 'btn-ghost',
-  danger: 'btn-danger',
+  primary: 'button-primary hover-lift',
+  tint: 'button-tint',
+  ghost: 'button-ghost',
+  danger: 'button-danger',
 };
 
 export const BUTTON_BASE =

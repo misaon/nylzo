@@ -103,12 +103,12 @@ export function installText(tab: InstallTab, domain: string): string {
 }
 
 export const LINE_DELAYS = [
-  '[--rv-delay:620ms]',
-  '[--rv-delay:790ms]',
-  '[--rv-delay:960ms]',
-  '[--rv-delay:1130ms]',
-  '[--rv-delay:1300ms]',
-  '[--rv-delay:1470ms]',
-  '[--rv-delay:1640ms]',
-  '[--rv-delay:1810ms]',
+  '[--reveal-delay:620ms]',
+  '[--reveal-delay:790ms]',
+  '[--reveal-delay:960ms]',
+  '[--reveal-delay:1130ms]',
+  '[--reveal-delay:1300ms]',
+  '[--reveal-delay:1470ms]',
+  '[--reveal-delay:1640ms]',
+  '[--reveal-delay:1810ms]',
 ] as const;

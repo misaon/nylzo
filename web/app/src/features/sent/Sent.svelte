@@ -12,11 +12,11 @@
   import { RETENTION_DAYS } from '../../shared/sent-records/sent-record.ts';
   import { browserSentStore } from '../../shared/sent-records/sent-store.ts';
   import Button from '../../shared/ui/button/Button.svelte';
-  import ConfirmDialog from '../../shared/ui/ConfirmDialog.svelte';
-  import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
+  import ConfirmDialog from '../../shared/ui/dialog/ConfirmDialog.svelte';
+  import { FocusTargets, keepFocus } from '../../shared/ui/focus/focus.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
-  import { motionMs } from '../../shared/ui/motion.ts';
   import StateCard from '../../shared/ui/notice/StateCard.svelte';
+  import { motionMs } from '../../shared/ui/transition/motion.ts';
   import { createSentPage } from './sent-page.ts';
   import type { CancelOutcome, ItemState, SentItem, SentView } from './sent-page.ts';
 
@@ -56,8 +56,8 @@
       return {
         title: label ? translate('sent.cancel.title', { label }) : translate('sent.cancel.title.untitled'),
         message: translate('sent.cancel.confirm'),
-        confirm: translate('sent.cancel.yes'),
-        dismiss: translate('sent.cancel.no'),
+        confirmLabel: translate('sent.cancel.yes'),
+        dismissLabel: translate('sent.cancel.no'),
         icon: 'trash',
       } as const;
     }
@@ -67,8 +67,8 @@
     return {
       title: translate(confirming.kind === 'forget' ? 'sent.forget.title' : 'sent.forget_all.title'),
       message: translate(confirming.kind === 'forget' ? 'sent.forget.confirm' : 'sent.forget_all.confirm'),
-      confirm: translate(confirming.kind === 'forget' ? 'sent.forget.yes' : 'sent.forget_all.yes'),
-      dismiss: translate('sent.keep'),
+      confirmLabel: translate(confirming.kind === 'forget' ? 'sent.forget.yes' : 'sent.forget_all.yes'),
+      dismissLabel: translate('sent.keep'),
       icon: 'close',
     } as const;
   });
@@ -238,7 +238,7 @@
             <span
               class={[
                 'grid size-10 shrink-0 place-items-center rounded-full',
-                item.ended ? 'text-ink-soft tile-neutral' : 'text-white step-current',
+                item.ended ? 'text-ink-soft tile-neutral' : 'text-white tile-current',
               ]}
               aria-hidden="true"
             >
@@ -386,8 +386,8 @@
     id="sent-confirm"
     title={dialog.title}
     message={dialog.message}
-    confirm={dialog.confirm}
-    dismiss={dialog.dismiss}
+    confirmLabel={dialog.confirmLabel}
+    dismissLabel={dialog.dismissLabel}
     icon={dialog.icon}
     onconfirm={confirmed}
     onclose={dismissed}

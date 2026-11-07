@@ -42,7 +42,7 @@
 
 <section id="create" class="px-4 pt-10 sm:px-6 md:pt-16" aria-labelledby="{id}-title" {@attach composer.start}>
   <div class="mx-auto max-w-column text-center">
-    <p data-eyebrow class="mb-3 animate-rise text-eyebrow text-aegis-300 uppercase">{translate('hero.eyebrow')}</p>
+    <p class="mb-3 animate-rise text-eyebrow text-aegis-300 uppercase">{translate('hero.eyebrow')}</p>
     <h1 class="animate-rise-visible font-display text-hero font-light text-balance md:text-hero-lg">
       {translate('hero.title.lead')} <span class="text-aegis-300">{translate('hero.title.accent')}</span>
     </h1>
@@ -103,9 +103,9 @@
             created={composer.sealed.created}
             opensMax={composer.sealed.opensMax}
             passphrase={composer.sealed.passphrase}
-            canTrack={composer.canRemember}
-            tracking={composer.remembered}
-            ontrack={(label) => void composer.track(label)}
+            canRemember={composer.canRemember}
+            remembered={composer.remembered}
+            onremember={(label) => void composer.track(label)}
             onanother={composer.another}
             leaving={composer.leaving}
           />

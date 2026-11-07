@@ -15,7 +15,7 @@
 
 <div class={['relative w-full', shape.frame]} role="img" aria-label={translate('how.diagram')}>
   <svg
-    class="absolute inset-0 size-full rv-sweep overflow-visible [--rv-delay:80ms]"
+    class="absolute inset-0 size-full reveal-sweep overflow-visible [--reveal-delay:80ms]"
     viewBox={shape.viewBox}
     fill="none"
     aria-hidden="true"
@@ -71,7 +71,7 @@
           pathLength="100"
           stroke-dasharray="4 200"
           stroke-dashoffset="4"
-          class={[tone, 'motion-safe:animate-how4-flow-key']}
+          class={[tone, 'motion-safe:animate-how-flow-key']}
           stroke-width={index === 0 ? 10 : 3}
           stroke-linecap="round"
         ></path>
@@ -91,7 +91,7 @@
           pathLength="100"
           stroke-dasharray="8 200"
           stroke-dashoffset="8"
-          class={[tone, index === 0 ? 'motion-safe:animate-how4-flow-a' : 'motion-safe:animate-how4-flow-b']}
+          class={[tone, index === 0 ? 'motion-safe:animate-how-flow-a' : 'motion-safe:animate-how-flow-b']}
           stroke-width={layer === 0 ? 10 : 3}
           stroke-linecap="round"
         ></path>
@@ -112,7 +112,7 @@
   {/each}
   <span
     class={[
-      'absolute inline-flex h-7 -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-void-950 bg-[linear-gradient(180deg,oklch(0.72_0.14_305/0.34),oklch(0.72_0.14_305/0.14))] px-3 text-caption font-medium whitespace-nowrap text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.18),0_0_24px_-4px_oklch(0.72_0.14_305/0.85)] ring-1 ring-nebula-300/60 motion-safe:animate-how4-chip-key',
+      'absolute inline-flex h-7 -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-void-950 bg-[linear-gradient(180deg,oklch(0.72_0.14_305/0.34),oklch(0.72_0.14_305/0.14))] px-3 text-caption font-medium whitespace-nowrap text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.18),0_0_24px_-4px_oklch(0.72_0.14_305/0.85)] ring-1 ring-nebula-300/60 motion-safe:animate-how-chip-key',
       shape.keyChip,
     ]}
   >
@@ -120,7 +120,7 @@
     {translate('how.chip.key')}
   </span>
   {#each DIAGRAM_NODES as node, index (node.title)}
-    <div class={['absolute -translate-x-1/2 -translate-y-1/2 rv-pop', node.delay, shape.nodes[index]]}>
+    <div class={['absolute -translate-x-1/2 -translate-y-1/2 reveal-pop', node.delay, shape.nodes[index]]}>
       <span
         class="absolute -inset-[45%] rounded-full bg-[radial-gradient(closest-side,oklch(0.56_0.19_258/0.28),transparent)]"
       ></span>
@@ -135,7 +135,7 @@
       {#if node.badge}
         <span
           class={[
-            'absolute -top-[6%] -right-[6%] grid size-[36%] place-items-center rounded-full text-white opacity-0 step-current outline-3 outline-void-950',
+            'absolute -top-[6%] -right-[6%] grid size-[36%] place-items-center rounded-full text-white opacity-0 tile-current outline-3 outline-void-950',
             node.badge.animation,
           ]}
         >
@@ -145,7 +145,7 @@
     </div>
     <div
       class={[
-        'absolute -translate-x-1/2 rv-focus text-center [--rv-blur:5px] [--rv-y:8px]',
+        'absolute -translate-x-1/2 reveal-focus text-center [--reveal-blur:5px] [--reveal-y:8px]',
         node.captionDelay,
         shape.captionWidth,
         shape.captions[index],

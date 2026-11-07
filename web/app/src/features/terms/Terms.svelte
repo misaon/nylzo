@@ -2,9 +2,9 @@
   import type { MessageKey } from '../../shared/language/czech.ts';
   import { formatDays } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import { LONGEST_TTL_DAYS } from '../../shared/ttl/ttl-choices.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import { INLINE_TARGET, TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
-  import { LONGEST_TTL_DAYS } from '../create/composer/create-form.ts';
 
   interface TermsSection {
     readonly title: MessageKey;

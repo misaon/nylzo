@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import Popover from '../../../shared/ui/Popover.svelte';
+  import Popover from '../../../shared/ui/menu/Popover.svelte';
   import type { Composer } from './composer.svelte.ts';
   import MenuChip from './MenuChip.svelte';
 

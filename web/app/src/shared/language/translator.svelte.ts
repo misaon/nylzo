@@ -1,4 +1,5 @@
 import { createContext } from 'svelte';
+import { SvelteMap } from 'svelte/reactivity';
 
 import type { MessageKey } from './czech.ts';
 import type { Language } from './language.ts';
@@ -9,7 +10,7 @@ const CATALOG_SOURCES = {
   cs: async () => import('./czech.ts').then(({ czech }) => czech),
   en: async () => import('./english.ts').then(({ english }) => english),
 } satisfies Record<Language, () => Promise<Catalog>>;
-const catalogs = new Map<Language, Catalog>();
+const catalogs = new SvelteMap<Language, Catalog>();
 const PLACEHOLDER = /\{(\w+)\}/gu;
 
 export function addCatalog(language: Language, catalog: Catalog): void {

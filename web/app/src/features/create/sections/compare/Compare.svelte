@@ -46,11 +46,11 @@
         <SectionIntro id="compare-title" eyebrow={translate('compare.eyebrow')} title={translate('compare.title')} />
       </div>
     </div>
-    <p class="mt-6 flex rv-focus items-center gap-1.5 text-micro text-ink-mute md:hidden" {@attach reveal}>
+    <p class="mt-6 flex reveal-focus items-center gap-1.5 text-micro text-ink-mute md:hidden" {@attach reveal}>
       <Icon name="arrowRight" class="size-3.5 shrink-0" stroke={2} />
       {translate('compare.hint')}
     </p>
-    <div class="glass mt-4 rv-rise overflow-hidden rounded-card md:mt-12" {@attach reveal}>
+    <div class="glass mt-4 reveal-rise overflow-hidden rounded-card md:mt-12" {@attach reveal}>
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div
         class="overflow-x-auto outline-2 -outline-offset-2 outline-transparent transition focus-visible:-outline-offset-2 focus-visible:outline-aegis-300"
@@ -68,7 +68,7 @@
             {/each}
           </colgroup>
           <thead>
-            <tr class={['rv-fade border-b border-white/8', HEAD_FADE]}>
+            <tr class={['reveal-fade border-b border-white/8', HEAD_FADE]}>
               <th scope="col" class={['px-4 py-4 text-micro font-normal text-ink-mute md:px-6', STICKY]}>
                 {translate('compare.feature')}
               </th>
@@ -85,7 +85,7 @@
           </thead>
           <tbody>
             {#each COMPARE_ROWS as row (row.label)}
-              <tr class={['rv-fade border-b border-white/8 last:border-0', row.fade]}>
+              <tr class={['reveal-fade border-b border-white/8 last:border-0', row.fade]}>
                 <th scope="row" class={['px-4 py-3 text-ui font-normal text-balance text-ink md:px-6', STICKY]}>
                   {translate(row.label)}
                 </th>
@@ -99,7 +99,7 @@
                       <span class={['flex flex-col items-center gap-1 text-micro', mark.tone]}>
                         <span
                           class={[
-                            'grid size-5 shrink-0 rv-pop place-items-center rounded-full [--rv-time:0.55s]',
+                            'grid size-5 shrink-0 reveal-pop place-items-center rounded-full [--reveal-duration:0.55s]',
                             mark.mark,
                             cell.delay,
                           ]}

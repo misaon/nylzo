@@ -1,19 +1,19 @@
-@keyframes rv-focus {
+@keyframes reveal-focus {
   from {
     opacity: 0;
-    filter: blur(var(--rv-blur, 8px));
-    transform: translate3d(var(--rv-x, 0px), var(--rv-y, 12px), 0);
+    filter: blur(var(--reveal-blur, 8px));
+    transform: translate3d(var(--reveal-x, 0px), var(--reveal-y, 12px), 0);
   }
 }
 
-@keyframes rv-rise {
+@keyframes reveal-rise {
   from {
     opacity: 0;
-    transform: translate3d(var(--rv-x, 0px), var(--rv-y, 24px), 0) scale(var(--rv-s, 0.98));
+    transform: translate3d(var(--reveal-x, 0px), var(--reveal-y, 24px), 0) scale(var(--reveal-scale, 0.98));
   }
 }
 
-@keyframes rv-pop {
+@keyframes reveal-pop {
   0% {
     opacity: 0;
     scale: 0.55;
@@ -28,14 +28,14 @@
   }
 }
 
-@keyframes rv-draw {
+@keyframes reveal-draw {
   from {
     scale: 0 1;
     opacity: 0.3;
   }
 }
 
-@keyframes rv-type {
+@keyframes reveal-type {
   from {
     clip-path: inset(-0.3em 100% -0.3em -2em);
   }
@@ -44,7 +44,7 @@
   }
 }
 
-@keyframes rv-part {
+@keyframes reveal-part {
   from {
     opacity: 0;
     clip-path: inset(0 50% 0 50%);
@@ -55,7 +55,7 @@
   }
 }
 
-@keyframes rv-sweep {
+@keyframes reveal-sweep {
   from {
     mask-image: linear-gradient(90deg, #000 50%, transparent 60%);
     mask-size: 250% 100%;
@@ -70,7 +70,7 @@
   }
 }
 
-@keyframes rv-check {
+@keyframes reveal-check {
   from {
     stroke-dashoffset: 26;
   }
@@ -79,37 +79,37 @@
   }
 }
 
-@keyframes rv-glow {
+@keyframes reveal-glow {
   from {
     opacity: 0;
     scale: 0.5;
   }
 }
 
-@keyframes rv-fade {
+@keyframes reveal-fade {
   from {
     opacity: 0;
   }
 }
 
 @theme inline {
-  --reveal-focus: rv-focus var(--rv-time, 0.9s) var(--ease-silk) backwards;
-  --reveal-rise: rv-rise var(--rv-time, 1s) var(--ease-silk) backwards;
-  --reveal-pop: rv-pop var(--rv-time, 0.7s) var(--ease-silk) backwards;
-  --reveal-draw: rv-draw var(--rv-time, 0.9s) var(--ease-silk) backwards;
-  --reveal-type: rv-type var(--rv-time, 0.55s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
-  --reveal-part: rv-part var(--rv-time, 1.4s) var(--ease-silk) backwards;
-  --reveal-sweep: rv-sweep var(--rv-time, 1.5s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
-  --reveal-glow: rv-glow var(--rv-time, 1.8s) var(--ease-silk) backwards;
-  --reveal-fade: rv-fade var(--rv-time, 0.6s) var(--ease-silk) backwards;
+  --reveal-animation-focus: reveal-focus var(--reveal-duration, 0.9s) var(--ease-silk) backwards;
+  --reveal-animation-rise: reveal-rise var(--reveal-duration, 1s) var(--ease-silk) backwards;
+  --reveal-animation-pop: reveal-pop var(--reveal-duration, 0.7s) var(--ease-silk) backwards;
+  --reveal-animation-draw: reveal-draw var(--reveal-duration, 0.9s) var(--ease-silk) backwards;
+  --reveal-animation-type: reveal-type var(--reveal-duration, 0.55s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
+  --reveal-animation-part: reveal-part var(--reveal-duration, 1.4s) var(--ease-silk) backwards;
+  --reveal-animation-sweep: reveal-sweep var(--reveal-duration, 1.5s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
+  --reveal-animation-glow: reveal-glow var(--reveal-duration, 1.8s) var(--ease-silk) backwards;
+  --reveal-animation-fade: reveal-fade var(--reveal-duration, 0.6s) var(--ease-silk) backwards;
 }
 
-@utility rv-* {
+@utility reveal-* {
   @media (prefers-reduced-motion: no-preference) {
     :where([data-reveal='in']) &,
     &:where([data-reveal='in']) {
-      animation: --value(--reveal-*);
-      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+      animation: --value(--reveal-animation-*);
+      animation-delay: calc(var(--reveal-delay, 0ms) + var(--reveal-index, 0) * var(--reveal-step, 80ms));
     }
     :where([data-reveal='pending']) &,
     &:where([data-reveal='pending']) {
@@ -119,13 +119,13 @@
   }
 }
 
-@utility rv-check {
+@utility reveal-check {
   @media (prefers-reduced-motion: no-preference) {
     :where([data-reveal='in']) & path,
     &:where([data-reveal='in']) path {
       stroke-dasharray: 26;
-      animation: rv-check var(--rv-time, 0.6s) var(--ease-silk) backwards;
-      animation-delay: calc(var(--rv-delay, 0ms) + var(--rv-i, 0) * var(--rv-step, 80ms));
+      animation: reveal-check var(--reveal-duration, 0.6s) var(--ease-silk) backwards;
+      animation-delay: calc(var(--reveal-delay, 0ms) + var(--reveal-index, 0) * var(--reveal-step, 80ms));
     }
     :where([data-reveal='pending']) & path,
     &:where([data-reveal='pending']) path {

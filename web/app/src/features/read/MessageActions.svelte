@@ -2,7 +2,7 @@
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Button from '../../shared/ui/button/Button.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
-  import { lingering } from '../../shared/ui/lingering.ts';
+  import { lingering } from '../../shared/ui/transition/lingering.ts';
   import type { ReadPage } from './read-page.svelte.ts';
 
   interface Props {

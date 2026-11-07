@@ -3,7 +3,7 @@ import { runInNewContext } from 'node:vm';
 import { parse } from 'parse5';
 import { describe, expect, it } from 'vitest';
 
-import { checkScript, checkStyles, FRAGMENT_GUARD, integrity, secureHtml } from '../../scripts/resource-integrity.ts';
+import { checkScript, checkStyles, FRAGMENT_GUARD, integrity, secureHtml } from './resource-integrity.ts';
 
 const assets = new Map([
   ['/assets/app.js', Buffer.from('import("./start.js")')],

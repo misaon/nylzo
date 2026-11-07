@@ -8,12 +8,12 @@
   const { translate } = getTranslator();
 
   const extras = [
-    { key: 'extra.stolen', icon: 'search', order: 'md:[--rv-i:0] lg:[--rv-i:0]' },
-    { key: 'extra.signed', icon: 'key', order: 'md:[--rv-i:1] lg:[--rv-i:1]' },
-    { key: 'extra.padding', icon: 'file', order: 'md:[--rv-i:0] lg:[--rv-i:2]' },
-    { key: 'extra.forget', icon: 'trash', order: 'md:[--rv-i:1] lg:[--rv-i:0]' },
-    { key: 'extra.twice', icon: 'code', order: 'md:[--rv-i:0] lg:[--rv-i:1]' },
-    { key: 'extra.standards', icon: 'lock', order: 'md:[--rv-i:1] lg:[--rv-i:2]' },
+    { key: 'extra.stolen', icon: 'search', revealIndex: 'md:[--reveal-index:0] lg:[--reveal-index:0]' },
+    { key: 'extra.signed', icon: 'key', revealIndex: 'md:[--reveal-index:1] lg:[--reveal-index:1]' },
+    { key: 'extra.padding', icon: 'file', revealIndex: 'md:[--reveal-index:0] lg:[--reveal-index:2]' },
+    { key: 'extra.forget', icon: 'trash', revealIndex: 'md:[--reveal-index:1] lg:[--reveal-index:0]' },
+    { key: 'extra.twice', icon: 'code', revealIndex: 'md:[--reveal-index:0] lg:[--reveal-index:1]' },
+    { key: 'extra.standards', icon: 'lock', revealIndex: 'md:[--reveal-index:1] lg:[--reveal-index:2]' },
   ] as const;
 </script>
 
@@ -24,7 +24,7 @@
     <div class="max-w-[640px]" {@attach reveal}>
       <SectionIntro id="extra-title" eyebrow={translate('extra.eyebrow')} title={translate('extra.title')} />
       <p
-        class="mt-5 max-w-[520px] rv-focus text-lead leading-relaxed text-pretty text-ink-soft [--rv-i:2] md:text-lead-lg"
+        class="mt-5 max-w-[520px] reveal-focus text-lead leading-relaxed text-pretty text-ink-soft [--reveal-index:2] md:text-lead-lg"
       >
         {translate('extra.sub')}
       </p>
@@ -33,8 +33,8 @@
       {#each extras as extra (extra.key)}
         <article
           class={[
-            'glow-on-hover glass flex hover-lift rv-rise flex-col rounded-card p-6 [--rv-step:120ms] md:p-7',
-            extra.order,
+            'glow-on-hover glass flex hover-lift reveal-rise flex-col rounded-card p-6 [--reveal-step:120ms] md:p-7',
+            extra.revealIndex,
           ]}
           {@attach reveal}
         >
@@ -42,7 +42,7 @@
             <IconTile
               icon={extra.icon}
               tone="current"
-              class={['rv-pop [--rv-delay:300ms] [--rv-step:120ms]', extra.order]}
+              class={['reveal-pop [--reveal-delay:300ms] [--reveal-step:120ms]', extra.revealIndex]}
             />
             <h3 class="text-title text-balance">{translate(`${extra.key}.title`)}</h3>
           </div>
@@ -53,7 +53,10 @@
             >
               <Icon
                 name="check"
-                class={['size-3.5 shrink-0 rv-check [--rv-delay:700ms] [--rv-step:120ms]', extra.order]}
+                class={[
+                  'size-3.5 shrink-0 reveal-check [--reveal-delay:700ms] [--reveal-step:120ms]',
+                  extra.revealIndex,
+                ]}
                 stroke={2}
               />
               {translate(`${extra.key}.proof`)}

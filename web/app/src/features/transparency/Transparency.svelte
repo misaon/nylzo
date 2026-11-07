@@ -10,6 +10,7 @@
   import { instanceOrigin } from '../../shared/local-client/instance-origin.ts';
   import GithubMark from '../../shared/shell/GithubMark.svelte';
   import { REPOSITORY_URL, VERIFIED_CLIENTS_URL } from '../../shared/shell/repository.ts';
+  import { SECONDS_PER_DAY } from '../../shared/ttl/ttl-choices.ts';
   import Button from '../../shared/ui/button/Button.svelte';
   import CopyButton from '../../shared/ui/button/CopyButton.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
@@ -34,7 +35,6 @@
     readonly value: string;
   }
 
-  const DAY_SECONDS = 86_400;
   const CARD = 'min-w-0 rounded-pane bg-white/4 shadow-rim ring-1 ring-white/8';
   const CHIP =
     'flex items-center gap-1.5 rounded-full bg-white/4 py-1 pr-3 pl-2 text-caption text-ink-soft ring-1 ring-white/12';
@@ -82,9 +82,9 @@
   let view = $state.raw<View>({ view: 'loading' });
   const data = $derived(view.view === 'ready' ? view.data : undefined);
 
-  const days = (seconds: number) => formatDays(Math.round(seconds / DAY_SECONDS), translator.language);
+  const days = (seconds: number) => formatDays(Math.round(seconds / SECONDS_PER_DAY), translator.language);
   const period = (seconds: number) =>
-    seconds % DAY_SECONDS === 0 ? days(seconds) : formatDuration(seconds, translator.language);
+    seconds % SECONDS_PER_DAY === 0 ? days(seconds) : formatDuration(seconds, translator.language);
   const limit = (value: number) => (value === 0 ? translate('transparency.limits.none') : String(value));
 
   function stored({ retention }: Transparency): readonly Entry[] {

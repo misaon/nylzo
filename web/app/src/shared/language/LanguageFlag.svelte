@@ -8,11 +8,7 @@
   const { language }: Props = $props();
 </script>
 
-<span
-  data-flag
-  class="inline-flex h-3.5 w-5 shrink-0 overflow-hidden rounded-[3px] ring-1 ring-white/15"
-  aria-hidden="true"
->
+<span class="inline-flex h-3.5 w-5 shrink-0 overflow-hidden rounded-[3px] ring-1 ring-white/15" aria-hidden="true">
   <svg viewBox="0 0 30 20" class="h-full w-full" preserveAspectRatio="xMidYMid slice" focusable="false">
     {#if language === 'cs'}
       <rect width="30" height="10" fill="#fff"></rect>

@@ -39,9 +39,9 @@
       </linearGradient>
     </defs>
   </svg>
-  <p class="rv-focus text-center text-caption text-balance text-ink-mute">{translate('trust.title')}</p>
+  <p class="reveal-focus text-center text-caption text-balance text-ink-mute">{translate('trust.title')}</p>
   <div
-    class="relative mx-auto mt-8 max-w-page rv-part overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)] [--rv-delay:200ms] md:mt-10"
+    class="relative mx-auto mt-8 max-w-page reveal-part overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)] [--reveal-delay:200ms] md:mt-10"
   >
     <div class="flex w-max motion-safe:animate-trust-marquee">
       {#each [false, true] as copy (copy)}

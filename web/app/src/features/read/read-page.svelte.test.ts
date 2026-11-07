@@ -3,19 +3,21 @@ import { flushSync, onDestroy } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Metadata } from '../../shared/api/api.ts';
+import { saveFile } from '../../shared/files/save-file.ts';
 import { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { ReadPage } from './read-page.svelte.ts';
 import type { BurnOutcome, ReaderDependencies, ReadView } from './reader.ts';
 import { createReader } from './reader.ts';
-import { saveFile } from './save-file.ts';
 
 // Avoid an await in this hoisted factory: Svelte instruments awaits with a runtime import.
 vi.mock(import('svelte'), (original) =>
   original().then((actual) => ({ ...actual, onDestroy: vi.fn<typeof actual.onDestroy>() })),
 );
 vi.mock('./reader.ts', () => ({ createReader: vi.fn<typeof import('./reader.ts').createReader>() }));
-vi.mock('./save-file.ts', () => ({ saveFile: vi.fn<typeof import('./save-file.ts').saveFile>() }));
+vi.mock('../../shared/files/save-file.ts', () => ({
+  saveFile: vi.fn<typeof import('../../shared/files/save-file.ts').saveFile>(),
+}));
 vi.mock('../../shared/link/link-handoff.ts', () => ({
   takeFragment: vi.fn<typeof import('../../shared/link/link-handoff.ts').takeFragment>(),
 }));

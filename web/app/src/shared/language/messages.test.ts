@@ -1,12 +1,12 @@
 import { MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
-import { WEAK_BELOW_CHARACTERS, WEAK_BELOW_WORDS } from '../features/create/create-message.ts';
-import { czech } from '../shared/language/czech.ts';
-import type { MessageKey } from '../shared/language/czech.ts';
-import { english } from '../shared/language/english.ts';
-import { Translator } from '../shared/language/translator.svelte.ts';
-import { RETENTION_DAYS } from '../shared/sent-records/sent-record.ts';
+import { WEAK_BELOW_CHARACTERS, WEAK_BELOW_WORDS } from '../../features/create/create-message.ts';
+import { RETENTION_DAYS } from '../sent-records/sent-record.ts';
+import { czech } from './czech.ts';
+import type { MessageKey } from './czech.ts';
+import { english } from './english.ts';
+import { Translator } from './translator.svelte.ts';
 
 describe('messages', () => {
   it('takes the limits it names from the code', () => {

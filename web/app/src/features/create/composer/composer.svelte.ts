@@ -15,7 +15,8 @@ import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
 import { randomCharacter, randomText } from '../../../shared/pipeline/random-text.ts';
 import { browserSentStore, rememberSent } from '../../../shared/sent-records/sent-store.ts';
 import type { SentStore } from '../../../shared/sent-records/sent-store.ts';
-import { FocusTargets } from '../../../shared/ui/focus.ts';
+import { ttlChoices, ttlKey } from '../../../shared/ttl/ttl-choices.ts';
+import { FocusTargets } from '../../../shared/ui/focus/focus.ts';
 import {
   CreateError,
   createMessage,
@@ -32,7 +33,7 @@ import type {
   CreateProblem,
   CreateProgress,
 } from '../create-message.ts';
-import { failureKey, problemKey, readAttachment, ttlChoices, ttlKey } from './create-form.ts';
+import { failureKey, problemKey, readAttachment } from './create-form.ts';
 
 export type Menu = 'opens' | 'security' | 'ttl';
 
@@ -42,7 +43,7 @@ export type ComposerTarget = 'file' | 'opens' | 'passphrase' | 'security' | 'sub
 
 type Phase = 'compose' | 'done' | 'encrypting';
 
-type Remembered = 'failed' | 'off' | 'remembered' | 'saving';
+export type Remembered = 'failed' | 'off' | 'remembered' | 'saving';
 
 interface SealedMessage {
   readonly created: Created;
@@ -100,7 +101,6 @@ export class Composer {
   opensMax = $state(1);
   protect = $state(false);
   passphrase = $state('');
-  passphraseVisible = $state(false);
   canRemember = $state(true);
   menu = $state<Menu>();
   problems = $state.raw<readonly CreateProblem[]>([]);
@@ -243,7 +243,6 @@ export class Composer {
 
   readonly forgetPassphrase = (): void => {
     this.passphrase = '';
-    this.passphraseVisible = false;
     flushSync();
   };
 
@@ -352,7 +351,6 @@ export class Composer {
 
   readonly generatePassphrase = (): void => {
     this.passphrase = generatePassphrase();
-    this.passphraseVisible = true;
     this.problems = this.problems.filter((problem) => problem.field !== 'passphrase');
   };
 
@@ -366,7 +364,6 @@ export class Composer {
       return;
     }
     this.passphrase = '';
-    this.passphraseVisible = false;
     this.problems = this.problems.filter((problem) => problem.field !== 'passphrase');
   };
 
@@ -413,7 +410,6 @@ export class Composer {
     this.remembered = 'off';
     this.text = '';
     this.passphrase = '';
-    this.passphraseVisible = false;
     this.protect = false;
     this.removeFile();
     this.phase = 'compose';
@@ -474,7 +470,6 @@ export class Composer {
       }
       this.text = '';
       this.passphrase = '';
-      this.passphraseVisible = false;
       this.removeFile();
       this.#pending = { created, opensMax: this.opensMax, passphrase: input.passphrase };
       this.timeline.complete();

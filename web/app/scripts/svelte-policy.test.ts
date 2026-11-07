@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { sveltePolicy } from '../../scripts/svelte-policy.ts';
+import { sveltePolicy } from './svelte-policy.ts';
 
 describe('Svelte template security policy', () => {
   it.each([

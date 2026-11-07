@@ -1,4 +1,4 @@
-import { sanitizeFileName } from '../../shared/files/file-name.ts';
+import { sanitizeFileName } from './file-name.ts';
 
 const REVOKE_AFTER_MS = 60_000;
 

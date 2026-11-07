@@ -1,23 +1,33 @@
 <script lang="ts">
   import type { Attachment } from 'svelte/attachments';
 
-  import Button from './button/Button.svelte';
-  import Icon from './icon/Icon.svelte';
-  import type { IconName } from './icon/icons.ts';
+  import Button from '../button/Button.svelte';
+  import Icon from '../icon/Icon.svelte';
+  import type { IconName } from '../icon/icons.ts';
 
   interface Props {
     readonly id: string;
     readonly title: string;
     readonly message?: string;
-    readonly confirm: string;
-    readonly dismiss: string;
+    readonly confirmLabel: string;
+    readonly dismissLabel: string;
     readonly tone?: 'danger' | 'warning';
     readonly icon?: IconName;
     readonly onconfirm: () => void;
     readonly onclose: () => void;
   }
 
-  const { id, title, message, confirm, dismiss, tone = 'danger', icon = 'trash', onconfirm, onclose }: Props = $props();
+  const {
+    id,
+    title,
+    message,
+    confirmLabel,
+    dismissLabel,
+    tone = 'danger',
+    icon = 'trash',
+    onconfirm,
+    onclose,
+  }: Props = $props();
 
   let dialog: HTMLDialogElement | undefined;
   let reported = false;
@@ -71,12 +81,12 @@
     <p class="mt-1.5 text-body text-pretty text-ink-soft">{message}</p>
   {/if}
   <div class="mt-6 grid grid-cols-2 gap-2">
-    <Button variant="ghost" onclick={() => void report(false)}>{dismiss}</Button>
+    <Button variant="ghost" onclick={() => void report(false)}>{dismissLabel}</Button>
     <Button variant={tone === 'danger' ? 'danger' : 'primary'} onclick={() => void report(true)}>
       {#if tone === 'danger'}
         <Icon name={icon} class="size-4 shrink-0" animated />
       {/if}
-      {confirm}
+      {confirmLabel}
     </Button>
   </div>
 </dialog>

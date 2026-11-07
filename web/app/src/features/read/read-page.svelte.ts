@@ -5,6 +5,7 @@ import { prefersReducedMotion } from 'svelte/motion';
 import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
 import { isKnownSafeFile } from '../../shared/files/file-name.ts';
+import { saveFile } from '../../shared/files/save-file.ts';
 import { scryptInWorker, stopRunningWorkers } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
 import type { MessageKey } from '../../shared/language/czech.ts';
@@ -13,16 +14,15 @@ import type { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
 import { randomCharacter, randomText } from '../../shared/pipeline/random-text.ts';
-import { Flash } from '../../shared/ui/flash.svelte.ts';
-import { FocusTargets, keepFocus } from '../../shared/ui/focus.ts';
+import { FocusTargets, keepFocus } from '../../shared/ui/focus/focus.ts';
 import type { IconName } from '../../shared/ui/icon/icons.ts';
-import { markHiddenCharacters } from './hidden-characters.ts';
-import type { MarkedText } from './hidden-characters.ts';
+import { Flash } from '../../shared/ui/transition/flash.svelte.ts';
 import { noticeOf } from './read-notice.ts';
 import type { Burned, Notice } from './read-notice.ts';
 import { createReader } from './reader.ts';
 import type { BurnOutcome, BusyStep, Reader, ReadView, RevealedFile } from './reader.ts';
-import { saveFile } from './save-file.ts';
+import { markHiddenCharacters } from './revealed/hidden-characters.ts';
+import type { MarkedText } from './revealed/hidden-characters.ts';
 
 export type Phase = 'notice' | 'opening' | 'ready' | 'revealed';
 

@@ -12,7 +12,7 @@
   }
 }
 
-@utility btn-primary {
+@utility button-primary {
   position: relative;
   isolation: isolate;
   color: oklch(0.99 0.004 255);
@@ -58,7 +58,7 @@
   }
 }
 
-@utility btn-ghost {
+@utility button-ghost {
   position: relative;
   isolation: isolate;
   color: var(--color-ink);
@@ -195,7 +195,7 @@
   }
 }
 
-@utility btn-tint {
+@utility button-tint {
   position: relative;
   isolation: isolate;
   color: var(--color-ink);
@@ -233,7 +233,7 @@
   }
 }
 
-@utility btn-danger {
+@utility button-danger {
   position: relative;
   isolation: isolate;
   color: oklch(0.99 0.008 15);

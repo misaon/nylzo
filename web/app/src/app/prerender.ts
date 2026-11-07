@@ -1,7 +1,6 @@
 import { render } from 'svelte/server';
 
 import { agentsGuide } from '../features/agents/agents-content.ts';
-import { LONGEST_TTL_DAYS } from '../features/create/composer/create-form.ts';
 import Create from '../features/create/Create.svelte';
 import { FAQ_KEYS } from '../features/create/sections/faq-entries.ts';
 import { STATUS_PAGES } from '../features/errors/status-page.ts';
@@ -15,6 +14,7 @@ import type { Language } from '../shared/language/language.ts';
 import { addCatalog, Translator } from '../shared/language/translator.svelte.ts';
 import type { Translate } from '../shared/language/translator.svelte.ts';
 import { REPOSITORY_URL } from '../shared/shell/repository.ts';
+import { LONGEST_TTL_DAYS } from '../shared/ttl/ttl-choices.ts';
 import App from './App.svelte';
 import { HOME_PATHS } from './pages.ts';
 

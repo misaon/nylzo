@@ -5,7 +5,7 @@
 
   import Button from '../ui/button/Button.svelte';
   import Icon from '../ui/icon/Icon.svelte';
-  import Popover from '../ui/Popover.svelte';
+  import Popover from '../ui/menu/Popover.svelte';
   import type { Language } from './language.ts';
   import LanguageFlag from './LanguageFlag.svelte';
   import { getTranslator, loadCatalog } from './translator.svelte.ts';

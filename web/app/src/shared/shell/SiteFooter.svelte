@@ -86,10 +86,7 @@
     </div>
   {:else}
     <div class="glass-soft mx-auto max-w-page rounded-card p-6 md:p-10">
-      <div
-        class="grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))] md:gap-10"
-        data-footer-mobile
-      >
+      <div class="grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))] md:gap-10">
         <div class="col-span-2 md:col-span-1">
           <Logo class="h-8 w-[120px]" label="Nylzo" />
           <p class="mt-4 max-w-[280px] text-body-sm text-ink-mute">{translate('footer.tagline')}</p>

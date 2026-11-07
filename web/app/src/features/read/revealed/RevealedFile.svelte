@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { fileExtension, splitFileName } from '../../shared/files/file-name.ts';
-  import { formatSize } from '../../shared/language/format.ts';
-  import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import Button from '../../shared/ui/button/Button.svelte';
-  import Icon from '../../shared/ui/icon/Icon.svelte';
-  import SwapIcon from '../../shared/ui/icon/SwapIcon.svelte';
-  import type { ReadPage } from './read-page.svelte.ts';
-  import type { RevealedFile } from './reader.ts';
+  import { fileExtension, splitFileName } from '../../../shared/files/file-name.ts';
+  import { formatSize } from '../../../shared/language/format.ts';
+  import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import Button from '../../../shared/ui/button/Button.svelte';
+  import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
+  import type { ReadPage } from '../read-page.svelte.ts';
+  import type { RevealedFile } from '../reader.ts';
 
   interface Props {
     readonly page: ReadPage;
@@ -38,7 +38,7 @@
         inert={page.confirmingDownload}
       >
         <span
-          class="relative grid size-12 shrink-0 place-items-center rounded-pane text-white step-current"
+          class="relative grid size-12 shrink-0 place-items-center rounded-pane text-white tile-current"
           aria-hidden="true"
         >
           <Icon name="file" class="size-5" />

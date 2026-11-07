@@ -2,8 +2,8 @@
   import type { ClassValue } from 'svelte/elements';
 
   import { getTranslator } from '../../language/translator.svelte.ts';
-  import { Flash } from '../flash.svelte.ts';
   import Icon from '../icon/Icon.svelte';
+  import { Flash } from '../transition/flash.svelte.ts';
   import Button from './Button.svelte';
 
   interface Props {

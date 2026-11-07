@@ -129,7 +129,6 @@ describe('message composer interactions', () => {
     await form.toggleProtect();
     expect(form.protect).toBe(true);
     expect(form.passphrase).not.toBe('');
-    expect(form.passphraseVisible).toBe(true);
     expect(focused).toHaveBeenCalledOnce();
     form.passphrase = '';
     await submit(form);
@@ -141,7 +140,6 @@ describe('message composer interactions', () => {
     expect(form.problems).toEqual([]);
     form.forgetPassphrase();
     expect(form.passphrase).toBe('');
-    expect(form.passphraseVisible).toBe(false);
     form.passphrase = 'password';
     expect(form.weak).toBe(true);
     expect(form.passphraseMessage).not.toBe('');
@@ -186,7 +184,6 @@ describe('message composer interactions', () => {
     form.text = 'synthetic message';
     form.protect = true;
     form.passphrase = 'correct horse battery staple';
-    form.passphraseVisible = true;
     form.opensMax = 3;
     form.file = new File(['ok'], 'message.txt');
     const gate = Promise.withResolvers<Created>();
@@ -213,7 +210,6 @@ describe('message composer interactions', () => {
     await sending;
     expect(form.text).toBe('');
     expect(form.passphrase).toBe('');
-    expect(form.passphraseVisible).toBe(false);
     expect(form.file).toBeUndefined();
     expect(vi.mocked(createMessage).mock.calls[0]?.[0].file?.bytes).toEqual(new Uint8Array(2));
     expect(form.sealed).toBeUndefined();

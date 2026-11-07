@@ -2,9 +2,9 @@
   import { formatBytes, formatSize } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import PipelineRing from '../../../shared/pipeline/PipelineRing.svelte';
+  import { PRIVATE_TEXT } from '../../../shared/ui/field/private-fields.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import { lingering } from '../../../shared/ui/lingering.ts';
-  import { PRIVATE_TEXT } from '../../../shared/ui/private-fields.ts';
+  import { lingering } from '../../../shared/ui/transition/lingering.ts';
   import type { Composer } from './composer.svelte.ts';
 
   interface Props {
@@ -160,7 +160,7 @@
       <span class="relative grid size-12 place-items-center">
         <span class="absolute -inset-2 animate-pulse-core rounded-tile ring-1 ring-aegis-300/35"></span>
         <span
-          class="relative grid size-12 place-items-center rounded-pane text-white shadow-[0_0_36px_-6px_oklch(0.56_0.19_258/0.9)] step-current"
+          class="relative grid size-12 place-items-center rounded-pane text-white shadow-[0_0_36px_-6px_oklch(0.56_0.19_258/0.9)] tile-current"
         >
           <Icon name="upload" class="relative size-6" stroke={1.6} />
         </span>

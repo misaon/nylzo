@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import Popover from '../../../shared/ui/Popover.svelte';
+  import Popover from '../../../shared/ui/menu/Popover.svelte';
   import type { Composer } from './composer.svelte.ts';
   import MenuChip from './MenuChip.svelte';
 
@@ -39,7 +39,7 @@
           disabled={composer.opensMax <= 1}
           onclick={() => (composer.opensMax = Math.max(1, composer.opensMax - 1))}
           aria-label={translate('compose.opens.less')}
-          class="group/action btn-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition disabled:opacity-40 md:size-9"
+          class="group/action button-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition disabled:opacity-40 md:size-9"
         >
           <Icon name="minus" class="size-4 shrink-0" animated />
         </button>
@@ -54,7 +54,7 @@
           disabled={composer.opensMax >= composer.maxOpens}
           onclick={() => (composer.opensMax = Math.min(composer.maxOpens, composer.opensMax + 1))}
           aria-label={translate('compose.opens.more')}
-          class="group/action btn-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition disabled:opacity-40 md:size-9"
+          class="group/action button-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition disabled:opacity-40 md:size-9"
         >
           <Icon name="plus" class="size-4 shrink-0" animated />
         </button>

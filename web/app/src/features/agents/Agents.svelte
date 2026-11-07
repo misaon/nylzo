@@ -27,7 +27,7 @@
   <ol class="mt-8 grid gap-3 md:grid-cols-3">
     {#each AGENT_STEPS as step, index (step.title)}
       <li class="glass-soft flex flex-col rounded-card p-5">
-        <span class="grid size-8 place-items-center rounded-full text-caption font-medium text-white step-current">
+        <span class="grid size-8 place-items-center rounded-full text-caption font-medium text-white tile-current">
           {index + 1}
         </span>
         <p class="mt-4 text-title-sm text-ink">{translate(step.title)}</p>

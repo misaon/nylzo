@@ -7,7 +7,7 @@
   import { isEnded } from './read-notice.ts';
   import { ReadPage } from './read-page.svelte.ts';
   import ReadyPanel from './ReadyPanel.svelte';
-  import RevealedPanel from './RevealedPanel.svelte';
+  import RevealedPanel from './revealed/RevealedPanel.svelte';
   import TrustCards from './TrustCards.svelte';
 
   const translator = getTranslator();

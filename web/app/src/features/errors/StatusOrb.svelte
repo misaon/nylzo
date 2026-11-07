@@ -9,7 +9,7 @@
   }
 
   const TONES = {
-    current: { tile: 'step-current', halo: 'bg-[radial-gradient(closest-side,oklch(0.56_0.19_258/0.55),transparent)]' },
+    current: { tile: 'tile-current', halo: 'bg-[radial-gradient(closest-side,oklch(0.56_0.19_258/0.55),transparent)]' },
     danger: { tile: 'tile-danger', halo: 'bg-[radial-gradient(closest-side,oklch(0.56_0.17_18/0.5),transparent)]' },
     warning: { tile: 'tile-warning', halo: 'bg-[radial-gradient(closest-side,oklch(0.7_0.14_75/0.42),transparent)]' },
   } as const;

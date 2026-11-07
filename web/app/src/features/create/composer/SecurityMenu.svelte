@@ -3,10 +3,10 @@
 
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
+  import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../../shared/ui/field/private-fields.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import Popover from '../../../shared/ui/Popover.svelte';
-  import { PRIVATE_PASSPHRASE, submitOnEnter } from '../../../shared/ui/private-fields.ts';
-  import Switch from '../../../shared/ui/Switch.svelte';
+  import Popover from '../../../shared/ui/menu/Popover.svelte';
+  import Switch from '../../../shared/ui/switch/Switch.svelte';
   import { WEAK_BELOW_WORDS } from '../create-message.ts';
   import type { Composer } from './composer.svelte.ts';
   import MenuChip from './MenuChip.svelte';

@@ -3,8 +3,8 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import WorkingStatus from '../../../shared/pipeline/WorkingStatus.svelte';
   import Button from '../../../shared/ui/button/Button.svelte';
+  import { CHIP_FILE, CHIP_IDLE, CHIP_LAYOUT, CHIP_PROBLEM } from '../../../shared/ui/chip/chip-classes.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import { CHIP_FILE, CHIP_IDLE, CHIP_LAYOUT, CHIP_PROBLEM } from './chip-classes.ts';
   import type { Composer } from './composer.svelte.ts';
   import OpensMenu from './OpensMenu.svelte';
   import SecurityMenu from './SecurityMenu.svelte';

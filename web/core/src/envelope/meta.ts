@@ -22,7 +22,7 @@ export interface Meta {
   readonly file?: FileMeta | undefined;
 }
 
-// eslint-disable-next-line no-control-regex -- spec 3.1 forbids C0 controls and DEL in file names
+// oxlint-disable-next-line no-control-regex -- spec 3.1 forbids C0 controls and DEL in file names
 const FORBIDDEN_IN_FILE_NAME = /[\u{0}-\u{1F}\u{7F}/\\]/u;
 const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 

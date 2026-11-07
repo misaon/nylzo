@@ -123,7 +123,7 @@ export default defineConfig(({ isSsrBuild }) => ({
       {
         test: {
           name: 'bun',
-          include: ['src/**/*.test.ts'],
+          include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
           exclude: ['src/**/*.svelte.test.ts'],
           testTimeout: 30_000,
           setupFiles: ['src/shared/language/test-catalogs.ts'],

@@ -3,11 +3,11 @@
   import { REPOSITORY_URL } from '../../../../shared/shell/repository.ts';
   import Button from '../../../../shared/ui/button/Button.svelte';
   import CopyButton from '../../../../shared/ui/button/CopyButton.svelte';
-  import { FocusTargets } from '../../../../shared/ui/focus.ts';
+  import { FocusTargets } from '../../../../shared/ui/focus/focus.ts';
+  import { arrowTarget } from '../../../../shared/ui/focus/roving-focus.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
   import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
-  import { arrowTarget } from '../../../../shared/ui/tabs.ts';
   import IconTile from '../../../../shared/ui/tile/IconTile.svelte';
   import { installLines, installText, LINE_DELAYS, TOKEN_CLASSES } from './commands.ts';
   import type { InstallTab } from './commands.ts';
@@ -17,9 +17,9 @@
   const tabs: readonly InstallTab[] = ['compose', 'binary', 'verify'];
   const indicator = ['translate-x-0', 'translate-x-full', 'translate-x-[200%]'] as const;
   const points = [
-    { key: 'host.point.compose', order: '[--rv-i:3]' },
-    { key: 'host.point.signed', order: '[--rv-i:4]' },
-    { key: 'host.point.mit', order: '[--rv-i:5]' },
+    { key: 'host.point.compose', revealIndex: '[--reveal-index:3]' },
+    { key: 'host.point.signed', revealIndex: '[--reveal-index:4]' },
+    { key: 'host.point.mit', revealIndex: '[--reveal-index:5]' },
   ] as const;
 
   let tab = $state<InstallTab>('compose');
@@ -46,29 +46,29 @@
     <div {@attach reveal}>
       <SectionIntro id="host-title" eyebrow={translate('host.eyebrow')} title={translate('host.title')} />
       <p
-        class="mt-5 max-w-[460px] rv-focus text-lead leading-relaxed text-pretty text-ink-soft [--rv-i:2] md:text-lead-lg"
+        class="mt-5 max-w-[460px] reveal-focus text-lead leading-relaxed text-pretty text-ink-soft [--reveal-index:2] md:text-lead-lg"
       >
         {translate('host.sub')}
       </p>
       <ul class="mt-8 grid gap-3 text-body text-ink-soft">
         {#each points as point (point.key)}
-          <li class={['flex rv-focus items-center gap-3 leading-7 [--rv-blur:5px]', point.order]}>
+          <li class={['flex reveal-focus items-center gap-3 leading-7 [--reveal-blur:5px]', point.revealIndex]}>
             <IconTile icon="check" tone="neutral" size="small" />
             {translate(point.key)}
           </li>
         {/each}
       </ul>
-      <Button variant="ghost" href={`${REPOSITORY_URL}/wiki/Self-hosting`} class="mt-8 rv-focus [--rv-i:6]">
+      <Button variant="ghost" href={`${REPOSITORY_URL}/wiki/Self-hosting`} class="mt-8 reveal-focus [--reveal-index:6]">
         {translate('host.guide')}
         <Icon name="external" animated />
       </Button>
     </div>
     <div
-      class="glass min-w-0 rv-rise rounded-card p-2.5 [--rv-delay:200ms] md:p-3 lg:[--rv-x:32px] lg:[--rv-y:0px]"
+      class="glass min-w-0 reveal-rise rounded-card p-2.5 [--reveal-delay:200ms] md:p-3 lg:[--reveal-x:32px] lg:[--reveal-y:0px]"
       {@attach reveal}
     >
       <div
-        class="flex rv-focus flex-col gap-2 [--rv-blur:4px] [--rv-delay:420ms] sm:flex-row sm:items-center sm:justify-between"
+        class="flex reveal-focus flex-col gap-2 [--reveal-blur:4px] [--reveal-delay:420ms] sm:flex-row sm:items-center sm:justify-between"
       >
         <div
           class="relative grid grid-cols-3 rounded-pane bg-white/4 p-1 shadow-rim ring-1 ring-white/8"
@@ -132,7 +132,12 @@
               aria-hidden={id !== tab}
             >
               {#each lines as tokens, row (row)}
-                <p class={['rv-type pl-[1.15em] -indent-[1.15em] wrap-anywhere whitespace-pre-wrap', LINE_DELAYS[row]]}>
+                <p
+                  class={[
+                    'reveal-type pl-[1.15em] -indent-[1.15em] wrap-anywhere whitespace-pre-wrap',
+                    LINE_DELAYS[row],
+                  ]}
+                >
                   <span class="text-ink-mute/60 select-none">$&nbsp;</span
                   >{#each tokens as token, position (position)}{position > 0 && !token.joined ? ' ' : ''}<span
                       class={TOKEN_CLASSES[token.kind]}>{token.text}</span
@@ -141,7 +146,7 @@
               {/each}
               <p
                 class={[
-                  'rv-type pl-[1.15em] -indent-[1.15em] wrap-anywhere whitespace-pre-wrap',
+                  'reveal-type pl-[1.15em] -indent-[1.15em] wrap-anywhere whitespace-pre-wrap',
                   LINE_DELAYS[lines.length],
                 ]}
                 aria-hidden="true"
