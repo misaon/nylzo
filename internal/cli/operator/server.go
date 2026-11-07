@@ -52,6 +52,10 @@ var (
 			"(systemd LimitMEMLOCK=infinity, docker run --ulimit memlock=-1:-1, Compose ulimits memlock -1) " +
 			"or grant CAP_IPC_LOCK; NYLZO_ALLOW_SWAP=1 serves without the lock",
 	)
+	errSecretMode = errors.New(
+		"this build leaves request keys in memory after use: build with GOEXPERIMENT=runtimesecret for " +
+			"linux/amd64 or linux/arm64; NYLZO_ALLOW_UNERASED_MEMORY=1 serves without erasing them",
+	)
 	errSweepFailed       = errors.New("sweep failed; see the sweep-once log line")
 	errNoStore           = errors.New("found no store in NYLZO_DATA_DIR")
 	errServerUnsupported = errors.New("the server runs on Linux and macOS only; on Windows use WSL or Docker")
@@ -98,6 +102,7 @@ func runServer(
 		return command.ExitOK
 	case errors.Is(err, errSweepFailed):
 	case errors.Is(err, config.ErrInvalid), errors.Is(err, errServerUnsupported), errors.Is(err, errMemoryLock),
+		errors.Is(err, errSecretMode),
 		errors.Is(err, erase.ErrNotInPlace):
 		logger.ErrorContext(ctx, failureMessage, "err", err.Error())
 	default:
@@ -116,6 +121,19 @@ func requireMemoryLock(development config.Development, logger *slog.Logger) erro
 		return fmt.Errorf("%w: %w", errMemoryLock, err)
 	}
 	return nil
+}
+
+// requireSecretMode refuses a build whose secret mode erases nothing, unless that is explicitly allowed.
+func requireSecretMode(development config.Development, logger *slog.Logger) error {
+	switch {
+	case secretmode.Supported():
+		return nil
+	case development.AllowUnerasedMemory:
+		logger.Warn("memory-not-erased", "reason", "NYLZO_ALLOW_UNERASED_MEMORY")
+		return nil
+	default:
+		return errSecretMode
+	}
 }
 
 // requireErasable refuses storage that keeps old blocks, which would undo every deletion: a file system, a mount
@@ -282,6 +300,9 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	}
 	if lockErr := requireMemoryLock(settings.Development, logger); lockErr != nil {
 		return lockErr
+	}
+	if secretErr := requireSecretMode(settings.Development, logger); secretErr != nil {
+		return secretErr
 	}
 	if epochErr := prepareEpoch(&settings, logger); epochErr != nil {
 		return epochErr

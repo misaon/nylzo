@@ -78,6 +78,7 @@ type Server struct {
 type Development struct {
 	AllowSwap              bool
 	AllowUnerasableStorage bool
+	AllowUnerasedMemory    bool
 }
 
 func Defaults() Server {

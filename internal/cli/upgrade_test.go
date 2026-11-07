@@ -36,11 +36,12 @@ func TestServeUpgradesTheDataDirectoryOfARelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	variables := map[string]string{
-		"NYLZO_DATA_DIR":    directory,
-		"NYLZO_PEPPER_FILE": pepper,
-		"NYLZO_REPORT_KEY":  core.Encode(testReportKey.PublicKey().Bytes()),
-		"NYLZO_LISTEN":      address,
-		"NYLZO_ALLOW_SWAP":  "1",
+		"NYLZO_DATA_DIR":              directory,
+		"NYLZO_PEPPER_FILE":           pepper,
+		"NYLZO_REPORT_KEY":            core.Encode(testReportKey.PublicKey().Bytes()),
+		"NYLZO_LISTEN":                address,
+		"NYLZO_ALLOW_SWAP":            "1",
+		"NYLZO_ALLOW_UNERASED_MEMORY": "1",
 	}
 	if runtime.GOOS != "linux" {
 		variables["NYLZO_ALLOW_UNERASABLE_STORAGE"] = "1"

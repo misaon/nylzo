@@ -7,3 +7,7 @@ package secretmode
 func Do(f func()) {
 	f()
 }
+
+func Supported() bool {
+	return false
+}

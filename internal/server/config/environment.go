@@ -126,6 +126,7 @@ func (s *Server) variables() []variable {
 		{"NYLZO_HOSTING", text(&s.Operator.Hosting)},
 		{"NYLZO_ALLOW_SWAP", boolInto(&s.Development.AllowSwap)},
 		{"NYLZO_ALLOW_UNERASABLE_STORAGE", boolInto(&s.Development.AllowUnerasableStorage)},
+		{"NYLZO_ALLOW_UNERASED_MEMORY", boolInto(&s.Development.AllowUnerasedMemory)},
 		{"NYLZO_REPORT_KEY", func(value string) error {
 			key, err := abuse.ParsePublicKey(value)
 			s.ReportKey = key

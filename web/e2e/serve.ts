@@ -45,6 +45,7 @@ const server = spawn(binary, ['serve'], {
     NYLZO_PEPPER_FILE: pepperFile,
     NYLZO_ALLOW_SWAP: '1',
     NYLZO_ALLOW_UNERASABLE_STORAGE: process.platform === 'linux' ? '0' : '1',
+    NYLZO_ALLOW_UNERASED_MEMORY: process.platform === 'linux' ? '0' : '1',
     NYLZO_REPORT_KEY: reportKey,
     NYLZO_RATE_CREATE_HOUR: '0',
     NYLZO_RATE_CREATE_DAY: '0',

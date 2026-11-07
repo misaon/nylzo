@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 
@@ -175,6 +176,33 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 	if result.code != 1 || strings.Contains(result.stderr, `"msg":"sweep`) ||
 		strings.Contains(result.stderr, `"msg":"listening"`) {
 		t.Fatalf("a taken port: exit %d, %s", result.code, result.stderr)
+	}
+}
+
+func TestServeRefusesABuildThatLeavesKeysInMemory(t *testing.T) {
+	if secretmode.Supported() {
+		t.Skip("this test binary erases request memory")
+	}
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer taken.Close()
+	result := run(
+		t,
+		"",
+		map[string]string{
+			"NYLZO_DATA_DIR":              t.TempDir(),
+			"NYLZO_PEPPER_FILE":           pepperFile(t),
+			"NYLZO_REPORT_KEY":            testReportKeyText,
+			"NYLZO_LISTEN":                taken.Addr().String(),
+			"NYLZO_ALLOW_UNERASED_MEMORY": "0",
+		},
+		nil,
+		RunServe,
+	)
+	if result.code != 1 || !strings.Contains(result.stderr, "GOEXPERIMENT=runtimesecret") {
+		t.Fatalf("a build without secret mode: exit %d, %s", result.code, result.stderr)
 	}
 }
 

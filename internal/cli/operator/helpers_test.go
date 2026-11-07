@@ -20,8 +20,13 @@ import (
 
 var testPepper = strings.Repeat("0123456789abcdef", 4)
 
-// testDevelopment keeps the storage check on Linux, where CI runs, and allows swap, since tests do not lock memory.
-var testDevelopment = config.Development{AllowSwap: true, AllowUnerasableStorage: runtime.GOOS != "linux"}
+// testDevelopment keeps the storage check on Linux, where CI runs, and allows swap and unerased memory, since tests
+// neither lock memory nor build with GOEXPERIMENT=runtimesecret.
+var testDevelopment = config.Development{
+	AllowSwap:              true,
+	AllowUnerasableStorage: runtime.GOOS != "linux",
+	AllowUnerasedMemory:    true,
+}
 
 func pepperFile(t *testing.T) string {
 	t.Helper()
@@ -80,6 +85,7 @@ func run(
 	for name, allowed := range map[string]bool{
 		"NYLZO_ALLOW_SWAP":               testDevelopment.AllowSwap,
 		"NYLZO_ALLOW_UNERASABLE_STORAGE": testDevelopment.AllowUnerasableStorage,
+		"NYLZO_ALLOW_UNERASED_MEMORY":    testDevelopment.AllowUnerasedMemory,
 	} {
 		if _, set := variables[name]; !set && allowed {
 			variables[name] = "1"
