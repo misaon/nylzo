@@ -345,20 +345,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	httpServer := instance.HTTPServer()
 	served := make(chan error, 1)
 	go func() { served <- httpServer.Serve(server.SecureEarlyErrors(listener)) }()
-	logger.InfoContext(
-		ctx,
-		"listening",
-		"addr",
-		listener.Addr().String(),
-		"version",
-		settings.Version,
-		"commit",
-		settings.Build.Commit,
-		"build_date",
-		settings.Build.Date,
-		"dirty",
-		settings.Build.Dirty,
-	)
+	logListening(ctx, logger, listener.Addr(), &settings)
 	select {
 	case err = <-served:
 		stop()
@@ -373,6 +360,18 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	waitFor(ctx, &sweeper, shutdownTimeout, logger)
 	instance.Close()
 	return err
+}
+
+func logListening(ctx context.Context, logger *slog.Logger, address net.Addr, settings *config.Server) {
+	logger.InfoContext(
+		ctx,
+		"listening",
+		"addr", address.String(),
+		"version", settings.Version,
+		"commit", settings.Build.Commit,
+		"build_date", settings.Build.Date,
+		"dirty", settings.Build.Dirty,
+	)
 }
 
 // prepareProcess refuses a process that would leave keys in swap or in memory and prepares the epoch directory, all
