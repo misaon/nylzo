@@ -176,6 +176,34 @@ test('the sent list, empty and with a message, and its cancel dialog pass axe wi
   await expectAccessible(page, 'cancel dialog');
 });
 
+test('keyboard focus on the comparison table and the self-host commands draws the focus ring (WCAG 2.4.7)', async ({
+  page,
+}) => {
+  await openApp(page, '/');
+  const ring = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--color-aegis-300)';
+    document.body.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return `solid 2px ${color}`;
+  });
+  for (const region of [page.locator('#comparison').getByRole('region'), page.locator('#host-panel')]) {
+    await region.focus();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await expect(region).toBeFocused();
+    await expect
+      .poll(() =>
+        region.evaluate((element) => {
+          const style = getComputedStyle(element);
+          return `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`;
+        }),
+      )
+      .toBe(ring);
+  }
+});
+
 test('the transparency, terms, agents and not found pages pass axe with 44 px targets on a phone (AK20)', async ({
   newPage,
 }) => {
