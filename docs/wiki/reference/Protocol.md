@@ -31,7 +31,7 @@ All binary values carried in URLs, headers and JSON use base64url (RFC 4648 §5)
 | --------------------------------------------------------- | ----- | ---------- | --------------------------------- |
 | `id`                                                      | 16    | 22         | `A Q g w`                         |
 | `S`, `H`, `L`, public keys, share keys, hashes            | 32    | 43         | `A E I M Q U Y c g k o s w 0 4 8` |
-| id token (§5.4)                                           | 24    | 32         | any                               |
+| id token (§5.4)                                           | 40    | 54         | any                               |
 | challenge (§5.5)                                          | 36    | 48         | any                               |
 | signature, wrapped share (§5.6)                           | 64    | 86         | `A Q g w`                         |
 
