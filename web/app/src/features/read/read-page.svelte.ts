@@ -5,7 +5,7 @@ import { prefersReducedMotion } from 'svelte/motion';
 import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
 import { isKnownSafeFile } from '../../shared/files/file-name.ts';
-import { scryptInWorker } from '../../shared/kdf/kdf.ts';
+import { scryptInWorker, stopRunningWorkers } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
 import type { MessageKey } from '../../shared/language/czech.ts';
 import { formatMoment, formatWait } from '../../shared/language/format.ts';
@@ -298,6 +298,7 @@ export class ReadPage {
   };
 
   readonly leave = (): void => {
+    stopRunningWorkers();
     this.#left = true;
     this.burned = undefined;
     this.confirmingDownload = false;
@@ -507,6 +508,7 @@ export class ReadPage {
     const wasRevealed = this.shown.view === 'revealed';
     this.shown = next;
     if (next.view !== 'revealed') {
+      clearInterval(this.#revealTimer);
       this.revealText = undefined;
       this.marked = undefined;
       return;

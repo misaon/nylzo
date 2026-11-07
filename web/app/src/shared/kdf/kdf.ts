@@ -8,16 +8,35 @@ export type Progress = (fraction: number) => void;
 
 const SILENCE_LIMIT_MS = 30_000;
 
+const runningWorkers = new Set<() => void>();
+let pageVisit = 0;
+
+// A passphrase must not stay in a worker after the page is left, even mid-derivation.
+export function stopRunningWorkers(): void {
+  pageVisit++;
+  for (const cancel of runningWorkers) {
+    cancel();
+  }
+}
+
 async function runWorker(request: KdfRequest, onProgress: Progress): Promise<KdfResponse> {
+  const visit = pageVisit;
   const { worker, stop } = await startWorker();
+  if (visit !== pageVisit) {
+    stop();
+    throw new KdfWorkerError('the page was left');
+  }
   return new Promise((resolve, reject) => {
     let silenceTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (settle: () => void) => {
       clearTimeout(silenceTimer);
+      runningWorkers.delete(cancel);
       stop();
       settle();
     };
     const fail = (error: Error) => finish(() => reject(error));
+    const cancel = () => fail(new KdfWorkerError('the page was left'));
+    runningWorkers.add(cancel);
     const restartSilenceTimer = () => {
       clearTimeout(silenceTimer);
       silenceTimer = setTimeout(

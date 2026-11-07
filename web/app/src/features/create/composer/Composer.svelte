@@ -107,6 +107,7 @@
             tracking={composer.remembered}
             ontrack={(label) => void composer.track(label)}
             onanother={composer.another}
+            leaving={composer.leaving}
           />
         {/if}
       </div>

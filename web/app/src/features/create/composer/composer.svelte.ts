@@ -5,7 +5,7 @@ import { prefersReducedMotion } from 'svelte/motion';
 
 import { createApi } from '../../../shared/api/api.ts';
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
-import { scryptInWorker, solvePowInWorker } from '../../../shared/kdf/kdf.ts';
+import { scryptInWorker, solvePowInWorker, stopRunningWorkers } from '../../../shared/kdf/kdf.ts';
 import { formatBytes, formatCount, formatDuration, formatWait } from '../../../shared/language/format.ts';
 import type { Translator } from '../../../shared/language/translator.svelte.ts';
 import { instanceOrigin, servedByLocalClient } from '../../../shared/local-client/instance-origin.ts';
@@ -109,6 +109,7 @@ export class Composer {
   proving = $state(false);
   cipher = $state('');
   sealed = $state.raw<SealedMessage>();
+  leaving = $state(false);
   sealingWithPassphrase = $state(false);
   remembered = $state<Remembered>('off');
   readonly focus = new FocusTargets<ComposerTarget>();
@@ -247,12 +248,17 @@ export class Composer {
   };
 
   readonly leave = (): void => {
+    stopRunningWorkers();
+    this.leaving = true;
     this.#run++;
     this.timeline.stop();
     this.#pending = undefined;
     this.cipher = '';
     this.menu = undefined;
     this.#reset();
+    // Commit removal before pagehide returns and the browser freezes this document.
+    flushSync();
+    this.leaving = false;
   };
 
   readonly loadLimits = async (): Promise<void> => {

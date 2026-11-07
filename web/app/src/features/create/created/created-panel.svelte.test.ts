@@ -26,7 +26,16 @@ describe('created message panel', () => {
   function show({ passphrase = '', opensMax = 1, canTrack = true } = {}): void {
     component = mount(CreatedPanel, {
       target,
-      props: { created, opensMax, passphrase, canTrack, tracking: 'off', ontrack: track, onanother: another },
+      props: {
+        created,
+        opensMax,
+        passphrase,
+        canTrack,
+        tracking: 'off',
+        ontrack: track,
+        onanother: another,
+        leaving: false,
+      },
     });
     flushSync();
   }

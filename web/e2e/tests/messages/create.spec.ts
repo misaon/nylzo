@@ -52,22 +52,24 @@ test('the composer forgets the text, the passphrase and the file once the link e
   await expect(passphrase).toHaveValue('');
   expect(await attachedFiles()).toBe(0);
 
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   const link = await createMessageInPage(page, { text: 'forget me', passphrase: PASSPHRASE, file: NOTES });
   expect(link).toContain('#2.3.');
   await expect(text).toHaveValue('');
   await expect(passphrase).toHaveValue('');
   expect(await attachedFiles()).toBe(0);
 
-  await leavePage(page);
-  await expect(page.getByLabel('Link to the message')).toHaveCount(0);
   const secret = link.split('.').at(-1) ?? '';
-  const shown = await page.evaluate(
-    (part) =>
+  // The page may be frozen as soon as pagehide returns, so the link must be gone before any exit animation.
+  const shown = await page.evaluate((part) => {
+    dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+    return (
       document.body.textContent.includes(part) ||
-      [...document.querySelectorAll<HTMLInputElement>('input, textarea')].some((field) => field.value.includes(part)),
-    secret,
-  );
+      [...document.querySelectorAll<HTMLInputElement>('input, textarea')].some((field) => field.value.includes(part))
+    );
+  }, secret);
   expect(shown).toBe(false);
+  await expect(page.getByLabel('Link to the message')).toHaveCount(0);
   await returnFromBackForwardCache(page);
   await expect(text).toHaveValue('');
 });
