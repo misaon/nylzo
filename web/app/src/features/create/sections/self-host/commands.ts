@@ -57,6 +57,18 @@ export function installLines(tab: InstallTab, domain: string): readonly (readonl
           number('0400'),
           argument('secrets/pepper'),
         ],
+        [
+          command('sudo'),
+          command('install'),
+          flag('-d'),
+          flag('-o'),
+          number('65533'),
+          flag('-g'),
+          number('65533'),
+          flag('-m'),
+          number('0700'),
+          argument('caddy-state'),
+        ],
         [command('docker'), word('compose'), word('up'), flag('-d')],
       ];
     }
@@ -111,4 +123,5 @@ export const LINE_DELAYS = [
   '[--reveal-delay:1470ms]',
   '[--reveal-delay:1640ms]',
   '[--reveal-delay:1810ms]',
+  '[--reveal-delay:1980ms]',
 ] as const;
