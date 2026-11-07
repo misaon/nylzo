@@ -48,7 +48,11 @@ func (b Build) Render(publicURL string) (Pages, error) {
 		if err != nil {
 			return nil, fmt.Errorf("server: web client %s: %w", name, err)
 		}
-		if pages[name], err = newPage(html); err != nil {
+		policy := PagePolicy(html)
+		if isStatusTemplate(name) {
+			policy = StatusPolicy(html)
+		}
+		if pages[name], err = newPage(html, policy); err != nil {
 			return nil, err
 		}
 	}
@@ -60,6 +64,11 @@ func (p Pages) For(path string) Page {
 }
 
 func render(template, publicURL string) (string, error) {
+	if publicURL != "" {
+		if err := CheckPublicURL(publicURL); err != nil {
+			return "", fmt.Errorf("public URL: %w", err)
+		}
+	}
 	var out strings.Builder
 	rest := template
 	for {
@@ -93,8 +102,8 @@ type Page struct {
 	policy string
 }
 
-func newPage(html string) (Page, error) {
-	page := Page{body: []byte(html), policy: PagePolicy(html)}
+func newPage(html, policy string) (Page, error) {
+	page := Page{body: []byte(html), policy: policy}
 	var buffer bytes.Buffer
 	writer, err := gzip.NewWriterLevel(&buffer, gzip.BestCompression)
 	if err != nil {
@@ -128,6 +137,9 @@ func (p Page) Serve(w http.ResponseWriter, r *http.Request) {
 func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	header := w.Header()
 	header.Set("Content-Security-Policy", p.policy)
+	if r.URL.Path == transparencyPage {
+		header.Del(connectionAllowlistHeader)
+	}
 	header.Set("Content-Type", htmlContentType)
 	header.Add("Vary", "Accept-Encoding")
 	body := p.body

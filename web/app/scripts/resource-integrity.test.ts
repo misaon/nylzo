@@ -32,6 +32,12 @@ describe('final frontend resource policy', () => {
     expect(output.indexOf(FRAGMENT_GUARD)).toBeLessThan(output.indexOf('src="/assets/app.js"'));
   });
 
+  it('gives a page that loads no script only the fragment guard, without an import map', () => {
+    const output = secureHtml(html.replace('<script src="/assets/app.js" type="module"></script>', ''), assets);
+    expect(output).not.toContain('importmap');
+    expect(output).toContain(`<head><meta charset="utf-8"><script>${FRAGMENT_GUARD}</script>`);
+  });
+
   it.each([
     'https://evil.invalid/a.js',
     '//evil.invalid/a.js',

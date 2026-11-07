@@ -8,22 +8,33 @@ import (
 	"strings"
 )
 
-const NonHTMLCSP = "default-src 'none'; frame-ancestors 'none'"
+const NonHTMLCSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; sandbox"
 
-const pagePolicyFormat = "default-src 'none'; script-src 'self'%s; style-src 'self'%s; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types svelte-trusted-html nylzo-kdf"
+const pagePolicyFormat = "default-src 'none'; script-src 'self'%s; style-src 'self'%s; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types nylzo-kdf"
+
+const statusPolicyFormat = "default-src 'none'; script-src %s; style-src 'self'%s; img-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
 
 const robotsTag = "noindex, nofollow"
+
+const (
+	connectionAllowlistHeader = "Connection-Allowlist"
+	// Every address the client links to; Chromium refuses any other connection or navigation, also from injected code.
+	connectionAllowlist = `(response-origin "https://github.com/misaon/nylzo" "https://github.com/misaon/nylzo/*" "https://opensource.org/license/mit")`
+	// The operator's contact on this page may be any https address.
+	transparencyPage = "/transparency"
+)
 
 var securityHeaders = map[string]string{
 	"Referrer-Policy":              "no-referrer",
 	"Integrity-Policy":             "blocked-destinations=(script)",
+	connectionAllowlistHeader:      connectionAllowlist,
 	"Cache-Control":                "no-store",
 	"X-Content-Type-Options":       "nosniff",
 	"Cross-Origin-Opener-Policy":   "same-origin",
 	"Cross-Origin-Embedder-Policy": "require-corp",
 	"Cross-Origin-Resource-Policy": "same-origin",
 	"Strict-Transport-Security":    "max-age=63072000; includeSubDomains; preload",
-	"Permissions-Policy":           "accelerometer=(), autoplay=(), bluetooth=(), browsing-topics=(), camera=(), captured-surface-control=(), ch-ua-high-entropy-values=(), clipboard-read=(), clipboard-write=(self), compute-pressure=(), deferred-fetch=(), deferred-fetch-minimal=(), digital-credentials-create=(), digital-credentials-get=(), direct-sockets=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), identity-credentials-get=(), idle-detection=(), keyboard-map=(), language-detector=(), language-model=(), local-fonts=(), local-network=(), local-network-access=(), loopback-network=(), magnetometer=(), microphone=(), midi=(), on-device-speech-recognition=(), otp-credentials=(), payment=(), picture-in-picture=(), private-state-token-issuance=(), private-state-token-redemption=(), publickey-credentials-create=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), speaker-selection=(), storage-access=(), summarizer=(), sync-xhr=(), translator=(), unload=(), usb=(), web-share=(self), window-management=(), xr-spatial-tracking=()",
+	"Permissions-Policy":           "accelerometer=(), autoplay=(), bluetooth=(), browsing-topics=(), camera=(), captured-surface-control=(), ch-ua-high-entropy-values=(), clipboard-read=(), clipboard-write=(self), compute-pressure=(), deferred-fetch=(), deferred-fetch-minimal=(), digital-credentials-create=(), digital-credentials-get=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), identity-credentials-get=(), idle-detection=(), keyboard-map=(), language-detector=(), language-model=(), local-fonts=(), local-network=(), local-network-access=(), loopback-network=(), magnetometer=(), media-playback-while-not-visible=(), microphone=(), midi=(), on-device-speech-recognition=(), otp-credentials=(), payment=(), picture-in-picture=(), private-state-token-issuance=(), private-state-token-redemption=(), publickey-credentials-create=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), speaker-selection=(), storage-access=(), summarizer=(), sync-xhr=(), translator=(), unload=(), usb=(), web-app-installation=(), web-share=(self), window-management=(), xr-spatial-tracking=()",
 }
 
 var previewAgents = []string{
@@ -37,6 +48,9 @@ func SecurityHeaders(path string) map[string]string {
 	headers := maps.Clone(securityHeaders)
 	if !IsHomePath(path) {
 		headers["X-Robots-Tag"] = robotsTag
+	}
+	if path == transparencyPage {
+		delete(headers, connectionAllowlistHeader)
 	}
 	return headers
 }

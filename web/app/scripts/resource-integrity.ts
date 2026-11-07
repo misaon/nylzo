@@ -117,6 +117,7 @@ function visitHtml(node: HtmlNode, visit: (element: DefaultTreeAdapterMap['eleme
 
 export function secureHtml(html: string, assets: Assets): string {
   const document = parse(html, { scriptingEnabled: false });
+  let loadsScripts = false;
   visitHtml(document, (element) => {
     const attributes = new Map(element.attrs.map(({ name, value }) => [name, value]));
     const script = element.tagName === 'script';
@@ -133,6 +134,7 @@ export function secureHtml(html: string, assets: Assets): string {
     }
     if (script || executableLink) {
       if (resource) {
+        loadsScripts ||= script;
         const data = assetAt(resource, '/index.html', assets);
         element.attrs = element.attrs.filter(({ name }) => name !== 'integrity' && name !== 'crossorigin');
         element.attrs.push({ name: 'integrity', value: integrity(data) }, { name: 'crossorigin', value: 'anonymous' });
@@ -178,6 +180,6 @@ export function secureHtml(html: string, assets: Assets): string {
     parentNode: head,
   };
   guard.childNodes.push({ nodeName: '#text', value: FRAGMENT_GUARD, parentNode: guard });
-  head.childNodes.splice(charset + 1, 0, importMap, guard);
+  head.childNodes.splice(charset + 1, 0, ...(loadsScripts ? [importMap, guard] : [guard]));
   return serialize(document, { scriptingEnabled: false });
 }

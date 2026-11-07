@@ -104,7 +104,7 @@ func TestStatusPagesAnswerOnlyNavigations(t *testing.T) {
 			}
 			policy := webclient.NonHTMLCSP
 			if body != "" {
-				policy = webclient.PagePolicy(body)
+				policy = webclient.StatusPolicy(body)
 			}
 			if response.Header().Get("Content-Security-Policy") != policy ||
 				response.Header().Get("X-Robots-Tag") == "" ||

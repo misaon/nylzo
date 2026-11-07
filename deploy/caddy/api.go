@@ -80,10 +80,7 @@ func (d *dataResponse) WriteHeader(status int) {
 	header := d.ResponseWriter.Header()
 	clear(header)
 	webclient.SetSecurityHeaders(header, false)
-	header.Set(
-		"Content-Security-Policy",
-		"default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; sandbox",
-	)
+	header.Set("Content-Security-Policy", webclient.NonHTMLCSP)
 	if d.refused {
 		header.Set("Content-Type", "application/json; charset=utf-8")
 		d.ResponseWriter.WriteHeader(http.StatusBadGateway)

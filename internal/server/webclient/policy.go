@@ -18,17 +18,36 @@ var (
 
 // PagePolicy allows the inline scripts and styles of html by hash, so every response carries the same header.
 func PagePolicy(html string) string {
-	var scripts []string
+	hashes := inlineHashes(html)
+	return fmt.Sprintf(pagePolicyFormat, sourceList(hashes.scripts), sourceList(hashes.styles))
+}
+
+// StatusPolicy admits only the inline code of a status page, which loads no module, opens no connection and starts no worker.
+func StatusPolicy(html string) string {
+	hashes := inlineHashes(html)
+	allowed := "'none'"
+	if len(hashes.scripts) > 0 {
+		allowed = strings.Join(hashes.scripts, " ")
+	}
+	return fmt.Sprintf(statusPolicyFormat, allowed, sourceList(hashes.styles))
+}
+
+type inlineCode struct {
+	scripts []string
+	styles  []string
+}
+
+func inlineHashes(html string) inlineCode {
+	var hashes inlineCode
 	for _, match := range inlineScript.FindAllStringSubmatch(html, -1) {
 		if !sourceAttribute.MatchString(match[1]) && !dataBlockType.MatchString(match[1]) {
-			scripts = appendHash(scripts, match[2])
+			hashes.scripts = appendHash(hashes.scripts, match[2])
 		}
 	}
-	var styles []string
 	for _, match := range inlineStyle.FindAllStringSubmatch(html, -1) {
-		styles = appendHash(styles, match[1])
+		hashes.styles = appendHash(hashes.styles, match[1])
 	}
-	return fmt.Sprintf(pagePolicyFormat, sourceList(scripts), sourceList(styles))
+	return hashes
 }
 
 func appendHash(sources []string, content string) []string {

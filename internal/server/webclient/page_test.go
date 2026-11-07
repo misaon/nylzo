@@ -76,6 +76,14 @@ func TestPublicBlocksAreFilledOrDropped(t *testing.T) {
 	if got, err := build.Page("/sent", "https://n.example"); err != nil || got != page {
 		t.Fatalf("a page without markers: %q %v", got, err)
 	}
+	for _, unsafe := range []string{`https://n.example"><script>alert(1)</script>`, "https://n.example'&", "https://n<x>.example"} {
+		if _, err := build.Page("/", unsafe); err == nil {
+			t.Fatalf("%q was written into the page", unsafe)
+		}
+		if _, err := build.Render(unsafe); err == nil {
+			t.Fatalf("%q was rendered", unsafe)
+		}
+	}
 }
 
 func hashSource(content string) string {

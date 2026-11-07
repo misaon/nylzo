@@ -36,6 +36,35 @@ test(
   },
 );
 
+test('every page links only where its connection allowlist admits, and code in a page cannot navigate anywhere else', async ({
+  page,
+}) => {
+  for (const path of ['/', '/cs/', '/sent', '/terms', '/agents']) {
+    const response = await openApp(page, path);
+    const allowlist = response?.headers()['connection-allowlist'] ?? '';
+    expect(allowlist).toMatch(/^\(response-origin "/u);
+    const patterns = Array.from(
+      allowlist.matchAll(/"(?<pattern>[^"]+)"/gu),
+      (match) => match.groups?.['pattern'] ?? '',
+    );
+    const outside = await page.evaluate(
+      (admitted) =>
+        Array.from(document.querySelectorAll('a[href]'), (anchor) => (anchor as HTMLAnchorElement).href).filter(
+          (href) =>
+            new URL(href).origin !== location.origin && !admitted.some((pattern) => new URLPattern(pattern).test(href)),
+        ),
+      patterns,
+    );
+    expect(outside, path).toEqual([]);
+  }
+  const message = await createMessageThroughApi();
+  await page.goto(message.link);
+  await page.evaluate((elsewhere) => {
+    location.assign(`${elsewhere}/?carried=secret`);
+  }, POW_BASE_URL);
+  await expect.poll(() => page.url()).toBe('chrome-error://chromewebdata/');
+});
+
 test('same-origin browser mutations require the custom request header', { tag: '@cross-browser' }, async ({ page }) => {
   await openApp(page, '/');
   const statuses = await page.evaluate(async () => {
@@ -175,7 +204,7 @@ test("native Trusted Types reject string sinks, unapproved policies and the app'
 });
 
 test(
-  'the entry module claims both Trusted Types policy names before the rest of the client loads (W2-10)',
+  'the entry module claims its Trusted Types policy name before the rest of the client loads (W2-10)',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi();
