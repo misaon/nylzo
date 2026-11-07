@@ -24,7 +24,13 @@ function handle(request: KdfRequest): void {
   reply({ kind: 'token', token });
 }
 
+// Only the page that started this dedicated worker posts to it, through the implicit port whose events carry no origin.
+const OWNER_ORIGINS = new Set(['', location.origin]);
+
 addEventListener('message', (event: MessageEvent<unknown>) => {
+  if (!OWNER_ORIGINS.has(event.origin)) {
+    return;
+  }
   try {
     if (!isKdfRequest(event.data)) {
       throw new TypeError('malformed key derivation request');
