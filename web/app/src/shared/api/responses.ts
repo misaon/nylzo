@@ -6,7 +6,7 @@ import { readBody } from './object-body.ts';
 
 export type Json = Readonly<Record<string, unknown>>;
 
-type Writable<T> = { -readonly [Key in keyof T]: T[Key] };
+type Writable<Shape> = { -readonly [Key in keyof Shape]: Shape[Key] };
 
 export interface InstanceLimits {
   readonly maxFileBytes: number;
