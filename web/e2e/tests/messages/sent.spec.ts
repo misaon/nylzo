@@ -60,7 +60,7 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   await dialog.getByRole('button', { name: 'Yes, cancel', exact: true }).click();
   await expect(item.getByText('Cancelled', { exact: true })).toBeVisible();
   await expect(cancel).toHaveCount(0);
-  await expect(item.getByRole('heading', { level: 3 })).toBeFocused();
+  await expect(item.getByRole('heading', { level: 2 })).toBeFocused();
   await expect(page.getByRole('status').first()).toHaveText('The message is cancelled.');
   await expect.poll(() => sentRecords(page)).toMatchObject([{ id: idOf(link), endedAt: expect.any(Number) }]);
 

@@ -18,7 +18,7 @@
     <h2 id="{id}-trust" class="reveal-focus text-center text-eyebrow text-aegis-300 uppercase">
       {translate('open.trust.title')}
     </h2>
-    <ol class="mt-10 grid gap-6 md:grid-cols-3">
+    <ol role="list" class="mt-10 grid gap-6 md:grid-cols-3">
       {#each CARDS as card (card.key)}
         <li
           class={[

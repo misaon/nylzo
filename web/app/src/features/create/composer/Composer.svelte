@@ -54,6 +54,7 @@
       inert={composer.phase === 'done'}
     >
       <ol
+        role="list"
         class="mx-auto grid w-full max-w-[360px] animate-rise grid-cols-3 [animation-delay:160ms] sm:flex sm:w-fit sm:max-w-none sm:items-center"
         aria-label={translate('hero.steps')}
       >
@@ -91,7 +92,7 @@
             composer.phase === 'done' ? 'pointer-events-none translate-y-3 opacity-0' : 'translate-y-0 opacity-100',
           ]}
           inert={composer.phase === 'done'}
-          onsubmit={composer.submit}
+          onsubmit={(event) => void composer.submit(event)}
           novalidate
         >
           <MessageField {composer} {noticeId} />
@@ -106,7 +107,7 @@
             canRemember={composer.canRemember}
             remembered={composer.remembered}
             onremember={(label) => void composer.track(label)}
-            onanother={composer.another}
+            onanother={() => void composer.another()}
             leaving={composer.leaving}
           />
         {/if}

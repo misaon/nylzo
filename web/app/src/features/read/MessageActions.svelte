@@ -57,7 +57,7 @@
       variant="danger"
       size="compact"
       disabled={page.ready === undefined || page.deleting}
-      onclick={page.askDelete}
+      onclick={() => void page.askDelete()}
       class="transition"
     >
       <Icon name="trash" class="size-4 shrink-0" animated />

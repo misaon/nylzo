@@ -91,7 +91,7 @@
       </div>
     </div>
     <div class="relative mt-8 overflow-hidden rounded-pane well md:mt-10" {@attach reveal}>
-      <ul class="grid md:grid-cols-2">
+      <ul role="list" class="grid md:grid-cols-2">
         {#each limits as limit (limit.key)}
           <li
             class={[

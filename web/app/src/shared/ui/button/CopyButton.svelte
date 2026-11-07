@@ -29,7 +29,13 @@
   }
 </script>
 
-<Button variant="tint" size="compact" class={className} aria-label={label ?? translate('action.copy')} onclick={copy}>
+<Button
+  variant="tint"
+  size="compact"
+  class={className}
+  aria-label={label ?? translate('action.copy')}
+  onclick={() => void copy()}
+>
   <span class="stack justify-items-center">
     <span class={['flex items-center gap-2 fade-swap', copied.shown ? 'pointer-events-none opacity-0' : 'opacity-100']}>
       <Icon name="copy" animated />

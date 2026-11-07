@@ -144,7 +144,6 @@
               type="button"
               onclick={() => (page.showPassphrase = !page.showPassphrase)}
               aria-label={translate(page.showPassphrase ? 'open.passphrase.hide' : 'open.passphrase.show')}
-              aria-pressed={page.showPassphrase}
               class="group/action grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition hover:bg-white/6 hover:text-ink md:size-9"
             >
               <SwapIcon from="eye" to="eyeOff" swapped={page.showPassphrase} size="size-[18px]" animated />

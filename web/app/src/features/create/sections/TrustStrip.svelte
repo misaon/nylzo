@@ -45,7 +45,11 @@
   >
     <div class="flex w-max motion-safe:animate-trust-marquee">
       {#each [false, true] as copy (copy)}
-        <ul class="flex items-center gap-14 px-7 md:gap-20 md:px-10" aria-hidden={copy ? 'true' : undefined}>
+        <ul
+          role="list"
+          class="flex items-center gap-14 px-7 md:gap-20 md:px-10"
+          aria-hidden={copy ? 'true' : undefined}
+        >
           {#each glyphs as item (item.name)}
             {@render glyph(item)}
           {/each}

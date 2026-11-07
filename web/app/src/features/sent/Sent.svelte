@@ -222,7 +222,7 @@
   </div>
 
   {#if listed && view.view === 'list'}
-    <ul class="mt-8 grid gap-3">
+    <ul role="list" class="mt-8 grid gap-3">
       {#each view.items as item (item.id)}
         {const badge = $derived(badgeOf(item))}
         {const pending = $derived(item.state.kind === 'loading')}
@@ -245,14 +245,14 @@
               <Icon name={item.ended ? 'envelopeOpen' : 'envelope'} class="size-[18px]" />
             </span>
             <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 max-sm:gap-x-2.5">
-              <h3
+              <h2
                 id={headingId(item.id)}
                 tabindex="-1"
                 class="text-title-sm text-ink outline-none max-sm:basis-full"
                 {@attach focus.attach(headingId(item.id))}
               >
                 {item.label ?? translate('sent.item')}
-              </h3>
+              </h2>
               <span
                 class={[
                   'items-center gap-1.5 rounded-full px-2.5 py-1 text-micro font-medium ring-1 transition-[background-color,color,box-shadow]',
@@ -323,7 +323,7 @@
                   variant="tint"
                   size="compact"
                   class="max-sm:flex-auto"
-                  onclick={() => run(() => sent.refresh(item.id), item.id)}
+                  onclick={() => void run(() => sent.refresh(item.id), item.id)}
                 >
                   <Icon name="refresh" class="size-4 shrink-0" animated />
                   {translate('action.retry')}
@@ -389,7 +389,7 @@
     confirmLabel={dialog.confirmLabel}
     dismissLabel={dialog.dismissLabel}
     icon={dialog.icon}
-    onconfirm={confirmed}
+    onconfirm={() => void confirmed()}
     onclose={dismissed}
   />
 {/if}

@@ -2,6 +2,7 @@
   import type { Attachment } from 'svelte/attachments';
   import { fade } from 'svelte/transition';
 
+  import { clearClipboard } from '../../../shared/clipboard/clear-clipboard.ts';
   import { formatMoment } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { MAX_LABEL_CHARACTERS } from '../../../shared/sent-records/sent-record.ts';
@@ -92,15 +93,6 @@
     } catch {}
   }
 
-  async function clearClipboard() {
-    try {
-      await navigator.clipboard.writeText('');
-      clipboard = 'cleared';
-    } catch {
-      clipboard = 'copied';
-    }
-  }
-
   function item(delay: string): string[] {
     return entered
       ? ['translate-y-0 opacity-100 duration-500', delay]
@@ -112,7 +104,7 @@
   <Button
     variant="primary"
     size="large"
-    onclick={copy}
+    onclick={() => void copy()}
     aria-label={translate('created.copy')}
     class={shareable ? 'w-full' : 'w-full sm:w-auto'}
   >
@@ -241,7 +233,7 @@
             {#if shareable}
               <div class="grid grid-cols-2 gap-2.5">
                 {@render copyLinkButton()}
-                <Button variant="tint" size="large" onclick={share} class="w-full">
+                <Button variant="tint" size="large" onclick={() => void share()} class="w-full">
                   <Icon name="upload" class="size-4 shrink-0" />
                   <span>{translate('created.share')}</span>
                 </Button>
@@ -273,7 +265,6 @@
             >
             <button
               type="button"
-              aria-pressed={passphraseShown}
               aria-label={translate(passphraseShown ? 'created.passphrase.hide' : 'created.passphrase.show')}
               onclick={() => (passphraseShown = !passphraseShown)}
               class="group/action ml-auto grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition hover:bg-white/6 hover:text-ink md:size-9"
@@ -281,7 +272,7 @@
               <SwapIcon from="eye" to="eyeOff" swapped={passphraseShown} />
             </button>
           </div>
-          <Button variant="tint" size="large" onclick={copyPassphrase} class="w-full sm:w-auto">
+          <Button variant="tint" size="large" onclick={() => void copyPassphrase()} class="w-full sm:w-auto">
             <SwapIcon from="copy" to="check" swapped={passphraseCopied.shown} />
             <span>{translate('created.passphrase.copy')}</span>
           </Button>
@@ -290,6 +281,7 @@
 
       <div class="relative mt-3 text-caption text-ink-mute sm:mt-4 md:mt-5">
         <ul
+          role="list"
           class={[
             'mx-auto flex w-fit items-center justify-center gap-6 fade-swap max-sm:hidden',
             clipboard === 'untouched' ? 'opacity-100' : 'opacity-0',
@@ -321,7 +313,10 @@
             <Button
               variant="ghost"
               size="compact"
-              onclick={clearClipboard}
+              onclick={() =>
+                void clearClipboard((state) => {
+                  clipboard = state;
+                })}
               disabled={clipboard !== 'copied'}
               class={clipboard === 'copied' ? 'opacity-100' : 'opacity-0'}
             >
@@ -399,6 +394,7 @@
     ]}
   >
     <ul
+      role="list"
       class="flex flex-wrap items-center justify-start gap-x-5 gap-y-1.5 px-3 py-2 text-caption text-ink-soft max-sm:w-full sm:gap-x-4 sm:px-2 sm:py-0"
     >
       <li class="flex items-center gap-1.5 whitespace-nowrap max-sm:min-h-6 max-sm:text-ui">

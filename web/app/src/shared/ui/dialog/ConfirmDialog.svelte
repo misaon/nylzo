@@ -76,7 +76,7 @@
   >
     <Icon name={icon} class="size-6" />
   </span>
-  <p {id} class="mt-4 text-title text-pretty text-ink">{title}</p>
+  <h2 {id} class="mt-4 text-title text-pretty text-ink">{title}</h2>
   {#if message}
     <p class="mt-1.5 text-body text-pretty text-ink-soft">{message}</p>
   {/if}

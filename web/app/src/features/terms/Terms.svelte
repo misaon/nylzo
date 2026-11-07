@@ -3,8 +3,8 @@
   import { formatDays } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { LONGEST_TTL_DAYS } from '../../shared/ttl/ttl-choices.ts';
-  import Icon from '../../shared/ui/icon/Icon.svelte';
   import { INLINE_TARGET, TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
+  import CheckList from '../../shared/ui/list/CheckList.svelte';
 
   interface TermsSection {
     readonly title: MessageKey;
@@ -66,14 +66,7 @@
   <p class="mt-3 text-caption text-ink-mute">{translate('terms.effective')}</p>
   <section class="glass-soft mt-8 rounded-card p-5 md:p-6">
     <h2 class="text-title text-ink">{translate('terms.summary.title')}</h2>
-    <ul class="mt-4 grid gap-2.5 text-body-sm text-pretty text-ink-soft">
-      {#each SUMMARY as item (item)}
-        <li class="flex gap-2.5">
-          <Icon name="check" class="mt-0.5 size-4 shrink-0 text-aegis-300" stroke={2} />
-          <span>{translate(item)}</span>
-        </li>
-      {/each}
-    </ul>
+    <CheckList items={SUMMARY} />
     <p class="mt-4 text-caption text-ink-mute">{translate('terms.summary.note')}</p>
   </section>
   {#each SECTIONS as section (section.title)}

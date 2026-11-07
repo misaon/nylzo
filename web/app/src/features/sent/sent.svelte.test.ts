@@ -91,7 +91,7 @@ describe('sent messages interface', () => {
     { kind: 'retry_later', retryAfter: 30 },
   ])('renders a $kind item and offers retry only for failures', async (state) => {
     show([item(state)]);
-    expect(target.querySelector('h3')).not.toBeNull();
+    expect(target.querySelector('h2')).not.toBeNull();
     const retry = [...target.querySelectorAll('button')].find(
       (candidate) => candidate.textContent.trim() === translator.translate('action.retry'),
     );

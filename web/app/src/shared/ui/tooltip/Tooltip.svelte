@@ -21,7 +21,6 @@
   <button
     type="button"
     aria-describedby="{id}-tip"
-    aria-expanded={pinned}
     onclick={() => (pinned = !pinned)}
     onkeydown={(event) => {
       if (event.key === 'Escape') {

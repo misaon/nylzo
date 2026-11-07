@@ -49,7 +49,9 @@
     <ServiceCallout id="{noticeId}-failure" message={composer.failureNotice} class="mx-auto max-w-column">
       {#snippet action()}
         {#if composer.loadFailed}
-          <Button variant="ghost" size="compact" onclick={composer.loadLimits}>{translate('action.retry')}</Button>
+          <Button variant="ghost" size="compact" onclick={() => void composer.loadLimits()}>
+            {translate('action.retry')}
+          </Button>
         {/if}
       {/snippet}
     </ServiceCallout>

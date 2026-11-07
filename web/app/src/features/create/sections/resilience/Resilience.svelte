@@ -220,7 +220,7 @@
         </div>
       </div>
       <div class="border-t border-white/8" {@attach reveal}>
-        <ul class="grid divide-y divide-white/8 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
+        <ul role="list" class="grid divide-y divide-white/8 lg:grid-cols-3 lg:divide-x lg:divide-y-0">
           {#each facts as fact, index (fact.key)}
             <li
               class={[

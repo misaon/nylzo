@@ -49,7 +49,7 @@
       {#if page.revealed.text !== undefined}
         <Button
           variant="tint"
-          onclick={page.askCopy}
+          onclick={() => void page.askCopy()}
           aria-label={translate('open.copy.text')}
           class="max-sm:w-11 max-sm:px-0"
         >
@@ -72,7 +72,7 @@
           icon="alert"
           confirmLabel={translate('revealed.hidden.copy')}
           dismissLabel={translate('revealed.hidden.keep')}
-          onconfirm={page.copyText}
+          onconfirm={() => void page.copyText()}
           onclose={page.cancelCopy}
         />
       {/if}
@@ -140,7 +140,7 @@
             <Button
               variant="ghost"
               size="compact"
-              onclick={page.clearClipboard}
+              onclick={() => void page.clearClipboard()}
               disabled={page.clipboard !== 'copied'}
               class={page.clipboard === 'copied' ? 'opacity-100' : 'opacity-0'}
             >

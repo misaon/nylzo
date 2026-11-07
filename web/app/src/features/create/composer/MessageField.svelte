@@ -1,6 +1,7 @@
 <script lang="ts">
   import { formatBytes, formatSize } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import CipherNoise from '../../../shared/pipeline/CipherNoise.svelte';
   import PipelineRing from '../../../shared/pipeline/PipelineRing.svelte';
   import { PRIVATE_TEXT } from '../../../shared/ui/field/private-fields.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
@@ -119,20 +120,7 @@
     ]}
     aria-hidden="true"
   >
-    <p
-      class="absolute inset-0 [mask-image:radial-gradient(ellipse_70%_68%_at_50%_50%,transparent_42%,black_100%)] px-6 pt-6 text-caption break-all text-ink-soft/15 tabular-nums"
-    >
-      {composer.cipher}
-    </p>
-    <div
-      class="absolute inset-x-0 top-0 h-28 animate-scan bg-linear-to-b from-transparent via-aegis-300/6 to-transparent"
-    ></div>
-    <div
-      class="absolute inset-0 bg-[radial-gradient(ellipse_62%_62%_at_50%_50%,oklch(0.13_0.04_270/0.92),transparent_88%)]"
-    ></div>
-    <div
-      class="absolute inset-0 bg-[radial-gradient(40%_46%_at_50%_40%,oklch(0.67_0.16_252/0.11),oklch(0.72_0.14_305/0.05)_55%,transparent_78%)]"
-    ></div>
+    <CipherNoise text={composer.cipher} />
     <div class="absolute inset-0 flex flex-col items-center justify-center px-4">
       <PipelineRing
         nodes={composer.nodes}

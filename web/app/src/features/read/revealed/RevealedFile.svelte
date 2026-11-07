@@ -25,7 +25,7 @@
 </script>
 
 <section aria-labelledby="{id}-title" class="flex flex-col gap-2.5">
-  <p id="{id}-title" class="text-eyebrow text-ink-mute uppercase">{translate('revealed.file')}</p>
+  <h4 id="{id}-title" class="text-eyebrow text-ink-mute uppercase">{translate('revealed.file')}</h4>
   <div
     class="overflow-hidden rounded-pane bg-[linear-gradient(135deg,oklch(0.72_0.14_305/0.08),oklch(1_0_0/0.02)_55%)] shadow-rim ring-1 ring-nebula-300/20"
   >
@@ -59,7 +59,7 @@
           {@attach page.focus.attach('download')}
           variant="tint"
           disabled={page.confirmingDownload}
-          onclick={(event: MouseEvent) => page.askDownload(event, file)}
+          onclick={(event: MouseEvent) => void page.askDownload(event, file)}
           class="max-sm:w-11 max-sm:px-0"
         >
           <SwapIcon from="download" to="check" swapped={page.downloaded.shown} toTone="text-aegis-200" animated />
@@ -94,13 +94,17 @@
           </span>
         </div>
         <div class="grid shrink-0 grid-cols-2 gap-1.5 sm:flex">
-          <Button {@attach page.focus.attach('keepFile')} variant="ghost" onclick={page.cancelDownload}>
+          <Button
+            {@attach page.focus.attach('keepFile')}
+            variant="ghost"
+            onclick={(event: MouseEvent) => void page.cancelDownload(event)}
+          >
             {translate('revealed.confirm.cancel')}
           </Button>
           <Button
             variant="danger"
             disabled={!page.confirmingDownload}
-            onclick={(event: MouseEvent) => page.confirmDownload(event, file)}
+            onclick={(event: MouseEvent) => void page.confirmDownload(event, file)}
           >
             <Icon name="download" class="size-4 shrink-0" animated />
             {translate('revealed.confirm.download')}

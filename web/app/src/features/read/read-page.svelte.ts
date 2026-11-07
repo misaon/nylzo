@@ -4,6 +4,7 @@ import { prefersReducedMotion } from 'svelte/motion';
 
 import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
+import { clearClipboard } from '../../shared/clipboard/clear-clipboard.ts';
 import { isKnownSafeFile } from '../../shared/files/file-name.ts';
 import { saveFile } from '../../shared/files/save-file.ts';
 import { scryptInWorker, stopRunningWorkers } from '../../shared/kdf/kdf.ts';
@@ -268,14 +269,10 @@ export class ReadPage {
     this.confirmingCopy = false;
   };
 
-  readonly clearClipboard = async (): Promise<void> => {
-    try {
-      await navigator.clipboard.writeText('');
-      this.clipboard = 'cleared';
-    } catch {
-      this.clipboard = 'copied';
-    }
-  };
+  readonly clearClipboard = (): Promise<void> =>
+    clearClipboard((state) => {
+      this.clipboard = state;
+    });
 
   readonly copyText = async (): Promise<void> => {
     this.confirmingCopy = false;
@@ -394,7 +391,7 @@ export class ReadPage {
         },
         page: {
           visible: () => document.visibilityState === 'visible',
-          prerendering: () => (document as Document & { prerendering?: boolean }).prerendering === true,
+          prerendering: () => document.prerendering === true,
         },
         prepared: prepareWorker,
         shown: async () => this.#displayed(),
