@@ -15,14 +15,10 @@ import (
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
-)
-
-const (
-	transparencyPath = "/.well-known/nylzo/transparency.json"
-	healthPath       = "/healthz"
 )
 
 var (
@@ -110,9 +106,9 @@ func contactArgument(dispenser *caddyfile.Dispenser) (string, error) {
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	maintenance := f.underMaintenance()
 	switch {
-	case r.URL.Path == healthPath:
+	case r.URL.Path == api.HealthPath:
 		return next.ServeHTTP(&dataResponse{ResponseWriter: w, header: make(http.Header), path: r.URL.Path}, r)
-	case strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == transparencyPath:
+	case strings.HasPrefix(r.URL.Path, api.Prefix) || r.URL.Path == api.TransparencyPath:
 		response := &dataResponse{ResponseWriter: w, header: make(http.Header), path: r.URL.Path}
 		if maintenance {
 			webclient.WriteUnavailable(response, webclient.MaintenanceRetry)

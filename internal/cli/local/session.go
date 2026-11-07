@@ -10,8 +10,8 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/client"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/localclient"
-	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -109,13 +109,13 @@ func (s *session) config() *localclient.Config {
 }
 
 func instanceContact(ctx context.Context, instance string) (string, error) {
-	api, err := client.New(instance)
+	server, err := client.New(instance)
 	if err != nil {
 		return "", err
 	}
 	ctx, cancel := context.WithTimeout(ctx, contactTimeout)
 	defer cancel()
-	return OperatorContact(ctx, api)
+	return OperatorContact(ctx, server)
 }
 
 // ContactError is a transparency document that was fetched but names no contact the pages could link.
@@ -132,8 +132,8 @@ func (e *ContactError) Unwrap() error {
 }
 
 // OperatorContact reads the operator's contact, the one address outside the client its pages may reach.
-func OperatorContact(ctx context.Context, api *client.Client) (string, error) {
-	fetched, err := api.Fetch(ctx, server.TransparencyPath, "identity", maxContactBytes)
+func OperatorContact(ctx context.Context, server *client.Client) (string, error) {
+	fetched, err := server.Fetch(ctx, api.TransparencyPath, "identity", maxContactBytes)
 	if err != nil {
 		return "", err
 	}

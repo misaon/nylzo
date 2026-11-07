@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"cmp"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -12,12 +11,11 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/cli/messages"
 	"github.com/misaon/nylzo/internal/cli/operator"
+	"github.com/misaon/nylzo/internal/cli/verifyclient"
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server"
-	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 type subcommand struct {
@@ -37,32 +35,16 @@ var (
 	commandLike = regexp.MustCompile(`^[a-z][a-z-]{0,19}$`)
 )
 
-func webClient(environment *command.Environment) (webclient.Build, error) {
-	if environment.WebClient != nil {
-		return environment.WebClient()
-	}
-	return server.EmbeddedWebClient()
-}
-
-func serverAddress(environment *command.Environment, name, flagValue string) (string, bool) {
-	address := cmp.Or(flagValue, environment.Getenv(environmentServer))
-	if address == "" {
-		fmt.Fprintln(environment.Stderr, command.Program+" "+name+" needs --server or "+environmentServer)
-		return "", false
-	}
-	return address, true
-}
-
 func commands() []subcommand {
 	return []subcommand{
-		{"create", "encrypt text from stdin or a file and print its link", runCreate},
-		{"read", "read a link from stdin and decrypt the message into private files", runRead},
+		{"create", "encrypt text from stdin or a file and print its link", messages.RunCreate},
+		{"read", "read a link from stdin and decrypt the message into private files", messages.RunRead},
 		{"open", "open a link from stdin in the browser with the verified web client of this nylzo", runOpen},
 		{"web", "serve the verified web client of this nylzo on this computer for an instance", runWeb},
-		{"status", "show the state of a message from its manage token", runStatus},
-		{"cancel", "end a message with its manage token", runCancel},
-		{"report", "report a message for abuse from its link on stdin", runReport},
-		{"burn", "delete the remaining opens of a message from its link", runBurn},
+		{"status", "show the state of a message from its manage token", messages.RunStatus},
+		{"cancel", "end a message with its manage token", messages.RunCancel},
+		{"report", "report a message for abuse from its link on stdin", messages.RunReport},
+		{"burn", "delete the remaining opens of a message from its link", messages.RunBurn},
 		{"serve", "run the server with the embedded web client", operator.RunServe},
 		{"sweep-once", "run one sweep of the server store and exit", operator.RunSweepOnce},
 		{
@@ -73,7 +55,7 @@ func commands() []subcommand {
 		{"takedown", "remove reported messages by id from stdin, on the server host", operator.RunTakedown},
 		{"report-key", "create the key pair that seals abuse reports for the operator", operator.RunReportKey},
 		{"reports", "open sealed abuse reports from stdin with the operator's private key", operator.RunReports},
-		{"verify-client", "check that a server sends the same web client as this nylzo", runVerifyClient},
+		{"verify-client", "check that a server sends the same web client as this nylzo", verifyclient.Run},
 		{"version", "print the version", runVersion},
 	}
 }
@@ -148,8 +130,4 @@ func runVersion(_ context.Context, environment *command.Environment, arguments [
 		fmt.Fprintln(environment.Stdout, information.Version)
 	}
 	return command.ExitOK
-}
-
-func buildVersion(version string) string {
-	return buildinfo.Read(version, "", "", "").Version
 }

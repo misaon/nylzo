@@ -1,4 +1,4 @@
-package cli
+package verifyclient
 
 import (
 	"bytes"
@@ -16,9 +16,11 @@ import (
 	"testing/fstest"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 
 	"github.com/misaon/nylzo/internal/client"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -108,9 +110,13 @@ func newPublicWebTestServer(
 	t.Helper()
 	directory := t.TempDir()
 	settings := config.Defaults()
-	settings.DataDir = directory
+	settings.DataDirectory = directory
 	settings.Pepper = bytes.Repeat([]byte{7}, 32)
-	settings.ReportKey = testReportKey.PublicKey()
+	reportKey, err := abuse.NewKeyPair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.ReportKey = reportKey.PublicKey()
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
 	settings.Version = version
 	settings.PublicURL = publicURL
@@ -178,19 +184,31 @@ func browserAsks(path string) func(*http.Request) bool {
 	}
 }
 
-func runVerify(t *testing.T, url string, local fs.FS, flags ...string) commandResult {
+type commandResult struct {
+	code   int
+	stdout string
+	stderr string
+}
+
+func runCommand(t *testing.T, local fs.FS, arguments ...string) commandResult {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
 	environment := &command.Environment{
-		Stdout:    &stdout,
-		Stderr:    &stderr,
-		Getenv:    getenvFrom(nil),
-		Terminal:  noTerminal{},
-		Version:   "test",
-		WebClient: func() (webclient.Build, error) { return webclient.Load(local) },
+		Stdout:  &stdout,
+		Stderr:  &stderr,
+		Getenv:  func(string) string { return "" },
+		Version: "test",
 	}
-	code := Run(append([]string{"verify-client", "--server", url}, flags...), environment)
+	if local != nil {
+		environment.WebClient = func() (webclient.Build, error) { return webclient.Load(local) }
+	}
+	code := Run(t.Context(), environment, arguments)
 	return commandResult{code: code, stdout: stdout.String(), stderr: stderr.String()}
+}
+
+func runVerify(t *testing.T, url string, local fs.FS, flags ...string) commandResult {
+	t.Helper()
+	return runCommand(t, local, append([]string{"--server", url}, flags...)...)
 }
 
 func TestVerifyClientAcceptsTheSameClient(t *testing.T) {
@@ -331,11 +349,11 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 			response.body = bytes.Repeat([]byte{'a'}, 2<<20)
 			response.header.Del("Content-Encoding")
 		}), "/terms: client: the server sent a malformed response"},
-		{"malformed transparency document", rewrite(pathIs(server.TransparencyPath), func(response *served) {
+		{"malformed transparency document", rewrite(pathIs(api.TransparencyPath), func(response *served) {
 			response.body = []byte("{")
 			response.header.Del("Content-Encoding")
-		}), server.TransparencyPath + ": the transparency document is not valid JSON"},
-		{"transparency unavailable beside a changed page", unavailable(server.TransparencyPath, rewrite(pathIs("/terms"), func(response *served) {
+		}), api.TransparencyPath + ": the transparency document is not valid JSON"},
+		{"transparency unavailable beside a changed page", unavailable(api.TransparencyPath, rewrite(pathIs("/terms"), func(response *served) {
 			response.body = []byte("<!doctype html><script src=https://evil.example/x.js></script>")
 			response.header.Del("Content-Encoding")
 		})), "/terms: the page differs"},
@@ -405,11 +423,11 @@ func TestVerifyClientNeedsALocalClient(t *testing.T) {
 
 func TestVerifyClientNeedsAServer(t *testing.T) {
 	t.Parallel()
-	result := runWith(t, "", nil, nil, "verify-client")
+	result := runCommand(t, nil)
 	if result.code != command.ExitUsage || !strings.Contains(result.stderr, "needs --server or NYLZO_SERVER") {
 		t.Fatalf("%+v", result)
 	}
-	result = runWith(t, "", nil, nil, "verify-client", "--server", "http://example.org")
+	result = runCommand(t, nil, "--server", "http://example.org")
 	if result.code != command.ExitError || !strings.Contains(result.stderr, "https") {
 		t.Fatalf("plain http to a remote server must be refused: %+v", result)
 	}

@@ -33,7 +33,7 @@ func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (S
 		return purge(ctx, "counters", storage.RatePurge, now, CounterPurgeBatch)
 	})
 	errs = append(errs, storage.Checkpoint(ctx))
-	count(&report.StaleTempFiles, func() (int, error) { return blobs.PurgeTemp(ctx, now.Add(-BlobGrace)) })
+	count(&report.StaleTempFiles, func() (int, error) { return blobs.PurgeTemporary(ctx, now.Add(-BlobGrace)) })
 	errs = append(errs, blobs.Replenish(ctx))
 	return report, errors.Join(errs...)
 }
@@ -65,13 +65,13 @@ func deleteBlobPage(ctx context.Context, messages Messages, blobs Blobs, page []
 	if err := messages.ShredBlobs(ctx, page); err != nil {
 		return 0, fmt.Errorf("store: shred blobs: %w", err)
 	}
-	refs := make([]string, len(page))
+	references := make([]string, len(page))
 	for i, due := range page {
-		refs[i] = due.Ref
+		references[i] = due.Reference
 	}
 	var errs []error
 	deleted := make([]DueBlob, 0, len(page))
-	for i, err := range blobs.DeleteBatch(ctx, refs) {
+	for i, err := range blobs.DeleteBatch(ctx, references) {
 		if err != nil {
 			errs = append(errs, fmt.Errorf("store: delete blob: %w", err))
 			continue

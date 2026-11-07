@@ -1,4 +1,4 @@
-package cli
+package command
 
 import (
 	"context"
@@ -33,7 +33,7 @@ func TestExplainNetworkFailuresWithoutRepeatingRemoteText(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()
-			if got := explain(fmt.Errorf("request failed: %w", test.err)); got != test.want {
+			if got := Explain(fmt.Errorf("request failed: %w", test.err)); got != test.want {
 				t.Fatalf("explain = %q, want %q", got, test.want)
 			}
 		})
@@ -43,7 +43,7 @@ func TestExplainNetworkFailuresWithoutRepeatingRemoteText(t *testing.T) {
 func TestExplainLocalRefusalsAndUnknownErrors(t *testing.T) {
 	t.Parallel()
 	for _, err := range []error{client.ErrInsecureServer, client.ErrServerURL, client.ErrRedirect, client.ErrResponse, errors.New("local synthetic failure")} {
-		if got := explain(err); got != err.Error() {
+		if got := Explain(err); got != err.Error() {
 			t.Fatalf("local error %v became %q", err, got)
 		}
 	}
@@ -62,7 +62,7 @@ func TestExplainWeakPassphrasesIncludesAUsefulLocalHint(t *testing.T) {
 	} {
 		t.Run(string(problem), func(t *testing.T) {
 			t.Parallel()
-			got := explain(fmt.Errorf("create: %w", &keys.WeakPassphraseError{Problem: problem}))
+			got := Explain(fmt.Errorf("create: %w", &keys.WeakPassphraseError{Problem: problem}))
 			hasHint := strings.Contains(got, "--generate-passphrase-file makes a strong one")
 			if !strings.Contains(got, fragment) || !hasHint {
 				t.Fatalf("weak passphrase explanation: %q", got)
@@ -102,7 +102,7 @@ func TestExplainAPIFailuresAndRetryAdvice(t *testing.T) {
 				Status: 599, Kind: test.kind, State: test.state,
 				AttemptsLeft: test.attempts, RetryAfter: test.retry,
 			}
-			if got := explain(fmt.Errorf("server: %w", err)); got != test.want {
+			if got := Explain(fmt.Errorf("server: %w", err)); got != test.want {
 				t.Fatalf("explain = %q, want %q", got, test.want)
 			}
 		})

@@ -1,11 +1,9 @@
 package operator
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -13,23 +11,20 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
-	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/erase"
-	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
-	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/sweep"
-	"github.com/misaon/nylzo/internal/store"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
@@ -41,8 +36,6 @@ const (
 	databaseFile       = "nylzo.db"
 	shutdownTimeout    = 30 * time.Second
 	defaultMemoryLimit = 192 << 20
-	maxTakedownInput   = 1 << 20
-	maxTakedownIDs     = 10000
 	failureMessage     = command.Program
 )
 
@@ -155,11 +148,11 @@ func requireErasable(paths []string, development config.Development, logger *slo
 
 // erasablePaths lists the directories and files whose overwrites must land in place: the data directory, the
 // database files and every blob and temporary upload.
-func erasablePaths(dataDir string) ([]string, error) {
-	databasePath := filepath.Join(dataDir, databaseFile)
-	blobDirectory := filepath.Join(dataDir, disk.Directory)
+func erasablePaths(dataDirectory string) ([]string, error) {
+	databasePath := filepath.Join(dataDirectory, databaseFile)
+	blobDirectory := filepath.Join(dataDirectory, disk.Directory)
 	temporaryDirectory := filepath.Join(blobDirectory, "tmp")
-	paths := append([]string{dataDir, blobDirectory, temporaryDirectory}, databaseFiles(databasePath)...)
+	paths := append([]string{dataDirectory, blobDirectory, temporaryDirectory}, databaseFiles(databasePath)...)
 	for _, directory := range []string{blobDirectory, temporaryDirectory} {
 		entries, err := os.ReadDir(directory)
 		if err != nil {
@@ -187,23 +180,23 @@ func databaseFiles(databasePath string) []string {
 
 func openStore(
 	ctx context.Context,
-	dataDir string,
+	dataDirectory string,
 	development config.Development,
 	pool disk.Pool,
 	open func(context.Context, string) (*sqlite.Store, error),
 	logger *slog.Logger,
 ) (*sqlite.Store, *disk.Blobs, error) {
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+	if err := os.MkdirAll(dataDirectory, 0o700); err != nil {
 		return nil, nil, err
 	}
-	if err := requireErasable([]string{dataDir}, development, logger); err != nil {
+	if err := requireErasable([]string{dataDirectory}, development, logger); err != nil {
 		return nil, nil, err
 	}
-	databasePath := filepath.Join(dataDir, databaseFile)
+	databasePath := filepath.Join(dataDirectory, databaseFile)
 	narrowed, err := datadir.Secure(datadir.Layout{
-		Directory: dataDir,
+		Directory: dataDirectory,
 		Files:     []string{databasePath, databasePath + "-wal", databasePath + "-shm"},
-		Trees:     []string{filepath.Join(dataDir, disk.Directory), abuse.Directory(dataDir)},
+		Trees:     []string{filepath.Join(dataDirectory, disk.Directory), abuse.Directory(dataDirectory)},
 	})
 	if narrowed > 0 {
 		logger.WarnContext(ctx, "permissions-narrowed", "entries", narrowed)
@@ -211,10 +204,10 @@ func openStore(
 	if err != nil {
 		return nil, nil, err
 	}
-	blobs, err := disk.New(dataDir, disk.WithPool(pool))
+	blobs, err := disk.New(dataDirectory, disk.WithPool(pool))
 	var paths []string
 	if err == nil {
-		paths, err = erasablePaths(dataDir)
+		paths, err = erasablePaths(dataDirectory)
 	}
 	if err == nil {
 		err = requireErasable(paths, development, logger)
@@ -247,9 +240,9 @@ func prepareEpoch(settings *config.Server, logger *slog.Logger) error {
 
 // upgradingOpen erases a data directory of nylzo 0.1 or 0.2 before it opens it, because protocol version 2 reads
 // none of its messages; an interrupted upgrade finishes on the next start.
-func upgradingOpen(dataDir string, logger *slog.Logger) func(context.Context, string) (*sqlite.Store, error) {
+func upgradingOpen(dataDirectory string, logger *slog.Logger) func(context.Context, string) (*sqlite.Store, error) {
 	return func(ctx context.Context, path string) (*sqlite.Store, error) {
-		upgraded, err := sqlite.UpgradeFromReleased(ctx, path, func() error { return disk.EraseAll(dataDir) })
+		upgraded, err := sqlite.UpgradeFromReleased(ctx, path, func() error { return disk.EraseAll(dataDirectory) })
 		if err != nil {
 			return nil, err
 		}
@@ -270,8 +263,8 @@ func blobPool(settings *config.Server) disk.Pool {
 }
 
 // requireStore keeps sweep-once and takedown from creating an empty store where none was expected.
-func requireStore(dataDir string) error {
-	directory, err := filepath.Abs(dataDir)
+func requireStore(dataDirectory string) error {
+	directory, err := filepath.Abs(dataDirectory)
 	if err != nil {
 		return err
 	}
@@ -284,7 +277,7 @@ func requireStore(dataDir string) error {
 }
 
 func serveSettings(environment *command.Environment) (config.Server, error) {
-	settings, err := config.FromEnv(environment.Getenv, true)
+	settings, err := config.FromEnvironment(environment.Getenv, true)
 	if err != nil {
 		return settings, err
 	}
@@ -309,10 +302,10 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	}
 	database, blobs, err := openStore(
 		ctx,
-		settings.DataDir,
+		settings.DataDirectory,
 		settings.Development,
 		blobPool(&settings),
-		upgradingOpen(settings.DataDir, logger),
+		upgradingOpen(settings.DataDirectory, logger),
 		logger,
 	)
 	if err != nil {
@@ -351,7 +344,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	sweeper.Go(func() { instance.RunRatchet(ctx) })
 	httpServer := instance.HTTPServer()
 	served := make(chan error, 1)
-	go func() { served <- httpServer.Serve(server.SecureEarlyErrors(listener)) }()
+	go func() { served <- httpServer.Serve(transport.SecureEarlyErrors(listener)) }()
 	logListening(ctx, logger, listener.Addr(), &settings)
 	select {
 	case err = <-served:
@@ -434,16 +427,16 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	if !serverSupported {
 		return errServerUnsupported
 	}
-	settings, err := config.FromEnv(getenv, false)
+	settings, err := config.FromEnvironment(getenv, false)
 	if err != nil {
 		return err
 	}
-	if storeErr := requireStore(settings.DataDir); storeErr != nil {
+	if storeErr := requireStore(settings.DataDirectory); storeErr != nil {
 		return storeErr
 	}
 	database, blobs, err := openStore(
 		ctx,
-		settings.DataDir,
+		settings.DataDirectory,
 		settings.Development,
 		blobPool(&settings),
 		sqlite.OpenCurrent,
@@ -454,7 +447,7 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	}
 	defer database.Close()
 	now := time.Now()
-	_, err = sweep.Run(ctx, database, blobs, settings.DataDir, now)
+	_, err = sweep.Run(ctx, database, blobs, settings.DataDirectory, now)
 	err = errors.Join(err, advanceRatchet(&settings, now, logger))
 	if err != nil {
 		logger.ErrorContext(ctx, "sweep-once", "err", sweep.FirstError(err))
@@ -475,141 +468,8 @@ func advanceRatchet(settings *config.Server, now time.Time, logger *slog.Logger)
 	if ratchet != nil {
 		ratchet.Close()
 	}
-	if errors.Is(err, epoch.ErrNoDirectory) && settings.EpochDir == "" {
+	if errors.Is(err, epoch.ErrNoDirectory) && settings.EpochDirectoryOverride == "" {
 		return nil
 	}
 	return err
-}
-
-func RunTakedown(ctx context.Context, environment *command.Environment, arguments []string) int {
-	flags := command.NewFlags(environment, "takedown")
-	flags.Usage = func() {
-		fmt.Fprintf(
-			flags.Output(),
-			"usage: %s takedown < ids\n\nRemoves every message whose id stands on its own line of stdin; readers then see deleted. Run it on the server host; it reads NYLZO_DATA_DIR like sweep-once.\n",
-			command.Program,
-		)
-	}
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
-		return code
-	}
-	if !serverSupported {
-		return command.Failf(environment, "%s", errServerUnsupported)
-	}
-	if err := hardenProcess(); err != nil {
-		return command.Failf(environment, "%s", err)
-	}
-	if environment.Terminal.StdinIsTerminal() {
-		fmt.Fprintln(
-			environment.Stderr,
-			command.Program+" takedown reads the ids from a pipe or a file on stdin, one per line",
-		)
-		return command.ExitUsage
-	}
-	ids, err := readIDs(environment.Stdin)
-	if err != nil {
-		fmt.Fprintln(environment.Stderr, command.Program+" takedown: "+err.Error())
-		return command.ExitUsage
-	}
-	settings, err := config.FromEnv(environment.Getenv, false)
-	if err != nil {
-		return command.Failf(environment, "%s", err)
-	}
-	if err = requireStore(settings.DataDir); err != nil {
-		return command.Failf(environment, "%s", err)
-	}
-	database, blobs, err := openStore(
-		ctx,
-		settings.DataDir,
-		settings.Development,
-		blobPool(&settings),
-		sqlite.OpenCurrent,
-		slog.New(slog.NewTextHandler(environment.Stderr, nil)),
-	)
-	if err != nil {
-		return command.Failf(environment, "%s", logging.ErrorText(err))
-	}
-	defer database.Close()
-	return takeDown(ctx, environment, database, blobs, ids)
-}
-
-// takeDown removes each message without opening its record; readers then see deleted (D63, D101).
-func takeDown(
-	ctx context.Context,
-	environment *command.Environment,
-	database store.Store,
-	blobs store.Blobs,
-	ids []core.ID,
-) int {
-	failed := 0
-	for _, id := range ids {
-		if ctx.Err() != nil {
-			fmt.Fprintln(environment.Stderr, command.Program+": takedown stopped before every id was handled")
-			return command.ExitInterrupted
-		}
-		removal, err := store.TakeDown(ctx, database, blobs, seal.LocatorOf(id[:]), time.Now())
-		switch {
-		case errors.Is(err, store.ErrNotFound):
-			fmt.Fprintf(environment.Stdout, "%s no message\n", id)
-		case err != nil:
-			failed++
-			fmt.Fprintf(environment.Stdout, "%s failed: %s\n", id, logging.ErrorText(err))
-		case removal == store.AlreadyEnded:
-			fmt.Fprintf(environment.Stdout, "%s already ended\n", id)
-		default:
-			fmt.Fprintf(environment.Stdout, "%s deleted\n", id)
-		}
-	}
-	if failed > 0 {
-		return command.Failf(
-			environment,
-			"%d of %d messages could not be removed; run takedown again for them",
-			failed,
-			len(ids),
-		)
-	}
-	return command.ExitOK
-}
-
-var (
-	errTakedownInputTooLarge = errors.New("give at most 1 MiB of ids on stdin")
-	errLineNotID             = errors.New("is not a message id; give one id per line, never a link")
-	errLineTooLong           = errors.New("a line on stdin is too long to be a message id")
-	errNoIDs                 = errors.New("give the ids to end on stdin, one per line")
-	errTooManyIDs            = fmt.Errorf("give at most %d ids at once", maxTakedownIDs)
-)
-
-// readIDs refuses the whole input when one line is not an id, so a pasted link never ends anything.
-func readIDs(reader io.Reader) ([]core.ID, error) {
-	data, err := command.ReadLimited(reader, maxTakedownInput)
-	if err != nil {
-		return nil, errTakedownInputTooLarge
-	}
-	seen := map[string]bool{}
-	var ids []core.ID
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	for line := 1; scanner.Scan(); line++ {
-		text := strings.TrimSpace(scanner.Text())
-		if text == "" {
-			continue
-		}
-		id, parseErr := core.ParseID(text)
-		if parseErr != nil {
-			return nil, fmt.Errorf("line %d %w", line, errLineNotID)
-		}
-		if !seen[id.String()] {
-			seen[id.String()] = true
-			ids = append(ids, id)
-		}
-	}
-	if scanner.Err() != nil {
-		return nil, errLineTooLong
-	}
-	if len(ids) == 0 {
-		return nil, errNoIDs
-	}
-	if len(ids) > maxTakedownIDs {
-		return nil, errTooManyIDs
-	}
-	return ids, nil
 }

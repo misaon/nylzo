@@ -12,47 +12,20 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
-	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
 )
 
-const (
-	leaseHeaderName    = "X-Nylzo-Lease"
-	policyHeaderName   = "X-Nylzo-Policy"
-	verifierHeaderName = "X-Nylzo-Verifier"
-	shareKeyHeaderName = "X-Nylzo-Share-Key"
-	ttlHeaderName      = "X-Nylzo-Ttl"
-	shareHeaderName    = "X-Nylzo-Share"
-	octetStream        = "application/octet-stream"
-)
+const octetStream = "application/octet-stream"
 
 var errBlobSize = errors.New("server: blob size differs from the stored message size")
-
-type metadataResponse struct {
-	State          string `json:"state"`
-	CreatedAt      string `json:"created_at,omitempty"`
-	ExpiresAt      string `json:"expires_at,omitempty"`
-	OpensMax       int    `json:"opens_max"`
-	OpensRemaining int    `json:"opens_remaining"`
-	TTLSeconds     int    `json:"ttl_s"`
-	KDFID          int    `json:"kdf_id"`
-	Size           int64  `json:"size"`
-	FirstOpenedAt  string `json:"first_opened_at,omitempty"`
-	EndedAt        string `json:"ended_at,omitempty"`
-}
-
-type policyHeader struct {
-	OpensMax   int `json:"opens_max"`
-	TTLSeconds int `json:"ttl_s"`
-	KDFID      int `json:"kdf_id"`
-	Flags      int `json:"flags"`
-}
 
 func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	if !validPathID(w, r) || !s.allowRead(w, r) {
@@ -67,20 +40,20 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	record := &granted.record
 	message := record.Message
 	if !record.HasBlob() {
-		writeJSON(w, http.StatusOK, metadataResponse{
+		writeJSON(w, http.StatusOK, api.Metadata{
 			State:         string(record.State(now)),
 			FirstOpenedAt: formatOptionalTime(message.FirstOpenedAt),
 			EndedAt:       formatEnd(record.EndedAt(now)),
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, metadataResponse{
+	writeJSON(w, http.StatusOK, api.Metadata{
 		State:          string(record.State(now)),
 		CreatedAt:      formatTime(message.CreatedAt),
 		ExpiresAt:      formatTime(message.ExpiresAt),
 		OpensMax:       int(message.OpensMax),
 		OpensRemaining: int(message.OpensRemaining),
-		TTLSeconds:     int(message.TTLSeconds),
+		TTLSeconds:     int64(message.TTLSeconds),
 		KDFID:          int(message.KDF),
 		Size:           message.Size,
 		FirstOpenedAt:  formatOptionalTime(message.FirstOpenedAt),
@@ -160,13 +133,13 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 // wrappedShare recomputes E for a message and wraps it to the client's one-time key (spec section 5.6).
 func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *store.Record) (string, bool) {
 	message := record.Message
-	clientKey, err := share.ParseKey(r.Header.Get(shareKeyHeaderName))
+	clientKey, err := share.ParseKey(r.Header.Get(api.ShareKeyHeaderName))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return "", false
 	}
 	now := time.Now()
-	expiryShare, err := s.epochs.Share(epoch.RatchetID(message.RatchetID), message.Epoch, record.Row.Locator, now)
+	expiryShare, err := s.epochs.Share(message.RatchetID, message.Epoch, record.Row.Locator, now)
 	if errors.Is(err, epoch.ErrShareGone) {
 		s.endLostShare(w, r, record, now)
 		return "", false
@@ -195,7 +168,7 @@ func (s *Server) endLostShare(w http.ResponseWriter, r *http.Request, record *st
 }
 
 func parseVerifier(w http.ResponseWriter, r *http.Request) (signing.Signature, bool, bool) {
-	header := r.Header.Get(verifierHeaderName)
+	header := r.Header.Get(api.VerifierHeaderName)
 	if header == "" {
 		return signing.Signature{PublicKey: dummyPublicKey}, false, true
 	}
@@ -213,8 +186,8 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 		return
 	}
 	if passphraseErr, isPassphrase := errors.AsType[*store.PassphraseError](err); isPassphrase {
-		writeJSON(w, http.StatusForbidden, passphraseRejected{
-			Error:        "passphrase",
+		writeJSON(w, http.StatusForbidden, api.PassphraseResponse{
+			Error:        api.ErrorPassphrase,
 			RetryAfter:   ceilSeconds(passphraseErr.RetryAfter),
 			AttemptsLeft: passphraseErr.AttemptsLeft,
 		})
@@ -237,7 +210,7 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time) {
 	locator := record.Row.Locator
 	delay := time.Until(leaseExpires.Add(store.LeaseTimerSlack))
-	s.leaseTimers.schedule(locator, record.Key, delay, func(key seal.Key) {
+	s.leaseTimers.Schedule(locator, record.Key, delay, func(key seal.Key) {
 		ctx := context.Background()
 		kept := store.Record{Row: store.Row{Locator: locator}, Key: key}
 		defer clear(kept.Key[:])
@@ -298,7 +271,7 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !leased.record.HasBlob() {
-		s.leaseTimers.cancel(leased.record.Row.Locator)
+		s.leaseTimers.Cancel(leased.record.Row.Locator)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -355,7 +328,7 @@ func (s *Server) findLease(r *http.Request, record *store.Record, now time.Time)
 }
 
 func leaseToken(r *http.Request) ([]byte, bool) {
-	raw, err := core.DecodeExact(r.Header.Get(leaseHeaderName), core.SeedLen)
+	raw, err := core.DecodeExact(r.Header.Get(api.LeaseHeaderName), core.SeedLen)
 	return raw, err == nil
 }
 
@@ -426,7 +399,7 @@ func (s *Server) openOrFinishBlob(
 
 // openStoredBlob reads the erase block; a block that a concurrent deletion has overwritten counts as a missing blob.
 func (s *Server) openStoredBlob(ctx context.Context, record *store.Record) (io.ReadCloser, seal.EraseSalt, error) {
-	file, size, err := s.blobs.Open(ctx, record.Row.BlobRef)
+	file, size, err := s.blobs.Open(ctx, record.Row.BlobReference)
 	if err != nil {
 		return nil, seal.EraseSalt{}, err
 	}
@@ -465,16 +438,16 @@ func (s *Server) serveBlob(
 	s.setWriteDeadline(w, overall)
 	header := w.Header()
 	if served.lease != "" {
-		header.Set(leaseHeaderName, served.lease)
+		header.Set(api.LeaseHeaderName, served.lease)
 	}
 	if served.share != "" {
-		header.Set(shareHeaderName, served.share)
+		header.Set(api.ShareHeaderName, served.share)
 	}
-	header.Set(policyHeaderName, encodePolicy(message))
+	header.Set(api.PolicyHeaderName, encodePolicy(message))
 	header.Set("Content-Type", octetStream)
 	header.Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
-	paced := &pacedWriter{writer: w, controller: http.NewResponseController(w), pace: s.pace, overall: overall}
+	paced := s.pace.Writer(w, http.NewResponseController(w), overall)
 	buffer, _ := streamBuffers.Get().(*[streamBufferLength]byte)
 	defer streamBuffers.Put(buffer)
 	if copied, err := io.CopyBuffer(
@@ -494,11 +467,11 @@ const streamBufferLength = 32 << 10
 var streamBuffers = sync.Pool{New: func() any { return new([streamBufferLength]byte) }}
 
 func encodePolicy(message *store.Message) string {
-	data, _ := json.Marshal(policyHeader{
-		OpensMax:   int(message.OpensMax),
-		TTLSeconds: int(message.TTLSeconds),
-		KDFID:      int(message.KDF),
-		Flags:      int(message.Flags),
+	data, _ := json.Marshal(api.PolicyHeader{
+		OpensMax:   new(int(message.OpensMax)),
+		TTLSeconds: new(int(message.TTLSeconds)),
+		KDFID:      new(int(message.KDF)),
+		Flags:      new(int(message.Flags)),
 	})
 	return core.Encode(data)
 }

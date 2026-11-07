@@ -1,4 +1,4 @@
-package server
+package transport
 
 import (
 	"io"
@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// closeUnreadBodies closes an HTTP/1.x connection whose request body was not read to its end when the answer
+// CloseUnreadBodies closes an HTTP/1.x connection whose request body was not read to its end when the answer
 // starts, because net/http would otherwise wait for up to 256 KiB of a body that may never arrive (spec §9).
-func closeUnreadBodies(next http.Handler) http.Handler {
+func CloseUnreadBodies(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.ProtoMajor != 1 || r.ContentLength == 0 || r.Body == nil || r.Body == http.NoBody {
 			next.ServeHTTP(w, r)

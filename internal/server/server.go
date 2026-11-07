@@ -10,18 +10,21 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
-	"github.com/misaon/nylzo/internal/server/epoch"
+	"github.com/misaon/nylzo/internal/server/leasetimer"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/sweep"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/server/web"
+	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -50,13 +53,21 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
+func WithWebFiles(files fs.FS) Option {
+	return func(server *Server) {
+		if files != nil {
+			server.webFiles = files
+		}
+	}
+}
+
 type Server struct {
 	settings      config.Server
 	store         store.Store
 	blobs         store.Blobs
 	ring          *pepper.Ring
 	epochs        *epoch.Ratchet
-	leaseTimers   *releases
+	leaseTimers   *leasetimer.Timers
 	logger        *slog.Logger
 	instance      *ratelimit.Fair
 	sourceLimiter *ratelimit.Limiter
@@ -76,7 +87,7 @@ type Server struct {
 	requestCounts *logging.RequestCounts
 	eventCounts   *logging.Events
 	events        *slog.Logger
-	pace          pace
+	pace          transport.Pace
 	handler       http.Handler
 }
 
@@ -84,7 +95,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	if err := settings.Validate(); err != nil {
 		return nil, err
 	}
-	if err := abuse.RefuseLegacyReports(settings.DataDir); err != nil {
+	if err := abuse.RefuseLegacyReports(settings.DataDirectory); err != nil {
 		return nil, err
 	}
 	ring, err := pepper.NewRing(settings.Pepper, settings.PepperPrevious)
@@ -96,11 +107,11 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		store:       storage,
 		blobs:       blobs,
 		ring:        ring,
-		leaseTimers: newReleases(),
+		leaseTimers: leasetimer.New(),
 		logger:      logging.New(os.Stderr),
 		webFiles:    web.Files(),
 		dummyRow:    newDummyRow(),
-		pace:        defaultPace(),
+		pace:        transport.DefaultPace(),
 	}
 	server.settings.Pepper, server.settings.PepperPrevious = nil, nil
 	for _, option := range options {
@@ -120,12 +131,12 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency)
 	server.idTokens = proof.NewIDTokens(ring)
 	server.reports = abuse.NewReports(
-		settings.DataDir,
+		settings.DataDirectory,
 		settings.ReportKey,
 		server.events,
 		abuse.FilesBytes(settings.Rates.GlobalDailyCreates, store.ReportsPerMessage),
 	)
-	if prepareErr := abuse.Prepare(settings.DataDir, time.Now()); prepareErr != nil {
+	if prepareErr := abuse.Prepare(settings.DataDirectory, time.Now()); prepareErr != nil {
 		return nil, prepareErr
 	}
 	server.disk = server.newDiskReserver(diskspace.Free)
@@ -134,7 +145,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 }
 
 func (s *Server) Close() {
-	s.leaseTimers.stop()
+	s.leaseTimers.Stop()
 	s.epochs.Close()
 }
 
@@ -238,8 +249,25 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 	}
 }
 
+func (s *Server) loadWebClient() error {
+	build, err := webclient.Load(s.webFiles)
+	if err != nil {
+		return err
+	}
+	if s.frontend, err = webclient.NewHandler(
+		build,
+		s.settings.PublicURL,
+		s.settings.Operator.Contact,
+		s.buildInformation(),
+	); err != nil {
+		return err
+	}
+	s.logger.Info("web-client", "built", build.Built, "assets", len(build.Assets), "public_url", s.settings.PublicURL)
+	return nil
+}
+
 func (s *Server) newDiskReserver(free diskspace.FreeFunc) *diskspace.Reserver {
-	return diskspace.NewReserver(s.settings.DataDir, s.settings.MinFreeBytes, free, s.events)
+	return diskspace.NewReserver(s.settings.DataDirectory, s.settings.MinFreeBytes, free, s.events)
 }
 
 func (s *Server) flushCounts(ctx context.Context) {
@@ -249,7 +277,7 @@ func (s *Server) flushCounts(ctx context.Context) {
 
 // prepareReportDays keeps the day files ready when no sweep runs in this process or an external one stopped.
 func (s *Server) prepareReportDays(ctx context.Context, now time.Time) {
-	if err := abuse.Prepare(s.settings.DataDir, now); err != nil {
+	if err := abuse.Prepare(s.settings.DataDirectory, now); err != nil {
 		s.events.ErrorContext(ctx, "abuse-prepare", "err", logging.ErrorText(err))
 	}
 }
@@ -290,7 +318,7 @@ func (s *Server) forgetAddresses() {
 
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := time.Now()
-	report, err := sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, now)
+	report, err := sweep.Run(ctx, s.store, s.blobs, s.settings.DataDirectory, now)
 	return report, errors.Join(err, s.advanceRatchet(now))
 }
 
@@ -337,7 +365,7 @@ func (s *Server) openRatchet() error {
 // PrepareEpochDirectory creates the default epoch directory inside the data directory. A directory that the
 // operator names must exist already, so a volume that failed to mount stops the server instead of a new seed.
 func PrepareEpochDirectory(settings *config.Server) error {
-	if settings.EpochDir != "" {
+	if settings.EpochDirectoryOverride != "" {
 		return nil
 	}
 	return os.MkdirAll(settings.EpochDirectory(), 0o700)

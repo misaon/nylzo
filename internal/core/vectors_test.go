@@ -20,7 +20,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/report"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
-	"github.com/misaon/nylzo/internal/core/vectors"
+	"github.com/misaon/nylzo/internal/vectors"
 )
 
 var committedVectors = sync.OnceValues(func() (*vectors.File, error) {

@@ -1,4 +1,4 @@
-package cli
+package command
 
 import (
 	"context"
@@ -9,18 +9,31 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/client"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/keys"
 )
 
-var endedStates = map[string]string{
-	"opened":    "the message was already opened",
-	"expired":   "the message has expired",
-	"cancelled": "the sender cancelled the message",
-	"deleted":   "the message was deleted",
+type explanationError struct {
+	explanation string
 }
 
-// explain turns an error into a message that never repeats text from the server or a certificate.
-func explain(err error) string {
+func (e *explanationError) Error() string {
+	return e.explanation
+}
+
+func Explained(err error) error {
+	return &explanationError{explanation: Explain(err)}
+}
+
+var endedStates = map[string]string{
+	api.StateOpened:    "the message was already opened",
+	api.StateExpired:   "the message has expired",
+	api.StateCancelled: "the sender cancelled the message",
+	api.StateDeleted:   "the message was deleted",
+}
+
+// Explain turns an error into a message that never repeats text from the server or a certificate.
+func Explain(err error) string {
 	if apiErr, ok := errors.AsType[*client.APIError](err); ok {
 		return explainAPI(apiErr)
 	}
@@ -101,14 +114,14 @@ func explainAPI(apiErr *client.APIError) string {
 		wait = fmt.Sprintf("; try again in %s", apiErr.RetryAfter)
 	}
 	switch apiErr.Kind {
-	case "gone":
+	case api.ErrorGone:
 		if text, ok := endedStates[apiErr.State]; ok {
 			return text
 		}
 		return "the message is no longer available"
-	case "not_found":
+	case api.ErrorNotFound:
 		return "no such message: the link or token is wrong, or the message is gone"
-	case "passphrase":
+	case api.ErrorPassphrase:
 		if apiErr.AttemptsLeft > 0 && apiErr.RetryAfter == 0 {
 			return fmt.Sprintf(
 				"wrong passphrase; %d attempts left before the message makes every reader wait",
@@ -116,17 +129,17 @@ func explainAPI(apiErr *client.APIError) string {
 			)
 		}
 		return "wrong passphrase, or too many wrong attempts" + wait
-	case "rate_limited":
+	case api.ErrorRateLimited:
 		return "the server limits requests from your address" + wait
-	case "unavailable":
+	case api.ErrorUnavailable:
 		return "the server is busy or has reached its daily limit" + wait
-	case "too_large":
+	case api.ErrorTooLarge:
 		return "the message is larger than the server accepts"
-	case "pow":
+	case api.ErrorWork:
 		return "the server refused the proof of work; try again"
-	case "id_token", "conflict":
+	case api.ErrorIDToken, api.ErrorConflict:
 		return "the server refused the new message id; try again"
-	case "internal":
+	case api.ErrorInternal:
 		return "the server failed; try again later"
 	default:
 		return fmt.Sprintf("the server answered with status %d", apiErr.Status)

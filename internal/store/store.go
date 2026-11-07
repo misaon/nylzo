@@ -7,17 +7,19 @@ import (
 	"io"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core/api"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 )
 
 type State string
 
 const (
-	StateAvailable State = "available"
-	StateOpened    State = "opened"
-	StateExpired   State = "expired"
-	StateCancelled State = "cancelled"
-	StateDeleted   State = "deleted"
+	StateAvailable State = api.StateAvailable
+	StateOpened    State = api.StateOpened
+	StateExpired   State = api.StateExpired
+	StateCancelled State = api.StateCancelled
+	StateDeleted   State = api.StateDeleted
 )
 
 const (
@@ -132,10 +134,8 @@ type Message struct {
 	Reports          int
 	// Epoch and RatchetID name the expiry share of the message (spec section 5.6).
 	Epoch     uint32
-	RatchetID [RatchetIDLen]byte
+	RatchetID epoch.RatchetID
 }
-
-const RatchetIDLen = 16
 
 func (m *Message) PassphraseRequired() bool {
 	return len(m.VerifierMAC) > 0
@@ -154,19 +154,19 @@ func (l *Lease) Active(now time.Time) bool {
 
 // Row is what the store keeps; only the locator, the blob reference and the two cleanup times are in the clear.
 type Row struct {
-	Locator     seal.Locator
-	ReadWrap    []byte
-	ManageWrap  []byte
-	Record      []byte
-	BlobRef     string
-	BlobWrap    []byte
-	BlobPurgeAt time.Time
-	PurgeAt     time.Time
+	Locator       seal.Locator
+	ReadWrap      []byte
+	ManageWrap    []byte
+	Record        []byte
+	BlobReference string
+	BlobWrap      []byte
+	BlobPurgeAt   time.Time
+	PurgeAt       time.Time
 }
 
 type DueBlob struct {
-	Locator seal.Locator
-	Ref     string
+	Locator   seal.Locator
+	Reference string
 }
 
 type ClaimParameters struct {
@@ -202,7 +202,7 @@ type Messages interface {
 	ShredBlobs(ctx context.Context, due []DueBlob) error
 	ForgetBlobs(ctx context.Context, due []DueBlob) error
 	PurgeRows(ctx context.Context, now time.Time, limit int) (int, error)
-	KnownBlobRefs(ctx context.Context) (map[string]struct{}, error)
+	KnownBlobReferences(ctx context.Context) (map[string]struct{}, error)
 }
 
 type Counters interface {
@@ -223,19 +223,25 @@ type Store interface {
 
 // BlobInfo names a stored blob and the blob_purge_at its file carries.
 type BlobInfo struct {
-	Ref     string
-	PurgeAt time.Time
+	Reference string
+	PurgeAt   time.Time
 }
 
 type Blobs interface {
 	// PutExpiring stores the content and reports when it was stored; the blob carries the BlobPurgeAt of a message
 	// stored then with ttl.
-	PutExpiring(ctx context.Context, ref string, content io.Reader, size int64, ttl time.Duration) (time.Time, error)
-	Open(ctx context.Context, ref string) (io.ReadCloser, int64, error)
-	Delete(ctx context.Context, ref string) error
-	DeleteBatch(ctx context.Context, refs []string) []error
+	PutExpiring(
+		ctx context.Context,
+		reference string,
+		content io.Reader,
+		size int64,
+		ttl time.Duration,
+	) (time.Time, error)
+	Open(ctx context.Context, reference string) (io.ReadCloser, int64, error)
+	Delete(ctx context.Context, reference string) error
+	DeleteBatch(ctx context.Context, references []string) []error
 	List(ctx context.Context) ([]BlobInfo, error)
-	PurgeTemp(ctx context.Context, olderThan time.Time) (int, error)
+	PurgeTemporary(ctx context.Context, olderThan time.Time) (int, error)
 	Replenish(ctx context.Context) error
 	Restamp(ctx context.Context, now time.Time) error
 }

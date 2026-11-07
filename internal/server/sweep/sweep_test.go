@@ -20,37 +20,37 @@ import (
 )
 
 type fixture struct {
-	dataDir string
-	store   *sqlite.Store
-	blobs   *storetest.FaultyBlobs
+	dataDirectory string
+	store         *sqlite.Store
+	blobs         *storetest.FaultyBlobs
 }
 
 func newFixture(t *testing.T) fixture {
 	t.Helper()
-	dataDir := t.TempDir()
-	storage, err := sqlite.Open(t.Context(), filepath.Join(dataDir, "nylzo.db"))
+	dataDirectory := t.TempDir()
+	storage, err := sqlite.Open(t.Context(), filepath.Join(dataDirectory, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { storage.Close() })
-	blobs, err := disk.New(dataDir)
+	blobs, err := disk.New(dataDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{dataDir: dataDir, store: storage, blobs: storetest.NewFaultyBlobs(blobs)}
+	return fixture{dataDirectory: dataDirectory, store: storage, blobs: storetest.NewFaultyBlobs(blobs)}
 }
 
-func (f fixture) putBlob(t *testing.T, ref string) {
+func (f fixture) putBlob(t *testing.T, reference string) {
 	t.Helper()
-	if _, err := f.blobs.PutExpiring(t.Context(), ref, strings.NewReader("x"), 1, time.Minute); err != nil {
+	if _, err := f.blobs.PutExpiring(t.Context(), reference, strings.NewReader("x"), 1, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func (f fixture) createExpiring(t *testing.T, now time.Time) string {
 	t.Helper()
-	id, ref := core.NewID(), core.NewID().String()
-	f.putBlob(t, ref)
+	id, reference := core.NewID(), core.NewID().String()
+	f.putBlob(t, reference)
 	message := &store.Message{
 		Version:        envelope.Version,
 		CreatedAt:      now.Truncate(time.Minute),
@@ -65,18 +65,18 @@ func (f fixture) createExpiring(t *testing.T, now time.Time) string {
 		message,
 		core.NewSecret()[:],
 		core.NewSecret()[:],
-		ref,
+		reference,
 		seal.NewKey(),
 	)
 	if err := f.store.Create(t.Context(), &record.Row); err != nil {
 		t.Fatal(err)
 	}
-	return ref
+	return reference
 }
 
 func (f fixture) run(t *testing.T, now time.Time) (store.SweepReport, error) {
 	t.Helper()
-	return sweep.Run(t.Context(), f.store, f.blobs, f.dataDir, now)
+	return sweep.Run(t.Context(), f.store, f.blobs, f.dataDirectory, now)
 }
 
 func nextDay() time.Time {
@@ -89,7 +89,11 @@ func TestRunDeletesExpiredBlobsAndPurgesStaleUploads(t *testing.T) {
 	now := nextDay()
 	id := setup.createExpiring(t, now)
 	stale := func(name string) {
-		if err := os.WriteFile(filepath.Join(setup.dataDir, "blobs", "tmp", name), []byte("x"), 0o600); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(setup.dataDirectory, "blobs", "tmp", name),
+			[]byte("x"),
+			0o600,
+		); err != nil {
 			t.Fatal(err)
 		}
 	}

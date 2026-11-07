@@ -242,10 +242,10 @@ func TestLogLinesOfTheCommandCarryTheMinuteOnly(t *testing.T) {
 
 func TestOpenCreatesPrivateDirectories(t *testing.T) {
 	settings := config.Defaults()
-	settings.DataDir = filepath.Join(t.TempDir(), "data")
+	settings.DataDirectory = filepath.Join(t.TempDir(), "data")
 	storage, _, err := openStore(
 		t.Context(),
-		settings.DataDir,
+		settings.DataDirectory,
 		testDevelopment,
 		testPool,
 		sqlite.Open,
@@ -255,7 +255,7 @@ func TestOpenCreatesPrivateDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 	storage.Close()
-	for _, directory := range []string{settings.DataDir, filepath.Join(settings.DataDir, disk.Directory), filepath.Join(settings.DataDir, disk.Directory, "tmp")} {
+	for _, directory := range []string{settings.DataDirectory, filepath.Join(settings.DataDirectory, disk.Directory), filepath.Join(settings.DataDirectory, disk.Directory, "tmp")} {
 		info, statErr := os.Stat(directory)
 		if statErr != nil {
 			t.Fatal(statErr)

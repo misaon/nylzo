@@ -38,7 +38,7 @@ func (s *Store) DueBlobs(ctx context.Context, now time.Time, after seal.Locator,
 	for rows.Next() {
 		var due store.DueBlob
 		var locator []byte
-		if scanErr := rows.Scan(&locator, &due.Ref); scanErr != nil {
+		if scanErr := rows.Scan(&locator, &due.Reference); scanErr != nil {
 			return nil, scanErr
 		}
 		due.Locator = seal.Locator(locator)
@@ -60,7 +60,7 @@ func (s *Store) eachDue(ctx context.Context, prepared *sql.Stmt, due []store.Due
 		statement := tx.StmtContext(ctx, prepared)
 		defer statement.Close()
 		for _, blob := range due {
-			if _, err := statement.ExecContext(ctx, blob.Locator[:], blob.Ref); err != nil {
+			if _, err := statement.ExecContext(ctx, blob.Locator[:], blob.Reference); err != nil {
 				return err
 			}
 		}
@@ -77,14 +77,14 @@ func (s *Store) PurgeRows(ctx context.Context, now time.Time, limit int) (int, e
 	)
 }
 
-func (s *Store) KnownBlobRefs(ctx context.Context) (map[string]struct{}, error) {
-	refs, err := s.strings(ctx, `SELECT blob_ref FROM messages WHERE blob_ref IS NOT NULL`)
+func (s *Store) KnownBlobReferences(ctx context.Context) (map[string]struct{}, error) {
+	references, err := s.strings(ctx, `SELECT blob_ref FROM messages WHERE blob_ref IS NOT NULL`)
 	if err != nil {
 		return nil, err
 	}
-	known := make(map[string]struct{}, len(refs))
-	for _, ref := range refs {
-		known[ref] = struct{}{}
+	known := make(map[string]struct{}, len(references))
+	for _, reference := range references {
+		known[reference] = struct{}{}
 	}
 	return known, nil
 }

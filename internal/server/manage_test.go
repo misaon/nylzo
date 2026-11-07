@@ -455,7 +455,7 @@ func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
 			); err != nil {
 				t.Error(err)
 			}
-			if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
+			if err := harness.blobs.Delete(t.Context(), harness.blobReference(message)); err != nil {
 				t.Error(err)
 			}
 		}}
@@ -514,9 +514,9 @@ type deleteHookBlobs struct {
 	hook func()
 }
 
-func (b *deleteHookBlobs) Delete(ctx context.Context, ref string) error {
+func (b *deleteHookBlobs) Delete(ctx context.Context, reference string) error {
 	b.once.Do(b.hook)
-	return b.Blobs.Delete(ctx, ref)
+	return b.Blobs.Delete(ctx, reference)
 }
 
 func TestBurnWinsWhenARaceFinishesItsEnding(t *testing.T) {
@@ -576,7 +576,7 @@ func TestReportsAboutEndedMessagesAreNotStored(t *testing.T) {
 			harness.mustCreate(message)
 		}
 		harness.markEnding(ending, store.StateCancelled)
-		faulty.FailDelete(harness.blobRef(ending), errInjected)
+		faulty.FailDelete(harness.blobReference(ending), errInjected)
 		if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
 			t.Fatalf("burn: %d", response.StatusCode)
 		}

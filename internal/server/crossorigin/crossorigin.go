@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/loopback"
 )
 
@@ -23,7 +24,7 @@ type browserMetadata struct {
 func Guard(publicURL string, refuse, next http.Handler) http.Handler {
 	protection := http.NewCrossOriginProtection()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if !strings.HasPrefix(r.URL.Path, api.Prefix) {
 			next.ServeHTTP(w, r)
 			return
 		}

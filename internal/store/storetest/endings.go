@@ -14,7 +14,7 @@ func (f *fixture) crashAroundTheBlobDelete() {
 	beforeDelete := f.crashBeforeTheFileIsDeleted()
 	beforeForget := f.crashBeforeTheReferenceIsCleared()
 	report, err := f.sweep(f.blobs, baseTime.Add(store.BlobPurgeStep))
-	if err != nil || report.Blobs != 1 || f.blobExists(beforeDelete.ref()) {
+	if err != nil || report.Blobs != 1 || f.blobExists(beforeDelete.reference()) {
 		f.t.Fatalf("the sweep must finish the release: %+v %v", report, err)
 	}
 	if err = store.DeleteBlob(
@@ -22,12 +22,12 @@ func (f *fixture) crashAroundTheBlobDelete() {
 		f.store,
 		f.blobs,
 		beforeForget.Row.Locator,
-		beforeForget.ref(),
+		beforeForget.reference(),
 	); err != nil {
 		f.t.Fatal(err)
 	}
-	known, err := f.store.KnownBlobRefs(f.t.Context())
-	if _, kept := known[beforeForget.ref()]; err != nil || kept {
+	known, err := f.store.KnownBlobReferences(f.t.Context())
+	if _, kept := known[beforeForget.reference()]; err != nil || kept {
 		f.t.Fatalf("a repeated delete must clear the blob_ref: %v", err)
 	}
 }
@@ -36,7 +36,7 @@ func (f *fixture) crashBeforeTheFileIsDeleted() *message {
 	t := f.t
 	created := f.create(1, oneHour, false)
 	failing := NewFaultyBlobs(f.blobs)
-	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	failing.FailDeleteOnce(created.reference(), ErrInjected)
 	claimed, err := f.claim(created, baseTime, 1)
 	if err != nil {
 		t.Fatal(err)
@@ -44,7 +44,7 @@ func (f *fixture) crashBeforeTheFileIsDeleted() *message {
 	if err = f.ack(created, &claimed.Lease, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("a failed delete after the last ack must surface: %v", err)
 	}
-	if f.get(created).HasBlob() || !f.blobExists(created.ref()) {
+	if f.get(created).HasBlob() || !f.blobExists(created.reference()) {
 		t.Fatal("the blob must be unreadable before its file is deleted")
 	}
 	return created
@@ -53,15 +53,18 @@ func (f *fixture) crashBeforeTheFileIsDeleted() *message {
 func (f *fixture) crashBeforeTheReferenceIsCleared() *message {
 	t, ctx := f.t, f.t.Context()
 	created := f.create(1, oneHour, false)
-	if err := f.store.ShredBlobs(ctx, []store.DueBlob{{Locator: created.Row.Locator, Ref: created.ref()}}); err != nil {
+	if err := f.store.ShredBlobs(
+		ctx,
+		[]store.DueBlob{{Locator: created.Row.Locator, Reference: created.reference()}},
+	); err != nil {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if err := f.blobs.Delete(ctx, created.ref()); err != nil {
+		if err := f.blobs.Delete(ctx, created.reference()); err != nil {
 			t.Fatalf("Blobs.Delete must be idempotent: %v", err)
 		}
 	}
-	if f.get(created).Row.BlobRef != created.ref() {
+	if f.get(created).Row.BlobReference != created.reference() {
 		t.Fatal("the crashed state must keep the blob_ref")
 	}
 	return created
@@ -71,7 +74,7 @@ func (f *fixture) crashBeforeTheEnd() {
 	t := f.t
 	created := f.create(2, oneHour, false)
 	failing := NewFaultyBlobs(f.blobs)
-	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	failing.FailDeleteOnce(created.reference(), ErrInjected)
 	if _, err := f.end(created, store.StateCancelled, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("a failed blob delete must surface: %v", err)
 	}
@@ -90,16 +93,16 @@ func (f *fixture) crashBeforeTheEnd() {
 		state != store.StateCancelled {
 		t.Fatalf("a later ending must finish the recorded one: %s %v", state, err)
 	}
-	if f.blobExists(created.ref()) || f.get(created).State(baseTime) != store.StateCancelled {
+	if f.blobExists(created.reference()) || f.get(created).State(baseTime) != store.StateCancelled {
 		t.Fatal("the later ending left the blob or changed the state")
 	}
 	swept := f.create(1, oneHour, false)
-	failing.FailDeleteOnce(swept.ref(), ErrInjected)
+	failing.FailDeleteOnce(swept.reference(), ErrInjected)
 	if _, err := f.end(swept, store.StateCancelled, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatal(err)
 	}
 	report, err := f.sweep(f.blobs, baseTime.Add(time.Second))
-	if err != nil || report.Blobs != 1 || f.blobExists(swept.ref()) {
+	if err != nil || report.Blobs != 1 || f.blobExists(swept.reference()) {
 		t.Fatalf("the sweep must finish an interrupted ending: %+v %v", report, err)
 	}
 }
@@ -108,12 +111,12 @@ func (f *fixture) failedDeleteLeavesNothingToRead() {
 	t := f.t
 	created := f.create(1, oneHour, false)
 	failing := NewFaultyBlobs(f.blobs)
-	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	failing.FailDeleteOnce(created.reference(), ErrInjected)
 	if _, err := f.end(created, store.StateCancelled, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("a failed blob delete must surface: %v", err)
 	}
 	record := f.get(created)
-	if _, err := record.BlobKey(); !errors.Is(err, store.ErrBlobMissing) || !f.blobExists(created.ref()) {
+	if _, err := record.BlobKey(); !errors.Is(err, store.ErrBlobMissing) || !f.blobExists(created.reference()) {
 		t.Fatalf("after a failed delete the file may stay, but its key must be gone: %v", err)
 	}
 	gone, cancel := context.WithCancel(t.Context())
@@ -122,7 +125,7 @@ func (f *fixture) failedDeleteLeavesNothingToRead() {
 		state != store.StateCancelled {
 		t.Fatalf("End must finish the recorded ending even when the caller has gone: %s %v", state, err)
 	}
-	if f.blobExists(created.ref()) {
+	if f.blobExists(created.reference()) {
 		t.Fatal("the retry left the blob")
 	}
 }
@@ -152,12 +155,12 @@ func (f *fixture) recordedReleaseEndsTheMessage() {
 	}
 	afterLease := baseTime.Add(store.LeaseDuration + store.LeaseTimerSlack)
 	failing := NewFaultyBlobs(f.blobs)
-	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	failing.FailDeleteOnce(created.reference(), ErrInjected)
 	if _, err := f.finish(created, afterLease, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("a release whose blob file could not be deleted: %v", err)
 	}
 	record := f.get(created)
-	if record.HasBlob() || !record.Ended(afterLease) || !f.blobExists(created.ref()) {
+	if record.HasBlob() || !record.Ended(afterLease) || !f.blobExists(created.reference()) {
 		t.Fatal("the release must end the message and drop the blob key in one transaction, even if the file stays")
 	}
 	if state, err := store.MarkEnding(ctx, f.store, record, store.StateCancelled, afterLease); err != nil ||
@@ -177,7 +180,7 @@ func (f *fixture) recordedEndingHoldsTheLease(recorded store.State) {
 		t.Fatal(err)
 	}
 	failing := NewFaultyBlobs(f.blobs)
-	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	failing.FailDeleteOnce(created.reference(), ErrInjected)
 	if _, err = f.end(created, recorded, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatal(err)
 	}
@@ -190,7 +193,7 @@ func (f *fixture) recordedEndingHoldsTheLease(recorded store.State) {
 	if finished, finishErr := f.finish(created, baseTime, f.blobs); finishErr != nil || !finished {
 		t.Fatalf("finishing: %v %v", finished, finishErr)
 	}
-	if f.get(created).State(baseTime) != recorded || f.blobExists(created.ref()) {
+	if f.get(created).State(baseTime) != recorded || f.blobExists(created.reference()) {
 		t.Fatalf("the release must keep the recorded %s", recorded)
 	}
 }
@@ -203,7 +206,7 @@ func (f *fixture) releaseAfterExpiryRecordsNothing() {
 	}
 	late := baseTime.Add(59*time.Minute + store.LeaseDuration + store.LeaseTimerSlack)
 	failing := NewFaultyBlobs(f.blobs)
-	failing.FailDeleteOnce(created.ref(), ErrInjected)
+	failing.FailDeleteOnce(created.reference(), ErrInjected)
 	if _, err := f.finish(created, late, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("release: %v", err)
 	}
@@ -226,7 +229,7 @@ func (f *fixture) burnAndCancel() {
 		t.Fatal(err)
 	}
 	if record := f.get(burned); record.State(baseTime) != store.StateDeleted ||
-		record.Message.FirstOpenedAt != nil || f.blobExists(burned.ref()) {
+		record.Message.FirstOpenedAt != nil || f.blobExists(burned.reference()) {
 		t.Fatalf("burn: %+v", record.Message)
 	}
 	cancelled := f.create(2, oneHour, false)
@@ -304,7 +307,7 @@ func (f *fixture) takeDownWithoutTheKey() {
 	t, ctx := f.t, f.t.Context()
 	created := f.create(2, oneHour, false)
 	removal, err := store.TakeDown(ctx, f.store, f.blobs, created.Row.Locator, baseTime)
-	if err != nil || removal != store.Removed || f.blobExists(created.ref()) {
+	if err != nil || removal != store.Removed || f.blobExists(created.reference()) {
 		t.Fatalf("takedown: %v %v", removal, err)
 	}
 	record := f.get(created)
@@ -336,7 +339,7 @@ func (f *fixture) takeDownWithoutTheKey() {
 	expired := f.create(1, oneMinute, false)
 	dueAt := baseTime.Add(store.BlobPurgeStep)
 	if due, dueErr := store.TakeDown(ctx, f.store, f.blobs, expired.Row.Locator, dueAt); dueErr != nil ||
-		due != store.AlreadyEnded || f.blobExists(expired.ref()) {
+		due != store.AlreadyEnded || f.blobExists(expired.reference()) {
 		t.Fatalf("a message already due for the sweep: %v %v", due, dueErr)
 	}
 	if state := f.get(expired).State(dueAt); state != store.StateExpired {
@@ -348,7 +351,7 @@ func (f *fixture) takeDownFinishesThroughTheSweep() {
 	t := f.t
 	stuck := f.create(1, oneHour, false)
 	failing := NewFaultyBlobs(f.blobs)
-	failing.FailDeleteOnce(stuck.ref(), ErrInjected)
+	failing.FailDeleteOnce(stuck.reference(), ErrInjected)
 	if _, err := store.TakeDown(
 		t.Context(),
 		f.store,
@@ -364,7 +367,7 @@ func (f *fixture) takeDownFinishesThroughTheSweep() {
 	if f.get(stuck).HasBlob() {
 		t.Fatal("a takedown must make the blob unreadable before its file is deleted")
 	}
-	if report, err := f.sweep(f.blobs, baseTime); err != nil || report.Blobs != 1 || f.blobExists(stuck.ref()) {
+	if report, err := f.sweep(f.blobs, baseTime); err != nil || report.Blobs != 1 || f.blobExists(stuck.reference()) {
 		t.Fatalf("the sweep must finish the takedown: %+v %v", report, err)
 	}
 }

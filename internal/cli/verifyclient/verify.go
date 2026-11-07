@@ -1,4 +1,4 @@
-package cli
+package verifyclient
 
 import (
 	"bytes"
@@ -21,7 +21,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/local"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -35,11 +35,10 @@ const (
 )
 
 var (
-	errNoLocalClient      = errors.New("this nylzo carries no web client to compare with; use a release build")
 	errHeaderNotAllowable = errors.New("this header changes what a browser does and cannot be allowed")
 	errReleaseDiffers     = errors.New("verify with the nylzo release the server runs")
 	errContactLeftOut     = errors.New(
-		"the Connection-Allowlist leaves out the operator's contact from " + server.TransparencyPath +
+		"the Connection-Allowlist leaves out the operator's contact from " + api.TransparencyPath +
 			"; a Caddy front needs the same NYLZO_CONTACT as the server",
 	)
 	errUnknownHeader = errors.New("which this nylzo never sends; if a proxy adds it, allow it with --allow-header")
@@ -72,9 +71,9 @@ func isDifference(err error) bool {
 // A server that answers with something other than this nylzo must not look unreachable.
 func fetchFailed(where string, err error) error {
 	if errors.Is(err, client.ErrRedirect) || errors.Is(err, client.ErrResponse) {
-		return differs("%s: %s", where, explain(err))
+		return differs("%s: %s", where, command.Explain(err))
 	}
-	return fmt.Errorf("%s: %w", where, explained(err))
+	return fmt.Errorf("%s: %w", where, command.Explained(err))
 }
 
 type verified struct {
@@ -84,7 +83,7 @@ type verified struct {
 
 type verifier struct {
 	information buildinfo.Info
-	api         *client.Client
+	server      *client.Client
 	local       webclient.Build
 	pages       webclient.Pages
 	version     string
@@ -105,7 +104,7 @@ func verifyFlags(environment *command.Environment) (*flag.FlagSet, *verifyOption
 		&options.server,
 		"server",
 		"",
-		"server address such as https://nylzo.example (or "+environmentServer+")",
+		"server address such as https://nylzo.example (or "+command.EnvironmentServer+")",
 	)
 	flags.Func(
 		"allow-header",
@@ -122,28 +121,28 @@ func verifyFlags(environment *command.Environment) (*flag.FlagSet, *verifyOption
 	return flags, options
 }
 
-func runVerifyClient(ctx context.Context, environment *command.Environment, arguments []string) int {
+func Run(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := verifyFlags(environment)
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	address, ok := serverAddress(environment, "verify-client", options.server)
+	address, ok := command.ServerAddress(environment, "verify-client", options.server)
 	if !ok {
 		return command.ExitUsage
 	}
-	api, err := client.New(address)
+	server, err := client.New(address)
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
-	build, err := webClient(environment)
-	if err != nil || !build.Built {
-		return command.Failf(environment, "%s", errNoLocalClient)
+	build, err := environment.LocalWebClient()
+	if err != nil {
+		return command.Failf(environment, "%s", err)
 	}
 	check := &verifier{
-		api:         api,
+		server:      server,
 		information: environment.BuildInformation(),
 		local:       build,
-		version:     buildVersion(environment.Version),
+		version:     buildinfo.Read(environment.Version, "", "", "").Version,
 		allowed:     options.allowed,
 	}
 	result, err := check.run(ctx)
@@ -230,7 +229,7 @@ func (v *verifier) compareAssets(ctx context.Context, search *comparison) (int, 
 // release reads the served manifest; without the version of this binary no file can be compared.
 func (v *verifier) release(ctx context.Context) (webclient.Manifest, error) {
 	var served webclient.Manifest
-	fetched, err := v.api.Fetch(ctx, webclient.ManifestPath, identity, maxManifestBytes)
+	fetched, err := v.server.Fetch(ctx, webclient.ManifestPath, identity, maxManifestBytes)
 	if err != nil {
 		return served, fetchFailed(webclient.ManifestPath, err)
 	}
@@ -277,12 +276,12 @@ func (v *verifier) manifest(ctx context.Context, served *webclient.Manifest) err
 
 // contact reads the operator's contact, which every page's Connection-Allowlist admits.
 func (v *verifier) contact(ctx context.Context) (string, error) {
-	contact, err := local.OperatorContact(ctx, v.api)
+	contact, err := local.OperatorContact(ctx, v.server)
 	if _, unreadable := errors.AsType[*local.ContactError](err); unreadable {
-		return "", differs("%s: %s", server.TransparencyPath, err)
+		return "", differs("%s: %s", api.TransparencyPath, err)
 	}
 	if err != nil {
-		return "", fetchFailed(server.TransparencyPath, err)
+		return "", fetchFailed(api.TransparencyPath, err)
 	}
 	return contact, nil
 }
@@ -291,7 +290,7 @@ func (v *verifier) contact(ctx context.Context) (string, error) {
 func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	where := describe(path, encoding)
 	expected := v.pages.For(path)
-	fetched, err := v.api.Fetch(ctx, path, encoding, maxPageBytes)
+	fetched, err := v.server.Fetch(ctx, path, encoding, maxPageBytes)
 	if err != nil {
 		return fetchFailed(where, err)
 	}
@@ -334,7 +333,7 @@ func (v *verifier) asset(ctx context.Context, name string, asset *webclient.Asse
 	path := "/assets/" + name
 	where := describe(path, encoding)
 	limit := int64(max(len(asset.Body), len(asset.Gzip))) + maxPageBytes
-	fetched, err := v.api.Fetch(ctx, path, encoding, limit)
+	fetched, err := v.server.Fetch(ctx, path, encoding, limit)
 	if err != nil {
 		return fetchFailed(where, err)
 	}

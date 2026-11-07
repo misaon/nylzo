@@ -26,13 +26,19 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	path := filepath.Join(directory, "nylzo.db")
 	storage, blobs := openStore(t, path), newBlobs(t, directory)
 	record := newRecord(1, true)
-	if err := blobs.Put(t.Context(), record.Row.BlobRef, bytes.NewReader(make([]byte, 64)), 64); err != nil {
+	if _, err := blobs.PutExpiring(
+		t.Context(),
+		record.Row.BlobReference,
+		bytes.NewReader(make([]byte, 64)),
+		64,
+		time.Hour,
+	); err != nil {
 		t.Fatal(err)
 	}
 	create(t, storage, record)
 	locator, sealed := record.Row.Locator, slices.Clone(record.Row.Record)
 	claimedAt := testNow.Add(time.Minute)
-	parameters := claimParams(claimedAt)
+	parameters := claimParameters(claimedAt)
 	parameters.VerifierSent = true
 	parameters.VerifyMAC = func(byte, []byte) bool { return true }
 	claimed, err := store.Claim(t.Context(), storage, record, parameters)
@@ -54,7 +60,7 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 			t.Fatal(readErr)
 		}
 		if bytes.Contains(data, locator[:]) || bytes.Contains(data, sealed[:64]) ||
-			bytes.Contains(data, []byte(record.Row.BlobRef)) {
+			bytes.Contains(data, []byte(record.Row.BlobReference)) {
 			t.Fatalf("%s still holds a trace of a purged message", filepath.Base(name))
 		}
 	}
@@ -68,7 +74,7 @@ func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 	locked := newRecord(1, true)
 	create(t, storage, locked)
 	attemptAt := testNow.Add(17*time.Second + 123*time.Millisecond)
-	parameters := claimParams(attemptAt)
+	parameters := claimParameters(attemptAt)
 	parameters.VerifierSent = true
 	parameters.VerifyMAC = func(byte, []byte) bool { return false }
 	for attempt := 1; attempt <= store.FreeAttempts+1; attempt++ {
@@ -465,7 +471,10 @@ func churn(t *testing.T, storage *sqlite.Store) *churned {
 				row.PurgeAt = later.Add(time.Duration(choice.IntN(1000)) * time.Hour)
 			})
 		case 2:
-			update(locator, func(row *store.Row) { row.BlobRef, row.BlobWrap, row.BlobPurgeAt = "", nil, time.Time{} })
+			update(
+				locator,
+				func(row *store.Row) { row.BlobReference, row.BlobWrap, row.BlobPurgeAt = "", nil, time.Time{} },
+			)
 		default:
 			update(locator, func(row *store.Row) { row.PurgeAt = due })
 			if _, err := storage.PurgeRows(ctx, testNow, store.SweepBatch); err != nil {
@@ -530,14 +539,14 @@ func (tr *traces) value(tag string, length int) []byte {
 
 func (tr *traces) row() store.Row {
 	return store.Row{
-		Locator:     seal.Locator(tr.value("LOC:", seal.LocatorLen)),
-		ReadWrap:    tr.value("RWR:", seal.WrapLen),
-		ManageWrap:  tr.value("MWR:", seal.WrapLen),
-		Record:      tr.value("REC:", seal.RecordBlock),
-		BlobRef:     string(tr.value("REF-", 22)),
-		BlobWrap:    tr.value("BWR:", seal.WrapLen),
-		BlobPurgeAt: testNow.Add(1000 * time.Hour),
-		PurgeAt:     testNow.Add(1000 * time.Hour),
+		Locator:       seal.Locator(tr.value("LOC:", seal.LocatorLen)),
+		ReadWrap:      tr.value("RWR:", seal.WrapLen),
+		ManageWrap:    tr.value("MWR:", seal.WrapLen),
+		Record:        tr.value("REC:", seal.RecordBlock),
+		BlobReference: string(tr.value("REF-", 22)),
+		BlobWrap:      tr.value("BWR:", seal.WrapLen),
+		BlobPurgeAt:   testNow.Add(1000 * time.Hour),
+		PurgeAt:       testNow.Add(1000 * time.Hour),
 	}
 }
 
@@ -557,7 +566,7 @@ func (*traces) current(
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, value := range [][]byte{row.Locator[:], row.ReadWrap, row.ManageWrap, row.Record, []byte(row.BlobRef), row.BlobWrap} {
+		for _, value := range [][]byte{row.Locator[:], row.ReadWrap, row.ManageWrap, row.Record, []byte(row.BlobReference), row.BlobWrap} {
 			if len(value) >= traceLen {
 				current[string(value[:traceLen])] = true
 			}

@@ -17,14 +17,14 @@ func Run(
 	ctx context.Context,
 	storage store.Store,
 	blobs store.Blobs,
-	dataDir string,
+	dataDirectory string,
 	now time.Time,
 ) (store.SweepReport, error) {
 	report, err := store.SweepAll(ctx, storage, blobs, now)
-	pruneErr := errors.Join(abuse.Prune(dataDir, now), abuse.Prepare(dataDir, now))
+	pruneErr := errors.Join(abuse.Prune(dataDirectory, now), abuse.Prepare(dataDirectory, now))
 	orphans, reconcileErr := reconcileOncePerDay(ctx, storage, blobs, now)
 	report.OrphanedBlobs = orphans
-	restampErr := errors.Join(blobs.Restamp(ctx, now), abuse.Restamp(dataDir, now))
+	restampErr := errors.Join(blobs.Restamp(ctx, now), abuse.Restamp(dataDirectory, now))
 	return report, errors.Join(err, pruneErr, reconcileErr, restampErr)
 }
 

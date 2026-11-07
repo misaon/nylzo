@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/core/vectors"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
-	"github.com/misaon/nylzo/internal/server/epoch"
+	"github.com/misaon/nylzo/internal/vectors"
 )
 
 var start = time.Date(2026, 11, 1, 10, 20, 0, 0, time.UTC)
@@ -31,7 +31,7 @@ func open(t *testing.T, directory string, now time.Time) *epoch.Ratchet {
 
 func TestEpochVectors(t *testing.T) {
 	t.Parallel()
-	data, err := os.ReadFile("../../../spec/vectors.json")
+	data, err := os.ReadFile("../../spec/vectors.json")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -181,7 +181,7 @@ linters:
       - linters: [contextcheck]
         text: "releaseAtLeaseEnd"
       # Spec vectors, store test cases and the defaults table name their numbers through the field they fill.
-      - path: internal/(core/vectors/|store/storetest/|server/config/config\.go)
+      - path: internal/(vectors/|store/storetest/|server/config/config\.go)
         linters: [mnd]
 
 issues:

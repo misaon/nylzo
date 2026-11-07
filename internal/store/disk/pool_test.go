@@ -19,8 +19,8 @@ import (
 	"github.com/misaon/nylzo/internal/store/disk"
 )
 
-func hexName(ref string) string {
-	return hex.EncodeToString([]byte(ref))
+func hexName(reference string) string {
+	return hex.EncodeToString([]byte(reference))
 }
 
 func poolFiles(t *testing.T, directory string) []os.FileInfo {
@@ -43,9 +43,9 @@ func poolFiles(t *testing.T, directory string) []os.FileInfo {
 	return files
 }
 
-func blobFile(t *testing.T, directory, ref string) os.FileInfo {
+func blobFile(t *testing.T, directory, reference string) os.FileInfo {
 	t.Helper()
-	info, err := os.Stat(filepath.Join(directory, disk.Directory, hexName(ref)))
+	info, err := os.Stat(filepath.Join(directory, disk.Directory, hexName(reference)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,24 +61,24 @@ func TestUploadsWriteIntoFilesThePoolCreatedBefore(t *testing.T) {
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
 	before := poolFiles(t, directory)
-	refs := []string{"first", "second", "third"}
-	for _, ref := range refs {
+	references := []string{"first", "second", "third"}
+	for _, reference := range references {
 		if _, err := blobs.PutExpiring(
 			t.Context(),
-			ref,
-			strings.NewReader(ref),
-			int64(len(ref)),
+			reference,
+			strings.NewReader(reference),
+			int64(len(reference)),
 			time.Hour,
 		); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, ref := range refs {
-		if !among(blobFile(t, directory, ref), before) {
-			t.Fatalf("%s was written into a file created for its upload, whose birth time dates the upload", ref)
+	for _, reference := range references {
+		if !among(blobFile(t, directory, reference), before) {
+			t.Fatalf("%s was written into a file created for its upload, whose birth time dates the upload", reference)
 		}
 	}
-	if left := poolFiles(t, directory); len(left) != len(before)-len(refs) {
+	if left := poolFiles(t, directory); len(left) != len(before)-len(references) {
 		t.Fatalf("each upload must take one pool file: %d of %d left", len(left), len(before))
 	}
 }
@@ -110,8 +110,8 @@ func TestAnEmptyPoolRefusesTheUploadAndRefills(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, ref := range []string{"first", "second"} {
-		if _, err = blobs.PutExpiring(t.Context(), ref, strings.NewReader("x"), 1, time.Hour); err != nil {
+	for _, reference := range []string{"first", "second"} {
+		if _, err = blobs.PutExpiring(t.Context(), reference, strings.NewReader("x"), 1, time.Hour); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -145,8 +145,8 @@ func TestEverySweepCreatesTheSameNumberOfPoolFiles(t *testing.T) {
 	}
 	for round, uploads := range []int{5, 0, 4} {
 		for i := range uploads {
-			ref := fmt.Sprintf("round-%d-%d", round, i)
-			if _, err = blobs.PutExpiring(t.Context(), ref, strings.NewReader("x"), 1, time.Hour); err != nil {
+			reference := fmt.Sprintf("round-%d-%d", round, i)
+			if _, err = blobs.PutExpiring(t.Context(), reference, strings.NewReader("x"), 1, time.Hour); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -206,7 +206,7 @@ func TestASweepDuringAnUploadLeavesItsFileAlone(t *testing.T) {
 	if err = sweeper.Replenish(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = sweeper.PurgeTemp(t.Context(), time.Now().Add(-store.BlobGrace)); err != nil {
+	if _, err = sweeper.PurgeTemporary(t.Context(), time.Now().Add(-store.BlobGrace)); err != nil {
 		t.Fatal(err)
 	}
 	if left := poolFiles(t, directory); len(left) != 0 {

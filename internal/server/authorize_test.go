@@ -143,20 +143,20 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 			)
 		}},
 	}
-	var refBody []byte
-	var refHeaders map[string][]string
+	var referenceBody []byte
+	var referenceHeaders map[string][]string
 	for _, class := range classes {
 		response, body := harness.do(class.request())
 		if response.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s: %d", class.name, response.StatusCode)
 		}
 		header := headersWithoutDate(response.Header)
-		if refBody == nil {
-			refBody, refHeaders = body, header
+		if referenceBody == nil {
+			referenceBody, referenceHeaders = body, header
 			continue
 		}
-		if string(body) != string(refBody) || !sameHeaders(header, refHeaders) {
-			t.Fatalf("%s differs: %s %v vs %s %v", class.name, body, header, refBody, refHeaders)
+		if string(body) != string(referenceBody) || !sameHeaders(header, referenceHeaders) {
+			t.Fatalf("%s differs: %s %v vs %s %v", class.name, body, header, referenceBody, referenceHeaders)
 		}
 	}
 	for _, message := range []*testMessage{live, ended} {
@@ -1071,7 +1071,7 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 		message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
 		harness.mustCreate(message)
 		harness.markEnding(message, store.StateCancelled)
-		faulty.FailDelete(harness.blobRef(message), errInjected)
+		faulty.FailDelete(harness.blobReference(message), errInjected)
 		unknown, unknownBody := harness.do(
 			&testRequest{
 				method: http.MethodGet,

@@ -4,11 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -19,17 +23,21 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync/atomic"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -187,14 +195,14 @@ type gatedPut struct {
 
 func (b *gatedPut) PutExpiring(
 	ctx context.Context,
-	ref string,
+	reference string,
 	body io.Reader,
 	size int64,
 	ttl time.Duration,
 ) (time.Time, error) {
 	close(b.entered)
 	<-b.release
-	return b.Blobs.PutExpiring(ctx, ref, body, size, ttl)
+	return b.Blobs.PutExpiring(ctx, reference, body, size, ttl)
 }
 
 func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
@@ -313,8 +321,8 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if got := blobWriter.write.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte response may take %v, got a write deadline %v ahead", size, want, got)
 	}
-	window := defaultPace().window
-	if chunks := len(blobWriter.writes) - 1; chunks < size/paceChunk ||
+	window := transport.DefaultPace().Window
+	if chunks := len(blobWriter.writes) - 1; chunks < size/transport.PaceChunk ||
 		slices.ContainsFunc(blobWriter.writes[1:], func(deadline time.Time) bool {
 			return time.Until(deadline) > window
 		}) {
@@ -385,7 +393,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if got := writer.writes[len(writer.writes)-1].Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
 		t.Fatalf("the 201 got a write deadline %v after the stored body, want %v", got, writeTimeout)
 	}
-	if len(writer.reads) < 2 || writer.reads[1].Sub(stored) > defaultPace().window {
+	if len(writer.reads) < 2 || writer.reads[1].Sub(stored) > transport.DefaultPace().Window {
 		t.Fatalf("F7: the body must arrive at the minimum rate, chunk by chunk: %v", writer.reads)
 	}
 }
@@ -583,8 +591,8 @@ func TestStartRefusesReportsInTheClearFromBeforeTheFirstRelease(t *testing.T) {
 	database := openStore(t, t.TempDir())
 	for _, name := range []string{"abuse-reports.jsonl", filepath.Join("abuse", "2026-10-20.jsonl")} {
 		settings := baseSettings(pepperA, nil)
-		settings.DataDir = t.TempDir()
-		path := filepath.Join(settings.DataDir, name)
+		settings.DataDirectory = t.TempDir()
+		path := filepath.Join(settings.DataDirectory, name)
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -599,49 +607,6 @@ func TestStartRefusesReportsInTheClearFromBeforeTheFirstRelease(t *testing.T) {
 			t.Fatalf("the refused start changed %s: %v", name, err)
 		}
 	}
-}
-
-func TestClosingStopsLeaseTimersAndWaitsForRunningOnes(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		pending := newReleases()
-		var ran atomic.Int32
-		locator := func(name string) seal.Locator { return seal.LocatorOf([]byte(name)) }
-		pending.schedule(locator("hour"), seal.NewKey(), time.Hour, func(seal.Key) { ran.Add(1) })
-		release := make(chan struct{})
-		pending.schedule(locator("second"), seal.NewKey(), time.Second, func(seal.Key) {
-			<-release
-			ran.Add(10)
-		})
-		cancelled := pending.pending[locator("hour")]
-		pending.schedule(locator("ended"), seal.NewKey(), time.Second, func(seal.Key) { ran.Add(1000) })
-		ended := pending.pending[locator("ended")]
-		pending.cancel(locator("ended"))
-		if ended.key != (seal.Key{}) {
-			t.Fatal("A4-2: a release cancelled by an ending must clear its record key at once")
-		}
-		time.Sleep(time.Second)
-		synctest.Wait()
-		stopped := make(chan struct{})
-		go func() {
-			pending.stop()
-			close(stopped)
-		}()
-		synctest.Wait()
-		select {
-		case <-stopped:
-			t.Fatal("stop returned while a timer was still running")
-		default:
-		}
-		close(release)
-		<-stopped
-		pending.schedule(locator("late"), seal.NewKey(), 0, func(seal.Key) { ran.Add(100) })
-		time.Sleep(2 * time.Hour)
-		synctest.Wait()
-		if got := ran.Load(); got != 10 || cancelled.key != (seal.Key{}) {
-			t.Fatalf("timers that ran: %d, want only the one already running, and stop clears the keys", got)
-		}
-	})
 }
 
 func TestServerLogsHideAddressesAndSecrets(t *testing.T) {
@@ -1003,4 +968,608 @@ func TestHeadersOver8KiBGet431WithTheSecurityHeaders(t *testing.T) {
 			t.Fatalf("a %d-byte header got a response without the security headers: %v", padding, response.Header)
 		}
 	}
+}
+
+// openWithShares tries every share a seed directory can still make, as an attacker with the link would.
+func openWithShares(t *testing.T, directory string, link *core.Link, policy envelope.Policy, object []byte) bool {
+	t.Helper()
+	ratchet, _, err := epoch.Open(directory, time.Now(), epoch.Options{})
+	if err != nil || ratchet == nil {
+		t.Fatalf("open the stolen seed: %v", err)
+	}
+	defer ratchet.Close()
+	locator := seal.LocatorOf(link.ID[:])
+	now := epoch.Hour(time.Now())
+	for hour := now; hour < now+200; hour++ {
+		expiryShare, shareErr := ratchet.Share(ratchet.ID(), hour, locator, time.Now())
+		if shareErr != nil {
+			t.Fatal(shareErr)
+		}
+		derived, deriveErr := keys.DeriveAll(link.ID, &link.Secret, link.KDF, "", &expiryShare)
+		if deriveErr != nil {
+			t.Fatal(deriveErr)
+		}
+		expected := envelope.Expected{
+			ID:         link.ID,
+			Policy:     policy,
+			KDF:        link.KDF,
+			ObjectHash: &link.ObjectHash,
+		}
+		if _, _, openErr := envelope.Open(&derived.Content, &expected, object); openErr == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func seedCopy(t *testing.T, seed []byte) string {
+	t.Helper()
+	directory := t.TempDir()
+	if err := os.WriteFile(filepath.Join(directory, epoch.FileName), seed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return directory
+}
+
+// TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed copies the data directory and the object while a
+// message lives, lets it expire and the epoch advance, and shows that nothing the attacker can steal then,
+// the link included, opens the copy (spec section 5.6).
+func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.EpochDirectoryOverride = t.TempDir()
+		harness := newHarness(t, settings)
+		message := harness.issueMessage(core.KDFNone, "", 2, 600, "plaintext expiring sentinel")
+		harness.mustCreate(message)
+		response, object := harness.claim(message, message.verifier, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("claim: %d", response.StatusCode)
+		}
+		policy, err := decodePolicy(response.Header.Get(api.PolicyHeaderName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		dataCopy := harness.stolenCopy()
+		seedPath := filepath.Join(settings.EpochDirectoryOverride, epoch.FileName)
+		liveSeed, err := os.ReadFile(seedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		link, err := core.ParseLink(message.linkText())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !openWithShares(t, seedCopy(t, liveSeed), &link, policy, object) {
+			t.Fatal("the seed of a live message must open it; the test would prove nothing")
+		}
+
+		synctest.Sleep(time.Until(epoch.End(message.epoch)) + time.Minute)
+		if _, err = harness.server.sweepOnce(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		if response, _ = harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusGone {
+			t.Fatalf("a claim after the expiry: %d", response.StatusCode)
+		}
+		currentSeed, err := os.ReadFile(seedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		oldSeed := liveSeed[epoch.SeedOffset : epoch.SeedOffset+epoch.SeedLen]
+		if bytes.Contains(currentSeed, oldSeed) {
+			t.Fatal("the seed file still holds the seed of the hour that has passed")
+		}
+		for where, data := range dataCopy {
+			if bytes.Contains(data, oldSeed) {
+				t.Fatalf("the copy of the data directory holds the seed in %s", where)
+			}
+		}
+		if openWithShares(t, seedCopy(t, currentSeed), &link, policy, object) {
+			t.Fatal("the seed stolen after the expiry hour opened a copy taken while the message lived")
+		}
+		missing := envelope.Expected{
+			ID:         link.ID,
+			Policy:     policy,
+			KDF:        link.KDF,
+			ObjectHash: &link.ObjectHash,
+		}
+		withoutShare, err := keys.DeriveAll(link.ID, &link.Secret, link.KDF, "", new([core.ShareLen]byte))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, err = envelope.Open(&withoutShare.Content, &missing, object); err == nil {
+			t.Fatal("the link alone opened the copy")
+		}
+	})
+}
+
+type stolenNeedles struct {
+	t     *testing.T
+	named map[string][]byte
+}
+
+func (n *stolenNeedles) secret(name string, value []byte) {
+	n.named[name] = value
+	n.named[name+" base64url"] = []byte(core.Encode(value))
+	n.named[name+" hex"] = []byte(hex.EncodeToString(value))
+}
+
+func (n *stolenNeedles) text(name, value string) {
+	n.named[name] = []byte(value)
+}
+
+func (n *stolenNeedles) addMessage(label string, message *testMessage, passphrase string) {
+	n.t.Helper()
+	n.secret(label+" S", message.secret[:])
+	n.secret(label+" R", message.link.R[:])
+	n.secret(label+" K", message.content.K[:])
+	n.secret(label+" K_c", message.content.Commitment[:])
+	n.secret(label+" E the sender sealed with", message.share[:])
+	hash := envelope.ObjectHash(message.object)
+	n.secret(label+" H", hash[:])
+	n.secret(label+" commitment", message.object[envelope.HeaderLen:envelope.PrefixLen])
+	n.secret(label+" V", message.verifierKey[:])
+	n.secret(label+" M", message.manage[:])
+	readKey, verifierKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.verifierKey)
+	manageKey := signing.PublicKey(message.manage)
+	n.secret(label+" pk_R", readKey[:])
+	n.secret(label+" pk_V", verifierKey[:])
+	n.secret(label+" pk_M", manageKey[:])
+	if passphrase != "" {
+		n.secret(label+" P", testPassphraseKey(message.kdf, passphrase, &message.link.PassphraseSalt))
+		n.text(label+" passphrase", passphrase)
+	}
+	if message.text != "" {
+		n.text(label+" plaintext", message.text)
+	}
+}
+
+func fileMessage(t *testing.T, content []byte) *testMessage {
+	t.Helper()
+	message := newMessage(t, core.KDFNone, "", 1, 3600, "unused")
+	message.text = ""
+	object, err := envelope.Seal(
+		&message.content,
+		envelope.NewHeader(core.KDFNone),
+		message.id,
+		message.policy,
+		envelope.Payload{
+			Meta: envelope.Meta{
+				File: &envelope.FileMeta{
+					Name: "quarterly-plan-sentinel.pdf",
+					MIME: "application/pdf",
+					Size: int64(len(content)),
+				},
+			},
+			File: content,
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message.object = object
+	return message
+}
+
+// TestAnEndedMessageStaysUnreadableWithItsLinkAndAnOlderRow covers A4-1: the file is kept open to read its own blocks.
+func TestAnEndedMessageStaysUnreadableWithItsLinkAndAnOlderRow(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	for _, ending := range []string{"burn", "ack"} {
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "ending sentinel "+ending)
+		harness.mustCreate(message)
+		older, err := harness.store.Load(t.Context(), seal.LocatorOf(message.id[:]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, err := os.Open(
+			filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(older.BlobReference))),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { stored.Close() })
+		switch ending {
+		case "burn":
+			if response, _ := harness.post(
+				message,
+				"burn",
+				message.readToken,
+			); response.StatusCode != http.StatusNoContent {
+				t.Fatalf("burn: %d", response.StatusCode)
+			}
+		default:
+			claimed, _ := harness.claim(message, "", message.address)
+			if response := harness.ack(
+				message,
+				claimed.Header.Get("X-Nylzo-Lease"),
+			); response.StatusCode != http.StatusNoContent {
+				t.Fatalf("ack: %d", response.StatusCode)
+			}
+		}
+		readKey := signing.PublicKey(&message.link.R)
+		record, err := openRow(&older, seal.Read, readKey[:])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = record.BlobKey(); err != nil {
+			t.Fatalf("%s: the older row must still give the blob key, as a remnant on the disk would: %v", ending, err)
+		}
+		if _, err = seal.ReadEraseBlock(stored); !errors.Is(err, seal.ErrErased) {
+			t.Fatalf("%s: the erase block survived in the blob's own blocks, so the link opens it: %v", ending, err)
+		}
+	}
+}
+
+func TestStolenServerRevealsNothing(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.GlobalDailyCreates = 18
+		settings.PoWDifficulty = 1
+		harness := newHarness(t, settings)
+		faulty := harness.withFaultyBlobs()
+		startupLogs := harness.logs.String()
+		needles := &stolenNeedles{t: t, named: map[string][]byte{}}
+		const ip4, ip6 = "203.0.113.77", "2001:db8:77::1"
+		needles.text("IPv4 address", ip4)
+		needles.text("IPv6 address", ip6)
+		needles.text("IPv6 address, expanded", netip.MustParseAddr(ip6).StringExpanded())
+		raw6 := netip.MustParseAddr(ip6).As16()
+		needles.named["IPv6 address, raw"] = raw6[:]
+		var lease string
+		claimed := func(message *testMessage, verifier, ip string) {
+			t.Helper()
+			response, _ := harness.claim(message, verifier, ip)
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("claim: %d", response.StatusCode)
+			}
+			lease = response.Header.Get("X-Nylzo-Lease")
+			raw, err := core.DecodeExact(lease, core.SeedLen)
+			if err != nil {
+				t.Fatal(err)
+			}
+			needles.secret("lease of "+message.id.String(), raw)
+			expiryShare := unwrapShare(t, response)
+			needles.secret("E of "+message.id.String(), expiryShare[:])
+		}
+
+		expired := newMessage(t, core.KDFNone, "", 1, 60, "plaintext expired sentinel")
+		expired.address = ip4
+		harness.mustCreate(expired)
+		needles.addMessage("expired", expired, "")
+		synctest.Sleep(2*time.Minute + 17*time.Second)
+		if _, metadata := harness.metadata(expired); metadata["state"] != "expired" {
+			t.Fatalf("expired: %v", metadata)
+		}
+
+		opened := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext opened sentinel")
+		opened.address = ip4
+		harness.mustCreate(opened)
+		needles.addMessage("opened", opened, "")
+		claimed(opened, "", ip4)
+		if response := harness.ack(opened, lease); response.StatusCode != http.StatusNoContent {
+			t.Fatalf("ack: %d", response.StatusCode)
+		}
+
+		const passphrase = "correct horse battery staple"
+		leased := newMessage(t, core.KDFScrypt, passphrase, 2, 3600, "plaintext leased sentinel")
+		leased.address = ip6
+		harness.mustCreate(leased)
+		needles.addMessage("leased", leased, passphrase)
+		harness.claim(leased, core.Encode(make([]byte, 32)), ip6)
+		claimed(leased, leased.verifier, ip6)
+
+		content := bytes.Repeat([]byte("file-content-sentinel "), 3000)
+		file := fileMessage(t, content)
+		file.address = ip4
+		harness.mustCreate(file)
+		needles.addMessage("file", file, "")
+		needles.text("file name", "quarterly-plan-sentinel.pdf")
+		needles.named["file content"] = content[:64]
+
+		burned := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext burned sentinel")
+		burned.address = ip4
+		harness.mustCreate(burned)
+		needles.addMessage("burned", burned, "")
+		if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
+			t.Fatalf("burn: %d", response.StatusCode)
+		}
+
+		cancelled := newMessage(t, core.KDFScrypt, passphrase, 1, 3600, "plaintext cancelled sentinel")
+		cancelled.address = ip6
+		harness.mustCreate(cancelled)
+		needles.addMessage("cancelled", cancelled, passphrase)
+		if response, _ := harness.post(
+			cancelled,
+			"cancel",
+			cancelled.manageToken,
+		); response.StatusCode != http.StatusNoContent {
+			t.Fatalf("cancel: %d", response.StatusCode)
+		}
+
+		stuck := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext stuck sentinel")
+		stuck.address = ip4
+		harness.mustCreate(stuck)
+		needles.addMessage("stuck", stuck, "")
+		faulty.FailDelete(harness.blobReference(stuck), &fs.PathError{
+			Op:   "remove",
+			Path: filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(harness.blobReference(stuck)))),
+			Err:  syscall.EROFS,
+		})
+		if response, _ := harness.post(
+			stuck,
+			"burn",
+			stuck.readToken,
+		); response.StatusCode != http.StatusInternalServerError {
+			t.Fatalf("burn with a failing blob store: %d", response.StatusCode)
+		}
+
+		removed := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext removed sentinel")
+		removed.address = ip4
+		harness.mustCreate(removed)
+		needles.addMessage("removed", removed, "")
+		if _, err := store.TakeDown(
+			t.Context(),
+			harness.store,
+			harness.blobs,
+			seal.LocatorOf(removed.id[:]),
+			time.Now(),
+		); err != nil {
+			t.Fatal(err)
+		}
+
+		pow := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext pow sentinel")
+		pow.address = ip6
+		filler := newMessage(t, core.KDFNone, "", 1, 3600, "filler")
+		filler.address = ip4
+		harness.mustCreate(filler)
+		_, instance := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
+		powInfo := decodeJSON(t, instance)["pow"].(map[string]any)
+		if powInfo["required"] != true {
+			t.Fatalf("PoW is not required yet: %v", powInfo)
+		}
+		token := solveWork(t, powInfo["challenge"].(string), pow.id, 1)
+		if response, body := harness.do(
+			&testRequest{
+				method:  http.MethodPost,
+				path:    "/api/v1/messages",
+				body:    pow.object,
+				address: pow.address,
+				headers: map[string]string{
+					"Content-Type":   "application/octet-stream",
+					"X-Nylzo-Create": pow.createHeader(0),
+					"X-Nylzo-Pow":    token,
+				},
+			},
+		); response.StatusCode != http.StatusCreated {
+			t.Fatalf("create with PoW: %d %s", response.StatusCode, body)
+		}
+		needles.addMessage("pow", pow, "")
+
+		link := opened.linkText()
+		contact := "notifier.contact@example.cz"
+		report := map[string]any{
+			"id":         leased.id.String(),
+			"reason":     "spam, see " + link,
+			"contact":    contact,
+			"good_faith": true,
+		}
+		if got := reportAbuse(t, harness, leased.readToken, ip4, report); got != "202 accepted" {
+			t.Fatalf("abuse report: %s", got)
+		}
+
+		everyone := []*testMessage{expired, opened, leased, file, burned, cancelled, stuck, filler, pow, removed}
+		for _, message := range everyone {
+			needles.secret("id of "+message.id.String(), message.id[:])
+			needles.text("id text of "+message.id.String(), message.id.String())
+			needles.text("hex id text of "+message.id.String(), hex.EncodeToString([]byte(message.id.String())))
+			needles.secret("envelope header of "+message.id.String(), message.object[:envelope.HeaderLen])
+			if record, err := harness.record(message); err == nil {
+				needles.secret("record key of "+message.id.String(), record.Key[:])
+			}
+		}
+		needles.text("contact", contact)
+		needles.text("reason", "spam, see")
+		if logs := harness.logs.String(); logs != startupLogs {
+			t.Fatalf("a line was written before the hourly flush: %s", strings.TrimPrefix(logs, startupLogs))
+		}
+		harness.server.flushCounts(t.Context())
+		if !strings.Contains(harness.logs.String(), "remove: "+syscall.EROFS.Error()) {
+			t.Fatal("the failing delete was not logged")
+		}
+		stolen := harness.stolenCopy()
+		reportFile := filepath.Join("abuse", time.Now().UTC().Format(time.DateOnly)+abuse.FileExtension)
+		for _, want := range []string{"nylzo.db", "nylzo.db-wal", reportFile} {
+			if _, ok := stolen[want]; !ok {
+				t.Fatalf("the stolen copy misses %s: %v", want, slices.Sorted(maps.Keys(stolen)))
+			}
+		}
+		reports, err := abuse.Open(testReportKey, stolen[reportFile])
+		if err != nil || len(reports) != 1 || reports[0].ID != leased.id.String() || reports[0].Contact != contact ||
+			!reports[0].GoodFaith {
+			t.Errorf("the operator's key must open the sealed report: %+v %v", reports, err)
+		}
+		for where, data := range stolen {
+			for what, needle := range needles.named {
+				if bytes.Contains(data, needle) {
+					t.Errorf("%s reveals %s", where, what)
+				}
+			}
+		}
+		checkStolenDatabase(t, harness, len(everyone))
+	})
+}
+
+func (h *testHarness) stolenCopy() map[string][]byte {
+	h.t.Helper()
+	stolen := map[string][]byte{"log": []byte(h.logs.String())}
+	if err := filepath.WalkDir(h.directory, func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(h.directory, path)
+		stolen[rel] = data
+		return nil
+	}); err != nil {
+		h.t.Fatal(err)
+	}
+	return stolen
+}
+
+// checkStolenDatabase covers D101: a row shows its locator, sealed bytes and two rounded cleanup times, nothing else.
+func checkStolenDatabase(t *testing.T, harness *testHarness, created int) {
+	t.Helper()
+	database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.directory, "nylzo.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	columns := column[string](t, database, `SELECT name FROM pragma_table_info('messages') ORDER BY cid`)
+	if !slices.Equal(
+		columns,
+		[]string{"locator", "read_wrap", "manage_wrap", "record", "blob_ref", "blob_wrap", "blob_purge_at", "purge_at"},
+	) {
+		t.Fatalf("messages keeps more columns than the spec lists: %v", columns)
+	}
+	if tables := column[string](
+		t,
+		database,
+		`SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name`,
+	); !slices.Equal(
+		tables,
+		[]string{"messages", "rate_counters", "wal_scrub"},
+	) {
+		t.Fatalf("the database keeps more tables than the spec lists: %v", tables)
+	}
+	for query, step := range map[string]time.Duration{
+		`SELECT blob_purge_at FROM messages WHERE blob_purge_at IS NOT NULL`: store.BlobPurgeStep,
+		`SELECT purge_at FROM messages`:                                      store.RowPurgeStep,
+		`SELECT window_start FROM rate_counters`:                             time.Minute,
+		`SELECT purge_at FROM rate_counters`:                                 time.Minute,
+	} {
+		for _, value := range column[int64](t, database, query) {
+			if value%step.Milliseconds() != 0 {
+				t.Errorf("%s holds %d, which is more precise than %s", query, value, step)
+			}
+		}
+	}
+	count := func(query string) int64 { return column[int64](t, database, query)[0] }
+	rows, ended := count(
+		`SELECT COUNT(*) FROM messages`,
+	), count(
+		`SELECT COUNT(*) FROM messages WHERE blob_wrap IS NULL`,
+	)
+	spent := count(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%' AND window_start = 0`)
+	nonces := count(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'pow:%' AND window_start = 0`)
+	if rows != int64(created)+1 || ended != 6 || spent == 0 || nonces != 1 {
+		t.Fatalf(
+			"the flows did not leave the expected rows: %d rows, %d without a blob key, %d spent challenges, %d PoW nonces",
+			rows,
+			ended,
+			spent,
+			nonces,
+		)
+	}
+	if filled := count(
+		`SELECT COUNT(*) FROM wal_scrub WHERE generation NOT IN (0, 1) OR filler != zeroblob(length(filler))`,
+	); filled != 0 {
+		t.Fatalf("wal_scrub holds %d rows with something other than zeros", filled)
+	}
+	for _, key := range column[string](t, database, `SELECT key FROM rate_counters`) {
+		if !slices.ContainsFunc(
+			[]string{"global:", "pow:", "challenge:", "sweep:reconcile:"},
+			func(prefix string) bool { return strings.HasPrefix(key, prefix) },
+		) {
+			t.Errorf("counter %q is not one of the address-free keys", key)
+		}
+	}
+}
+
+func column[T any](t *testing.T, database *sql.DB, query string) []T {
+	t.Helper()
+	rows, err := database.QueryContext(t.Context(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var values []T
+	for rows.Next() {
+		var value T
+		if scanErr := rows.Scan(&value); scanErr != nil {
+			t.Fatal(scanErr)
+		}
+		values = append(values, value)
+	}
+	if rows.Err() != nil {
+		t.Fatal(rows.Err())
+	}
+	return values
+}
+
+func TestAK11LogsContainNoSecrets(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFScrypt, "log fráze", 1, 3600, "logged text")
+		message.address = "203.0.113.55"
+		harness.mustCreate(message)
+		response, _ := harness.metadata(message)
+		codes := []int{response.StatusCode}
+		response, _ = harness.claim(message, message.verifier, "")
+		lease := response.Header.Get("X-Nylzo-Lease")
+		if lease == "" {
+			t.Fatalf("the claim gave no lease: %d", response.StatusCode)
+		}
+		codes = append(codes, response.StatusCode)
+		response, _ = harness.blob(message, lease)
+		codes = append(codes, response.StatusCode, harness.ack(message, lease).StatusCode)
+		response, _ = harness.status(message)
+		codes = append(codes, response.StatusCode)
+		response, _ = harness.do(
+			&testRequest{
+				method: http.MethodPost,
+				path:   "/api/v1/messages/" + message.id.String() + "/cancel",
+				token:  message.manageToken,
+			},
+		)
+		codes = append(codes, response.StatusCode)
+		response, _ = harness.do(&testRequest{method: http.MethodGet, path: "/m/" + message.id.String()})
+		codes = append(codes, response.StatusCode)
+		if want := []int{200, 200, 200, 204, 200, 410, 200}; !slices.Equal(codes, want) {
+			t.Fatalf("the flow behind the log check answered %v, want %v", codes, want)
+		}
+		harness.server.flushCounts(t.Context())
+		logs := harness.logs.String()
+		if !strings.Contains(logs, `"route":"message"`) {
+			t.Fatal("log should count the message routes")
+		}
+		if strings.Contains(logs, message.id.String()) || strings.Contains(logs, hex.EncodeToString(message.id[:])) {
+			t.Fatal("a log line must not name the message, so a stolen log cannot be joined with the database")
+		}
+		leaseBytes, _ := core.DecodeExact(lease, 32)
+		forbidden := map[string][]byte{
+			"S": message.secret[:],
+			"R": message.link.R[:],
+			"V": message.verifierKey[:],
+			"M": message.manage[:],
+			"K": message.content.K[:],
+			"L": leaseBytes,
+		}
+		for name, forbiddenBytes := range forbidden {
+			if strings.Contains(logs, core.Encode(forbiddenBytes)) ||
+				strings.Contains(logs, hex.EncodeToString(forbiddenBytes)) {
+				t.Fatalf("log contains %s", name)
+			}
+		}
+		for _, needle := range []string{"Authorization", "Bearer", "203.0.113.55", "127.0.0.1", "log fráze", "logged text", "X-Nylzo"} {
+			if strings.Contains(logs, needle) {
+				t.Fatalf("log contains %q", needle)
+			}
+		}
+	})
 }

@@ -26,7 +26,7 @@ func (f *fixture) expiry() {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
 	if record := f.get(created); record.State(baseTime.Add(time.Hour)) != store.StateExpired || record.HasBlob() ||
-		f.blobExists(created.ref()) || !record.EndedAt(baseTime.Add(time.Hour)).Equal(created.Message.ExpiresAt) {
+		f.blobExists(created.reference()) || !record.EndedAt(baseTime.Add(time.Hour)).Equal(created.Message.ExpiresAt) {
 		t.Fatalf("expected an expired message without its blob, got %+v", record.Message)
 	}
 	purgeAt := baseTime.Add(store.TombstoneTTL + time.Hour)
@@ -52,19 +52,22 @@ func (f *fixture) sweepSurvivesBlobErrors() {
 	}
 	due := baseTime.Add(store.BlobPurgeStep)
 	failing := NewFaultyBlobs(f.blobs)
-	failing.FailDelete(bad.ref(), ErrInjected)
+	failing.FailDelete(bad.reference(), ErrInjected)
 	report, err := f.sweep(failing, due)
 	if !errors.Is(err, ErrInjected) || report.Blobs != 1 || report.Counters != 1 {
 		t.Fatalf("%+v %v", report, err)
 	}
-	if record := f.get(bad); record.HasBlob() || record.Row.BlobRef != bad.ref() || !f.blobExists(bad.ref()) {
+	if record := f.get(
+		bad,
+	); record.HasBlob() || record.Row.BlobReference != bad.reference() ||
+		!f.blobExists(bad.reference()) {
 		t.Fatal("a blob whose delete failed must be unreadable and keep its blob_ref for the next sweep")
 	}
-	if f.get(good).Row.BlobRef != "" || f.blobExists(good.ref()) {
+	if f.get(good).Row.BlobReference != "" || f.blobExists(good.reference()) {
 		t.Fatal("one failing blob blocked the rest of the page")
 	}
 	report, err = f.sweep(f.blobs, due.Add(time.Minute))
-	if err != nil || report.Blobs != 1 || f.blobExists(bad.ref()) {
+	if err != nil || report.Blobs != 1 || f.blobExists(bad.reference()) {
 		t.Fatalf("the next sweep must retry: %+v %v", report, err)
 	}
 }
@@ -78,18 +81,18 @@ func (f *fixture) sweepPagesPastFailures() {
 	slices.SortFunc(rows, func(first, second *message) int {
 		return bytes.Compare(first.Row.Locator[:], second.Row.Locator[:])
 	})
-	failingRefs := make([]string, 0, store.SweepBatch)
+	failingReferences := make([]string, 0, store.SweepBatch)
 	for _, row := range rows[:store.SweepBatch] {
-		failingRefs = append(failingRefs, row.ref())
+		failingReferences = append(failingReferences, row.reference())
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
 	defer cancel()
 	failing := NewFaultyBlobs(f.blobs)
-	for _, ref := range failingRefs {
-		failing.FailDelete(ref, ErrInjected)
+	for _, reference := range failingReferences {
+		failing.FailDelete(reference, ErrInjected)
 	}
 	report, err := store.SweepAll(ctx, f.store, failing, baseTime.Add(store.BlobPurgeStep))
-	if !errors.Is(err, ErrInjected) || report.Blobs != 1 || f.get(rows[store.SweepBatch]).Row.BlobRef != "" {
+	if !errors.Is(err, ErrInjected) || report.Blobs != 1 || f.get(rows[store.SweepBatch]).Row.BlobReference != "" {
 		t.Fatalf("a full page of failures must not hide the rows behind it: %+v", report)
 	}
 }
@@ -103,24 +106,24 @@ func (f *fixture) sweepDeletesAPageTogether() {
 	}
 	burned := f.create(1, oneMinute, false)
 	failing := NewFaultyBlobs(f.blobs)
-	failing.FailDeleteOnce(burned.ref(), ErrInjected)
+	failing.FailDeleteOnce(burned.reference(), ErrInjected)
 	if _, err := f.end(burned, store.StateDeleted, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatal(err)
 	}
 	live := f.create(1, oneHour, false)
 	recorder := &batchRecorder{Blobs: f.blobs, store: f.store, rows: map[string]*message{}}
 	for _, created := range []*message{unspent, spent, burned} {
-		recorder.rows[created.ref()] = created
+		recorder.rows[created.reference()] = created
 	}
 	report, err := f.sweep(recorder, baseTime.Add(store.BlobPurgeStep))
 	if err != nil || report.Blobs != 3 {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
-	if recorder.batches != 1 || len(recorder.refs) != 3 || recorder.deletes != 0 || len(recorder.readable) != 0 {
+	if recorder.batches != 1 || len(recorder.references) != 3 || recorder.deletes != 0 || len(recorder.readable) != 0 {
 		t.Fatalf("a page must lose its blob keys first and then delete its blobs in one batch: %+v", recorder)
 	}
 	f.checkSweptPage(unspent, spent, burned)
-	if record := f.get(live); !record.HasBlob() || !f.blobExists(live.ref()) {
+	if record := f.get(live); !record.HasBlob() || !f.blobExists(live.reference()) {
 		t.Fatal("the sweep deleted a live blob")
 	}
 }
@@ -136,7 +139,7 @@ func (f *fixture) checkSweptPage(unspent, spent, burned *message) {
 		burned:  {store.StateDeleted, baseTime},
 	} {
 		if record := f.get(created); record.State(later) != want.state || !record.EndedAt(later).Equal(want.ended) ||
-			f.blobExists(created.ref()) {
+			f.blobExists(created.reference()) {
 			f.t.Fatalf("want a %s message ended at %v and no blob: %+v", want.state, want.ended, record.Message)
 		}
 	}
@@ -175,17 +178,18 @@ func (f *fixture) reconcile() {
 		f.blobExists(orphan) {
 		t.Fatalf("a failing delete must not stop the others: %+v %v", report, err)
 	}
-	if failing.DeleteAttempts(failingA) != 1 || failing.DeleteAttempts(failingB) != 1 || !f.blobExists(live.ref()) {
+	if failing.DeleteAttempts(failingA) != 1 || failing.DeleteAttempts(failingB) != 1 ||
+		!f.blobExists(live.reference()) {
 		t.Fatal("the reconcile skipped an orphan after a failure or deleted a live blob")
 	}
 }
 
 // putOrphans stores blobs that no row holds and returns the latest blob_purge_at among them.
-func (f *fixture) putOrphans(refs ...string) time.Time {
+func (f *fixture) putOrphans(references ...string) time.Time {
 	f.t.Helper()
 	var purgeAt time.Time
-	for _, ref := range refs {
-		stored, err := f.blobs.PutExpiring(f.t.Context(), ref, strings.NewReader("x"), 1, time.Hour)
+	for _, reference := range references {
+		stored, err := f.blobs.PutExpiring(f.t.Context(), reference, strings.NewReader("x"), 1, time.Hour)
 		if err != nil {
 			f.t.Fatal(err)
 		}

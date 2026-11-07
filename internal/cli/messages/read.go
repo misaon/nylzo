@@ -1,4 +1,4 @@
-package cli
+package messages
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/share"
@@ -57,10 +59,13 @@ var (
 	errLinkRetiredProfile = errors.New(
 		"the link uses a passphrase profile that nylzo no longer supports; ask the sender for a new link",
 	)
-	errLinkDamaged      = errors.New("the link is incomplete or damaged")
+	errLinkDamaged       = errors.New("the link is incomplete or damaged")
+	errLinkOtherInstance = errors.New(
+		"the link belongs to another instance than --server or " + command.EnvironmentServer,
+	)
 	errLinkMismatch     = errors.New("the link does not match the message on the server")
 	errPassphraseNeeded = errors.New(
-		"this message needs a passphrase: use --passphrase-file, " + environmentPassphrase + " or --ask-passphrase",
+		"this message needs a passphrase: use --passphrase-file, " + command.EnvironmentPassphrase + " or --ask-passphrase",
 	)
 	errOutNotDirectory = errors.New("--out must name an existing directory")
 	errOutNotCreated   = errors.New("--out: cannot create a private directory there")
@@ -122,11 +127,33 @@ func parseOpenLink(raw string) (openLink, error) {
 }
 
 func linkFromInput(environment *command.Environment, linkFile string) (openLink, error) {
-	raw, err := readLink(environment, linkFile)
+	raw, err := ReadLink(environment, linkFile)
 	if err != nil {
 		return openLink{}, err
 	}
 	return parseOpenLink(raw)
+}
+
+type HandedOver struct {
+	Path     string
+	Fragment string
+}
+
+func HandOver(raw, instance string) (HandedOver, error) {
+	parsed, err := parseOpenLink(raw)
+	if err != nil {
+		return HandedOver{}, err
+	}
+	parsed.wipe()
+	if parsed.origin != instance {
+		return HandedOver{}, errLinkOtherInstance
+	}
+	head, fragment, _ := strings.Cut(raw, "#")
+	address, err := url.Parse(head)
+	if err != nil {
+		return HandedOver{}, errLinkDamaged
+	}
+	return HandedOver{Path: address.EscapedPath(), Fragment: fragment}, nil
 }
 
 func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
@@ -136,13 +163,13 @@ func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 		&options.linkFile,
 		"link-file",
 		"",
-		"read the link from this file (or "+environmentLink+", or stdin)",
+		"read the link from this file (or "+command.EnvironmentLink+", or stdin)",
 	)
 	flags.StringVar(
 		&options.passphrase.file,
 		"passphrase-file",
 		"",
-		"read the passphrase from the first line of this file (or "+environmentPassphrase+")",
+		"read the passphrase from the first line of this file (or "+command.EnvironmentPassphrase+")",
 	)
 	flags.BoolVar(
 		&options.passphrase.ask,
@@ -160,8 +187,8 @@ func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 	return flags, options
 }
 
-// runRead creates the output directory before the claim, so a write problem never spends an open.
-func runRead(ctx context.Context, environment *command.Environment, arguments []string) int {
+// RunRead creates the output directory before the claim, so a write problem never spends an open.
+func RunRead(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := readFlags(environment)
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
@@ -172,12 +199,12 @@ func runRead(ctx context.Context, environment *command.Environment, arguments []
 	}
 	link, err := linkFromInput(environment, options.linkFile)
 	if err != nil {
-		return command.Failf(environment, "link: %s", explain(err))
+		return command.Failf(environment, "link: %s", command.Explain(err))
 	}
 	defer link.wipe()
-	api, err := client.New(link.origin)
+	server, err := client.New(link.origin)
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	directory := ""
 	if options.out != "" {
@@ -186,16 +213,16 @@ func runRead(ctx context.Context, environment *command.Environment, arguments []
 		}
 		defer removeIfEmpty(directory)
 	}
-	opened, err := readMessage(ctx, environment, api, &link, options.passphrase)
+	opened, err := readMessage(ctx, environment, server, &link, options.passphrase)
 	if err != nil {
-		return command.Failf(environment, "%s", explain(err))
+		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	defer clear(opened.payload.File)
 	paths, err := saveMessage(environment, directory, options.out, options.stdout, opened.payload)
 	if err != nil {
 		return command.Failf(environment, "the message was opened but could not be saved: %s", err)
 	}
-	if err = api.Ack(ctx, link.id, &link.keys.R, opened.lease); err != nil && !client.IsKind(err, "gone") {
+	if err = server.Ack(ctx, link.id, &link.keys.R, opened.lease); err != nil && !client.IsKind(err, api.ErrorGone) {
 		fmt.Fprintf(
 			environment.Stderr,
 			"%s: warning: the server did not confirm the read; it frees the message when the lease ends\n",
@@ -223,11 +250,11 @@ type openedMessage struct {
 func readMessage(
 	ctx context.Context,
 	environment *command.Environment,
-	api *client.Client,
+	server *client.Client,
 	link *openLink,
 	source passphraseSource,
 ) (openedMessage, error) {
-	metadata, err := api.Metadata(ctx, link.id, &link.keys.R)
+	metadata, err := server.Metadata(ctx, link.id, &link.keys.R)
 	if err != nil {
 		return openedMessage{}, err
 	}
@@ -244,7 +271,7 @@ func readMessage(
 		return openedMessage{}, err
 	}
 	defer clear(verifier[:])
-	fetched, lease, err := fetchEnvelope(ctx, api, link, &verifier, metadata.Size)
+	fetched, lease, err := fetchEnvelope(ctx, server, link, &verifier, metadata.Size)
 	if err != nil {
 		return openedMessage{}, err
 	}
@@ -271,17 +298,17 @@ func readMessage(
 }
 
 // checkMetadata refuses before anything is spent: an ended message and a link of another profile.
-func checkMetadata(link *openLink, metadata *client.Metadata) error {
-	if metadata.State != "available" {
-		return &client.APIError{Status: http.StatusGone, Kind: "gone", State: metadata.State}
+func checkMetadata(link *openLink, metadata *api.Metadata) error {
+	if metadata.State != api.StateAvailable {
+		return &client.APIError{Status: http.StatusGone, Kind: api.ErrorGone, State: metadata.State}
 	}
-	if err := core.AssertProfile(link.kdf, metadata.KDF); err != nil {
+	if err := core.AssertProfile(link.kdf, metadata.KDFID); err != nil {
 		return errLinkMismatch
 	}
 	return nil
 }
 
-func headerMatches(fetched *client.Envelope, link *openLink, metadata *client.Metadata) bool {
+func headerMatches(fetched *client.Envelope, link *openLink, metadata *api.Metadata) bool {
 	return fetched.Flags == 0 && fetched.KDF == link.kdf && int(fetched.Policy.OpensMax) == metadata.OpensMax &&
 		int64(fetched.Policy.TTLSeconds) == metadata.TTLSeconds
 }
@@ -339,12 +366,12 @@ func readAndDerivePassphraseKey(
 // fetchEnvelope resumes a broken claim through the lease it already received, so it never spends a second open.
 func fetchEnvelope(
 	ctx context.Context,
-	api *client.Client,
+	server *client.Client,
 	link *openLink,
 	verifier *[core.SeedLen]byte,
 	size int64,
 ) (client.Envelope, string, error) {
-	claimed, err := api.Claim(ctx, link.id, &link.keys.R, verifier, size, nil)
+	claimed, err := server.Claim(ctx, link.id, &link.keys.R, verifier, size, nil)
 	if err == nil {
 		return claimed.Envelope, claimed.Lease, nil
 	}
@@ -352,12 +379,12 @@ func fetchEnvelope(
 		return client.Envelope{}, "", err
 	}
 	for range blobRetries {
-		fetched, blobErr := api.Blob(ctx, link.id, &link.keys.R, claimed.Lease, size)
+		fetched, blobErr := server.Blob(ctx, link.id, &link.keys.R, claimed.Lease, size)
 		if blobErr == nil {
 			return fetched, claimed.Lease, nil
 		}
 		err = blobErr
-		if client.IsKind(blobErr, "gone") || client.IsKind(blobErr, "rate_limited") || ctx.Err() != nil {
+		if client.IsKind(blobErr, api.ErrorGone) || client.IsKind(blobErr, api.ErrorRateLimited) || ctx.Err() != nil {
 			break
 		}
 	}

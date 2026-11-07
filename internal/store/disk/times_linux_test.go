@@ -19,7 +19,13 @@ func TestBlobReadKeepsAccessTime(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
-	if err := blobs.Put(t.Context(), "ref", bytes.NewReader(make([]byte, 4127)), 4127); err != nil {
+	if _, err := blobs.PutExpiring(
+		t.Context(),
+		"ref",
+		bytes.NewReader(make([]byte, 4127)),
+		4127,
+		time.Hour,
+	); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(directory, disk.Directory, hex.EncodeToString([]byte("ref")))
@@ -41,11 +47,17 @@ func TestRestampHidesWhenEachBlobWasUploaded(t *testing.T) {
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
 	var paths []string
-	for _, ref := range []string{"first", "second"} {
-		if err := blobs.Put(t.Context(), ref, bytes.NewReader([]byte(ref)), int64(len(ref))); err != nil {
+	for _, reference := range []string{"first", "second"} {
+		if _, err := blobs.PutExpiring(
+			t.Context(),
+			reference,
+			bytes.NewReader([]byte(reference)),
+			int64(len(reference)),
+			time.Hour,
+		); err != nil {
 			t.Fatal(err)
 		}
-		paths = append(paths, filepath.Join(directory, disk.Directory, hex.EncodeToString([]byte(ref))))
+		paths = append(paths, filepath.Join(directory, disk.Directory, hex.EncodeToString([]byte(reference))))
 		time.Sleep(50 * time.Millisecond)
 	}
 	restamped := time.Now()

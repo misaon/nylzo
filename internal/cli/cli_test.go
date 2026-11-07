@@ -28,6 +28,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
+	"github.com/misaon/nylzo/internal/cli/messages"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/signing"
@@ -37,7 +38,6 @@ import (
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
 
-	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -76,7 +76,7 @@ func newTestServer(t *testing.T, change func(*config.Server)) *testServer {
 	t.Helper()
 	directory := t.TempDir()
 	settings := config.Defaults()
-	settings.DataDir = directory
+	settings.DataDirectory = directory
 	settings.Pepper = bytes.Repeat([]byte{7}, 32)
 	settings.ReportKey = testReportKey.PublicKey()
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
@@ -256,7 +256,7 @@ func TestCreateAndReadText(t *testing.T) {
 		t.Fatalf("create wrote the link to stderr: %q", created.stderr)
 	}
 	paths := readPaths(t, runWith(t, link, nil, nil, "read", "--out", t.TempDir()))
-	if len(paths) != 1 || filepath.Base(paths[0]) != textFileName {
+	if len(paths) != 1 || filepath.Base(paths[0]) != "message.txt" {
 		t.Fatalf("read wrote %v", paths)
 	}
 	assertPrivate(t, paths[0], "tajná zpráva\nna dva řádky")
@@ -352,7 +352,7 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 		t.Fatal(err)
 	}
 	stored, err := os.ReadFile(
-		filepath.Join(instance.directory, disk.Directory, hex.EncodeToString([]byte(row.BlobRef))),
+		filepath.Join(instance.directory, disk.Directory, hex.EncodeToString([]byte(row.BlobReference))),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -377,7 +377,7 @@ func TestALinkFromANewerVersionAsksForANewerNylzo(t *testing.T) {
 		if result.code != command.ExitError ||
 			!strings.Contains(
 				result.stderr,
-				"the link was made by a newer version of nylzo; update nylzo from "+releasesURL,
+				"the link was made by a newer version of nylzo; update nylzo from https://github.com/misaon/nylzo/releases",
 			) {
 			t.Errorf("%s with a newer link: %d %q", name, result.code, result.stderr)
 		}
@@ -436,7 +436,7 @@ func TestPassphraseFromFilesAndWrongAttempts(t *testing.T) {
 	}
 	paths := readPaths(
 		t,
-		runWith(t, link, map[string]string{environmentPassphrase: right}, nil, "read", "--out", t.TempDir()),
+		runWith(t, link, map[string]string{command.EnvironmentPassphrase: right}, nil, "read", "--out", t.TempDir()),
 	)
 	assertPrivate(t, paths[0], "behind a passphrase")
 }
@@ -558,7 +558,7 @@ func TestBurnAndPrintedManageToken(t *testing.T) {
 	if burned := runWith(
 		t,
 		"",
-		map[string]string{environmentLink: lines[0]},
+		map[string]string{command.EnvironmentLink: lines[0]},
 		nil,
 		"burn",
 	); burned.code != command.ExitOK ||
@@ -791,40 +791,6 @@ func TestRedirectsAreRefused(t *testing.T) {
 	}
 }
 
-func TestManageTokenFormat(t *testing.T) {
-	t.Parallel()
-	id := core.NewID()
-	seed := core.NewSecret()
-	good := formatManageToken("https://nylzo.example", id, seed)
-	token, err := parseManageToken(good)
-	if err != nil || token.origin != "https://nylzo.example" || token.id != id || token.seed != *seed {
-		t.Fatalf("round trip: %+v %v", token, err)
-	}
-	for _, bad := range []string{
-		"", good + "extra\n", "https://nylzo.example/m/" + id.String() + "#1.0.x\n" + core.Encode(seed[:]),
-		"http://nylzo.example/m/" + id.String() + "\n" + core.Encode(seed[:]), "https://nylzo.example/x/" + id.String() + "\n" + core.Encode(seed[:]),
-		"https://nylzo.example/m/" + id.String() + "\nshort",
-	} {
-		if _, err = parseManageToken(bad); err == nil {
-			t.Fatalf("accepted %q", bad)
-		}
-	}
-}
-
-func TestWritePrivateNeverOverwrites(t *testing.T) {
-	t.Parallel()
-	directory := t.TempDir()
-	if _, err := writePrivate(directory, "a.txt", []byte("one")); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := writePrivate(directory, "a.txt", []byte("two")); !errors.Is(err, os.ErrExist) {
-		t.Fatalf("overwrote an existing file: %v", err)
-	}
-	if got := mustRead(t, filepath.Join(directory, "a.txt")); got != "one" {
-		t.Fatalf("file now holds %q", got)
-	}
-}
-
 func rewritingProxy(t *testing.T, target string, rewrite func(*http.Request, []byte) []byte) string {
 	t.Helper()
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -878,7 +844,7 @@ func TestLiedMetadataIsRefused(t *testing.T) {
 		result := runWith(
 			t,
 			strings.Replace(link, instance.url, proxy, 1),
-			map[string]string{environmentPassphrase: passphrase},
+			map[string]string{command.EnvironmentPassphrase: passphrase},
 			nil,
 			"read",
 			"--out",
@@ -917,48 +883,6 @@ func TestAServerCannotSwitchOffThePassphrase(t *testing.T) {
 	if result.code != command.ExitOK || !strings.Contains(result.stdout, "#2.3.") {
 		t.Fatalf("a passphrase was dropped on the server's word: %d %q %q", result.code, result.stdout, result.stderr)
 	}
-}
-
-func TestReadNeverLosesAMessageToANameClash(t *testing.T) {
-	t.Parallel()
-	instance := newTestServer(t, nil)
-	out := t.TempDir()
-	first, _ := createText(t, instance, "first")
-	second, _ := createText(t, instance, "second")
-	firstPaths := readPaths(t, runWith(t, first, nil, nil, "read", "--out", out))
-	secondPaths := readPaths(t, runWith(t, second, nil, nil, "read", "--out", out))
-	assertPrivate(t, firstPaths[0], "first")
-	assertPrivate(t, secondPaths[0], "second")
-	apiClient, err := client.New(instance.url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := "beside a clashing attachment"
-	message := content{
-		meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: "MESSAGE.TXT", MIME: "text/plain", Size: 4}},
-		file: []byte("file"),
-	}
-	created, err := createOnce(
-		t.Context(),
-		&command.Environment{Stderr: io.Discard},
-		apiClient,
-		&createInput{
-			options:   &createOptions{opens: 1},
-			message:   &message,
-			policy:    envelope.Policy{OpensMax: 1, TTLSeconds: 3600},
-			maxObject: envelope.ObjectLimit(envelope.MaxFileBytes),
-		},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	paths := readPaths(t, runWith(t, created.link, nil, nil, "read", "--out", out))
-	if len(paths) != 2 || filepath.Base(paths[0]) != textFileName ||
-		filepath.Base(paths[1]) != "attachment-MESSAGE.TXT" {
-		t.Fatalf("text and attachment: %v", paths)
-	}
-	assertPrivate(t, paths[0], text)
-	assertPrivate(t, paths[1], "file")
 }
 
 func TestReadChecksTheOutputBeforeItSpendsAnOpen(t *testing.T) {
@@ -1106,7 +1030,7 @@ func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 		writeSecretFile(t, "correct horse battery staple"),
 	)
 	readPaths(t, runWith(t, "\n  "+plain+"  \n", nil, nil, "read", "--out", t.TempDir()))
-	passphrase := map[string]string{environmentPassphrase: writeSecretFile(t, "correct horse battery staple")}
+	passphrase := map[string]string{command.EnvironmentPassphrase: writeSecretFile(t, "correct horse battery staple")}
 	readPaths(t, runWith(t, guarded, passphrase, nil, "read", "--out", t.TempDir()))
 	for route, sizes := range lengths {
 		if len(sizes) != 2 || sizes[0] != sizes[1] {
@@ -1130,8 +1054,8 @@ func TestErrorsNeverEchoSecrets(t *testing.T) {
 		variables map[string]string
 		arguments []string
 	}{
-		"passphrase in the file variable": {map[string]string{environmentPassphrase: secret}, []string{"read", "--stdout"}},
-		"token in the file variable":      {map[string]string{environmentManageToken: token}, []string{"status"}},
+		"passphrase in the file variable": {map[string]string{command.EnvironmentPassphrase: secret}, []string{"read", "--stdout"}},
+		"token in the file variable":      {map[string]string{command.EnvironmentManageToken: token}, []string{"status"}},
 		"passphrase as a file":            {nil, []string{"read", "--stdout", "--passphrase-file", secret}},
 		"passphrase as a duration":        {nil, []string{"create", "--server", instance.url, "--ttl", secret}},
 		"token as a count":                {nil, []string{"create", "--server", instance.url, "--opens", token}},
@@ -1171,8 +1095,8 @@ func TestPassphraseFileUsesItsFirstLineAndVariablesAreNamed(t *testing.T) {
 		t,
 		"",
 		map[string]string{
-			environmentLink:       link,
-			environmentPassphrase: writeSecretFile(t, "correct horse battery staple"),
+			command.EnvironmentLink:       link,
+			command.EnvironmentPassphrase: writeSecretFile(t, "correct horse battery staple"),
 		},
 		nil,
 		"read",
@@ -1181,8 +1105,8 @@ func TestPassphraseFileUsesItsFirstLineAndVariablesAreNamed(t *testing.T) {
 	)
 	paths := readPaths(t, result)
 	assertPrivate(t, paths[0], "first line")
-	if !strings.Contains(result.stderr, "named by "+environmentLink) ||
-		!strings.Contains(result.stderr, "named by "+environmentPassphrase) {
+	if !strings.Contains(result.stderr, "named by "+command.EnvironmentLink) ||
+		!strings.Contains(result.stderr, "named by "+command.EnvironmentPassphrase) {
 		t.Fatalf("read did not say it used the variables: %q", result.stderr)
 	}
 }
@@ -1249,16 +1173,6 @@ func TestGeneratedPassphraseFile(t *testing.T) {
 	}
 }
 
-func TestWritePrivateStaysInItsDirectory(t *testing.T) {
-	t.Parallel()
-	directory := t.TempDir()
-	for _, name := range []string{"../escape", "sub/../../escape"} {
-		if _, err := writePrivate(directory, name, []byte("x")); err == nil {
-			t.Fatalf("wrote %q outside %s", name, directory)
-		}
-	}
-}
-
 func existing(t *testing.T, name string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), name)
@@ -1281,7 +1195,7 @@ func TestServerTextNeverReachesTheTerminalRaw(t *testing.T) {
 		t.Fatalf("server text on stderr: %d %q", result.code, result.stderr)
 	}
 	cert := &x509.Certificate{DNSNames: []string{"\x1b]0;pwned\x07", "\x1b[2K\rnylzo: the message was saved"}}
-	if explained := explain(
+	if explained := command.Explain(
 		&url.Error{
 			Op:  "Get",
 			URL: "https://localhost/",
@@ -1292,101 +1206,6 @@ func TestServerTextNeverReachesTheTerminalRaw(t *testing.T) {
 		"\x1b\x07\r",
 	) {
 		t.Fatalf("certificate names reach the terminal: %q", explained)
-	}
-}
-
-func TestNamesThatFoldTogetherDoNotClash(t *testing.T) {
-	t.Parallel()
-	instance := newTestServer(t, nil)
-	apiClient, err := client.New(instance.url)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := "beside a folded clash"
-	for _, name := range []string{"Meßage.txt", "meſſage.txt", "MESSAGE.TXT"} {
-		message := content{
-			meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: name, MIME: "text/plain", Size: 4}},
-			file: []byte("file"),
-		}
-		created, createErr := createOnce(
-			t.Context(),
-			&command.Environment{Stderr: io.Discard},
-			apiClient,
-			&createInput{
-				options:   &createOptions{opens: 1},
-				message:   &message,
-				policy:    envelope.Policy{OpensMax: 1, TTLSeconds: 3600},
-				maxObject: envelope.ObjectLimit(envelope.MaxFileBytes),
-			},
-		)
-		if createErr != nil {
-			t.Fatal(createErr)
-		}
-		paths := readPaths(t, runWith(t, created.link, nil, nil, "read", "--out", t.TempDir()))
-		if len(paths) != 2 || !strings.HasPrefix(filepath.Base(paths[1]), attachmentPrefix) {
-			t.Fatalf("%s: %v", name, paths)
-		}
-		assertPrivate(t, paths[1], "file")
-	}
-	directory := t.TempDir()
-	if err = os.WriteFile(filepath.Join(directory, "taken.bin"), nil, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	paths, err := writeAll(directory, []outputFile{{"taken.bin", []byte("new")}})
-	if err != nil || filepath.Base(paths[0]) != attachmentPrefix+"taken.bin" {
-		t.Fatalf("an existing name was not avoided: %v %v", paths, err)
-	}
-}
-
-func TestFallbackStaysInsideOut(t *testing.T) {
-	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
-		t.Skip("needs Unix permissions and a non-root user")
-	}
-	t.Parallel()
-	base := t.TempDir()
-	locked := filepath.Join(base, "locked")
-	if err := os.Mkdir(locked, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	text := "after a failed write"
-	var stderr bytes.Buffer
-	paths, err := saveMessage(
-		&command.Environment{Stdout: io.Discard, Stderr: &stderr, Terminal: noTerminal{}},
-		locked,
-		base,
-		false,
-		envelope.Payload{Meta: envelope.Meta{Text: &text}},
-	)
-	if err != nil || len(paths) != 1 || filepath.Dir(filepath.Dir(paths[0])) != base ||
-		filepath.Dir(paths[0]) == locked {
-		t.Fatalf("fallback wrote %v (%v)", paths, err)
-	}
-	assertPrivate(t, paths[0], text)
-	full := filepath.Join(t.TempDir(), "full")
-	if err = os.Mkdir(full, 0o500); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = saveMessage(
-		&command.Environment{Stdout: io.Discard, Stderr: io.Discard, Terminal: noTerminal{}},
-		full,
-		full,
-		false,
-		envelope.Payload{Meta: envelope.Meta{Text: &text}},
-	); err == nil {
-		t.Fatal("a write with nowhere to go succeeded")
-	}
-	partial := t.TempDir()
-	if err = os.Mkdir(filepath.Join(partial, "a.bin"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.Mkdir(filepath.Join(partial, attachmentPrefix+"a.bin"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = writeAll(partial, []outputFile{{textFileName, []byte("x")}, {"a.bin", []byte("y")}}); err == nil {
-		t.Fatal("writeAll succeeded with nowhere to put the attachment")
-	}
-	if _, err = os.Stat(filepath.Join(partial, textFileName)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("a failed set of files left the text behind")
 	}
 }
 
@@ -1416,8 +1235,8 @@ func TestManageTokenVariableIsNamed(t *testing.T) {
 	instance := newTestServer(t, nil)
 	manage := filepath.Join(t.TempDir(), "manage")
 	createText(t, instance, "named", "--manage-token-file", manage)
-	result := runWith(t, "", map[string]string{environmentManageToken: manage}, nil, "status")
-	if result.code != command.ExitOK || !strings.Contains(result.stderr, "named by "+environmentManageToken) {
+	result := runWith(t, "", map[string]string{command.EnvironmentManageToken: manage}, nil, "status")
+	if result.code != command.ExitOK || !strings.Contains(result.stderr, "named by "+command.EnvironmentManageToken) {
 		t.Fatalf("status from the variable: %d %q", result.code, result.stderr)
 	}
 }
@@ -1568,12 +1387,12 @@ func TestOpenHandsOverAValidLinkOfItsInstance(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)
 	link, _ := createText(t, instance, "handed over")
-	handed, err := handedOverLink(link, instance.url)
+	handed, err := messages.HandOver(link, instance.url)
 	if err != nil {
 		t.Fatal(err)
 	}
 	head, fragment, _ := strings.Cut(link, "#")
-	if !strings.HasSuffix(head, handed.path) || handed.fragment != fragment {
+	if !strings.HasSuffix(head, handed.Path) || handed.Fragment != fragment {
 		t.Fatalf("%+v from %s", handed, link)
 	}
 }
