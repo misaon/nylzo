@@ -1,13 +1,13 @@
 name: Go module and build cache
 description: >-
-  Restores the Go module and build cache of one job, keyed by the Go version and both go.sum files, or saves it.
-  Only pushes to main save, and only when the restore missed the exact key, so every key is written once.
+  Restores the Go module and build cache of one job, keyed by the Go version, both go.sum files and the week, or
+  saves it. Only pushes to main save; call it to save only when the restore missed, so every key is written once.
 inputs:
   scope:
     description: The job the cache belongs to; jobs that build different packages keep separate caches.
     required: true
   save:
-    description: "`true` saves instead of restoring; pass the restore's miss so an existing key is not written again."
+    description: "`true` saves instead of restoring."
     default: "false"
 outputs:
   hit:
@@ -16,6 +16,13 @@ outputs:
 runs:
   using: composite
   steps:
+    # A weekly key keeps the build cache close to the code without saving it on every push.
+    - id: key
+      shell: bash
+      env:
+        SCOPE: ${{ inputs.scope }}
+        SUMS: ${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}
+      run: echo "key=go-${SCOPE}-${RUNNER_OS}-${RUNNER_ARCH}-$(go env GOVERSION)-${SUMS}-$(date -u +%G-W%V)" >> "${GITHUB_OUTPUT}"
     - id: restore
       if: inputs.save != 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -25,7 +32,7 @@ runs:
           ~/.cache/go-build
           ~/.cache/golangci-lint
           ~/Library/Caches/go-build
-        key: go-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.toml', 'go.sum', 'deploy/caddy/go.sum') }}
+        key: ${{ steps.key.outputs.key }}
         restore-keys: go-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-
     - if: inputs.save == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -35,4 +42,4 @@ runs:
           ~/.cache/go-build
           ~/.cache/golangci-lint
           ~/Library/Caches/go-build
-        key: go-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.toml', 'go.sum', 'deploy/caddy/go.sum') }}
+        key: ${{ steps.key.outputs.key }}
