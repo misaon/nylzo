@@ -1,4 +1,4 @@
-const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\u{115F}\u{1160}\u{3164}\u{FFA0}]/gu;
+const INVISIBLE = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\p{Default_Ignorable_Code_Point}]/gu;
 const RESERVED = /[/\\:*?"<>|]/gu;
 const WINDOWS_DEVICE = /^(?:con|prn|aux|nul|com[\d¹²³]|lpt[\d¹²³]|conin\$|conout\$)\s*(?:\.|$)/iu;
 const MAX_NAME_BYTES = 255;

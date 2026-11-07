@@ -1,5 +1,5 @@
 {
-  "description": "Shared cases for the length rule of both clients: a sanitised file name keeps at most 255 bytes of UTF-8 and keeps its extension only when the extension is at most 16 bytes. A name is its parts joined, each part a text repeated count times.",
+  "description": "Shared cases for both clients: a sanitised file name loses control, format and default-ignorable characters, keeps at most 255 bytes of UTF-8 and keeps its extension only when the extension is at most 16 bytes. A name is its parts joined, each part a text repeated count times.",
   "cases": [
     {
       "name": "an astral extension longer than 16 bytes is cut with the stem",
@@ -50,6 +50,21 @@
       "name": "a name of 255 bytes stays whole",
       "input": [["d", 251], [".txt", 1]],
       "sanitized": [["d", 251], [".txt", 1]]
+    },
+    {
+      "name": "variation selectors and other default-ignorable characters disappear",
+      "input": [["re", 1], ["\u034f", 1], ["port", 1], ["\ufe0f", 1], ["\udb40\udd00", 1], [".", 1], ["\u17b4", 1], ["pdf", 1]],
+      "sanitized": [["report.pdf", 1]]
+    },
+    {
+      "name": "Hangul fillers, unassigned ignorable code points and tag characters disappear",
+      "input": [["\u3164", 1], ["a", 1], ["\u115f", 1], ["\u2065", 1], ["\ufff0", 1], ["\udb40\udc41", 1], ["b.txt", 1]],
+      "sanitized": [["ab.txt", 1]]
+    },
+    {
+      "name": "bidi controls cannot reorder the extension",
+      "input": [["invoice", 1], ["\u202e", 1], ["fdp.exe", 1]],
+      "sanitized": [["invoicefdp.exe", 1]]
     }
   ]
 }
