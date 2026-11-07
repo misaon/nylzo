@@ -138,11 +138,16 @@ func prefetchGuard(next http.Handler) http.Handler {
 
 func (s *Server) throttle(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") && !s.allowAPI(r) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		buckets := s.newClientBuckets(r)
+		if !s.allowAPI(buckets) {
 			writeRateLimited(w, throttleRetry)
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, withClientBuckets(r, buckets))
 	})
 }
 

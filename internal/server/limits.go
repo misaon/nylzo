@@ -26,14 +26,42 @@ func (s *Server) clientAddress(r *http.Request) netip.Addr {
 	return s.proxies.ClientAddress(r)
 }
 
-// allowAPI asks the token buckets in order, so a refused source or range takes no later token.
-func (s *Server) allowAPI(r *http.Request) bool {
-	now := time.Now()
+// clientBuckets holds the /32 or /64 source and the /24 or /48 range of a request's client; each is an HMAC, so a
+// request computes them once.
+type clientBuckets struct {
+	address      netip.Addr
+	source       ratelimit.Bucket
+	addressRange ratelimit.Bucket
+}
+
+type clientBucketsKey struct{}
+
+func (s *Server) newClientBuckets(r *http.Request) *clientBuckets {
 	address := s.clientAddress(r)
-	addressRange := s.addressKey.Range(address)
-	return s.sourceLimiter.Allow(s.addressKey.Source(address), now) &&
-		s.rangeLimiter.Allow(addressRange, now) &&
-		s.instance.Allow(addressRange, now)
+	return &clientBuckets{
+		address:      address,
+		source:       s.addressKey.Source(address),
+		addressRange: s.addressKey.Range(address),
+	}
+}
+
+func withClientBuckets(r *http.Request, buckets *clientBuckets) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), clientBucketsKey{}, buckets))
+}
+
+func (s *Server) bucketsOf(r *http.Request) *clientBuckets {
+	if buckets, ok := r.Context().Value(clientBucketsKey{}).(*clientBuckets); ok {
+		return buckets
+	}
+	return s.newClientBuckets(r)
+}
+
+// allowAPI asks the token buckets in order, so a refused source or range takes no later token.
+func (s *Server) allowAPI(buckets *clientBuckets) bool {
+	now := time.Now()
+	return s.sourceLimiter.Allow(buckets.source, now) &&
+		s.rangeLimiter.Allow(buckets.addressRange, now) &&
+		s.instance.Allow(buckets.addressRange, now)
 }
 
 func (s *Server) allowRead(w http.ResponseWriter, r *http.Request) bool {
@@ -58,12 +86,12 @@ func (s *Server) allowReadBytes(w http.ResponseWriter, r *http.Request, size int
 // of its /24 or /48 range.
 func (s *Server) countHourly(w http.ResponseWriter, r *http.Request, hit ratelimit.Hit) bool {
 	now := time.Now()
-	address := s.clientAddress(r)
+	buckets := s.bucketsOf(r)
 	coarse := s.settings.Rates.CoarseMultiplier
 	source := hit
-	source.Kind, source.Bucket, source.Window = hit.Kind+":h", s.addressKey.Source(address), ratelimit.Hour(now)
+	source.Kind, source.Bucket, source.Window = hit.Kind+":h", buckets.source, ratelimit.Hour(now)
 	addressRange := source
-	addressRange.Kind, addressRange.Bucket = hit.Kind+":h:c", s.addressKey.Range(address)
+	addressRange.Kind, addressRange.Bucket = hit.Kind+":h:c", buckets.addressRange
 	addressRange.Limit, addressRange.BytesLimit = hit.Limit*coarse, hit.BytesLimit*coarse
 	if retry := s.counters.Count([]ratelimit.Hit{source, addressRange}, now); retry > 0 {
 		writeRateLimited(w, retry)
@@ -74,8 +102,8 @@ func (s *Server) countHourly(w http.ResponseWriter, r *http.Request, hit ratelim
 
 // takeStream holds one of the slots that bound claim and blob responses; it answers 503 when none is free.
 func (s *Server) takeStream(w http.ResponseWriter, r *http.Request) (func(), bool) {
-	address := s.clientAddress(r)
-	source, addressRange := s.addressKey.Source(address), s.addressKey.Range(address)
+	buckets := s.bucketsOf(r)
+	source, addressRange := buckets.source, buckets.addressRange
 	if !s.streams.Take(source, addressRange) {
 		setRetryAfter(w, streamBusyRetry)
 		writeError(w, http.StatusServiceUnavailable, errUnavailable)
@@ -84,8 +112,8 @@ func (s *Server) takeStream(w http.ResponseWriter, r *http.Request) (func(), boo
 	return func() { s.streams.Release(source, addressRange) }, true
 }
 
-func (s *Server) limitCreate(now time.Time, address netip.Addr, size int64) time.Duration {
-	source, addressRange := s.addressKey.Source(address), s.addressKey.Range(address)
+func (s *Server) limitCreate(now time.Time, buckets *clientBuckets, size int64) time.Duration {
+	source, addressRange := buckets.source, buckets.addressRange
 	hour, day := ratelimit.Hour(now), ratelimit.Day(now)
 	rates := s.settings.Rates
 	coarse := rates.CoarseMultiplier
@@ -120,7 +148,7 @@ func (s *Server) limitCreate(now time.Time, address netip.Addr, size int64) time
 			},
 			ratelimit.Hit{
 				Kind:   "create:d:wide",
-				Bucket: s.addressKey.Wide(address),
+				Bucket: s.addressKey.Wide(buckets.address),
 				Window: day,
 				Limit:  max(minimumCapShare, daily/wideCapShare),
 			},

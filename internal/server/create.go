@@ -233,7 +233,7 @@ func (s *Server) reserveCreate(
 	request *createRequest,
 	now time.Time,
 ) (func(context.Context), bool) {
-	if retry := s.limitCreate(now, s.clientAddress(r), request.header.Size); retry > 0 {
+	if retry := s.limitCreate(now, s.bucketsOf(r), request.header.Size); retry > 0 {
 		setRetryAfter(w, retry)
 		rejectCreate(
 			w,
