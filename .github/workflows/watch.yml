@@ -16,7 +16,8 @@ on:
 permissions: {}
 
 concurrency:
-  group: production-watch
+  # An owner's directive must not wait behind the chain.
+  group: production-watch${{ (inputs.directive || 'none') != 'none' && '-directive' || '' }}
   cancel-in-progress: false
   # A cron run that meets the chain waits instead of cancelling it; the next run then sees it pending and stops chaining.
   queue: max
@@ -26,38 +27,67 @@ jobs:
     name: Production serves the signed web client
     if: github.repository == 'misaon/nylzo' && vars.NYLZO_MONITOR_URL != '' && (inputs.directive || 'none') == 'none'
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: read
     outputs:
-      outcome: ${{ steps.compare.outputs.outcome }}
+      outcome: ${{ steps.result.outputs.outcome }}
       tag: ${{ steps.release.outputs.tag }}
+    env:
+      URL: ${{ vars.NYLZO_MONITOR_URL }}
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      # Maintenance answers 503 by design; the watch resumes after a normal directive.
-      - name: Production is not in maintenance
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          # renovate: datasource=github-releases depName=sigstore/cosign
+          cosign-release: v3.1.4
+      # Only a directive this workflow signed for this instance counts, as on the host.
+      - name: Read the signed production directive
         id: directive
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          state=$(gh api "repos/${GITHUB_REPOSITORY}/contents/directive.json?ref=production-directive" --jq .content 2> /dev/null \
-            | base64 -d | jq -r '.state // empty' || true)
+          directory=$(mktemp -d)
+          for file in directive.json directive.json.sigstore.json; do
+            gh api "repos/${GITHUB_REPOSITORY}/contents/${file}?ref=production-directive" --jq .content 2> /dev/null \
+              | base64 -d > "${directory}/${file}" || exit 0
+          done
+          cosign verify-blob "${directory}/directive.json" --bundle "${directory}/directive.json.sigstore.json" \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/watch.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null 2>&1 || exit 0
+          address=${URL#https://}
+          state=$(jq -r --arg instance "${address%%[/:]*}" 'select(.instance == $instance) | .state' "${directory}/directive.json")
           if [[ "${state}" = maintenance ]]; then
-            echo 'Production is in maintenance, so nothing was verified.' >> "${GITHUB_STEP_SUMMARY}"
             echo "maintenance=true" >> "${GITHUB_OUTPUT}"
           fi
+      - name: The instance answers with a release manifest, twice before calling it changed
+        id: claim
+        run: |
+          # A redirect or a manifest that names no release is a changed client; no answer at all is not.
+          changed() {
+            local code
+            code=$(curl --silent --proto '=https' --max-redirs 0 --max-time 30 --output "${RUNNER_TEMP}/client.json" \
+              --write-out '%{http_code}' "${URL}/.well-known/nylzo/client.json") || return 1
+            [[ "${code}" =~ ^3 ]] && return 0
+            [[ "${code}" = 200 ]] || return 1
+            ! jq -e '.server | strings | test("^v?[0-9]+\\.[0-9]+\\.[0-9]+$")' "${RUNNER_TEMP}/client.json" > /dev/null 2>&1
+          }
+          if changed && sleep 120 && changed; then
+            echo "outcome=mismatch" >> "${GITHUB_OUTPUT}"
+          fi
       - id: release
-        if: steps.directive.outputs.maintenance != 'true'
+        if: steps.claim.outputs.outcome != 'mismatch'
+        # Maintenance answers 503, so the release cannot be read then.
+        continue-on-error: ${{ steps.directive.outputs.maintenance == 'true' }}
         uses: $/.github/actions/released-nylzo
         with:
           url: ${{ vars.NYLZO_MONITOR_URL }}
       - name: Compare the served web client with that release, twice before calling it changed
-        if: steps.directive.outputs.maintenance != 'true'
+        if: steps.release.outcome == 'success'
         id: compare
         env:
-          URL: ${{ vars.NYLZO_MONITOR_URL }}
           ALLOW: ${{ vars.NYLZO_MONITOR_ALLOW_HEADERS }}
         run: |
           read -ra headers <<< "${ALLOW}"
@@ -68,7 +98,8 @@ jobs:
             token=$(openssl rand -hex 16)
             echo "::stop-commands::${token}"
             status=0
-            ./nylzo verify-client --server "${URL}" "${args[@]}" > /dev/null 2>&1 || status=$?
+            # A server that stalls every request must not run the job into its timeout.
+            timeout 240 ./nylzo verify-client --server "${URL}" "${args[@]}" > /dev/null 2>&1 || status=$?
             echo "::${token}::"
             return "${status}"
           }
@@ -81,19 +112,29 @@ jobs:
             check || status=$?
           fi
           case "${status}" in
-            0) outcome=match ;;
-            3) outcome=mismatch ;;
-            *) outcome=unverified ;;
+            0) echo "outcome=match" >> "${GITHUB_OUTPUT}" ;;
+            3) echo "outcome=mismatch" >> "${GITHUB_OUTPUT}" ;;
           esac
+      - name: Record the outcome
+        id: result
+        if: always()
+        env:
+          CLAIM: ${{ steps.claim.outputs.outcome }}
+          COMPARED: ${{ steps.compare.outputs.outcome }}
+          MAINTENANCE: ${{ steps.directive.outputs.maintenance }}
+        run: |
+          outcome=${CLAIM:-${COMPARED:-unverified}}
+          # During maintenance only a changed client is news; the 503 is expected.
+          if [[ "${outcome}" = unverified && "${MAINTENANCE}" = true ]]; then outcome=maintenance; fi
           echo "outcome=${outcome}" >> "${GITHUB_OUTPUT}"
           echo "Production web client: **${outcome}**" >> "${GITHUB_STEP_SUMMARY}"
-          [[ "${outcome}" = match ]]
+          [[ "${outcome}" = match || "${outcome}" = maintenance ]]
 
   alert:
     name: Open an incident for the owner
     needs: [verify, directive, kill-switch]
     # A server can refuse the watch to hide a changed client, so a check that fails twice in a row is an incident too.
-    if: always() && needs.verify.result == 'failure'
+    if: always() && (needs.verify.result == 'failure' || needs.verify.result == 'cancelled')
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
@@ -115,18 +156,23 @@ jobs:
           if [[ "${OUTCOME}" != mismatch ]]; then
             previous=$(gh run list -R "${GITHUB_REPOSITORY}" --workflow watch.yml --branch main --status completed --limit 1 \
               --json databaseId --jq '.[0].databaseId // empty')
-            verified=$(gh run view "${previous:-0}" -R "${GITHUB_REPOSITORY}" --json jobs \
-              --jq '.jobs[] | select(.name == "Production serves the signed web client") | .conclusion' 2> /dev/null || true)
-            if [[ "${verified}" != failure ]]; then
-              echo 'The first failed check opens no incident; the next run confirms it.' >> "${GITHUB_STEP_SUMMARY}"
-              exit 0
+            verified=none
+            if [[ -n "${previous}" ]]; then
+              verified=$(gh run view "${previous}" -R "${GITHUB_REPOSITORY}" --json jobs \
+                --jq '[.jobs[] | select(.name == "Production serves the signed web client")][0].conclusion // "missing"')
+              [[ "${verified}" != missing ]] || { echo '::error::The previous run has no verify job; its name changed.'; exit 1; }
             fi
+            case "${verified}" in
+              failure | cancelled | timed_out) ;;
+              *) echo 'The first failed check opens no incident; the next run confirms it.' >> "${GITHUB_STEP_SUMMARY}"
+                exit 0 ;;
+            esac
           fi
           case "${OUTCOME}" in
             mismatch) title='Production serves a web client that differs from its signed release'
               detail="Maintenance directive: ${DIRECTIVE}. Firewall kill switch: ${KILL_SWITCH}." ;;
             *) title='Production web client could not be verified'
-              detail='Two checks in a row failed: the instance is down, or it refuses the watch, which can hide a changed client.' ;;
+              detail='Two checks in a row failed: the instance is down, runs a release that is unsigned or no longer current, or refuses the watch, which can hide a changed client.' ;;
           esac
           body=$(printf '%s.\n\n%s\n\nRelease: %s\nRun: %s\n\n@%s' "${title}" "${detail}" "${TAG:-unknown}" "${RUN}" "${GITHUB_REPOSITORY_OWNER}")
           issue=$(gh issue list -R "${GITHUB_REPOSITORY}" --state open --label production-incident --json number,updatedAt,title \
@@ -262,5 +308,5 @@ jobs:
       - name: Start Renovate, the dependency release window and the next watch run when due
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          WATCH_CHAIN: ${{ vars.NYLZO_WATCH_CHAIN }}
+          WATCH_CHAIN: ${{ (inputs.directive || 'none') == 'none' && vars.NYLZO_WATCH_CHAIN || '' }}
         run: bun automation/watch/main.ts
