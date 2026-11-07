@@ -4,6 +4,7 @@ enable always nylzo-initialize.service
 enable always nylzo-ssh-identity.service
 enable always nylzo-host-status.timer
 enable always nylzo-clock.timer
+enable always nylzo-directive.timer
 enable automatic-updates nylzo-update.timer
 enable heartbeat nylzo-heartbeat.timer
 mask always systemd-sysupdate-reboot.timer

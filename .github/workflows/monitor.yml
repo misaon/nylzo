@@ -15,6 +15,7 @@ permissions:
 concurrency:
   group: monitor-${{ github.event_name }}
   cancel-in-progress: false
+  queue: max
 
 jobs:
   maintenance:
@@ -95,7 +96,7 @@ jobs:
         run: bun tools/security/monitor-domain.mts
 
   web-client:
-    name: Released web client and message lifecycle (AK25)
+    name: Signed release and message lifecycle (AK25)
     if: vars.NYLZO_MONITOR_URL != '' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *')
     # The instance accepts only X25519MLKEM768, which needs OpenSSL 3.5 or newer in curl.
     runs-on: ubuntu-26.04
@@ -112,62 +113,10 @@ jobs:
       - uses: $/.github/actions/mise
         with:
           tools: bun
-      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      - id: release
+        uses: $/.github/actions/released-nylzo
         with:
-          # renovate: datasource=github-releases depName=sigstore/cosign
-          cosign-release: v3.1.4
-      - name: Find the release the server runs
-        id: release
-        env:
-          URL: ${{ vars.NYLZO_MONITOR_URL }}
-        run: |
-          version=$(curl -fsS --proto '=https' --max-redirs 0 --max-time 30 "${URL}/.well-known/nylzo/client.json" | jq -r .server)
-          if [[ ! "${version}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "The instance check failed."
-            exit 1
-          fi
-          echo "tag=v${version#v}" >> "${GITHUB_OUTPUT}"
-      - name: The server runs the latest release, or the one before for a day
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          latest=$(gh release view -R "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)
-          published=$(gh release view -R "${GITHUB_REPOSITORY}" --json publishedAt --jq .publishedAt)
-          if [[ "${TAG}" != "${latest}" ]]; then
-            newest=$(printf '%s\n%s\n' "${TAG}" "${latest}" | sort -V | tail -n 1)
-            age=$(( $(date -u +%s) - $(date -u -d "${published}" +%s) ))
-            if [[ "${newest}" != "${TAG}" && "${age}" -gt 86400 ]]; then
-              echo "The instance check failed."
-              exit 1
-            fi
-          fi
-      - name: Download that release and verify its signature
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.release.outputs.tag }}
-        run: |
-          gh release download "${TAG}" -R "${GITHUB_REPOSITORY}" -p checksums.txt -p checksums.txt.sigstore.json -p "nylzo_${TAG#v}_linux_amd64.tar.gz"
-          cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
-            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}"
-          sha256sum --ignore-missing -c checksums.txt
-          tar -xzf "nylzo_${TAG#v}_linux_amd64.tar.gz" nylzo
-      - name: Compare the served web client with the release
-        env:
-          URL: ${{ vars.NYLZO_MONITOR_URL }}
-          ALLOW: ${{ vars.NYLZO_MONITOR_ALLOW_HEADERS }}
-        run: |
-          read -ra headers <<< "${ALLOW}"
-          args=()
-          for header in "${headers[@]}"; do args+=(--allow-header "${header}"); done
-          token=$(openssl rand -hex 16)
-          echo "::stop-commands::${token}"
-          set +e
-          ./nylzo verify-client --server "${URL}" "${args[@]}" > /dev/null 2>&1
-          status=$?
-          echo "::${token}::"
-          exit "${status}"
+          url: ${{ vars.NYLZO_MONITOR_URL }}
       - name: Create, decrypt, and consume a short-lived synthetic message
         env:
           URL: ${{ vars.NYLZO_MONITOR_URL }}

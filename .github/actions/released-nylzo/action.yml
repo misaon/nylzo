@@ -1,0 +1,60 @@
+name: The signed nylzo release a server runs
+description: >-
+  Reads the release a server claims, checks that it is the latest or was replaced less than a day ago, downloads its
+  linux amd64 archive and signed checksums, verifies the signature and extracts ./nylzo.
+inputs:
+  url:
+    description: The instance address, such as https://nylzo.com.
+    required: true
+outputs:
+  tag:
+    description: The release tag the server runs.
+    value: ${{ steps.release.outputs.tag }}
+runs:
+  using: composite
+  steps:
+    - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      with:
+        # renovate: datasource=github-releases depName=sigstore/cosign
+        cosign-release: v3.1.4
+    # The instance accepts only X25519MLKEM768, which needs OpenSSL 3.5 or newer in curl.
+    - name: Find the release the server runs
+      id: release
+      shell: bash
+      env:
+        URL: ${{ inputs.url }}
+      run: |
+        version=$(curl -fsS --proto '=https' --max-redirs 0 --max-time 30 "${URL}/.well-known/nylzo/client.json" | jq -r .server)
+        if [[ ! "${version}" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "The instance names no release."
+          exit 1
+        fi
+        echo "tag=v${version#v}" >> "${GITHUB_OUTPUT}"
+    - name: The server runs the latest release, or the one before for a day
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ steps.release.outputs.tag }}
+      run: |
+        latest=$(gh release view -R "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)
+        published=$(gh release view -R "${GITHUB_REPOSITORY}" --json publishedAt --jq .publishedAt)
+        if [[ "${TAG}" != "${latest}" ]]; then
+          newest=$(printf '%s\n%s\n' "${TAG}" "${latest}" | sort -V | tail -n 1)
+          age=$(( $(date -u +%s) - $(date -u -d "${published}" +%s) ))
+          if [[ "${newest}" != "${TAG}" && "${age}" -gt 86400 ]]; then
+            echo "The instance runs ${TAG}, more than a day after ${latest} was published."
+            exit 1
+          fi
+        fi
+    - name: Download that release and verify its signature
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ steps.release.outputs.tag }}
+      run: |
+        gh release download "${TAG}" -R "${GITHUB_REPOSITORY}" -p checksums.txt -p checksums.txt.sigstore.json -p "nylzo_${TAG#v}_linux_amd64.tar.gz"
+        cosign verify-blob checksums.txt --bundle checksums.txt.sigstore.json \
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+          --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/tags/${TAG}"
+        sha256sum --ignore-missing -c checksums.txt
+        tar -xzf "nylzo_${TAG#v}_linux_amd64.tar.gz" nylzo
