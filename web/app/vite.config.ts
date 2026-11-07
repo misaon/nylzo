@@ -76,11 +76,15 @@ function preloadFonts(): Plugin {
 }
 
 function precompress(): Plugin {
+  let builtDirectory = outputDirectory;
   return {
     name: 'nylzo-precompress',
     apply: 'build',
+    configResolved(config) {
+      builtDirectory = config.build.outDir;
+    },
     closeBundle() {
-      const assets = path.join(outputDirectory, 'assets');
+      const assets = path.join(builtDirectory, 'assets');
       for (const name of readdirSync(assets)) {
         if (!PRECOMPRESSED.test(name)) {
           continue;
@@ -103,7 +107,8 @@ export default defineConfig(({ isSsrBuild }) => ({
     emptyOutDir: true,
     assetsInlineLimit: 0,
     cssCodeSplit: false,
-    modulePreload: false,
+    modulePreload: { polyfill: false },
+    reportCompressedSize: false,
   },
   ssr: { noExternal: ['@nylzo/core'] },
   worker: { format: 'es' },
@@ -121,11 +126,17 @@ export default defineConfig(({ isSsrBuild }) => ({
           include: ['src/**/*.test.ts'],
           exclude: ['src/**/*.svelte.test.ts'],
           testTimeout: 30_000,
+          setupFiles: ['src/shared/language/test-catalogs.ts'],
         },
       },
       {
         resolve: { conditions: ['browser'] },
-        test: { name: 'client', include: ['src/**/*.svelte.test.ts'], environment: './client-environment.ts' },
+        test: {
+          name: 'client',
+          include: ['src/**/*.svelte.test.ts'],
+          environment: './client-environment.ts',
+          setupFiles: ['src/shared/language/test-catalogs.ts'],
+        },
       },
     ],
   },

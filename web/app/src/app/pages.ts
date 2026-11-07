@@ -1,4 +1,5 @@
 import { isReadPath } from '@nylzo/core';
+import type { Component } from 'svelte';
 
 import { LANGUAGES } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
@@ -26,3 +27,13 @@ export function screenOf(path: string): Screen {
   }
   return PAGES.get(path) ?? (isReadPath(path) ? 'read' : 'notFound');
 }
+
+export const SCREENS = {
+  agents: async () => import('../features/agents/Agents.svelte'),
+  create: async () => import('../features/create/Create.svelte'),
+  notFound: async () => import('../features/errors/NotFound.svelte'),
+  read: async () => import('../features/read/Read.svelte'),
+  sent: async () => import('../features/sent/Sent.svelte'),
+  terms: async () => import('../features/terms/Terms.svelte'),
+  transparency: async () => import('../features/transparency/Transparency.svelte'),
+} satisfies Record<Screen, () => Promise<{ readonly default: Component }>>;

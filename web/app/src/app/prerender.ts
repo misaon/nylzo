@@ -2,18 +2,24 @@ import { render } from 'svelte/server';
 
 import { agentsGuide } from '../features/agents/agents-content.ts';
 import { LONGEST_TTL_DAYS } from '../features/create/composer/create-form.ts';
+import Create from '../features/create/Create.svelte';
 import { FAQ_KEYS } from '../features/create/sections/faq-entries.ts';
 import { STATUS_PAGES } from '../features/errors/status-page.ts';
 import type { StatusPage } from '../features/errors/status-page.ts';
 import StatusDocument from '../features/errors/StatusDocument.svelte';
+import { czech } from '../shared/language/czech.ts';
+import { english } from '../shared/language/english.ts';
 import { formatDays } from '../shared/language/format.ts';
 import { LANGUAGES } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
-import { Translator } from '../shared/language/translator.svelte.ts';
+import { addCatalog, Translator } from '../shared/language/translator.svelte.ts';
 import type { Translate } from '../shared/language/translator.svelte.ts';
 import { REPOSITORY_URL } from '../shared/shell/repository.ts';
 import App from './App.svelte';
 import { HOME_PATHS } from './pages.ts';
+
+addCatalog('cs', czech);
+addCatalog('en', english);
 
 interface OgImage {
   readonly path: string;
@@ -188,7 +194,7 @@ function fontPreloads(page: string, language: Language): string {
 }
 
 export function homeTemplate(index: string, language: Language, { image, styles }: HomeAssets): string {
-  const { head, body } = render(App, { props: { start: { path: HOME_PATHS[language], language } } });
+  const { head, body } = render(App, { props: { start: { path: HOME_PATHS[language], language }, page: Create } });
   let page = replaceOnce(index, /<html lang="[a-z]+">/u, `<html lang="${language}">`);
   page = replaceOnce(page, /<meta\s+name="description"[^>]*>\s*/u, '');
   const logo = APPLE_TOUCH_ICON.exec(index)?.[1];

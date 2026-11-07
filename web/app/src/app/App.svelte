@@ -1,17 +1,11 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
+  import type { Component } from 'svelte';
   import { prefersReducedMotion } from 'svelte/motion';
 
-  import Agents from '../features/agents/Agents.svelte';
-  import Create from '../features/create/Create.svelte';
-  import NotFound from '../features/errors/NotFound.svelte';
-  import Read from '../features/read/Read.svelte';
-  import Sent from '../features/sent/Sent.svelte';
-  import Terms from '../features/terms/Terms.svelte';
-  import Transparency from '../features/transparency/Transparency.svelte';
   import { browserPreferences, saveLanguage } from '../shared/language/language.ts';
   import type { Language } from '../shared/language/language.ts';
-  import { setTranslator, Translator } from '../shared/language/translator.svelte.ts';
+  import { loadCatalog, setTranslator, Translator } from '../shared/language/translator.svelte.ts';
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
@@ -20,6 +14,7 @@
 
   interface Props {
     readonly start: { readonly path: string; readonly language: Language };
+    readonly page: Component;
   }
 
   const HEADER_VARIANTS = {
@@ -32,7 +27,7 @@
     transparency: 'page',
   } as const satisfies Record<Screen, 'home' | 'page' | 'read'>;
 
-  const { start }: Props = $props();
+  const { start, page: Page }: Props = $props();
   const path = untrack(() => start.path);
   const screen: Screen = screenOf(path);
   const translator = setTranslator(new Translator(untrack(() => start.language)));
@@ -45,10 +40,11 @@
     }
   }
 
-  function switchLanguage(language: Language) {
+  async function switchLanguage(language: Language) {
     if (translator.language === language) {
       return;
     }
+    await loadCatalog(language);
     const applyLanguage = async () => {
       translator.language = language;
       document.documentElement.lang = language;
@@ -71,26 +67,26 @@
 <div class="relative min-h-dvh overflow-x-clip bg-void-950 font-sans text-ink">
   <Sky />
   <div class="relative z-10 flex min-h-dvh flex-col">
-    <SiteHeader {variant} current={screen} onlanguage={switchLanguage} />
+    <SiteHeader {variant} current={screen} onlanguage={(language) => void switchLanguage(language)} />
     <main class={['flex-1', screen !== 'notFound' && 'min-h-svh']}>
       <svelte:boundary>
         {#if screen === 'read'}
-          <Read />
+          <Page />
         {:else if screen === 'create'}
-          <Create />
+          <Page />
         {:else if screen === 'agents'}
-          <Agents />
+          <Page />
         {:else if screen === 'notFound'}
-          <NotFound />
+          <Page />
         {:else}
           <div class="mx-auto max-w-column px-4 pt-16 pb-24 sm:px-6 md:pt-24">
             <div class="glass animate-rise rounded-card p-6 [animation-delay:80ms] md:p-10">
               {#if screen === 'sent'}
-                <Sent />
+                <Page />
               {:else if screen === 'terms'}
-                <Terms />
+                <Page />
               {:else}
-                <Transparency />
+                <Page />
               {/if}
             </div>
           </div>
@@ -103,6 +99,6 @@
         {/snippet}
       </svelte:boundary>
     </main>
-    <SiteFooter compact={screen === 'read'} current={screen} onlanguage={switchLanguage} />
+    <SiteFooter compact={screen === 'read'} current={screen} onlanguage={(language) => void switchLanguage(language)} />
   </div>
 </div>
