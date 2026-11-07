@@ -732,7 +732,7 @@ export const czech = {
   'extra.signed.proof': 'Bez klíče: zamítnuto',
   'extra.padding.title': 'Heslo i\u{A0}odstavec vypadají stejně',
   'extra.padding.text': 'Zprávy doplníme na celé bloky, takže server nepozná krátké heslo od dlouhého textu.',
-  'extra.padding.proof': 'Bloky po 4\u{A0}KiB a\u{A0}64\u{A0}KiB',
+  'extra.padding.proof': 'Bloky po 64\u{A0}KiB',
   'extra.forget.title': 'Server zapomíná',
   'extra.forget.text':
     'Smazané záznamy v\u{A0}databázi přepíše nulami. Časy zprávy uchovává zašifrované a\u{A0}zaokrouhlené na minutu.',
@@ -743,7 +743,7 @@ export const czech = {
   'extra.twice.proof': 'Go a\u{A0}TypeScript',
   'extra.standards.title': 'Žádná vlastní kryptografie',
   'extra.standards.text': 'Jen prověřené standardy s\u{A0}veřejnou specifikací.',
-  'extra.standards.proof': 'AES-256-GCM a\u{A0}dalších 5\u{A0}standardů',
+  'extra.standards.proof': 'AES-256-GCM a\u{A0}dalších 6\u{A0}standardů',
 
   'host.eyebrow': 'Vlastní server',
   'host.title': 'Provozujte Nylzo u\u{A0}sebe',

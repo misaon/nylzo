@@ -737,7 +737,7 @@ export const english: Record<MessageKey, string> = {
   'extra.signed.proof': 'Without the key: denied',
   'extra.padding.title': 'A password and a paragraph look the same',
   'extra.padding.text': 'We pad messages to whole blocks, so the server cannot tell a short password from a long text.',
-  'extra.padding.proof': 'Blocks of 4 KiB and 64 KiB',
+  'extra.padding.proof': 'Blocks of 64 KiB',
   'extra.forget.title': 'The server forgets',
   'extra.forget.text':
     'It overwrites deleted database records with zeros. It keeps message times encrypted and rounded to the minute.',
@@ -748,7 +748,7 @@ export const english: Record<MessageKey, string> = {
   'extra.twice.proof': 'Go and TypeScript',
   'extra.standards.title': 'No home-made cryptography',
   'extra.standards.text': 'Only proven standards with a public specification.',
-  'extra.standards.proof': 'AES-256-GCM and 5 more standards',
+  'extra.standards.proof': 'AES-256-GCM and 6 more standards',
 
   'host.eyebrow': 'Self-hosting',
   'host.title': 'Run Nylzo yourself',
