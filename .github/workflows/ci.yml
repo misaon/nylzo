@@ -390,10 +390,10 @@ jobs:
       matrix:
         include:
           - browser: chromium
-            runner: ubuntu-latest
+            runner: ubuntu-26.04
             install: chromium
           - browser: firefox
-            runner: ubuntu-latest
+            runner: ubuntu-26.04
             install: firefox
           - browser: webkit
             runner: macos-26
