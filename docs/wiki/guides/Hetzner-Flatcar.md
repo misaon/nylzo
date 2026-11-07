@@ -52,9 +52,9 @@ Keep `publicAccess: false` during acceptance: HTTPS then answers only the admini
 
 After the first provisioning from the laptop, `infrastructure.yml` plans and applies every stack from `main`, so infrastructure changes need no laptop and no SSH:
 
-- A push to `main` that changes an OpenTofu stack, the toolchain or the deploy tool plans the server stack, then the DNS stack, in the `infrastructure-plan` environment, and applies a plan with changes in the `infrastructure` environment. Apply checks that the inputs still hash to the reviewed plan, which expires after an hour.
+- A push to `main` that changes an OpenTofu stack, the toolchain or the deploy tool plans the server stack, then the DNS stack, in the `infrastructure-plan` environment, and applies a plan with changes in the `infrastructure` environment. Apply checks that the inputs still hash to the reviewed plan, which expires after an hour. An open `production-incident` issue blocks every apply, so an update cannot undo the [kill switch](Host-monitoring.md#production-watch).
 - A daily run only plans; a stack whose plan has changes fails as drift.
-- `gh workflow run infrastructure.yml -f stack=image` builds a new verified Flatcar image after a Flatcar update; the server stack then finds the newest verified image by its labels.
+- `gh workflow run infrastructure.yml -f stack=image` builds a new verified Flatcar image for new servers. A running server keeps its image and Ignition, because Flatcar updates itself in place, so neither change rebuilds it.
 - State lives in an S3-compatible bucket, one object per stack, encrypted by OpenTofu with the state passphrase before it leaves the runner.
 
 One-time setup, in this order:

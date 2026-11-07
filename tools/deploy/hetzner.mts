@@ -25,6 +25,8 @@ try {
       if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `changes=${changes}\n`);
       console.log(changes ? "Review this plan, then use deploy apply with the same arguments. Plans expire after one hour." : "The infrastructure already matches this configuration.");
     } else if (command === "apply") {
+      // The plan hashed the zone imports, and CI applies on a fresh runner.
+      if (kind === "dns") await importDns(prepared);
       const reviewed = JSON.parse(await readFile(path.join(directory, "review.json"), "utf8"));
       assert.equal(reviewed.inputs, await inputs(directory), "Configuration changed; create and review a new plan");
       assert.equal(reviewed.plan, await planHash(), "Saved plan changed");

@@ -27,9 +27,14 @@ permissions: {}
 concurrency:
   group: infrastructure
   cancel-in-progress: false
+  # A scheduled drift check must not replace an apply that waits for its turn.
+  queue: max
 
 jobs:
   server:
+    permissions:
+      contents: read
+      issues: read # the apply job's incident check
     if: >-
       github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
       (github.event_name != 'workflow_dispatch' || inputs.stack == 'server')
@@ -39,6 +44,9 @@ jobs:
       apply: ${{ github.event_name != 'schedule' }}
 
   dns:
+    permissions:
+      contents: read
+      issues: read # the apply job's incident check
     needs: server
     if: >-
       always() && github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
@@ -49,6 +57,9 @@ jobs:
       apply: ${{ github.event_name != 'schedule' }}
 
   image:
+    permissions:
+      contents: read
+      issues: read # the apply job's incident check
     if: github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' && inputs.stack == 'image'
     uses: $/.github/workflows/infrastructure-stack.yml
     with:
