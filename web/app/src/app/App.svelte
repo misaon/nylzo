@@ -1,8 +1,14 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
-  import type { Component } from 'svelte';
   import { prefersReducedMotion } from 'svelte/motion';
 
+  import Agents from '../features/agents/Agents.svelte';
+  import Create from '../features/create/Create.svelte';
+  import NotFound from '../features/errors/NotFound.svelte';
+  import Read from '../features/read/Read.svelte';
+  import Sent from '../features/sent/Sent.svelte';
+  import Terms from '../features/terms/Terms.svelte';
+  import Transparency from '../features/transparency/Transparency.svelte';
   import { browserPreferences, saveLanguage } from '../shared/language/language.ts';
   import type { Language } from '../shared/language/language.ts';
   import { loadCatalog, setTranslator, Translator } from '../shared/language/translator.svelte.ts';
@@ -14,7 +20,6 @@
 
   interface Props {
     readonly start: { readonly path: string; readonly language: Language };
-    readonly page: Component;
   }
 
   const HEADER_VARIANTS = {
@@ -27,7 +32,7 @@
     transparency: 'page',
   } as const satisfies Record<Screen, 'home' | 'page' | 'read'>;
 
-  const { start, page: Page }: Props = $props();
+  const { start }: Props = $props();
   const path = untrack(() => start.path);
   const screen: Screen = screenOf(path);
   const translator = setTranslator(new Translator(untrack(() => start.language)));
@@ -71,22 +76,22 @@
     <main class={['flex-1', screen !== 'notFound' && 'min-h-svh']}>
       <svelte:boundary>
         {#if screen === 'read'}
-          <Page />
+          <Read />
         {:else if screen === 'create'}
-          <Page />
+          <Create />
         {:else if screen === 'agents'}
-          <Page />
+          <Agents />
         {:else if screen === 'notFound'}
-          <Page />
+          <NotFound />
         {:else}
           <div class="mx-auto max-w-column px-4 pt-16 pb-24 sm:px-6 md:pt-24">
             <div class="glass animate-rise rounded-card p-6 [animation-delay:80ms] md:p-10">
               {#if screen === 'sent'}
-                <Page />
+                <Sent />
               {:else if screen === 'terms'}
-                <Page />
+                <Terms />
               {:else}
-                <Page />
+                <Transparency />
               {/if}
             </div>
           </div>

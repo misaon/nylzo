@@ -6,8 +6,7 @@ import { browserPreferences, savedLanguage, storedLanguage } from '../shared/lan
 import type { Language } from '../shared/language/language.ts';
 import { loadCatalog } from '../shared/language/translator.svelte.ts';
 import { takeHandoff } from '../shared/local-client/handoff.ts';
-import { HOME_PATHS, homeLanguage, screenOf, SCREENS } from './pages.ts';
-import type { Screen } from './pages.ts';
+import { HOME_PATHS, homeLanguage, screenOf } from './pages.ts';
 
 const FONT_WAIT_MS = 1500;
 const PAINT_WAIT_MS = 1000;
@@ -47,13 +46,9 @@ async function contentPainted(): Promise<void> {
   });
 }
 
-async function loadScreen(screen: Screen, language: Language) {
-  const [{ App, prepare, tidy }, { default: page }] = await Promise.all([
-    import('./start.ts'),
-    SCREENS[screen](),
-    loadCatalog(language),
-  ]);
-  return { App, prepare, tidy, page };
+async function loadApp(language: Language) {
+  const [{ App, prepare, tidy }] = await Promise.all([import('./start.ts'), loadCatalog(language)]);
+  return { App, prepare, tidy };
 }
 
 async function boot(): Promise<void> {
@@ -73,16 +68,16 @@ async function boot(): Promise<void> {
   const language = homePage ?? savedLanguage(preferences, navigator.languages);
   document.documentElement.lang = language;
   // A prerendered home page shows its content first, so its code waits for that paint; other pages load it with the fonts.
-  const screenModules = homePage ? undefined : loadScreen(screen, language);
+  const appModules = homePage ? undefined : loadApp(language);
   await fontsLoaded(homePage ? HOME_FONT_SAMPLES[homePage] : ANY_TEXT_SAMPLE);
   document.documentElement.dataset['fonts'] = '';
   if (document.body.firstElementChild) {
     await contentPainted();
   }
-  const { App, prepare, tidy, page } = await (screenModules ?? loadScreen(screen, language));
+  const { App, prepare, tidy } = await (appModules ?? loadApp(language));
   await nextTask();
   prepare();
-  const options = { target: document.body, props: { start: { path, language }, page } };
+  const options = { target: document.body, props: { start: { path, language } } };
   if (document.body.firstElementChild) {
     hydrate(App, options);
   } else {

@@ -4,7 +4,7 @@ import { SvelteMap } from 'svelte/reactivity';
 import type { MessageKey } from './czech.ts';
 import type { Language } from './language.ts';
 
-export type Catalog = Readonly<Record<MessageKey, string>>;
+type Catalog = Readonly<Record<MessageKey, string>>;
 
 const CATALOG_SOURCES = {
   cs: async () => import('./czech.ts').then(({ czech }) => czech),
@@ -12,10 +12,6 @@ const CATALOG_SOURCES = {
 } satisfies Record<Language, () => Promise<Catalog>>;
 const catalogs = new SvelteMap<Language, Catalog>();
 const PLACEHOLDER = /\{(\w+)\}/gu;
-
-export function addCatalog(language: Language, catalog: Catalog): void {
-  catalogs.set(language, catalog);
-}
 
 // Each visitor downloads only the language they read; the other one loads before a switch.
 export async function loadCatalog(language: Language): Promise<void> {

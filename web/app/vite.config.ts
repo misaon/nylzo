@@ -27,6 +27,7 @@ const VITE_BROWSER_NAMES = new Map([
   ['safari', 'safari'],
 ]);
 const versionOrder = new Intl.Collator('en', { numeric: true });
+const SAFARI_MODULE_INTEGRITY_BUG = 'https://bugs.webkit.org/show_bug.cgi?id=326340';
 
 function browserTargets(): string[] {
   const browsers = browserslist(undefined, { path: import.meta.dirname });
@@ -75,16 +76,31 @@ function preloadFonts(): Plugin {
   };
 }
 
+function staticImportsOnlyFromEntry(): Plugin {
+  return {
+    name: 'nylzo-static-imports-only-from-entry',
+    apply: 'build',
+    generateBundle(_, bundle) {
+      const chunks = Object.values(bundle).filter((output) => output.type === 'chunk');
+      const entries = new Set(chunks.filter((chunk) => chunk.isEntry).map((chunk) => chunk.fileName));
+      for (const chunk of chunks) {
+        const unloaded = chunk.imports.filter((name) => chunk.isEntry || !entries.has(name));
+        if (unloaded.length > 0) {
+          this.error(
+            `${chunk.fileName} statically imports ${unloaded.join(', ')}. Under Integrity-Policy, Safari blocks a static import of any chunk that is not loaded yet (${SAFARI_MODULE_INTEGRITY_BUG}), so shared code must stay in the entry chunk.`,
+          );
+        }
+      }
+    },
+  };
+}
+
 function precompress(): Plugin {
-  let builtDirectory = outputDirectory;
   return {
     name: 'nylzo-precompress',
     apply: 'build',
-    configResolved(config) {
-      builtDirectory = config.build.outDir;
-    },
-    closeBundle() {
-      const assets = path.join(builtDirectory, 'assets');
+    writeBundle({ dir = outputDirectory }) {
+      const assets = path.join(dir, 'assets');
       for (const name of readdirSync(assets)) {
         if (!PRECOMPRESSED.test(name)) {
           continue;
@@ -98,7 +114,11 @@ function precompress(): Plugin {
 }
 
 export default defineConfig(({ isSsrBuild }) => ({
-  plugins: [tailwindcss(), svelte(), ...(isSsrBuild ? [] : [buildMetadata(), preloadFonts(), precompress()])],
+  plugins: [
+    tailwindcss(),
+    svelte(),
+    ...(isSsrBuild ? [] : [buildMetadata(), preloadFonts(), staticImportsOnlyFromEntry(), precompress()]),
+  ],
   define: { __NYLZO_BUILD_INFO__: JSON.stringify(information) },
   server: { strictPort: true, proxy: { '/api': developmentApi } },
   build: {
@@ -107,7 +127,7 @@ export default defineConfig(({ isSsrBuild }) => ({
     emptyOutDir: true,
     assetsInlineLimit: 0,
     cssCodeSplit: false,
-    modulePreload: { polyfill: false },
+    modulePreload: false,
     reportCompressedSize: false,
   },
   ssr: { noExternal: ['@nylzo/core'] },

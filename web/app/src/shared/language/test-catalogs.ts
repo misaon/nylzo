@@ -1,6 +1,4 @@
-import { czech } from './czech.ts';
-import { english } from './english.ts';
-import { addCatalog } from './translator.svelte.ts';
+import { LANGUAGES } from './language.ts';
+import { loadCatalog } from './translator.svelte.ts';
 
-addCatalog('cs', czech);
-addCatalog('en', english);
+await Promise.all(LANGUAGES.map(async (language) => loadCatalog(language)));
