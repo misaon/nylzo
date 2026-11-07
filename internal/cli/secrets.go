@@ -29,6 +29,9 @@ var (
 	errManageToken      = errors.New(
 		"a manage token has two lines: the message address without the part after # and the token",
 	)
+	errManageTokenSource = errors.New(
+		"pass the manage token with --manage-token-file, " + envManageToken + " or on stdin",
+	)
 )
 
 func noteSource(environment *command.Environment, what, variable string) {
@@ -142,9 +145,7 @@ func readManageToken(environment *command.Environment, file string) (manageToken
 	case path != "":
 		raw, err = command.ReadFileLimited(path, maxSecretInput)
 	case environment.Terminal.StdinIsTerminal():
-		return manageToken{}, errors.New(
-			"pass the manage token with --manage-token-file, " + envManageToken + " or on stdin",
-		)
+		return manageToken{}, errManageTokenSource
 	default:
 		raw, err = command.ReadLimited(environment.Stdin, maxSecretInput)
 	}

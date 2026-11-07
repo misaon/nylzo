@@ -66,6 +66,7 @@ func KeyFor(publicKey []byte, locator Locator, purpose Purpose) Key {
 	if err != nil {
 		panic(err)
 	}
+	defer clear(derived)
 	return Key(derived)
 }
 
@@ -75,6 +76,7 @@ func Wrap(wrapping, key Key, locator Locator, purpose Purpose) []byte {
 
 func Unwrap(wrapping Key, wrapped []byte, locator Locator, purpose Purpose) (Key, error) {
 	opened, err := open(wrapping, wrapped, locator, label(purpose))
+	defer clear(opened)
 	if err != nil || len(opened) != KeyLen {
 		return Key{}, ErrOpen
 	}
@@ -87,6 +89,7 @@ func WrapBlobKey(recordKey, blobKey Key, locator Locator) []byte {
 
 func UnwrapBlobKey(recordKey Key, wrapped []byte, locator Locator) (Key, error) {
 	opened, err := open(subkey(recordKey, locator, infoBlobWrap), wrapped, locator, labelBlob)
+	defer clear(opened)
 	if err != nil || len(opened) != KeyLen {
 		return Key{}, ErrOpen
 	}
@@ -111,6 +114,7 @@ func subkey(recordKey Key, locator Locator, info string) Key {
 	if err != nil {
 		panic(err)
 	}
+	defer clear(derived)
 	return Key(derived)
 }
 
@@ -151,6 +155,7 @@ func BlobStream(blobKey Key, salt EraseSalt) cipher.Stream {
 	if err != nil {
 		panic(err)
 	}
+	defer clear(derived)
 	//nolint:gosec // G407: every blob has its own random key and salt, so its counter may start at zero.
 	return cipher.NewCTR(newBlock(Key(derived)), make([]byte, aes.BlockSize))
 }

@@ -76,12 +76,12 @@ func ParseAuthorization(header string) (Signature, error) {
 	if !ok || scheme != AuthScheme {
 		return Signature{}, ErrAuthorization
 	}
-	fields := strings.Split(value, ".")
-	if len(fields) != 3 {
-		return Signature{}, ErrAuthorization
-	}
 	var signature Signature
 	targets := [][]byte{signature.PublicKey[:], signature.Challenge[:], signature.Value[:]}
+	fields := strings.Split(value, ".")
+	if len(fields) != len(targets) {
+		return Signature{}, ErrAuthorization
+	}
 	for i, target := range targets {
 		if !decodeInto(target, fields[i]) {
 			return Signature{}, ErrAuthorization

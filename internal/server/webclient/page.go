@@ -23,6 +23,11 @@ const (
 
 var homeTemplates = map[string]string{englishHome: "home.en.html", czechHome: "home.cs.html"}
 
+var (
+	errPublicMarkersUnpaired    = errors.New("the public markers do not pair up")
+	errPlaceholderOutsidePublic = errors.New("the public URL placeholder appears outside a public block")
+)
+
 func IsHomePath(path string) bool {
 	_, ok := homeTemplates[path]
 	return ok
@@ -82,11 +87,11 @@ func render(template, publicURL string) (string, error) {
 			break
 		}
 		if start < 0 || end < start || strings.Contains(rest[start+len(publicStart):end], publicStart) {
-			return "", errors.New("the public markers do not pair up")
+			return "", errPublicMarkersUnpaired
 		}
 		outside, block := rest[:start], rest[start+len(publicStart):end]
 		if strings.Contains(outside, publicURLPlaceholder) {
-			return "", errors.New("the public URL placeholder appears outside a public block")
+			return "", errPlaceholderOutsidePublic
 		}
 		out.WriteString(outside)
 		if publicURL != "" {
@@ -95,7 +100,7 @@ func render(template, publicURL string) (string, error) {
 		rest = rest[end+len(publicEnd):]
 	}
 	if strings.Contains(rest, publicURLPlaceholder) {
-		return "", errors.New("the public URL placeholder appears outside a public block")
+		return "", errPlaceholderOutsidePublic
 	}
 	out.WriteString(rest)
 	return out.String(), nil

@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,21 @@ var (
 		"the message carries an attachment, which --stdout cannot deliver, so it was not saved; " +
 			"a link does not show this before it is opened, so read links that may carry a file with --out DIR",
 	)
+	errLinkNewerVersion = errors.New("the link was made by a newer version of nylzo; update nylzo from " + releasesURL)
+	errLinkReleased     = errors.New(
+		"the link is from before this instance's security upgrade, which deleted every message it held; " +
+			"ask the sender for a new link",
+	)
+	errLinkRetiredProfile = errors.New(
+		"the link uses a passphrase profile that nylzo no longer supports; ask the sender for a new link",
+	)
+	errLinkDamaged      = errors.New("the link is incomplete or damaged")
+	errLinkMismatch     = errors.New("the link does not match the message on the server")
+	errPassphraseNeeded = errors.New(
+		"this message needs a passphrase: use --passphrase-file, " + envPassphrase + " or --ask-passphrase",
+	)
+	errOutNotDirectory = errors.New("--out must name an existing directory")
+	errOutNotCreated   = errors.New("--out: cannot create a private directory there")
 )
 
 type readOptions struct {
@@ -75,18 +91,13 @@ func parseOpenLink(raw string) (openLink, error) {
 	parsed, err := core.ParseLink(raw)
 	switch {
 	case errors.Is(err, core.ErrLinkVersion):
-		return openLink{}, errors.New("the link was made by a newer version of nylzo; update nylzo from " + releasesURL)
+		return openLink{}, errLinkNewerVersion
 	case errors.Is(err, core.ErrLinkReleased):
-		return openLink{}, errors.New(
-			"the link is from before this instance's security upgrade, which deleted every message it held; " +
-				"ask the sender for a new link",
-		)
+		return openLink{}, errLinkReleased
 	case errors.Is(err, core.ErrLinkRetiredKDF):
-		return openLink{}, errors.New(
-			"the link uses a passphrase profile that nylzo no longer supports; ask the sender for a new link",
-		)
+		return openLink{}, errLinkRetiredProfile
 	case err != nil:
-		return openLink{}, errors.New("the link is incomplete or damaged")
+		return openLink{}, errLinkDamaged
 	default:
 	}
 	origin, err := linkOrigin(raw)
@@ -256,10 +267,10 @@ func readMessage(
 // checkMetadata refuses before anything is spent: an ended message and a link of another profile.
 func checkMetadata(link *openLink, metadata *client.Metadata) error {
 	if metadata.State != "available" {
-		return &client.APIError{Status: 410, Kind: "gone", State: metadata.State}
+		return &client.APIError{Status: http.StatusGone, Kind: "gone", State: metadata.State}
 	}
 	if err := core.AssertProfile(link.kdf, metadata.KDF); err != nil {
-		return errors.New("the link does not match the message on the server")
+		return errLinkMismatch
 	}
 	return nil
 }
@@ -296,9 +307,7 @@ func passphraseKey(environment *command.Environment, link *openLink, source pass
 	}
 	passphrase, err := readPassphrase(environment, source, false)
 	if errors.Is(err, console.ErrNoTerminal) {
-		return nil, errors.New(
-			"this message needs a passphrase: use --passphrase-file, " + envPassphrase + " or --ask-passphrase",
-		)
+		return nil, errPassphraseNeeded
 	}
 	if err != nil {
 		return nil, err
@@ -459,11 +468,11 @@ func escapeTerminalControls(text string) string {
 
 func outputDir(base string) (string, error) {
 	if info, err := os.Stat(base); err != nil || !info.IsDir() {
-		return "", errors.New("--out must name an existing directory")
+		return "", errOutNotDirectory
 	}
 	directory, err := os.MkdirTemp(base, outputDirPrefix)
 	if err != nil {
-		return "", errors.New("--out: cannot create a private directory there")
+		return "", errOutNotCreated
 	}
 	return directory, nil
 }

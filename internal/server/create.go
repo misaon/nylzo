@@ -100,11 +100,7 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stored := false
-	defer func() {
-		if !stored {
-			releaseSlot()
-		}
-	}()
+	defer releaseUnlessStored(r.Context(), releaseSlot, &stored)
 	if !s.idAvailable(w, r, request.id) {
 		return
 	}
@@ -224,13 +220,19 @@ func (c *createRequest) decodeKeys() bool {
 		!bytes.Equal(c.verifierKey, c.manageKey)
 }
 
+func releaseUnlessStored(ctx context.Context, release func(context.Context), stored *bool) {
+	if !*stored {
+		release(ctx)
+	}
+}
+
 // reserveCreate counts the attempt against the address limits and reserves a slot in the global cap.
 func (s *Server) reserveCreate(
 	w http.ResponseWriter,
 	r *http.Request,
 	request *createRequest,
 	now time.Time,
-) (func(), bool) {
+) (func(context.Context), bool) {
 	if retry := s.limitCreate(now, s.clientAddress(r), request.header.Size); retry > 0 {
 		setRetryAfter(w, retry)
 		rejectCreate(
@@ -262,10 +264,10 @@ func (s *Server) reserveCreate(
 		s.rejectCapped(w, r, now)
 		return nil, false
 	}
-	release := func() { s.releaseGlobalCreate(r.Context(), now) }
+	release := func(ctx context.Context) { s.releaseGlobalCreate(ctx, now) }
 	if !gate.workNeeded && s.workNeededAfter(slot.number-1) {
 		rejectCreate(w, r, http.StatusForbidden, errWorkRequired)
-		release()
+		release(r.Context())
 		return nil, false
 	}
 	return release, true

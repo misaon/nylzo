@@ -1,6 +1,7 @@
 package vectors
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -20,8 +21,9 @@ type MetaCase struct {
 }
 
 var (
-	nested32 = strings.Repeat("[", 31) + strings.Repeat("]", 31)
-	nested33 = strings.Repeat("[", 32) + strings.Repeat("]", 32)
+	errMetaAccepted = errors.New("must be rejected")
+	nested32        = strings.Repeat("[", 31) + strings.Repeat("]", 31)
+	nested33        = strings.Repeat("[", 32) + strings.Repeat("]", 32)
 )
 
 var metaCases = []MetaCase{
@@ -101,7 +103,7 @@ func (f *File) meta() error {
 		meta, err := envelope.DecodeMeta([]byte(vector.Input))
 		if !vector.Valid {
 			if err == nil {
-				return fmt.Errorf("vectors: meta %q must be rejected", vector.Name)
+				return fmt.Errorf("vectors: meta %q %w", vector.Name, errMetaAccepted)
 			}
 			f.Meta = append(f.Meta, vector)
 			continue

@@ -50,10 +50,13 @@ func (e *Environment) BuildInformation() buildinfo.Info {
 }
 
 var (
-	errUsage   = errors.New("usage")
-	errHelp    = errors.New("help")
-	errTooLong = errors.New("the input is longer than nylzo accepts")
-	keyLike    = regexp.MustCompile(
+	errUsage          = errors.New("usage")
+	errHelp           = errors.New("help")
+	errTooLong        = errors.New("the input is longer than nylzo accepts")
+	errFileMissing    = errors.New("the file does not exist")
+	errFileDenied     = errors.New("the file is not readable")
+	errFileUnreadable = errors.New("the file cannot be read")
+	keyLike           = regexp.MustCompile(
 		fmt.Sprintf(`[A-Za-z0-9_-]{%d,}`, base64.RawURLEncoding.EncodedLen(core.SecretLen)),
 	)
 	badFlagValue = regexp.MustCompile(`invalid (?:boolean )?value .* for flag -([a-z-]+)`)
@@ -165,10 +168,10 @@ func ReadFileLimited(path string, limit int64) ([]byte, error) {
 func Unreadable(err error) error {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return errors.New("the file does not exist")
+		return errFileMissing
 	case errors.Is(err, fs.ErrPermission):
-		return errors.New("the file is not readable")
+		return errFileDenied
 	default:
-		return errors.New("the file cannot be read")
+		return errFileUnreadable
 	}
 }

@@ -16,7 +16,12 @@ var (
 	patternLiteral = regexp.MustCompile(`^[A-Za-z0-9_/.~%@!&,;=-]$`)
 )
 
-var errContact = errors.New("want an email address or an https:// address without user, fragment or dot segments")
+var (
+	errContact = errors.New(
+		"want an email address or an https:// address without user, fragment or dot segments",
+	)
+	errTransparencyNotJSON = errors.New("the transparency document is not valid JSON")
+)
 
 // The addresses the client links to; a link that redirects fails, because the allowlist refuses redirects.
 var linkedAddresses = []string{`"https://github.com/misaon/nylzo"`, `"https://github.com/misaon/nylzo/*"`}
@@ -103,7 +108,7 @@ func OperatorContact(transparency []byte) (string, error) {
 		} `json:"operator"`
 	}
 	if err := json.Unmarshal(transparency, &document); err != nil {
-		return "", errors.New("the transparency document is not valid JSON")
+		return "", errTransparencyNotJSON
 	}
 	if err := CheckContact(document.Operator.Contact); err != nil {
 		return "", err

@@ -14,6 +14,11 @@ import (
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
+var (
+	errNoReplacer          = errors.New("nylzo_error requires a request replacer")
+	errOutsideHandleErrors = errors.New("nylzo_error runs only inside handle_errors")
+)
+
 func init() {
 	caddy.RegisterModule(&ErrorPage{})
 	httpcaddyfile.RegisterHandlerDirective(
@@ -69,12 +74,12 @@ func (e *ErrorPage) UnmarshalCaddyfile(dispenser *caddyfile.Dispenser) error {
 func (e *ErrorPage) ServeHTTP(w http.ResponseWriter, r *http.Request, _ caddyhttp.Handler) error {
 	replacer, ok := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	if !ok {
-		return errors.New("nylzo_error requires a request replacer")
+		return errNoReplacer
 	}
 	value, _ := replacer.Get("http.error.status_code")
 	status, ok := value.(int)
 	if !ok {
-		return errors.New("nylzo_error runs only inside handle_errors")
+		return errOutsideHandleErrors
 	}
 	if status >= http.StatusInternalServerError {
 		e.pages.ServeServerError(w, r, status)

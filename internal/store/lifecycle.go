@@ -141,11 +141,14 @@ func consumeOpen(record *Record, parameters *ClaimParameters, now time.Time) Lea
 	return lease
 }
 
+// The cap keeps the shift far from overflowing a Duration; MaxBackoff bounds the result long before it.
+const maxBackoffDoublings = 20
+
 func backoff(failures int) time.Duration {
 	if failures <= FreeAttempts {
 		return 0
 	}
-	return min(MaxBackoff, time.Second<<min(failures-FreeAttempts, 20))
+	return min(MaxBackoff, time.Second<<min(failures-FreeAttempts, maxBackoffDoublings))
 }
 
 func RecordDownload(ctx context.Context, messages Messages, record *Record, leaseMAC []byte, now time.Time) error {

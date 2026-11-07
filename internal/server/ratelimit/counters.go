@@ -23,7 +23,7 @@ func Hour(now time.Time) Window {
 func Day(now time.Time) Window {
 	utc := now.UTC()
 	start := time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
-	return Window{Start: start, End: start.Add(24 * time.Hour)}
+	return Window{Start: start, End: start.AddDate(0, 0, 1)}
 }
 
 type Hit struct {

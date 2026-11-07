@@ -22,7 +22,13 @@ const storedBlobBytes = 4096
 
 func storeMessage(t *testing.T, directory string) core.ID {
 	t.Helper()
-	database, blobs, err := openStore(directory, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
+	database, blobs, err := openStore(
+		t.Context(),
+		directory,
+		testDevelopment,
+		sqlite.Open,
+		slog.New(slog.DiscardHandler),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +64,7 @@ func storeMessage(t *testing.T, directory string) core.ID {
 
 func hasContent(t *testing.T, directory string, id core.ID) bool {
 	t.Helper()
-	database, _, err := openStore(directory, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
+	database, _, err := openStore(t.Context(), directory, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}

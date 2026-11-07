@@ -100,6 +100,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		dummyRow:    newDummyRow(),
 		pace:        defaultPace(),
 	}
+	server.settings.Pepper, server.settings.PepperPrevious = nil, nil
 	for _, option := range options {
 		option(server)
 	}

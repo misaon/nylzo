@@ -2,11 +2,14 @@ package vectors
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/signing"
 )
+
+var errSignatureUnverified = errors.New("does not verify")
 
 type Request struct {
 	Name          string `json:"name"`
@@ -58,7 +61,7 @@ func requestVector(vector *requestCase) (Request, error) {
 	challenge := [signing.ChallengeLen]byte(deterministic("request-challenge/"+vector.name, signing.ChallengeLen))
 	signature := signing.SignRequest(seed, vector.purpose, vector.method, vector.path, challenge, vector.body)
 	if !signature.Verify(vector.purpose, vector.method, vector.path, vector.body) {
-		return Request{}, fmt.Errorf("vectors: request signature %q does not verify", vector.name)
+		return Request{}, fmt.Errorf("vectors: request signature %q %w", vector.name, errSignatureUnverified)
 	}
 	message := signing.RequestMessage(vector.purpose, vector.method, vector.path, &challenge, vector.body)
 	request := Request{

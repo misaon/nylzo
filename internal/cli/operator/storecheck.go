@@ -19,29 +19,28 @@ import (
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
+var errUnknownReadiness = errors.New("store-check: readiness")
+
 // RunStoreCheck tells, without writing anything, whether serve of this build can open the data directory, so an
 // updater can refuse a build before it stops the running one.
-func RunStoreCheck(_ context.Context, environment *command.Environment, arguments []string) int {
-	return runServer(
-		environment,
-		arguments,
-		"store-check",
-		func(logger *slog.Logger) error { return storeCheck(environment.Getenv, environment.Stdout, logger) },
-	)
+func RunStoreCheck(ctx context.Context, environment *command.Environment, arguments []string) int {
+	return runServer(ctx, environment, arguments, "store-check", func(ctx context.Context, logger *slog.Logger) error {
+		return storeCheck(ctx, environment.Getenv, environment.Stdout, logger)
+	})
 }
 
-func storeCheck(getenv func(string) string, output io.Writer, logger *slog.Logger) error {
+func storeCheck(ctx context.Context, getenv func(string) string, output io.Writer, logger *slog.Logger) error {
 	settings, err := config.FromEnv(getenv, false)
 	if err != nil {
 		return err
 	}
-	if dataErr := checkDataDirectory(&settings, output, logger); dataErr != nil {
+	if dataErr := checkDataDirectory(ctx, &settings, output, logger); dataErr != nil {
 		return dataErr
 	}
 	return checkEpochDirectory(&settings, output, logger)
 }
 
-func checkDataDirectory(settings *config.Server, output io.Writer, logger *slog.Logger) error {
+func checkDataDirectory(ctx context.Context, settings *config.Server, output io.Writer, logger *slog.Logger) error {
 	dataDir := settings.DataDir
 	if _, err := os.Stat(dataDir); errors.Is(err, fs.ErrNotExist) {
 		fmt.Fprintln(output, "store: no data directory yet; serve creates it")
@@ -65,7 +64,7 @@ func checkDataDirectory(settings *config.Server, output io.Writer, logger *slog.
 	if erasableErr := requireErasable(paths, settings.Development, logger); erasableErr != nil {
 		return erasableErr
 	}
-	readiness, err := sqlite.Inspect(context.Background(), databasePath)
+	readiness, err := sqlite.Inspect(ctx, databasePath)
 	if err != nil {
 		return err
 	}
@@ -77,7 +76,7 @@ func checkDataDirectory(settings *config.Server, output io.Writer, logger *slog.
 	case sqlite.ReadinessCreate:
 		fmt.Fprintln(output, "store: no database yet; serve creates it")
 	default:
-		return fmt.Errorf("store-check: readiness %d is unknown", readiness)
+		return fmt.Errorf("%w %d is unknown", errUnknownReadiness, readiness)
 	}
 	return nil
 }

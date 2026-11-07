@@ -4,71 +4,30 @@ run:
   timeout: 10m
 
 linters:
-  default: none
-  enable:
-    - asasalint
-    - asciicheck
-    - bidichk
-    - bodyclose
-    - canonicalheader
-    - containedctx
-    - cyclop
-    - depguard
-    - dupl
-    - durationcheck
-    - embeddedstructfieldcheck
-    - errcheck
-    - errname
-    - errorlint
-    - exhaustive
-    - fatcontext
-    - forbidigo
-    - funcorder
-    - funlen
-    - gocheckcompilerdirectives
-    - gocognit
-    - goconst
-    - gocritic
-    - godot
-    - gomoddirectives
-    - gosec
-    - govet
-    - iface
-    - ineffassign
-    - iotamixing
-    - ireturn
-    - makezero
-    - mirror
-    - misspell
-    - modernize
-    - musttag
-    - nakedret
-    - nestif
-    - nilerr
-    - nilnesserr
-    - nilnil
-    - noctx
-    - nolintlint
-    - nonamedreturns
-    - nosprintfhostport
-    - perfsprint
-    - predeclared
-    - reassign
-    - recvcheck
-    - revive
-    - rowserrcheck
-    - sloglint
-    - sqlclosecheck
-    - staticcheck
-    - thelper
-    - tparallel
-    - unconvert
-    - unparam
-    - unused
-    - usestdlibvars
-    - usetesting
-    - varnamelen
-    - wastedassign
+  default: all
+  disable:
+    # Formatting and blank-line rules that gofumpt and golines already settle.
+    - lll
+    - nlreturn
+    - wsl
+    - wsl_v5
+    # Inline `if err := f(); err != nil` keeps err in the smallest scope, which Go style prefers.
+    - noinlineerr
+    # Zero values are deliberate defaults; listing every field of net/http and crypto/tls structs adds noise.
+    - exhaustruct
+    - exhaustruct_v5
+    # JSON names follow spec/protocol.md, not a naming rule.
+    - tagliatelle
+    # Errors cross package boundaries with %w where the caller gains context; wrapping every return does not.
+    - wrapcheck
+    # Package-level values are immutable lookup tables, compiled patterns and test seams.
+    - gochecknoglobals
+    # Tests use package internals, and the scrypt tests need several GiB each, so they must not run in parallel.
+    - paralleltest
+    - testpackage
+    # Replaced by depguard, which also forbids math/rand.
+    - gomodguard
+    - gomodguard_v2
   settings:
     cyclop:
       max-complexity: 15
@@ -85,6 +44,20 @@ linters:
             - golang.org/x/term
             - golang.org/x/text
             - modernc.org/sqlite
+          files:
+            - "!**/deploy/caddy/**"
+          deny:
+            - pkg: math/rand$
+              desc: use crypto/rand, or math/rand/v2 where predictability does not matter
+        caddy:
+          list-mode: strict
+          files:
+            - "**/deploy/caddy/**"
+          allow:
+            - $gostd
+            - github.com/misaon/nylzo
+            - github.com/caddyserver/caddy/v2
+            - github.com/quic-go/quic-go
           deny:
             - pkg: math/rand$
               desc: use crypto/rand, or math/rand/v2 where predictability does not matter
@@ -97,6 +70,9 @@ linters:
       exclude-functions:
         - (net/http.ResponseWriter).Write
         - (*database/sql.Tx).Rollback
+    errchkjson:
+      check-error-free-encoding: true
+      report-no-exported: true
     errorlint:
       errorf: false
     exhaustive:
@@ -115,12 +91,22 @@ linters:
       enabled-tags: [diagnostic, style, performance, opinionated]
     gosec:
       excludes: [G104]
+    gomoddirectives:
+      replace-local: true
+    gosmopolitan:
+      allow-time-local: true
     govet:
       enable-all: true
       disable: [fieldalignment]
       settings:
         shadow:
           strict: true
+    mnd:
+      ignored-numbers: ["0", "1", "2", "0o600", "0o644", "0o700", "0o755"]
+      ignored-functions:
+        - ^os\.(Chmod|Mkdir|MkdirAll|OpenFile|WriteFile)$
+        - ^strconv\.(Format|Parse|Append)
+        - ^time\.Date$
     nakedret:
       max-func-lines: 0
     nestif:
@@ -176,11 +162,27 @@ linters:
         - tb testing.TB
         - ctx context.Context
   exclusions:
-    warn-unused: true
+    # The Caddy module runs with this file too and would report every rule that only the root module needs.
+    warn-unused: false
     presets: [std-error-handling, common-false-positives]
     rules:
       - path: _test\.go
-        linters: [dupl, funlen, gocognit, cyclop, goconst, errcheck, gosec, noctx, varnamelen]
+        linters: [dupl, dupword, funlen, gocognit, gocyclo, maintidx, cyclop, goconst, errcheck, errchkjson, err113, forcetypeassert, gosec, mnd, noctx, prealloc, varnamelen]
+      # Caddy registers plugin modules from init, and its Provisioner interface takes caddy.Context by value.
+      - path: deploy/caddy/
+        linters: [gochecknoinits]
+      - path: deploy/caddy/
+        linters: [gocritic]
+        text: "hugeParam: _ is heavy"
+      # Close follows io.Closer and finishes its last checkpoint after the caller's context may have ended.
+      - linters: [contextcheck]
+        text: "Function `Close` should pass the context parameter"
+      # The lease timer fires minutes after its request and must not keep that request's context alive.
+      - linters: [contextcheck]
+        text: "releaseAtLeaseEnd"
+      # Spec vectors, store test cases and the defaults table name their numbers through the field they fill.
+      - path: internal/(core/vectors/|store/storetest/|server/config/config\.go)
+        linters: [mnd]
 
 issues:
   max-issues-per-linter: 0

@@ -231,6 +231,7 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 }
 
 // releaseAtLeaseEnd keeps the record key in memory until the last lease ends, so the blob goes at once.
+// releaseAtLeaseEnd runs after the request has ended and needs none of its values, so it starts from Background.
 func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time) {
 	locator := record.Row.Locator
 	delay := time.Until(leaseExpires.Add(store.LeaseTimerSlack))
@@ -243,7 +244,7 @@ func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time)
 			_, err = store.Finish(ctx, s.store, s.blobs, &kept, time.Now())
 		}
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			s.logger.Error("lease-timer", "err", logging.ErrorText(err))
+			s.logger.ErrorContext(ctx, "lease-timer", "err", logging.ErrorText(err))
 		}
 	})
 }

@@ -12,6 +12,12 @@ import (
 	"github.com/misaon/nylzo/internal/core/share"
 )
 
+var (
+	errShareKeyAccepted  = errors.New("is accepted")
+	errShareNotUnwrapped = errors.New("vectors: the share does not unwrap")
+	errLowOrderUnwrapped = errors.New("vectors: a low-order server key unwrapped")
+)
+
 type ShareCase struct {
 	Name          string  `json:"name"`
 	ClientPrivate string  `json:"client_private_hex"`
@@ -56,7 +62,7 @@ func (f *File) shareKeyRejected() error {
 		}{{point.name, canonical}, {point.name + "-top-bit", topBit}} {
 			key := core.Encode(encoded.bytes)
 			if _, err = share.ParseKey(key); err == nil {
-				return fmt.Errorf("vectors: the share key %s is accepted", encoded.name)
+				return fmt.Errorf("vectors: the share key %s %w", encoded.name, errShareKeyAccepted)
 			}
 			f.ShareKeyRejected = append(f.ShareKeyRejected, ShareKeyRejected{Name: encoded.name, Key: key})
 		}
@@ -86,7 +92,7 @@ func (f *File) share() error {
 	}
 	unwrapped, err := share.Unwrap(client, &wrapped)
 	if err != nil || unwrapped != *expiry {
-		return errors.Join(errors.New("vectors: the share does not unwrap"), err)
+		return errors.Join(errShareNotUnwrapped, err)
 	}
 	f.Share = append(f.Share, ShareCase{
 		Name:          "wrapped-share",
@@ -100,7 +106,7 @@ func (f *File) share() error {
 	lowOrder := wrapped
 	clear(lowOrder[:share.KeyLen])
 	if _, err = share.Unwrap(client, &lowOrder); err == nil {
-		return errors.New("vectors: a low-order server key unwrapped")
+		return errLowOrderUnwrapped
 	}
 	f.Share = append(f.Share, ShareCase{
 		Name:          "low-order-server-key",

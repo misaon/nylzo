@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+// The fragment carries the version, the KDF profile, the id, S and the object hash.
+const linkFieldCount = 5
+
 const (
 	FragmentVersion = 2
 	LinkPath        = "/r"
@@ -85,7 +88,7 @@ func parseFragment(path, fragment string) (Link, error) {
 		return Link{}, ErrLink
 	}
 	fields := strings.Split(fragment, ".")
-	if len(fields) != 5 {
+	if len(fields) != linkFieldCount {
 		return Link{}, ErrLink
 	}
 	var link Link

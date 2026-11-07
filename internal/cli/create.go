@@ -34,9 +34,13 @@ const (
 )
 
 var (
-	errNothingToSend       = errors.New("nothing to send: pipe text to stdin or use --from-file")
-	errTooLargeForInstance = errors.New("the message is larger than this server accepts")
-	errPolicy              = errors.New("the message does not fit the limits of this server")
+	errNothingToSend        = errors.New("nothing to send: pipe text to stdin or use --from-file")
+	errTooLargeForInstance  = errors.New("the message is larger than this server accepts")
+	errPolicy               = errors.New("the message does not fit the limits of this server")
+	errPassphraseFileExists = errors.New("--generate-passphrase-file: the file already exists or cannot be created")
+	errPassphraseNotWritten = errors.New("--generate-passphrase-file: the passphrase could not be written")
+	errTextNotUTF8          = errors.New("the text on stdin is not valid UTF-8; send binary data with --from-file")
+	errFromFileTooLarge     = errors.New("--from-file must be a regular file")
 )
 
 type createOptions struct {
@@ -182,12 +186,12 @@ func writeGeneratedPassphrase(path string) (*generatedPassphrase, error) {
 	passphrase := keys.GeneratePassphrase()
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, command.PrivateFileMode)
 	if err != nil {
-		return nil, errors.New("--generate-passphrase-file: the file already exists or cannot be created")
+		return nil, errPassphraseFileExists
 	}
 	_, err = file.WriteString(passphrase + "\n")
 	if err = errors.Join(err, file.Sync(), file.Close()); err != nil {
 		os.Remove(path)
-		return nil, errors.New("--generate-passphrase-file: the passphrase could not be written")
+		return nil, errPassphraseNotWritten
 	}
 	return &generatedPassphrase{passphrase: passphrase, path: path}, nil
 }
@@ -265,7 +269,7 @@ func readContent(environment *command.Environment, fromFile string) (content, er
 		return content{}, errNothingToSend
 	}
 	if !utf8.Valid(raw) {
-		return content{}, errors.New("the text on stdin is not valid UTF-8; send binary data with --from-file")
+		return content{}, errTextNotUTF8
 	}
 	text := string(raw)
 	return content{meta: envelope.Meta{Text: &text}}, nil
@@ -277,7 +281,7 @@ func readAttachment(path string) (content, error) {
 		return content{}, fmt.Errorf("--from-file: %w", command.Unreadable(err))
 	}
 	if !info.Mode().IsRegular() || info.Size() > envelope.MaxFileBytes {
-		return content{}, fmt.Errorf("--from-file must be a regular file of at most %d bytes", envelope.MaxFileBytes)
+		return content{}, fmt.Errorf("%w of at most %d bytes", errFromFileTooLarge, envelope.MaxFileBytes)
 	}
 	data, err := command.ReadFileLimited(path, envelope.MaxFileBytes)
 	if err != nil {

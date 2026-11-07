@@ -13,7 +13,8 @@ const releasedSchema = 5
 
 var errUpgradeRaced = errors.New("sqlite: another process changed the schema during the upgrade")
 
-// The version changes last, after the blobs, the rows and the log, so an interrupted upgrade runs again in full.
+// UpgradeFromReleased changes the version last, after the blobs, the rows and the log, so an interrupted upgrade
+// runs again in full.
 func UpgradeFromReleased(ctx context.Context, path string, eraseBlobs func() error) (bool, error) {
 	writer, err := openPersistent(path, true)
 	if err != nil {

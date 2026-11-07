@@ -14,6 +14,8 @@ import (
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
+var errLinkOtherInstance = errors.New("the link belongs to another instance than --server or " + envServer)
+
 type localOptions struct {
 	server    string
 	noBrowser bool
@@ -104,12 +106,12 @@ func handedOverLink(raw, instance string) (handedOver, error) {
 	}
 	parsed.wipe()
 	if parsed.origin != instance {
-		return handedOver{}, errors.New("the link belongs to another instance than --server or " + envServer)
+		return handedOver{}, errLinkOtherInstance
 	}
 	head, fragment, _ := strings.Cut(raw, "#")
 	address, err := url.Parse(head)
 	if err != nil {
-		return handedOver{}, errors.New("the link is incomplete or damaged")
+		return handedOver{}, errLinkDamaged
 	}
 	return handedOver{path: address.EscapedPath(), fragment: fragment}, nil
 }

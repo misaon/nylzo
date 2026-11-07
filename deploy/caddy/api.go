@@ -15,17 +15,23 @@ import (
 
 const badGatewayBody = `{"error":"bad_gateway"}`
 
-var errRefusedResponse = errors.New("untrusted upstream response")
+var (
+	errRefusedResponse = errors.New("untrusted upstream response")
+	errNoProxyResponse = errors.New("nylzo_data requires a proxy response")
+)
 
 func init() {
 	caddy.RegisterModule(Data{})
-	httpcaddyfile.RegisterHandlerDirective("nylzo_data", func(helper httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
-		helper.Next()
-		if helper.NextArg() || helper.NextBlock(0) {
-			return nil, helper.ArgErr()
-		}
-		return Data{}, nil
-	})
+	httpcaddyfile.RegisterHandlerDirective(
+		"nylzo_data",
+		func(helper httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
+			helper.Next()
+			if helper.NextArg() || helper.NextBlock(0) {
+				return nil, helper.ArgErr()
+			}
+			return Data{}, nil
+		},
+	)
 }
 
 type Data struct{}
@@ -35,16 +41,20 @@ func (Data) CaddyModule() caddy.ModuleInfo {
 }
 
 func (Data) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	replacer := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
-	value, _ := replacer.Get("http.reverse_proxy.status_code")
-	status, ok := value.(int)
+	replacer, ok := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	if !ok {
-		return caddyhttp.Error(http.StatusInternalServerError, errors.New("nylzo_data requires a proxy response"))
+		return caddyhttp.Error(http.StatusInternalServerError, errNoProxyResponse)
+	}
+	statusValue, _ := replacer.Get("http.reverse_proxy.status_code")
+	status, ok := statusValue.(int)
+	if !ok {
+		return caddyhttp.Error(http.StatusInternalServerError, errNoProxyResponse)
 	}
 	header := make(http.Header)
 	for _, name := range []string{"Content-Type", "Content-Encoding"} {
-		if value, ok := replacer.Get("http.reverse_proxy.header." + name); ok {
-			header.Set(name, value.(string))
+		headerValue, _ := replacer.Get("http.reverse_proxy.header." + name)
+		if text, isText := headerValue.(string); isText {
+			header.Set(name, text)
 		}
 	}
 	if !safeDataResponse(status, responseContentType(r.URL.Path, status), header) {
@@ -121,7 +131,7 @@ func safeDataResponse(status int, contentType string, header http.Header) bool {
 		return header.Get("Content-Encoding") == ""
 	}
 	receivedType, _, err := mime.ParseMediaType(header.Get("Content-Type"))
-	return !(status >= 300 && status < 400) && status != http.StatusSwitchingProtocols &&
+	return (status < 300 || status >= 400) && status != http.StatusSwitchingProtocols &&
 		err == nil && receivedType == contentType && len(header.Values("Content-Type")) == 1 &&
 		header.Get("Content-Encoding") == ""
 }

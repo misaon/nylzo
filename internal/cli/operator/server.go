@@ -58,24 +58,24 @@ var (
 )
 
 func RunServe(ctx context.Context, environment *command.Environment, arguments []string) int {
-	return runServer(
-		environment,
-		arguments,
-		"serve",
-		func(logger *slog.Logger) error { return serve(ctx, environment, logger) },
-	)
+	return runServer(ctx, environment, arguments, "serve", func(ctx context.Context, logger *slog.Logger) error {
+		return serve(ctx, environment, logger)
+	})
 }
 
-func RunSweepOnce(_ context.Context, environment *command.Environment, arguments []string) int {
-	return runServer(
-		environment,
-		arguments,
-		"sweep-once",
-		func(logger *slog.Logger) error { return sweepOnce(environment.Getenv, logger) },
-	)
+func RunSweepOnce(ctx context.Context, environment *command.Environment, arguments []string) int {
+	return runServer(ctx, environment, arguments, "sweep-once", func(ctx context.Context, logger *slog.Logger) error {
+		return sweepOnce(ctx, environment.Getenv, logger)
+	})
 }
 
-func runServer(environment *command.Environment, arguments []string, name string, run func(*slog.Logger) error) int {
+func runServer(
+	ctx context.Context,
+	environment *command.Environment,
+	arguments []string,
+	name string,
+	run func(context.Context, *slog.Logger) error,
+) int {
 	flags := command.NewFlags(environment, name)
 	flags.Usage = func() {
 		fmt.Fprintf(
@@ -91,7 +91,7 @@ func runServer(environment *command.Environment, arguments []string, name string
 	logger := logging.New(environment.Stderr)
 	err := hardenProcess()
 	if err == nil {
-		err = run(logger)
+		err = run(ctx, logger)
 	}
 	switch {
 	case err == nil:
@@ -99,9 +99,9 @@ func runServer(environment *command.Environment, arguments []string, name string
 	case errors.Is(err, errSweepFailed):
 	case errors.Is(err, config.ErrInvalid), errors.Is(err, errServerUnsupported), errors.Is(err, errMemoryLock),
 		errors.Is(err, erase.ErrNotInPlace):
-		logger.Error(failureMessage, "err", err.Error())
+		logger.ErrorContext(ctx, failureMessage, "err", err.Error())
 	default:
-		logger.Error(failureMessage, "err", logging.ErrorText(err))
+		logger.ErrorContext(ctx, failureMessage, "err", logging.ErrorText(err))
 	}
 	return command.ExitError
 }
@@ -168,6 +168,7 @@ func databaseFiles(databasePath string) []string {
 }
 
 func openStore(
+	ctx context.Context,
 	dataDir string,
 	development config.Development,
 	open func(context.Context, string) (*sqlite.Store, error),
@@ -186,7 +187,7 @@ func openStore(
 		Trees:     []string{filepath.Join(dataDir, disk.Directory), abuse.Directory(dataDir)},
 	})
 	if narrowed > 0 {
-		logger.Warn("permissions-narrowed", "entries", narrowed)
+		logger.WarnContext(ctx, "permissions-narrowed", "entries", narrowed)
 	}
 	if err != nil {
 		return nil, nil, err
@@ -202,7 +203,7 @@ func openStore(
 	if err != nil {
 		return nil, nil, err
 	}
-	database, err := open(context.Background(), databasePath)
+	database, err := open(ctx, databasePath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -286,6 +287,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 		return epochErr
 	}
 	database, blobs, err := openStore(
+		ctx,
 		settings.DataDir,
 		settings.Development,
 		upgradingOpen(settings.DataDir, logger),
@@ -297,16 +299,16 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	defer database.Close()
 	database.OnScrubFailure(func(err error) { logger.ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err)) })
 	instance, err := server.New(&settings, database, blobs, server.WithLogger(logger))
+	clear(settings.Pepper)
+	clear(settings.PepperPrevious)
 	if err != nil {
 		return err
 	}
-	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", settings.Listen)
+	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", settings.Listen)
 	if err != nil {
 		return err
 	}
-	if address, ok := listener.Addr().(*net.TCPAddr); !ok || !address.IP.IsLoopback() {
-		logger.WarnContext(ctx, "plain-http-listener", "addr", listener.Addr().String())
-	}
+	logPlainListener(ctx, logger, listener.Addr(), len(settings.TrustedProxies))
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 	var sweeper sync.WaitGroup
@@ -339,14 +341,26 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	case <-ctx.Done():
 		stop()
 		logger.InfoContext(ctx, "shutdown", "drain", shutdownTimeout.String())
-		err = shutdown(httpServer, shutdownTimeout, logger)
+		err = shutdown(ctx, httpServer, shutdownTimeout, logger)
 	}
-	waitFor(&sweeper, shutdownTimeout, logger)
+	waitFor(ctx, &sweeper, shutdownTimeout, logger)
 	instance.Close()
 	return err
 }
 
-func waitFor(group *sync.WaitGroup, timeout time.Duration, logger *slog.Logger) {
+// Behind a declared reverse proxy a plain HTTP listener is the intended setup, not a misconfiguration.
+func logPlainListener(ctx context.Context, logger *slog.Logger, address net.Addr, trustedProxies int) {
+	if tcp, ok := address.(*net.TCPAddr); ok && tcp.IP.IsLoopback() {
+		return
+	}
+	level := slog.LevelWarn
+	if trustedProxies > 0 {
+		level = slog.LevelInfo
+	}
+	logger.Log(ctx, level, "plain-http-listener", "addr", address.String(), "trusted_proxies", trustedProxies)
+}
+
+func waitFor(ctx context.Context, group *sync.WaitGroup, timeout time.Duration, logger *slog.Logger) {
 	done := make(chan struct{})
 	go func() {
 		group.Wait()
@@ -355,22 +369,23 @@ func waitFor(group *sync.WaitGroup, timeout time.Duration, logger *slog.Logger) 
 	select {
 	case <-done:
 	case <-time.After(timeout):
-		logger.Warn("sweep-still-running", "after", timeout.String())
+		logger.WarnContext(ctx, "sweep-still-running", "after", timeout.String())
 	}
 }
 
-func shutdown(httpServer *http.Server, timeout time.Duration, logger *slog.Logger) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+// shutdown drains open requests after the serving context ended, so it keeps the values but not the cancellation.
+func shutdown(ctx context.Context, httpServer *http.Server, timeout time.Duration, logger *slog.Logger) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 	err := httpServer.Shutdown(ctx)
 	if errors.Is(err, context.DeadlineExceeded) {
-		logger.Warn("shutdown-timeout", "after", timeout.String())
+		logger.WarnContext(ctx, "shutdown-timeout", "after", timeout.String())
 		return httpServer.Close()
 	}
 	return err
 }
 
-func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
+func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Logger) error {
 	if !serverSupported {
 		return errServerUnsupported
 	}
@@ -381,19 +396,19 @@ func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
 	if storeErr := requireStore(settings.DataDir); storeErr != nil {
 		return storeErr
 	}
-	database, blobs, err := openStore(settings.DataDir, settings.Development, sqlite.OpenCurrent, logger)
+	database, blobs, err := openStore(ctx, settings.DataDir, settings.Development, sqlite.OpenCurrent, logger)
 	if err != nil {
 		return err
 	}
 	defer database.Close()
 	now := time.Now()
-	report, err := sweep.Run(context.Background(), database, blobs, settings.DataDir, now)
+	report, err := sweep.Run(ctx, database, blobs, settings.DataDir, now)
 	err = errors.Join(err, advanceRatchet(&settings, now, logger))
 	if err != nil {
-		logger.Error("sweep-once", sweep.LogAttributes(report, err)...)
+		logger.ErrorContext(ctx, "sweep-once", sweep.LogAttributes(report, err)...)
 		return errSweepFailed
 	}
-	logger.Info("sweep-once", report.LogAttrs()...)
+	logger.InfoContext(ctx, "sweep-once", report.LogAttrs()...)
 	return nil
 }
 
@@ -453,6 +468,7 @@ func RunTakedown(ctx context.Context, environment *command.Environment, argument
 		return command.Failf(environment, "%s", err)
 	}
 	database, blobs, err := openStore(
+		ctx,
 		settings.DataDir,
 		settings.Development,
 		sqlite.OpenCurrent,
@@ -503,11 +519,19 @@ func takeDown(
 	return command.ExitOK
 }
 
+var (
+	errTakedownInputTooLarge = errors.New("give at most 1 MiB of ids on stdin")
+	errLineNotID             = errors.New("is not a message id; give one id per line, never a link")
+	errLineTooLong           = errors.New("a line on stdin is too long to be a message id")
+	errNoIDs                 = errors.New("give the ids to end on stdin, one per line")
+	errTooManyIDs            = fmt.Errorf("give at most %d ids at once", maxTakedownIDs)
+)
+
 // readIDs refuses the whole input when one line is not an id, so a pasted link never ends anything.
 func readIDs(reader io.Reader) ([]core.ID, error) {
 	data, err := command.ReadLimited(reader, maxTakedownInput)
 	if err != nil {
-		return nil, errors.New("give at most 1 MiB of ids on stdin")
+		return nil, errTakedownInputTooLarge
 	}
 	seen := map[string]bool{}
 	var ids []core.ID
@@ -519,7 +543,7 @@ func readIDs(reader io.Reader) ([]core.ID, error) {
 		}
 		id, parseErr := core.ParseID(text)
 		if parseErr != nil {
-			return nil, fmt.Errorf("line %d is not a message id; give one id per line, never a link", line)
+			return nil, fmt.Errorf("line %d %w", line, errLineNotID)
 		}
 		if !seen[id.String()] {
 			seen[id.String()] = true
@@ -527,13 +551,13 @@ func readIDs(reader io.Reader) ([]core.ID, error) {
 		}
 	}
 	if scanner.Err() != nil {
-		return nil, errors.New("a line on stdin is too long to be a message id")
+		return nil, errLineTooLong
 	}
 	if len(ids) == 0 {
-		return nil, errors.New("give the ids to end on stdin, one per line")
+		return nil, errNoIDs
 	}
 	if len(ids) > maxTakedownIDs {
-		return nil, fmt.Errorf("give at most %d ids at once", maxTakedownIDs)
+		return nil, errTooManyIDs
 	}
 	return ids, nil
 }

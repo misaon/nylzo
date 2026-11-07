@@ -18,7 +18,27 @@ import (
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
-const maxSecretFileBytes = 4096
+const (
+	maxSecretFileBytes = 4096
+	// An IPv4-mapped IPv6 prefix carries 96 bits of ::ffff:0:0/96 before the IPv4 bits.
+	ipv4MappedPrefixBits = 96
+)
+
+var (
+	errPassphraseScopeRemoved = errors.New("removed: passphrase limits are kept per message, without address buckets")
+	errUnknownProxyMode       = errors.New("unknown mode")
+	errSecretInEnvironment    = errors.New(
+		"is not read from the environment, where docker inspect and /proc show it; " +
+			"put the secret in a file with mode 600 or 400 and name it in",
+	)
+	errNotBoolean         = errors.New("want 1 or 0")
+	errSecretFileShared   = errors.New("group or others can access the file; restrict it with chmod 600 or 400")
+	errSecretFileTooLarge = errors.New("the file is larger than a secret can be")
+	errDurationOutOfRange = fmt.Errorf("want 0 to %d seconds", int64(math.MaxInt64/time.Second))
+	errIntegerTooLarge    = fmt.Errorf("want at most %d", math.MaxInt)
+	errNegativeInteger    = errors.New("want a non-negative integer")
+	errNotPositiveNumber  = errors.New("want a positive number")
+)
 
 type variable struct {
 	name  string
@@ -79,7 +99,7 @@ func (s *Server) variables() []variable {
 		{"NYLZO_TRUSTED_PROXIES", s.parseTrustedProxies},
 		{"NYLZO_PROXY_MODE", s.parseProxyMode},
 		{"NYLZO_PASSPHRASE_IP_SCOPE", func(string) error {
-			return errors.New("removed: passphrase limits are kept per message, without address buckets")
+			return errPassphraseScopeRemoved
 		}},
 		{"NYLZO_SWEEP_INTERVAL", durationInto(&s.SweepInterval)},
 		{"NYLZO_MAX_FILE_BYTES", int64Into(&s.Limits.MaxFileBytes)},
@@ -146,7 +166,7 @@ func parseProxy(part string) (netip.Prefix, error) {
 		return netip.Prefix{}, err
 	}
 	if prefix = prefix.Masked(); prefix.Addr().Is4In6() {
-		prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-96)
+		prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-ipv4MappedPrefixBits)
 	}
 	return prefix, nil
 }
@@ -158,7 +178,7 @@ func (s *Server) parseProxyMode(value string) error {
 	case "none", "off":
 		s.ProxyMode = ProxyModeNone
 	default:
-		return fmt.Errorf("unknown mode %q", value)
+		return fmt.Errorf("%w %q", errUnknownProxyMode, value)
 	}
 	return nil
 }
@@ -166,12 +186,7 @@ func (s *Server) parseProxyMode(value string) error {
 // secretFromEnv reads a secret only from a file: a variable stays in /proc/PID/environ and in docker inspect.
 func secretFromEnv(getenv func(string) string, key string) ([]byte, error) {
 	if getenv(key) != "" {
-		return nil, fmt.Errorf(
-			"%s is not read from the environment, where docker inspect and /proc show it; "+
-				"put the secret in a file with mode 600 or 400 and name it in %s_FILE",
-			key,
-			key,
-		)
+		return nil, fmt.Errorf("%s %w %s_FILE", key, errSecretInEnvironment, key)
 	}
 	path := strings.TrimSpace(getenv(key + "_FILE"))
 	if path == "" {
@@ -188,7 +203,7 @@ func boolInto(target *bool) func(string) error {
 	return func(value string) error {
 		parsed, err := strconv.ParseBool(value)
 		if err != nil {
-			return fmt.Errorf("want 1 or 0, got %q", value)
+			return fmt.Errorf("%w, got %q", errNotBoolean, value)
 		}
 		*target = parsed
 		return nil
@@ -204,7 +219,7 @@ func readSecretFile(path string) ([]byte, error) {
 	if info, statErr := file.Stat(); statErr != nil {
 		return nil, statErr
 	} else if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
-		return nil, errors.New("group or others can access the file; restrict it with chmod 600 or 400")
+		return nil, errSecretFileShared
 	}
 	raw, err := io.ReadAll(io.LimitReader(file, maxSecretFileBytes+1))
 	defer clear(raw)
@@ -212,7 +227,7 @@ func readSecretFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	if len(raw) > maxSecretFileBytes {
-		return nil, errors.New("the file is larger than a secret can be")
+		return nil, errSecretFileTooLarge
 	}
 	return pepper.ParseSecret(strings.TrimSpace(string(raw)))
 }
@@ -229,7 +244,7 @@ func durationInto(target *time.Duration) func(string) error {
 			return nil
 		}
 		if seconds < 0 || seconds > int64(math.MaxInt64/time.Second) {
-			return fmt.Errorf("want 0 to %d seconds, got %q", int64(math.MaxInt64/time.Second), value)
+			return fmt.Errorf("%w, got %q", errDurationOutOfRange, value)
 		}
 		*target = time.Duration(seconds) * time.Second
 		return nil
@@ -254,7 +269,7 @@ func intInto(target *int) func(string) error {
 			return err
 		}
 		if number > math.MaxInt {
-			return fmt.Errorf("want at most %d, got %q", math.MaxInt, value)
+			return fmt.Errorf("%w, got %q", errIntegerTooLarge, value)
 		}
 		*target = int(number)
 		return nil
@@ -264,7 +279,7 @@ func intInto(target *int) func(string) error {
 func parseNonNegative(value string) (int64, error) {
 	number, err := strconv.ParseInt(value, 10, 64)
 	if err != nil || number < 0 {
-		return 0, fmt.Errorf("want a non-negative integer, got %q", value)
+		return 0, fmt.Errorf("%w, got %q", errNegativeInteger, value)
 	}
 	return number, nil
 }
@@ -273,7 +288,7 @@ func floatInto(target *float64) func(string) error {
 	return func(value string) error {
 		number, err := strconv.ParseFloat(value, 64)
 		if err != nil || number <= 0 || math.IsInf(number, 0) || math.IsNaN(number) {
-			return fmt.Errorf("want a positive number, got %q", value)
+			return fmt.Errorf("%w, got %q", errNotPositiveNumber, value)
 		}
 		*target = number
 		return nil

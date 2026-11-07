@@ -12,6 +12,11 @@ import (
 	"github.com/misaon/nylzo/internal/core/keys"
 )
 
+var (
+	errKDFIDOutOfRange  = errors.New("out of range")
+	errRejectionDiffers = errors.New("vectors: rejected case")
+)
+
 // Rejected is an object a reader of the link of envelope case Base must refuse with Error. The reader
 // receives the object of ObjectFrom (default Base) or Object, with FlipByte flipped, SetByte set and cut to
 // TruncateTo. ReaderID, OpensMax and TTLSeconds replace what the reader expects: a link to another id, or a
@@ -199,7 +204,7 @@ func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected
 		share = base.share
 	}
 	if vector.KDFID < 0 || vector.KDFID > math.MaxUint8 {
-		return Rejected{}, fmt.Errorf("vectors: kdf id %d out of range", vector.KDFID)
+		return Rejected{}, fmt.Errorf("vectors: kdf id %d %w", vector.KDFID, errKDFIDOutOfRange)
 	}
 	kdf := core.KDF(vector.KDFID)
 	id, policy, err := readerOf(&base, &vector)
@@ -214,7 +219,8 @@ func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected
 	_, _, openErr := envelope.Open(&derived.Content, &expected, object)
 	if got := errorName(openErr); got != vector.Error {
 		return Rejected{}, fmt.Errorf(
-			"vectors: rejected case %q fails with %q, want %q",
+			"%w %q fails with %q, want %q",
+			errRejectionDiffers,
 			vector.Name,
 			got,
 			vector.Error,

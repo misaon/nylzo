@@ -33,7 +33,14 @@ const (
 )
 
 var (
-	errNoLocalClient = errors.New("this nylzo carries no web client to compare with; use a release build")
+	errNoLocalClient      = errors.New("this nylzo carries no web client to compare with; use a release build")
+	errHeaderNotAllowable = errors.New("this header changes what a browser does and cannot be allowed")
+	errReleaseDiffers     = errors.New("verify with the nylzo release the server runs")
+	errContactLeftOut     = errors.New(
+		"the Connection-Allowlist leaves out the operator's contact from " + server.TransparencyPath +
+			"; a Caddy front needs the same NYLZO_CONTACT as the server",
+	)
+	errUnknownHeader = errors.New("which this nylzo never sends; if a proxy adds it, allow it with --allow-header")
 	transportHeaders = []string{"Date", "Content-Length", "Server", "Via", "Alt-Svc", "Connection", "Keep-Alive"}
 	neverAllowed     = []string{
 		"Refresh", "Set-Cookie", "Clear-Site-Data", "Link", "Content-Disposition", "Nel", "Report-To",
@@ -65,7 +72,7 @@ func fetchFailed(where string, err error) error {
 	if errors.Is(err, client.ErrRedirect) || errors.Is(err, client.ErrResponse) {
 		return differs("%s: %s", where, explain(err))
 	}
-	return fmt.Errorf("%s: %s", where, explain(err))
+	return fmt.Errorf("%s: %w", where, explained(err))
 }
 
 type verified struct {
@@ -99,7 +106,7 @@ func verifyFlags(environment *command.Environment) (*flag.FlagSet, *verifyOption
 		func(name string) error {
 			name = textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(name))
 			if name == "" || slices.Contains(neverAllowed, name) {
-				return errors.New("this header changes what a browser does and cannot be allowed")
+				return errHeaderNotAllowable
 			}
 			options.allowed[name] = true
 			return nil
@@ -228,9 +235,10 @@ func (v *verifier) release(ctx context.Context) (webclient.Manifest, error) {
 	}
 	if served.Server != v.version {
 		return served, fmt.Errorf(
-			"the server runs nylzo %s and this binary is %s; verify with the nylzo release the server runs",
+			"the server runs nylzo %s and this binary is %s; %w",
 			shortened(served.Server),
 			v.version,
+			errReleaseDiffers,
 		)
 	}
 	if served.PublicURL != "" {
@@ -313,11 +321,7 @@ func allowlist(values []string, expected, where string) error {
 	case len(values) == 1 && values[0] == expected:
 		return nil
 	case len(values) == 1 && values[0] == webclient.ConnectionAllowlist(""):
-		return fmt.Errorf(
-			"%s: the Connection-Allowlist leaves out the operator's contact from %s; a Caddy front needs the same NYLZO_CONTACT as the server",
-			where,
-			server.TransparencyPath,
-		)
+		return fmt.Errorf("%s: %w", where, errContactLeftOut)
 	default:
 		return differs("%s: the Connection-Allowlist differs from this nylzo", where)
 	}
@@ -392,11 +396,7 @@ func (v *verifier) unknownHeader(
 	case name == "Content-Encoding" || name == "Connection-Allowlist" || slices.Contains(neverAllowed, name):
 		return differs("%s: the server sent the %s header, which this nylzo never sends here", where, name)
 	default:
-		return fmt.Errorf(
-			"%s: the server sent the %s header, which this nylzo never sends; if a proxy adds it, allow it with --allow-header",
-			where,
-			shortened(name),
-		)
+		return fmt.Errorf("%s: the server sent the %s header, %w", where, shortened(name), errUnknownHeader)
 	}
 }
 

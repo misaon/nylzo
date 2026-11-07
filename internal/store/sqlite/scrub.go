@@ -89,12 +89,17 @@ func restartLog(ctx context.Context, connection *sql.Conn) error {
 }
 
 // growScrub adds slack for the pages the insert itself writes, so the scrub soon covers the log in one pass.
+const (
+	scrubSlackDivisor = 16
+	scrubSlackRows    = 4
+)
+
 func growScrub(ctx context.Context, connection *sql.Conn, missing int) error {
 	_, err := connection.ExecContext(
 		ctx,
 		`WITH RECURSIVE slot(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM slot WHERE n < ?)
 		INSERT INTO wal_scrub (generation, filler) SELECT 0, zeroblob(?) FROM slot`,
-		missing+missing/16+4,
+		missing+missing/scrubSlackDivisor+scrubSlackRows,
 		scrubFillerLen,
 	)
 	return wrapScrub(err)

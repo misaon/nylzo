@@ -14,6 +14,18 @@ import (
 
 const manageTokenFileUsage = "read the manage token from this file (or " + envManageToken + ", or stdin)"
 
+type explanationError struct {
+	explanation string
+}
+
+func (e *explanationError) Error() string {
+	return e.explanation
+}
+
+func explained(err error) error {
+	return &explanationError{explanation: explain(err)}
+}
+
 func runStatus(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "status")
 	file := flags.String("manage-token-file", "", manageTokenFileUsage)
@@ -82,12 +94,12 @@ func runCancel(ctx context.Context, environment *command.Environment, arguments 
 func manageClient(environment *command.Environment, file string) (*manageToken, *client.Client, error) {
 	token, err := readManageToken(environment, file)
 	if err != nil {
-		return nil, nil, fmt.Errorf("manage token: %s", explain(err))
+		return nil, nil, fmt.Errorf("manage token: %w", explained(err))
 	}
 	api, err := client.New(token.origin)
 	if err != nil {
 		token.wipe()
-		return nil, nil, errors.New(explain(err))
+		return nil, nil, explained(err)
 	}
 	return &token, api, nil
 }
@@ -113,12 +125,12 @@ func runBurn(ctx context.Context, environment *command.Environment, arguments []
 func linkClient(environment *command.Environment, linkFile string) (*openLink, *client.Client, error) {
 	link, err := linkFromInput(environment, linkFile)
 	if err != nil {
-		return nil, nil, fmt.Errorf("link: %s", explain(err))
+		return nil, nil, fmt.Errorf("link: %w", explained(err))
 	}
 	api, err := client.New(link.origin)
 	if err != nil {
 		link.wipe()
-		return nil, nil, errors.New(explain(err))
+		return nil, nil, explained(err)
 	}
 	return &link, api, nil
 }

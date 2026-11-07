@@ -1,12 +1,15 @@
 package vectors
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/report"
 )
+
+var errRedactedTooLong = errors.New("the case must stay under the length limit")
 
 type Redact struct {
 	Name     string `json:"name"`
@@ -44,7 +47,7 @@ func (f *File) redact() error {
 	for _, vector := range cases {
 		redacted := report.RedactReason(vector.reason)
 		if len(redacted) >= report.MaxReasonBytes {
-			return fmt.Errorf("redact %s: the case must stay under the length limit", vector.name)
+			return fmt.Errorf("redact %s: %w", vector.name, errRedactedTooLong)
 		}
 		f.Redact = append(f.Redact, Redact{Name: vector.name, Reason: vector.reason, Redacted: redacted})
 	}

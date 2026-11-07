@@ -222,6 +222,12 @@ type decoder struct {
 	data []byte
 }
 
+const (
+	uint16Bytes = 2
+	uint32Bytes = 4
+	uint64Bytes = 8
+)
+
 func (d *decoder) next(length int) []byte {
 	if len(d.data) < length {
 		d.data = nil
@@ -233,10 +239,11 @@ func (d *decoder) next(length int) []byte {
 }
 
 func (d *decoder) readByte() byte     { return d.next(1)[0] }
-func (d *decoder) readUint16() uint16 { return binary.BigEndian.Uint16(d.next(2)) }
-func (d *decoder) readUint32() uint32 { return binary.BigEndian.Uint32(d.next(4)) }
+func (d *decoder) readUint16() uint16 { return binary.BigEndian.Uint16(d.next(uint16Bytes)) }
+func (d *decoder) readUint32() uint32 { return binary.BigEndian.Uint32(d.next(uint32Bytes)) }
+func (d *decoder) readUint64() uint64 { return binary.BigEndian.Uint64(d.next(uint64Bytes)) }
 func (d *decoder) readTime() time.Time {
-	return fromMilliseconds(signed(binary.BigEndian.Uint64(d.next(8))))
+	return fromMilliseconds(signed(d.readUint64()))
 }
 func (d *decoder) readMAC() []byte           { return slices.Clone(d.next(macLen)) }
 func (d *decoder) truncated() bool           { return d.data == nil }
@@ -254,7 +261,7 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.TTLSeconds = fields.readUint32()
 	message.OpensMax = fields.readUint16()
 	message.OpensRemaining = fields.readUint16()
-	message.Size = signed(binary.BigEndian.Uint64(fields.next(8)))
+	message.Size = signed(fields.readUint64())
 	message.VerifierPepperID = fields.readByte()
 	hasVerifier, verifierMAC := fields.readByte(), fields.readMAC()
 	if hasVerifier == 1 {

@@ -21,10 +21,7 @@ func NewHandler(build Build, publicURL, contact string, information buildinfo.In
 		return nil, err
 	}
 	robots, sitemap := Robots(publicURL), Sitemap(publicURL)
-	manifest, err := json.Marshal(build.Manifest(information.Version, publicURL, pages, information))
-	if err != nil {
-		return nil, err
-	}
+	manifest, _ := json.Marshal(build.Manifest(information.Version, publicURL, pages, information))
 	mux := http.NewServeMux()
 	for _, path := range []string{"/{$}", "/cs/{$}", sentPath, "/transparency", "/terms", "/agents"} {
 		mux.HandleFunc("GET "+path, pages.For(strings.TrimSuffix(path, "{$}")).Serve)

@@ -23,6 +23,13 @@ const (
 	markdownContentType = "text/markdown; charset=utf-8"
 )
 
+var (
+	errMissingAsset          = errors.New("references the missing asset")
+	errUnknownAssetType      = errors.New("has no known type")
+	errCompressedWithoutFile = errors.New("has a compressed variant without the file")
+	errGunzipDiffers         = errors.New("does not unpack to the file")
+)
+
 var templateNames = []string{indexTemplate, "home.en.html", "home.cs.html"}
 
 var statusTemplateNames = []string{
@@ -119,7 +126,7 @@ func loadTemplate(files fs.FS, name string, assets map[string]Asset) (string, er
 	}
 	for _, match := range assetReference.FindAllSubmatch(template, -1) {
 		if _, ok := assets[string(match[1])]; !ok {
-			return "", fmt.Errorf("server: web client %s references the missing asset %q", name, match[1])
+			return "", fmt.Errorf("server: web client %s %w %q", name, errMissingAsset, match[1])
 		}
 	}
 	return string(template), nil
@@ -141,7 +148,7 @@ func loadAssets(files fs.FS) (map[string]Asset, error) {
 			name, encoding = strings.TrimSuffix(name, path.Ext(name)), compressed
 		}
 		if _, ok := assetTypes[path.Ext(name)]; !ok {
-			return nil, fmt.Errorf("server: web asset %s has no known type", entry.Name())
+			return nil, fmt.Errorf("server: web asset %s %w", entry.Name(), errUnknownAssetType)
 		}
 		if variants[name] == nil {
 			variants[name] = map[string][]byte{}
@@ -161,7 +168,7 @@ func loadAssets(files fs.FS) (map[string]Asset, error) {
 func newAsset(name string, bodies map[string][]byte) (Asset, error) {
 	plain, ok := bodies[""]
 	if !ok {
-		return Asset{}, fmt.Errorf("server: web asset %s has a compressed variant without the file", name)
+		return Asset{}, fmt.Errorf("server: web asset %s %w", name, errCompressedWithoutFile)
 	}
 	compressed, ok := bodies[EncodingGzip]
 	if ok {
@@ -182,7 +189,7 @@ func sameAfterGunzip(compressed, plain []byte) error {
 		return err
 	}
 	if !bytes.Equal(unpacked, plain) {
-		return errors.New("does not unpack to the file")
+		return errGunzipDiffers
 	}
 	return nil
 }

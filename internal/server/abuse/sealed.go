@@ -3,6 +3,7 @@ package abuse
 import (
 	"bytes"
 	"crypto/hpke"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -161,7 +162,7 @@ func ParsePrivateKey(text string) (hpke.PrivateKey, error) {
 //nolint:ireturn // Key is hpke.PublicKey or hpke.PrivateKey, the interfaces the exported parsers return.
 func parseKey[Key any](text string, newKey func(raw []byte) (Key, error)) (Key, error) {
 	var none Key
-	raw, err := core.DecodeExact(text, len(text)*3/4)
+	raw, err := core.DecodeExact(text, base64.RawURLEncoding.DecodedLen(len(text)))
 	if err != nil {
 		return none, ErrReportKey
 	}

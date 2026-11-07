@@ -26,10 +26,7 @@ type handedOver struct {
 
 // Offer keeps a link for one redemption before the deadline; the page receives it in memory, never in an address.
 func (s *Server) Offer(path, fragment string, lifetime time.Duration) (string, error) {
-	payload, err := json.Marshal(handedOver{Path: path, Fragment: fragment})
-	if err != nil {
-		return "", err
-	}
+	payload, _ := json.Marshal(handedOver{Path: path, Fragment: fragment})
 	token := rand.Text()
 	s.handoff.mutex.Lock()
 	defer s.handoff.mutex.Unlock()

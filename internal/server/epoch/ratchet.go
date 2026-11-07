@@ -80,7 +80,9 @@ func Key(seed *Seed) [SeedLen]byte {
 func ShareOf(epochKey *[SeedLen]byte, locator seal.Locator) [core.ShareLen]byte {
 	mac := hmac.New(sha256.New, epochKey[:])
 	mac.Write(locator[:])
-	return [core.ShareLen]byte(mac.Sum(nil))
+	var share [core.ShareLen]byte
+	mac.Sum(share[:0])
+	return share
 }
 
 func expand(seed *Seed, info string) [SeedLen]byte {

@@ -19,6 +19,8 @@ type Strength struct {
 
 const face = "\U0001F600"
 
+var errProblemDiffers = errors.New("vectors: strength case")
+
 var strengthCases = []Strength{
 	{"empty", "", false, keys.PassphraseShort},
 	{"twelve ASCII characters", "twelve chars", false, keys.PassphraseShort},
@@ -71,7 +73,8 @@ func (f *File) strength() error {
 		}
 		if weak, ok := errors.AsType[*keys.WeakPassphraseError](err); ok && weak.Problem != vector.Problem {
 			return fmt.Errorf(
-				"vectors: strength case %q names problem %q, the core %q",
+				"%w %q names problem %q, the core %q",
+				errProblemDiffers,
 				vector.Name,
 				vector.Problem,
 				weak.Problem,

@@ -24,6 +24,11 @@ const (
 	healthPath       = "/healthz"
 )
 
+var (
+	errNotAbsolute         = errors.New("is not an absolute path")
+	errBuildWithoutVersion = errors.New("frontend build identity has no version")
+)
+
 func init() {
 	caddy.RegisterModule(&Frontend{})
 	httpcaddyfile.RegisterHandlerDirective(
@@ -56,7 +61,7 @@ func (f *Frontend) Provision(_ caddy.Context) error {
 		return fmt.Errorf("the contact %q: %w", f.Contact, err)
 	}
 	if f.Maintenance != "" && !filepath.IsAbs(f.Maintenance) {
-		return fmt.Errorf("the maintenance file %q is not an absolute path", f.Maintenance)
+		return fmt.Errorf("the maintenance file %q %w", f.Maintenance, errNotAbsolute)
 	}
 	build, err := webclient.Load(web.Files())
 	if err != nil {
@@ -68,7 +73,7 @@ func (f *Frontend) Provision(_ caddy.Context) error {
 			return fmt.Errorf("frontend build identity: %w", decodeErr)
 		}
 		if information.Version == "" {
-			return errors.New("frontend build identity has no version")
+			return errBuildWithoutVersion
 		}
 	}
 	if f.pages, err = build.Render(f.PublicURL, f.Contact); err != nil {
@@ -84,19 +89,8 @@ func (f *Frontend) UnmarshalCaddyfile(dispenser *caddyfile.Dispenser) error {
 			return dispenser.ArgErr()
 		}
 		for dispenser.NextBlock(0) {
-			switch dispenser.Val() {
-			case "maintenance":
-				if !dispenser.AllArgs(&f.Maintenance) {
-					return dispenser.ArgErr()
-				}
-			case "contact":
-				contact, err := contactArgument(dispenser)
-				if err != nil {
-					return err
-				}
-				f.Contact = contact
-			default:
-				return dispenser.Errf("unknown subdirective %q", dispenser.Val())
+			if err := f.unmarshalSubdirective(dispenser); err != nil {
+				return err
 			}
 		}
 	}
@@ -131,6 +125,24 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyh
 		f.handler.ServeHTTP(w, r)
 		return nil
 	}
+}
+
+func (f *Frontend) unmarshalSubdirective(dispenser *caddyfile.Dispenser) error {
+	switch dispenser.Val() {
+	case "maintenance":
+		if !dispenser.AllArgs(&f.Maintenance) {
+			return dispenser.ArgErr()
+		}
+	case "contact":
+		contact, err := contactArgument(dispenser)
+		if err != nil {
+			return err
+		}
+		f.Contact = contact
+	default:
+		return dispenser.Errf("unknown subdirective %q", dispenser.Val())
+	}
+	return nil
 }
 
 // The operator switches maintenance on and off by creating and removing the file, without restarting Caddy.

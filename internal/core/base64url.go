@@ -25,7 +25,7 @@ func DecodeExact(text string, length int) ([]byte, error) {
 }
 
 func Decode32(text string) (*[32]byte, error) {
-	decoded, err := DecodeExact(text, 32)
+	decoded, err := DecodeExact(text, len([32]byte{}))
 	if err != nil {
 		return nil, err
 	}

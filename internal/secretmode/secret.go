@@ -5,8 +5,6 @@ package secretmode
 
 import "runtime/secret"
 
-const Enabled = true
-
 // Do erases the registers and stack that f used when it returns, and its heap allocations once they are unreachable.
 func Do(f func()) {
 	secret.Do(f)

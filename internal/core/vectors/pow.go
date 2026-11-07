@@ -11,6 +11,8 @@ import (
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 )
 
+var errTooFewZeroBits = errors.New("vectors: pow case")
+
 type PoW struct {
 	Name       string `json:"name"`
 	Challenge  string `json:"challenge"`
@@ -74,7 +76,12 @@ func powVector(vector powCase) (PoW, error) {
 	}
 	zeroBits := proofofwork.LeadingZeroBits(digest[:])
 	if zeroBits < vector.minZeroBits {
-		return PoW{}, fmt.Errorf("vectors: pow case %q has fewer than %d zero bits", vector.name, vector.minZeroBits)
+		return PoW{}, fmt.Errorf(
+			"%w %q has fewer than %d zero bits",
+			errTooFewZeroBits,
+			vector.name,
+			vector.minZeroBits,
+		)
 	}
 	return PoW{
 		Name:       vector.name,
