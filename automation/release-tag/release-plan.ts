@@ -1,7 +1,14 @@
 import { compareVersions, formatTag, maintenanceBranch, parseVersion } from '../versions/semantic-version.ts';
 import type { SemanticVersion } from '../versions/semantic-version.ts';
 
-type ReleaseKind = 'planned' | 'security';
+export type ReleaseKind = 'dependencies' | 'planned' | 'security';
+
+export type MaintenanceTrigger = 'merge' | 'window';
+
+export interface UnreleasedPullRequest {
+  readonly labels: readonly string[];
+  readonly number: number;
+}
 
 export interface ReleasePlan {
   readonly baseRelease: string;
@@ -15,6 +22,19 @@ export interface MaintenanceInput {
   readonly commit: string;
   readonly latestRelease: string;
   readonly latestReleaseCommit: string;
+  readonly trigger: MaintenanceTrigger;
+  readonly unreleased: readonly UnreleasedPullRequest[];
+}
+
+// A security fix releases after its own CI; everything else waits for the next dependency release window.
+export function maintenanceKind(
+  trigger: MaintenanceTrigger,
+  unreleased: readonly UnreleasedPullRequest[],
+): ReleaseKind | null {
+  if (unreleased.some((pull) => pull.labels.includes('security'))) {
+    return 'security';
+  }
+  return trigger === 'window' && unreleased.length > 0 ? 'dependencies' : null;
 }
 
 export interface PlannedInput {
@@ -28,13 +48,14 @@ export function maintenanceRelease(input: MaintenanceInput): ReleasePlan | null 
   if (input.branch !== maintenanceBranch(latest)) {
     throw new Error(`${input.branch} is not the maintenance branch of the latest release ${input.latestRelease}`);
   }
-  if (input.commit === input.latestReleaseCommit) {
+  const kind = maintenanceKind(input.trigger, input.unreleased);
+  if (input.commit === input.latestReleaseCommit || kind === null) {
     return null;
   }
   return {
     baseRelease: input.latestRelease,
     commit: input.commit,
-    kind: 'security',
+    kind,
     tag: formatTag({ ...latest, patch: latest.patch + 1 }),
   };
 }

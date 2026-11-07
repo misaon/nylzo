@@ -1,0 +1,56 @@
+name: Infrastructure
+run-name: Infrastructure ${{ inputs.stack || github.event_name }}
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - deploy/hetzner-flatcar/infrastructure/**
+      - deploy/hetzner-flatcar/toolchain.json
+      - tools/deploy/configuration.mts
+      - tools/deploy/operator.mts
+      - tools/deploy/render.mts
+      - tools/deploy/hetzner.mts
+  schedule:
+    # Drift check: a plan with changes fails, and nothing is applied.
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: The stack to plan and apply
+        type: choice
+        options: [server, dns, image]
+        default: server
+
+permissions: {}
+
+concurrency:
+  group: infrastructure
+  cancel-in-progress: false
+
+jobs:
+  server:
+    if: >-
+      github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
+      (github.event_name != 'workflow_dispatch' || inputs.stack == 'server')
+    uses: $/.github/workflows/infrastructure-stack.yml
+    with:
+      stack: server
+      apply: ${{ github.event_name != 'schedule' }}
+
+  dns:
+    needs: server
+    if: >-
+      always() && github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
+      needs.server.result != 'failure' && (github.event_name != 'workflow_dispatch' || inputs.stack == 'dns')
+    uses: $/.github/workflows/infrastructure-stack.yml
+    with:
+      stack: dns
+      apply: ${{ github.event_name != 'schedule' }}
+
+  image:
+    if: github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' && inputs.stack == 'image'
+    uses: $/.github/workflows/infrastructure-stack.yml
+    with:
+      stack: image
+      apply: true

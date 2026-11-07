@@ -61,9 +61,25 @@ Delete the old repository variables `NYLZO_HOST_MONITOR_URL` and `NYLZO_HOST_MON
 
 `monitor.yml` also runs hourly:
 
-- With `NYLZO_MONITOR_URL`, the client check verifies that the instance serves the signed release's web client and creates, decrypts and consumes a five-minute synthetic message, about 24 creations a day. It prints only pass or fail. It runs the CLI, which a hostile server can recognise ([security model](Security-model.md#the-client-is-part-of-the-trust-boundary)). The browser job then has Google Chrome, in a window under xvfb rather than headless, create and read a message through the web client, and requires every asset Chrome receives to match the signed `checksums.txt`. The server sees an ordinary Chrome; only GitHub's address ranges set it apart. It costs another 24 creations a day. Both detect changes served to everyone, not changes aimed at one visitor.
+- With `NYLZO_MONITOR_URL`, the client check verifies the signed release the instance runs and creates, decrypts and consumes a five-minute synthetic message, about 24 creations a day. It prints only pass or fail. It runs the CLI, which a hostile server can recognise ([security model](Security-model.md#the-client-is-part-of-the-trust-boundary)). The browser job then has Google Chrome, in a window under xvfb rather than headless, create and read a message through the web client, and requires every asset Chrome receives to match the signed `checksums.txt`. The server sees an ordinary Chrome; only GitHub's address ranges set it apart. It costs another 24 creations a day. Both detect changes served to everyone, not changes aimed at one visitor.
 - With `NYLZO_MONITOR_DOMAIN` (and optionally `NYLZO_ACME_ACCOUNT` and `NYLZO_CT_REVIEWED_UNTIL`), the domain check reads the CAA set over a DNSSEC-validating resolver, null MX, SPF and DMARC, the registrar locks and an expiry more than 180 days away, and every certificate issued in the last eight days for the domain or its subdomains in Certificate Transparency, which must come from Let's Encrypt for the apex or `www` only. Set `NYLZO_CT_REVIEWED_UNTIL` to an ISO date to acknowledge certificates you reviewed. Enable it after the DNS stack and registrar lock are applied.
-- The maintenance watchdog fails when a merged maintenance fix is still unpublished after an hour.
+- The maintenance watchdog fails when a merged security fix is still unpublished after an hour, or another merged update after four days.
+
+## Production watch
+
+`watch.yml` compares the production web client with its signed release every few minutes:
+
+- It downloads the release the instance names, checks its signature, and runs `nylzo verify-client`. Exit 3 means a page, file, manifest or policy header differs; the watch checks again two minutes later, because a release restarts Caddy for a moment. Exit 1 means the instance could not be read; the run fails but opens no issue.
+- A confirmed difference, or a release the instance names that is not signed or more than a day old, opens one `production-incident` issue assigned to the owner (at most one comment an hour afterwards).
+- A confirmed difference also publishes a signed maintenance directive on the `production-directive` branch. The host checks it every minute (`nylzo-directive.timer`), verifies the Sigstore signature of `watch.yml` on `main`, applies only a directive newer than the last one, and shows the maintenance page. This helps when root on the host is intact; an attacker with root ignores it.
+- With `NYLZO_KILL_SWITCH_ENABLED=true`, a confirmed difference also replaces the rules of the server's Hetzner Cloud Firewall with administrator SSH only. A compromised server cannot undo that; visitors see a connection error, not the maintenance page, because HSTS preload allows no other host to answer for the name. Connections already open stay up. Restore by applying the server stack with OpenTofu after the investigation, then publish `gh workflow run watch.yml -f directive=normal`.
+- The same run starts Renovate when six hours have passed since its last start and the dependency release window when its turn on Monday, Wednesday or Friday has passed, because GitHub drops many scheduled runs.
+- It chains itself: each run starts the next. The `production-watch` environment's wait timer spaces the runs without holding a runner, and a cron at minutes 4 and 34 restarts the chain if it stops.
+
+Owner setup:
+- Create the `production-watch` environment with a wait timer of 4 minutes and deployment branch `main`, then set `NYLZO_WATCH_CHAIN=true`. Without the wait timer the chain would run back to back, so the variable stays unset until then.
+- For the kill switch, create the `kill-switch` environment (deployment branch `main`, optionally the owner as required reviewer, which turns the kill into a one-tap approval), store a Hetzner Read & Write token as `HCLOUD_TOKEN` in it, and set `NYLZO_FIREWALL_ID`, `NYLZO_ADMINISTRATOR_NETWORKS` (comma-separated CIDRs) and `NYLZO_KILL_SWITCH_ENABLED=true`. A Hetzner token cannot be narrowed to one firewall; keep it only in that environment.
+- Turn on GitHub notifications for assigned issues, so an incident reaches the GitHub app on your phone.
 
 The domain monitor rejects redirects and API bodies larger than 1 MiB, including streamed responses without a declared length. It evaluates Certificate Transparency results one page at a time and requires an empty final page. If 50 pages do not finish the listing, the check fails as incomplete; review the backlog before changing that bound.
 

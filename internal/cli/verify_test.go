@@ -251,9 +251,6 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 		{"wider Connection-Allowlist", rewrite(pathIs("/terms"), func(response *served) {
 			response.header.Set("Connection-Allowlist", strings.Replace(response.header.Get("Connection-Allowlist"), `?#"`, `*"`, 1))
 		}), "/terms: the Connection-Allowlist differs"},
-		{"Connection-Allowlist without the operator's contact", rewrite(pathIs("/transparency"), func(response *served) {
-			response.header.Set("Connection-Allowlist", webclient.ConnectionAllowlist(""))
-		}), "a Caddy front needs the same NYLZO_CONTACT as the server"},
 		{"Connection-Allowlist on a file", rewrite(pathIs("/assets/style-b2.css"), func(response *served) {
 			response.header.Set("Connection-Allowlist", webclient.ConnectionAllowlist(""))
 		}), "/assets/style-b2.css: the server sent the Connection-Allowlist header"},
@@ -309,11 +306,24 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 			t.Parallel()
 			files := webFiles(t)
 			result := runVerify(t, newWebTestServer(t, files, "test", testCase.wrap), files)
-			if result.code != command.ExitError || result.stdout != "" ||
+			if result.code != command.ExitMismatch || result.stdout != "" ||
 				!strings.Contains(result.stderr, testCase.want) {
-				t.Fatalf("want exit 1 with %q, got %+v", testCase.want, result)
+				t.Fatalf("want exit 3 with %q, got %+v", testCase.want, result)
 			}
 		})
+	}
+}
+
+func TestVerifyClientExplainsAnAllowlistWithoutTheOperatorContact(t *testing.T) {
+	t.Parallel()
+	files := webFiles(t)
+	strict := rewrite(pathIs("/transparency"), func(response *served) {
+		response.header.Set("Connection-Allowlist", webclient.ConnectionAllowlist(""))
+	})
+	result := runVerify(t, newWebTestServer(t, files, "test", strict), files)
+	if result.code != command.ExitError ||
+		!strings.Contains(result.stderr, "a Caddy front needs the same NYLZO_CONTACT as the server") {
+		t.Fatalf("a stricter allowlist is a misconfiguration, not a changed client: %+v", result)
 	}
 }
 

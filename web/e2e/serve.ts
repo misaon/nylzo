@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, openSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -31,8 +31,12 @@ const reportKey = execFileSync(binary, ['report-key', '--key-file', path.join(ke
 const pepperFile = path.join(keyDirectory, 'pepper');
 writeFileSync(pepperFile, randomBytes(32).toString('hex'), { mode: 0o400 });
 
+// The server's notices about the test host stay out of the CI log; a failed run uploads them with its results.
+const logDirectory = path.join(import.meta.dirname, 'server-logs');
+mkdirSync(logDirectory, { recursive: true });
+const log = openSync(path.join(logDirectory, `server-${port}.log`), 'w');
 const server = spawn(binary, ['serve'], {
-  stdio: 'inherit',
+  stdio: ['ignore', log, log],
   env: {
     ...process.env,
     NYLZO_LISTEN: `127.0.0.1:${port}`,

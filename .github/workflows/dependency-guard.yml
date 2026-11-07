@@ -14,25 +14,22 @@ concurrency:
 jobs:
   guard:
     name: Dependency guard
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read # read both commits, CODEOWNERS and the changed files through the API
       pull-requests: read # read the pull request, its commits and its reviews
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - name: Check out the default branch, never the pull request
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: bun
       - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - name: Pass only verified dependency updates and code-owner approved changes
         run: bun automation/dependency-guard/main.ts

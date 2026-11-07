@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { createHash, randomBytes } from "node:crypto";
 import { copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -27,7 +28,7 @@ export function client(token: string, service: "hetzner" | "cloudflare" = "hetzn
   const origin = service === "hetzner" ? "https://api.hetzner.cloud/v1" : "https://api.cloudflare.com/client/v4";
   return async (pathname: string, body?: object) => {
     const allowed = service === "hetzner"
-      ? /^\/(?:servers\/[1-9][0-9]*(?:\/actions\/create_image)?|images\/[1-9][0-9]*)$/u
+      ? /^\/(?:servers\/[1-9][0-9]*(?:\/actions\/create_image)?|images\/[1-9][0-9]*|images\?type=snapshot&label_selector=nylzo-verified-image%3Dtrue%2Cnylzo-flatcar-version%3D[0-9.]+%2Cnylzo-architecture%3D(?:amd64|arm64))$/u
       : /^\/zones(?:\/[a-f0-9]{32}\/dns_records)?\?name=[a-z0-9._-]+(?:&type=(?:A|AAAA|CAA|CNAME|MX|TXT))?$/u;
     if (!allowed.test(pathname) || pathname.includes("..")) throw new Error("Cloud API endpoint is not allowed");
     const endpoint = new URL(origin);
@@ -80,6 +81,44 @@ export function execute(directory: string, environment: NodeJS.ProcessEnv, argum
   return capture ? result.toString() : "";
 }
 
+// CI keeps OpenTofu state in S3-compatible object storage; the operator laptop keeps it in the private directory.
+export function remoteState(site: string, kind: string, environment: NodeJS.ProcessEnv = process.env) {
+  const bucket = environment.NYLZO_STATE_BUCKET;
+  if (bucket === undefined || bucket === "") return undefined;
+  const endpoint = environment.NYLZO_STATE_ENDPOINT ?? "";
+  const region = environment.NYLZO_STATE_REGION ?? "";
+  assert.match(bucket, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/u, "NYLZO_STATE_BUCKET must be an S3 bucket name");
+  assert.match(endpoint, /^https:\/\/[a-z0-9.-]{1,253}$/u, "NYLZO_STATE_ENDPOINT must be an https:// origin");
+  assert.match(region, /^[a-z0-9-]{2,32}$/u, "NYLZO_STATE_REGION must name the storage region");
+  return `terraform {
+  backend "s3" {
+    bucket                      = ${JSON.stringify(bucket)}
+    key                         = ${JSON.stringify(`nylzo/${site}/${kind}.tfstate`)}
+    region                      = ${JSON.stringify(region)}
+    endpoints                   = { s3 = ${JSON.stringify(endpoint)} }
+    use_path_style              = true
+    use_lockfile                = true
+    skip_credentials_validation = true
+    skip_region_validation      = true
+    skip_requesting_account_id  = true
+    skip_metadata_api_check     = true
+    skip_s3_checksum            = true
+  }
+}
+`;
+}
+
+// The newest snapshot that createImage labelled for this Flatcar version and architecture.
+export async function verifiedImage(token: string, version: string, architecture: string) {
+  const selector = encodeURIComponent(`nylzo-verified-image=true,nylzo-flatcar-version=${version},nylzo-architecture=${architecture}`);
+  const { images } = await client(token)(`/images?type=snapshot&label_selector=${selector}`);
+  assert(Array.isArray(images), "Hetzner returned no image list");
+  const available = images.filter((image: any) => image.status === "available" && Number.isSafeInteger(image.id) && image.id > 0)
+    .sort((left: any, right: any) => Date.parse(right.created) - Date.parse(left.created));
+  assert(available.length > 0, `No verified Flatcar ${version} ${architecture} image exists; apply the image stack first`);
+  return { id: available[0].id as number, version, architecture };
+}
+
 export async function prepare(siteFile: string, kind: string, verify = verifyChecksums) {
   assert(["image", "server", "dns"].includes(kind));
   const site = configuration(JSON.parse(await readFile(siteFile, "utf8")));
@@ -97,6 +136,8 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
   for (const filename of await readdir(source)) {
     if (filename.endsWith(".tf") || filename === ".terraform.lock.hcl") await copyFile(path.join(source, filename), path.join(directory, filename));
   }
+  const backend = remoteState(site.name, kind);
+  if (backend) await writeFile(path.join(directory, "backend.tf"), backend, { mode: 0o600 });
   const userDataPath = path.join(directory, "user-data");
   if (bundle) {
     const rendered = await render(site, bundle);
@@ -104,7 +145,10 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
   }
   let variables: object = { name: site.name, location: site.location, server_type: site.serverType, user_data_path: userDataPath };
   if (kind === "server") {
-    const image = JSON.parse(await readFile(path.join(root, "image.json"), "utf8"));
+    const imageFile = path.join(root, "image.json");
+    const image = existsSync(imageFile)
+      ? JSON.parse(await readFile(imageFile, "utf8"))
+      : await verifiedImage(await credential("HCLOUD_TOKEN"), toolchain.flatcar, site.architecture);
     assert.equal(image.version, toolchain.flatcar);
     assert.equal(image.architecture, site.architecture);
     assert(Number.isSafeInteger(image.id) && image.id > 0);

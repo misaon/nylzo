@@ -5,10 +5,16 @@ import { z } from 'zod';
 import { createGitHubClient, repository, repositoryName } from '../github/client.ts';
 import type { GitHubClient } from '../github/client.ts';
 import { automationBot, isBot } from '../github/identity.ts';
-import { branchTip, latestPublishedRelease, mergedPullRequest, tagExists } from './github-state.ts';
+import {
+  branchTip,
+  latestPublishedRelease,
+  mergedPullRequest,
+  tagExists,
+  unreleasedPullRequests,
+} from './github-state.ts';
 import type { PublishedRelease } from './github-state.ts';
 import { maintenanceRelease, plannedRelease } from './release-plan.ts';
-import type { ReleasePlan } from './release-plan.ts';
+import type { MaintenanceTrigger, ReleasePlan } from './release-plan.ts';
 
 const releasePullRequestBranch = 'release-please--branches--main';
 const releasePullRequestFiles = new Set(['.github/CHANGELOG.md', '.release-please-manifest.json']);
@@ -19,7 +25,7 @@ const thisRepository = z.object({ full_name: z.literal(repositoryName) });
 const completedRun = z.object({
   workflow_run: z.object({
     conclusion: z.literal('success'),
-    event: z.literal('push'),
+    event: z.enum(['push', 'workflow_dispatch']),
     head_branch: z.string(),
     head_repository: thisRepository,
     head_sha: commitHash,
@@ -63,6 +69,7 @@ async function maintenanceReleaseFromBranch(
   branch: string,
   commit: string,
   latest: PublishedRelease,
+  trigger: MaintenanceTrigger,
 ): Promise<ReleasePlan | null> {
   if ((await branchTip(client, branch)) !== commit) {
     console.log(`${branch} moved past ${commit}; the newer commit releases after its own CI.`);
@@ -72,23 +79,35 @@ async function maintenanceReleaseFromBranch(
     console.log(`${commit} on ${branch} is not a merged pull request.`);
     return null;
   }
-  return maintenanceRelease({
+  const unreleased =
+    commit === latest.commit ? [] : await unreleasedPullRequests(client, latest.commit, commit, branch);
+  const plan = maintenanceRelease({
     branch,
     commit,
     latestRelease: latest.tag,
     latestReleaseCommit: latest.commit,
+    trigger,
+    unreleased,
   });
+  if (plan === null && unreleased.length > 0) {
+    console.log(`${unreleased.length} merged update(s) on ${branch} wait for the next dependency release window.`);
+  }
+  return plan;
 }
 
 const eventPath = z.string().parse(process.env['GITHUB_EVENT_PATH']);
 const event = completedRun.parse(JSON.parse(readFileSync(eventPath, 'utf8')));
-const { head_branch: branch, head_sha: commit } = event.workflow_run;
+const { event: trigger, head_branch: branch, head_sha: commit } = event.workflow_run;
 const client = createGitHubClient(z.string().min(1).parse(process.env['GITHUB_TOKEN']));
 const latest = await latestPublishedRelease(client);
-const plan =
-  branch === 'main'
-    ? await plannedReleaseFromMain(client, commit, latest)
-    : await maintenanceReleaseFromBranch(client, branch, commit, latest);
+async function releasePlan(): Promise<ReleasePlan | null> {
+  if (branch !== 'main') {
+    return maintenanceReleaseFromBranch(client, branch, commit, latest, trigger === 'push' ? 'merge' : 'window');
+  }
+  return trigger === 'push' ? plannedReleaseFromMain(client, commit, latest) : null;
+}
+
+const plan = await releasePlan();
 
 if (plan === null) {
   console.log('Nothing to release.');

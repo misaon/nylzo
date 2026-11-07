@@ -1,0 +1,222 @@
+name: Production watch
+run-name: Production watch ${{ inputs.directive || '' }}
+
+on:
+  schedule:
+    # Restarts the chain if it stopped; GitHub drops many scheduled runs, so the chain carries the watch.
+    - cron: "4,34 * * * *"
+  workflow_dispatch:
+    inputs:
+      directive:
+        description: Publish a signed directive for the production host instead of waiting for a mismatch
+        type: choice
+        options: [none, maintenance, normal]
+        default: none
+
+permissions: {}
+
+concurrency:
+  group: production-watch
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Production serves the signed web client
+    if: github.repository == 'misaon/nylzo' && vars.NYLZO_MONITOR_URL != '' && (inputs.directive || 'none') == 'none'
+    # The environment's wait timer spaces the chained runs without holding a runner.
+    environment:
+      name: production-watch
+      deployment: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      outcome: ${{ steps.compare.outputs.outcome }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - id: release
+        uses: $/.github/actions/released-nylzo
+        with:
+          url: ${{ vars.NYLZO_MONITOR_URL }}
+      - name: Compare the served web client with that release, twice before calling it changed
+        id: compare
+        env:
+          URL: ${{ vars.NYLZO_MONITOR_URL }}
+          ALLOW: ${{ vars.NYLZO_MONITOR_ALLOW_HEADERS }}
+        run: |
+          read -ra headers <<< "${ALLOW}"
+          args=()
+          for header in "${headers[@]}"; do args+=(--allow-header "${header}"); done
+          check() {
+            local token status
+            token=$(openssl rand -hex 16)
+            echo "::stop-commands::${token}"
+            status=0
+            ./nylzo verify-client --server "${URL}" "${args[@]}" > /dev/null 2>&1 || status=$?
+            echo "::${token}::"
+            return "${status}"
+          }
+          status=0
+          check || status=$?
+          if [[ "${status}" = 3 ]]; then
+            # A release restarts Caddy within seconds; a second look rules that out.
+            sleep 120
+            status=0
+            check || status=$?
+          fi
+          case "${status}" in
+            0) outcome=match ;;
+            3) outcome=mismatch ;;
+            *) outcome=unavailable ;;
+          esac
+          echo "outcome=${outcome}" >> "${GITHUB_OUTPUT}"
+          echo "Production web client: **${outcome}**" >> "${GITHUB_STEP_SUMMARY}"
+          [[ "${outcome}" = match ]]
+
+  alert:
+    name: Open an incident for the owner
+    needs: verify
+    # An unreachable instance fails the run but opens no issue; a changed client or an unverifiable release does.
+    if: always() && needs.verify.result == 'failure' && needs.verify.outputs.outcome != 'unavailable'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write # open or update the incident issue
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: Open or update the production incident
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OUTCOME: ${{ needs.verify.outputs.outcome || 'unavailable' }}
+          TAG: ${{ needs.verify.outputs.tag }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          case "${OUTCOME}" in
+            mismatch) title='Production serves a web client that differs from its signed release' ;;
+            *) title='Production web client could not be verified' ;;
+          esac
+          body=$(printf '%s\n\nRelease: %s\nRun: %s\n\n@%s' "${title}." "${TAG:-unknown}" "${RUN}" "${GITHUB_REPOSITORY_OWNER}")
+          issue=$(gh issue list -R "${GITHUB_REPOSITORY}" --state open --label production-incident --json number,updatedAt \
+            --jq '.[0] // empty | "\(.number) \(.updatedAt)"')
+          if [[ -n "${issue}" ]]; then
+            # One comment an hour is enough while the incident stays open.
+            if (( $(date -u +%s) - $(date -u -d "${issue#* }" +%s) > 3600 )); then
+              gh issue comment "${issue%% *}" -R "${GITHUB_REPOSITORY}" --body "${body}"
+            fi
+          else
+            gh label create production-incident -R "${GITHUB_REPOSITORY}" --color B60205 --description 'The production watch found a problem' --force > /dev/null
+            gh issue create -R "${GITHUB_REPOSITORY}" --title "${title}" --body "${body}" --label production-incident --assignee "${GITHUB_REPOSITORY_OWNER}"
+          fi
+
+  directive:
+    name: Sign the production host directive
+    needs: verify
+    if: >-
+      always() && github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main' &&
+      (needs.verify.outputs.outcome == 'mismatch' || (inputs.directive || 'none') != 'none')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    concurrency:
+      group: production-directive
+      cancel-in-progress: false
+    permissions:
+      contents: write # publish the directive on its own branch, which no ruleset covers
+      id-token: write # keyless signature bound to this workflow on main, which the host verifies
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          # renovate: datasource=github-releases depName=sigstore/cosign
+          cosign-release: v3.1.4
+      - name: Sign and publish the directive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ (inputs.directive || 'none') != 'none' && inputs.directive || 'maintenance' }}
+        run: |
+          [[ "${STATE}" = maintenance || "${STATE}" = normal ]]
+          directory=$(mktemp -d)
+          cd "${directory}"
+          git init --quiet --initial-branch production-directive
+          jq -n --arg state "${STATE}" --argjson issued "$(date -u +%s)" --arg run "${GITHUB_RUN_ID}" \
+            '{format: 1, state: $state, issued: $issued, run: $run}' > directive.json
+          cosign sign-blob directive.json --bundle directive.json.sigstore.json --yes > /dev/null
+          git add directive.json directive.json.sigstore.json
+          git -c user.name='Nylzo production watch' -c user.email='automation@nylzo.com' commit --quiet -m "Production directive: ${STATE}"
+          authorization=$(printf 'x-access-token:%s' "${GH_TOKEN}" | base64 -w 0)
+          echo "::add-mask::${authorization}"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${authorization}" push --force --quiet \
+            "https://github.com/${GITHUB_REPOSITORY}.git" production-directive
+          echo "Published a signed **${STATE}** directive." >> "${GITHUB_STEP_SUMMARY}"
+
+  kill-switch:
+    name: Close production at the cloud firewall
+    needs: verify
+    if: always() && needs.verify.outputs.outcome == 'mismatch' && vars.NYLZO_KILL_SWITCH_ENABLED == 'true'
+    environment:
+      name: kill-switch
+      deployment: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      # A compromised server cannot undo a rule of the Hetzner Cloud Firewall; administrator SSH stays open.
+      - name: Keep only administrator SSH in the server's cloud firewall
+        env:
+          HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+          FIREWALL: ${{ vars.NYLZO_FIREWALL_ID }}
+          NETWORKS: ${{ vars.NYLZO_ADMINISTRATOR_NETWORKS }}
+        run: |
+          [[ "${FIREWALL}" =~ ^[1-9][0-9]{0,15}$ ]]
+          rules=$(jq -nc --arg networks "${NETWORKS}" \
+            '{rules: [{direction: "in", protocol: "tcp", port: "22", source_ips: ($networks | split(",") | map(select(length > 0))), description: "kill switch"}]}')
+          action=$(curl --fail --silent --show-error --proto '=https' --max-time 30 -X POST \
+            -H "Authorization: Bearer ${HCLOUD_TOKEN}" -H 'Content-Type: application/json' \
+            --data "${rules}" "https://api.hetzner.cloud/v1/firewalls/${FIREWALL}/actions/set_rules" | jq -er '.actions[0].id')
+          for _ in $(seq 1 30); do
+            status=$(curl --fail --silent --show-error --proto '=https' --max-time 30 \
+              -H "Authorization: Bearer ${HCLOUD_TOKEN}" "https://api.hetzner.cloud/v1/actions/${action}" | jq -er .action.status)
+            [[ "${status}" = success ]] && { echo 'The cloud firewall now admits only administrator SSH.' >> "${GITHUB_STEP_SUMMARY}"; exit 0; }
+            [[ "${status}" = error ]] && exit 1
+            sleep 2
+          done
+          exit 1
+
+  schedule:
+    name: Start what is due and keep the watch going
+    needs: [verify, alert, directive, kill-switch]
+    if: always() && github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: write # start Renovate, the dependency release window and the next watch run
+      contents: read
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/mise
+        with:
+          tools: bun
+          cache: none
+      - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
+      - name: Start Renovate, the dependency release window and the next watch run when due
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          WATCH_CHAIN: ${{ vars.NYLZO_WATCH_CHAIN }}
+        run: bun automation/watch/main.ts

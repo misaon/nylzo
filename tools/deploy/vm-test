@@ -42,11 +42,11 @@ base="https://stable.release.flatcar-linux.net/amd64-usr/$version"
 image=flatcar_production_qemu_image.img.bz2
 mkdir -p "$directory/gnupg"
 chmod 0700 "$directory/gnupg"
-gpg --batch --homedir "$directory/gnupg" --import deploy/hetzner-flatcar/bootstrap/flatcar.asc
+gpg --batch --homedir "$directory/gnupg" --dearmor --output "$directory/flatcar.gpg" deploy/hetzner-flatcar/bootstrap/flatcar.asc
 for name in "$image" "$image.sig"; do
   curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --retry-all-errors --retry-max-time 180 --max-time 600 "$base/$name" --output "$directory/$name"
 done
-gpg --batch --homedir "$directory/gnupg" --verify "$directory/$image.sig" "$directory/$image"
+gpgv --homedir "$directory/gnupg" --keyring "$directory/flatcar.gpg" "$directory/$image.sig" "$directory/$image"
 bzip2 --decompress --stdout "$directory/$image" > "$directory/base.qcow2"
 qemu-img create -f qcow2 -F qcow2 -b "$directory/base.qcow2" "$directory/runtime.qcow2" 40G
 accelerator=tcg

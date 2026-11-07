@@ -39,6 +39,7 @@ const rules: readonly (readonly [RegExp, FileRule])[] = [
   [/^deploy\/compose\/compose\.yaml$/u, composeFile],
   [/^tools\/deploy\/runtime\.test\.mts$/u, runtimeTest],
   [/^\.github\/workflows\/[^/]+\.ya?ml$/u, workflow],
+  [/^\.github\/actions\/[^/]+\/action\.ya?ml$/u, workflow],
 ];
 
 export function ruleFor(path: string): FileRule | undefined {

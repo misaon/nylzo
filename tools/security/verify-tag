@@ -40,7 +40,8 @@ verify_maintenance_patch() {
     fail 'a maintenance tag must carry exactly one Base-Release and one Release-Kind'
   base=$(sed -n 's/^Base-Release: //p' <<< "$claims")
   kind=$(sed -n 's/^Release-Kind: //p' <<< "$claims")
-  [[ "$base" =~ $semantic_version && "$kind" = security ]] || fail 'only security patches leave main'
+  [[ "$base" =~ $semantic_version && ( "$kind" = security || "$kind" = dependencies ) ]] ||
+    fail 'only security and dependency patches leave main'
   [[ "${base%.*}" = "${GITHUB_REF_NAME%.*}" && "${GITHUB_REF_NAME##*.}" = "$(( ${base##*.} + 1 ))" ]] ||
     fail 'a maintenance patch must be the next patch after its base release'
   [[ "$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .tag_name)" = "$base" ]] ||

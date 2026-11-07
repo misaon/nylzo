@@ -25,6 +25,7 @@
 - [Repository governance](maintainers/Repository-governance.md)
 - [Security checks and public reports](maintainers/Security-checks.md)
 - [Automatic security updates](maintainers/Security-updates.md)
+- [Infrastructure roadmap](maintainers/Infrastructure-roadmap.md)
 - [Security assessment and threat model](maintainers/Security-assessment.md)
 - [Browser extension design](maintainers/Browser-extension.md)
 - [Deployment security review](maintainers/Deployment-security-review.md)

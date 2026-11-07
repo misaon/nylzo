@@ -83,6 +83,7 @@ esac
     }});
     assert.equal(run().status, 0);
     assert.equal(readFileSync(join(directory, "output"), "utf8"), "environment=release-automatic\n");
+    assert.equal(run({ KIND: "dependencies" }).status, 0);
     for (const overrides of [
       { BRANCH_TIP: "b".repeat(40) }, { LATEST: "v0.3.0" }, { BASE: "v0.2.2" }, { GITHUB_REF_NAME: "v0.2.5" },
       { KIND: "planned" }, { KIND: "weekly" }, { GITHUB_ACTOR: "nylzo-security-automation[bot]" },

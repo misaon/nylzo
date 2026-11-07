@@ -6,17 +6,6 @@ export interface GlobalSettingsInput {
 }
 
 export function globalSettings(input: GlobalSettingsInput): Record<string, unknown> {
-  const maintenanceRules =
-    input.maintenanceBranch === null
-      ? []
-      : [
-          {
-            description: 'The maintenance branch takes only security fixes.',
-            matchBaseBranches: [input.maintenanceBranch],
-            matchPackageNames: ['*'],
-            enabled: false,
-          },
-        ];
   const fastPathRules =
     input.affectedPackages.length === 0
       ? []
@@ -31,6 +20,7 @@ export function globalSettings(input: GlobalSettingsInput): Record<string, unkno
           },
         ];
   return {
+    $schema: 'https://docs.renovatebot.com/renovate-global-schema.json',
     platform: 'github',
     repositories: ['misaon/nylzo'],
     autodiscover: false,
@@ -46,8 +36,9 @@ export function globalSettings(input: GlobalSettingsInput): Record<string, unkno
     cacheDir: '/tmp/renovate-cache',
     baseDir: '/tmp/renovate-work',
     persistRepoData: false,
+    repositoryCache: 'enabled',
     constraints: { mise: input.miseVersion, bun: input.bunVersion },
-    packageRules: [...maintenanceRules, ...fastPathRules],
+    packageRules: fastPathRules,
     force: {
       baseBranchPatterns: input.maintenanceBranch === null ? ['main'] : ['main', input.maintenanceBranch],
     },

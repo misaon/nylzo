@@ -67,3 +67,36 @@ export async function mergedPullRequest(
     (pull) => pull.merged_at !== null && pull.merge_commit_sha === commit && pull.base.ref === branch,
   );
 }
+
+export interface LabelledPullRequest {
+  readonly labels: readonly string[];
+  readonly mergedAt: number;
+  readonly number: number;
+}
+
+export async function unreleasedPullRequests(
+  client: GitHubClient,
+  releaseCommit: string,
+  tip: string,
+  branch: string,
+): Promise<LabelledPullRequest[]> {
+  const comparison = await client.rest.repos.compareCommitsWithBasehead({
+    ...repository,
+    basehead: `${releaseCommit}...${tip}`,
+  });
+  if (comparison.data.status !== 'ahead') {
+    throw new Error(`${branch} at ${tip} does not descend from the latest release ${releaseCommit}`);
+  }
+  const pulls: LabelledPullRequest[] = [];
+  for (const commit of comparison.data.commits) {
+    const pull = await mergedPullRequest(client, commit.sha, branch);
+    if (pull !== undefined) {
+      pulls.push({
+        labels: pull.labels.map((label) => label.name),
+        mergedAt: Date.parse(pull.merged_at ?? ''),
+        number: pull.number,
+      });
+    }
+  }
+  return pulls;
+}
