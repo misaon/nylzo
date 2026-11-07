@@ -7,7 +7,7 @@ lockfile = true
 go = "1.27.3"
 goreleaser = "2.19.0"
 golangci-lint = "2.15.0"
-actionlint = "1.7.12"
+"aqua:rhysd/actionlint" = "1.7.12"
 zizmor = "1.31.1"
 shellcheck = "0.11.0"
 cosign = "3.1.4"
@@ -125,7 +125,7 @@ run = [
   "bun tools/check-syntax.mts",
   "bun tools/wiki.mts",
   "actionlint",
-  "zizmor --persona pedantic .github/workflows",
+  "zizmor --offline --persona pedantic .github/workflows .github/actions",
   "shellcheck mise-tasks/dev mise-tasks/release/* mise-tasks/deploy tools/security/scan-release tools/security/verify-tag tools/security/verify-keyless-tag deploy/hetzner-flatcar/bootstrap/boot deploy/hetzner-flatcar/bootstrap/install deploy/hetzner-flatcar/host/application/{run,prepare,health,recover-os,clean,storage} deploy/hetzner-flatcar/host/update/{update,release-target,release-policy,refresh-tools,install-tools,activate,runtime-stage} deploy/hetzner-flatcar/host/system/{bandwidth,firewall} deploy/hetzner-flatcar/host/monitoring/{host-policy,host-status,clock,heartbeat} tools/deploy/{validate,vm-test,vm-acceptance,image-vm-test} tools/verify-go-toolchain",
 ]
 

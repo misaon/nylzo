@@ -22,23 +22,21 @@ jobs:
     if: >-
       github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main' &&
       (github.event_name != 'workflow_run' || github.event.workflow_run.event != 'pull_request')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         env:
           MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache: false
+          tools: bun
+          cache: none
       - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - name: Detect an unpublished maintenance commit older than one hour
         env:
@@ -49,21 +47,18 @@ jobs:
     name: Authenticated host readiness
     if: vars.NYLZO_HOST_MONITOR_ENABLED == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_run'
     environment: host-monitoring
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 8
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: bun
       - name: Read coarse host status over mutual TLS
         env:
           URL: ${{ secrets.NYLZO_HOST_MONITOR_URL }}
@@ -80,21 +75,18 @@ jobs:
   domain:
     name: DNS, certificate transparency and registration of the domain
     if: vars.NYLZO_MONITOR_DOMAIN != '' && github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: bun
       - name: CAA, mail records, registrar lock and every new certificate match the expected state
         env:
           DOMAIN: ${{ vars.NYLZO_MONITOR_DOMAIN }}
@@ -111,19 +103,16 @@ jobs:
     outputs:
       tag: ${{ steps.release.outputs.tag }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache_save: ${{ github.event_name == 'push' }}
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+          tools: bun
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         with:
           # renovate: datasource=github-releases depName=sigstore/cosign
           cosign-release: v3.1.4
@@ -187,22 +176,19 @@ jobs:
   browser:
     name: A browser receives the signed web client (A3-07)
     needs: [web-client]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache_save: ${{ github.event_name == 'push' }}
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+          tools: bun
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         with:
           # renovate: datasource=github-releases depName=sigstore/cosign
           cosign-release: v3.1.4

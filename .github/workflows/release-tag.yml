@@ -17,7 +17,7 @@ jobs:
       github.event.workflow_run.head_repository.full_name == github.repository &&
       (github.event.workflow_run.head_branch == 'main' || startsWith(github.event.workflow_run.head_branch, 'release/v'))
     name: Tag a merged release PR or maintenance fix
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     environment: dependency-updates
     concurrency:
@@ -31,7 +31,7 @@ jobs:
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,12 +39,10 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun gitsign
-          cache: false
+          tools: bun gitsign
+          cache: none
       - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - name: Decide the release for the commit whose CI completed
         id: plan
@@ -63,7 +61,7 @@ jobs:
         if: steps.plan.outputs.tag != ''
         id: app
         with:
-          app-id: ${{ vars.DEPENDENCY_APP_ID }}
+          client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID || vars.DEPENDENCY_APP_ID }}
           private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
           owner: misaon
           repositories: nylzo
@@ -98,7 +96,7 @@ jobs:
       github.event.workflow_run.name == 'release' && github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     name: Open the maintenance branch and record the published release
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     concurrency:
       group: release-published
@@ -110,24 +108,22 @@ jobs:
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: main
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache: false
+          tools: bun
+          cache: none
       - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app
         with:
-          app-id: ${{ vars.DEPENDENCY_APP_ID }}
+          client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID || vars.DEPENDENCY_APP_ID }}
           private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
           owner: misaon
           repositories: nylzo
@@ -141,7 +137,7 @@ jobs:
   signing-probe:
     if: github.event_name == 'workflow_dispatch' && github.repository == 'misaon/nylzo'
     name: Verify keyless tag signing without publishing
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     concurrency:
       group: signing-probe
@@ -152,18 +148,16 @@ jobs:
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: gitsign
-          cache: false
+          tools: gitsign
+          cache: none
       - name: Sign and verify a local tag; do not push it
         env:
           GITSIGN_TOKEN_PROVIDER: github-actions

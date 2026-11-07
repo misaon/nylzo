@@ -10,12 +10,12 @@ version=$(bun -p 'JSON.parse(require("node:fs").readFileSync("deploy/hetzner-fla
 base="https://stable.release.flatcar-linux.net/amd64-usr/$version"
 mkdir -p "$directory/gnupg"
 chmod 0700 "$directory/gnupg"
-gpg --batch --homedir "$directory/gnupg" --import deploy/hetzner-flatcar/bootstrap/flatcar.asc
+gpg --batch --homedir "$directory/gnupg" --dearmor --output "$directory/flatcar.gpg" deploy/hetzner-flatcar/bootstrap/flatcar.asc
 for artifact in flatcar_production_pxe.vmlinuz flatcar_production_pxe_image.cpio.gz flatcar_production_hetzner_image.bin.bz2; do
   for name in "$artifact" "$artifact.sig"; do
     curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --retry 3 --retry-all-errors --retry-max-time 180 --max-time 600 "$base/$name" --output "$directory/$name"
   done
-  gpg --batch --homedir "$directory/gnupg" --verify "$directory/$artifact.sig" "$directory/$artifact"
+  gpgv --homedir "$directory/gnupg" --keyring "$directory/flatcar.gpg" "$directory/$artifact.sig" "$directory/$artifact"
 done
 (cd "$directory/oem" && find usr -print0 | cpio --null --create --format=newc --quiet) | gzip > "$directory/oem.cpio.gz"
 cat "$directory/flatcar_production_pxe_image.cpio.gz" "$directory/oem.cpio.gz" > "$directory/initrd"
@@ -31,5 +31,5 @@ timeout 600 qemu-system-x86_64 -machine "q35,accel=$accelerator" -cpu max -smp 2
   -append 'flatcar.first_boot=1 console=tty0 console=ttyS0,115200n8' > "$directory/install.log" 2>&1 || { tail -200 "$directory/install.log"; exit 1; }
 grep --fixed-strings NYLZO_IMAGE_VERIFIED_AND_INSTALLED "$directory/install.log" || { tail -200 "$directory/install.log"; exit 1; }
 wait "$expected"
-qemu-img compare -f qcow2 -F raw "$directory/installed.qcow2" "$directory/expected.raw"
+qemu-img compare -q -f qcow2 -F raw "$directory/installed.qcow2" "$directory/expected.raw"
 echo 'NYLZO_IMAGE_VM_ACCEPTANCE_PASSED'

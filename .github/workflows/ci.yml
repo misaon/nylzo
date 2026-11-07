@@ -24,7 +24,7 @@ env:
 jobs:
   changes:
     name: What changed
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       go: ${{ steps.plan.outputs.go }}
@@ -39,19 +39,16 @@ jobs:
       coverage: ${{ steps.plan.outputs.coverage }}
       jobs: ${{ steps.plan.outputs.jobs }}
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: bun
       - id: plan
         name: Select checks from the complete changed-file list
         env:
@@ -70,32 +67,23 @@ jobs:
     name: Go checks and race tests (AK9, AK21, AK22)
     needs: changes
     if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: go golangci-lint
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: go golangci-lint
       - run: tools/verify-go-toolchain
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: go-cache
+        uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-            ~/.cache/golangci-lint
-          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-
-            go-${{ runner.os }}-${{ runner.arch }}-
+          scope: checks
       - name: Modules, build, vet, go fix, golangci-lint and govulncheck
         id: lint
         run: mise run lint:go
@@ -112,14 +100,10 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
-      - if: github.event_name == 'push'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-            ~/.cache/golangci-lint
-          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-${{ github.sha }}
+          scope: checks
+          save: ${{ steps.go-cache.outputs.hit != 'true' }}
 
   sca:
     name: Dependency vulnerabilities, malware, and licenses
@@ -130,7 +114,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - name: Dependency review
@@ -142,12 +126,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: go bun osv-scanner
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: go bun osv-scanner
       - run: tools/verify-go-toolchain
       - name: Known vulnerabilities, malware and licenses of the locked dependencies, with the source SBOM
         run: mise run lint:dependencies
@@ -167,18 +148,15 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 15
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: actionlint zizmor shellcheck bun go
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: aqua:rhysd/actionlint zizmor shellcheck bun go
       - run: tools/verify-go-toolchain
       - name: Audit and lint the automation, check tool syntax, Wiki links, workflows and shell scripts
         run: mise run lint:repository
@@ -195,18 +173,15 @@ jobs:
       contents: read
       attestations: read # the runner reads the initial release's provenance for the VM
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: go bun opentofu
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: go bun opentofu
       - run: tools/verify-go-toolchain
       - run: tools/deploy/validate
       - name: Install the virtual-machine test runtime
@@ -254,31 +229,23 @@ jobs:
     name: Fuzz smoke
     needs: changes
     if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: go
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: go
       - run: tools/verify-go-toolchain
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: go-cache
+        uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-fuzz-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-fuzz-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
-            go-fuzz-${{ runner.os }}-${{ runner.arch }}-
+          scope: fuzz
       - name: Fuzz each target for 15 s
         run: |
           for target in FuzzOpenPlaintext FuzzCompressedAttachment FuzzOpen FuzzDecodeMeta; do
@@ -286,13 +253,10 @@ jobs:
           done
           go test -run='^$' -fuzz='^FuzzParseLink$' -fuzztime=15s ./internal/core
           go test -run='^$' -fuzz='^FuzzCreateHeader$' -fuzztime=15s ./internal/server
-      - if: github.event_name == 'push'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-fuzz-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          scope: fuzz
+          save: ${{ steps.go-cache.outputs.hit != 'true' }}
 
   web:
     name: TypeScript core and web client
@@ -303,18 +267,15 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: bun
       - name: Supply-chain policy, audit, Oxfmt, Oxlint, knip, type checks and svelte-autofixer
         run: mise run lint:web
       - name: Install Chromium for browser compression semantics
@@ -353,13 +314,13 @@ jobs:
       (needs.changes.outputs.go == 'true' || needs.changes.outputs.web == 'true') &&
       (needs.changes.outputs.go != 'true' || needs.go.result == 'success') &&
       (needs.changes.outputs.web != 'true' || needs.web.result == 'success')
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
       id-token: write # authenticate coverage uploads without a persistent Codecov token
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -367,6 +328,9 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        env:
+          # The bundled unzip stream still calls the deprecated Buffer(); actions/download-artifact issue 484.
+          NODE_OPTIONS: --no-deprecation
         with:
           pattern: coverage-*
           path: reports
@@ -389,6 +353,7 @@ jobs:
           files: reports/go.out
           flags: go
           disable_search: true
+          plugins: noop
           fail_ci_if_error: false
       - name: Upload TypeScript coverage
         if: >-
@@ -407,6 +372,7 @@ jobs:
           files: reports/typescript-core.info,reports/web-client.info
           flags: typescript
           disable_search: true
+          plugins: noop
           fail_ci_if_error: false
 
   e2e:
@@ -431,29 +397,20 @@ jobs:
             runner: macos-26
             install: webkit
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: go bun
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: go bun
       - run: tools/verify-go-toolchain
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: go-cache
+        uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-            ~/Library/Caches/go-build
-          key: go-e2e-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-e2e-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
-            go-e2e-${{ runner.os }}-${{ runner.arch }}-
+          scope: e2e
       - name: Build the client that nylzo embeds
         run: mise run build:web
       - name: Use the upstream Ubuntu mirror for browser dependencies
@@ -489,43 +446,38 @@ jobs:
         env:
           BROWSER: ${{ matrix.browser }}
         run: bun run e2e --project="$BROWSER"
-      - if: github.event_name == 'push'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-            ~/Library/Caches/go-build
-          key: go-e2e-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          scope: e2e
+          # Chromium and Firefox build the same server on the same runner image.
+          save: ${{ steps.go-cache.outputs.hit != 'true' && matrix.browser != 'firefox' }}
       - name: Keep the Playwright results of a failed run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: playwright-results-${{ matrix.browser }}
-          path: web/e2e/test-results
+          path: |
+            web/e2e/test-results
+            web/e2e/server-logs
           retention-days: 7
 
   dev-setup:
     name: Developer setup (mise)
     needs: [changes, sca]
     if: needs.changes.outputs.integration == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
-        with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          cache_save: ${{ github.event_name == 'push' }}
+      - uses: $/.github/actions/mise
       - run: tools/verify-go-toolchain
       - name: Block updates that add high or critical vulnerabilities; pushes also inventory unchanged tools
         env:
@@ -578,28 +530,20 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: go bun grype
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: go bun grype
       - run: tools/verify-go-toolchain
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: go-cache
+        uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-
-            go-compose-${{ runner.os }}-${{ runner.arch }}-
+          scope: compose
       - name: Build the web client that nylzo embeds
         run: mise run build:web
       - name: Build nylzo, Caddy and images laid out like the release images
@@ -610,13 +554,10 @@ jobs:
           base=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
           printf 'FROM %s\nCOPY nylzo /ko-app/nylzo\nENTRYPOINT ["/ko-app/nylzo"]\n' "$base" | docker build -q -t nylzo:ci -f - dist
           printf 'FROM %s\nCOPY caddy /ko-app/caddy\nUSER 65533:65533\nENTRYPOINT ["/ko-app/caddy"]\n' "$base" | docker build -q -t caddy:ci -f - dist
-      - if: github.event_name == 'push'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-compose-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}-${{ github.sha }}
+          scope: compose
+          save: ${{ steps.go-cache.outputs.hit != 'true' }}
       - name: The production images have no high or critical known vulnerabilities
         env:
           GRYPE_CHECK_FOR_APP_UPDATE: "false"
@@ -713,21 +654,20 @@ jobs:
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: go bun
-          cache: false
+          tools: go bun cosign
+          cache: none
       - run: tools/verify-go-toolchain
       - name: Release configuration and a snapshot build
+        timeout-minutes: 8
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
@@ -761,7 +701,7 @@ jobs:
             architecture=$(docker image inspect --format '{{.Architecture}}' "$image")
             user=$(docker image inspect --format '{{.Config.User}}' "$image")
             if [ "$id" = caddy ]; then test "$user" = 65533:65533; else test "$user" = 65532; fi
-            container=$(docker create "$image")
+            container=$(docker create --platform "linux/${architecture}" "$image")
             docker cp "${container}:/ko-app/${id}" "${RUNNER_TEMP}/${id}-image"
             docker rm "$container" > /dev/null
             binary=(dist/"${id}"_linux_"${architecture}"_*/"${id}")
@@ -784,79 +724,68 @@ jobs:
     name: Analyze (go)
     needs: changes
     if: github.event_name == 'pull_request' || needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
       actions: read # let CodeQL inspect the current workflow run
       security-events: write # upload CodeQL findings, including fork PR results
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: go
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: go
       - run: tools/verify-go-toolchain
-      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: go-cache
+        uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-codeql-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
-          restore-keys: |
-            go-codeql-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
-            go-codeql-${{ runner.os }}-${{ runner.arch }}-
-      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+          scope: codeql
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: go
           build-mode: autobuild
           queries: security-extended
           config: |
             threat-models: remote
-      - uses: github/codeql-action/autobuild@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
-      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      - uses: github/codeql-action/autobuild@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:go
-      - if: github.event_name == 'push'
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - uses: $/.github/actions/go-cache
         with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-codeql-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          scope: codeql
+          save: ${{ steps.go-cache.outputs.hit != 'true' }}
 
   codeql-web:
     name: Analyze (javascript-typescript)
     needs: changes
     if: github.event_name == 'pull_request' || needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
       actions: read # let CodeQL inspect the current workflow run
       security-events: write # upload CodeQL findings, including fork PR results
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: javascript-typescript
           build-mode: none
           queries: security-extended
           config: |
             threat-models: remote
-      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:javascript-typescript
 
@@ -864,27 +793,27 @@ jobs:
     name: Analyze (actions)
     needs: changes
     if: github.event_name == 'pull_request' || needs.changes.outputs.actions == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
       actions: read # let CodeQL inspect the current workflow run
       security-events: write # upload CodeQL findings, including fork PR results
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: actions
           build-mode: none
           queries: security-extended
           config: |
             threat-models: remote
-      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:actions
 
@@ -909,24 +838,21 @@ jobs:
         codeql-web,
         codeql-actions,
       ]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       contents: read
       checks: read # authenticate the independent Socket App result on this PR head
     steps:
-      - uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: $/.github/actions/mise
         with:
-          # renovate: datasource=github-releases depName=jdx/mise
-          version: 2026.10.23
-          install_args: bun
-          cache_save: ${{ github.event_name == 'push' }}
+          tools: bun
       - name: Every planned job completed successfully
         env:
           RESULTS: ${{ toJSON(needs) }}
@@ -934,6 +860,9 @@ jobs:
       - name: Download the hashes of both release builds
         if: needs.changes.outputs.integration == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        env:
+          # The bundled unzip stream still calls the deprecated Buffer(); actions/download-artifact issue 484.
+          NODE_OPTIONS: --no-deprecation
         with:
           pattern: hashes-*
           path: ${{ runner.temp }}/hashes
@@ -960,7 +889,7 @@ jobs:
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/v') ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID && startsWith(github.event.pull_request.head.ref, 'renovate/')))
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 1
     steps:
       - run: echo 'Every source, security, integration, and reproducibility check passed.'
