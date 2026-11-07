@@ -15,7 +15,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/server/abuse"
-	"github.com/misaon/nylzo/internal/server/webclient"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
 const (
@@ -135,7 +135,7 @@ func (s *Server) variables() []variable {
 		}},
 		{"NYLZO_PUBLIC_URL", func(value string) error {
 			s.PublicURL = value
-			return webclient.CheckPublicURL(value)
+			return operatoraddress.CheckPublicURL(value)
 		}},
 	}
 }

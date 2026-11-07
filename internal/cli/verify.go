@@ -21,6 +21,7 @@ import (
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -242,7 +243,7 @@ func (v *verifier) release(ctx context.Context) (webclient.Manifest, error) {
 		)
 	}
 	if served.PublicURL != "" {
-		if err = webclient.CheckPublicURL(served.PublicURL); err != nil {
+		if err = operatoraddress.CheckPublicURL(served.PublicURL); err != nil {
 			return served, differs(
 				"the server's client manifest names a public URL that this nylzo would refuse: %s",
 				err,
@@ -277,7 +278,7 @@ func (v *verifier) contact(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fetchFailed(server.TransparencyPath, err)
 	}
-	contact, err := webclient.OperatorContact(fetched.Body)
+	contact, err := operatoraddress.OperatorContact(fetched.Body)
 	if err != nil {
 		return "", differs("%s: %s", server.TransparencyPath, err)
 	}

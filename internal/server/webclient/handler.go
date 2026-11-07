@@ -8,11 +8,12 @@ import (
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
 func NewHandler(build Build, publicURL, contact string, information buildinfo.Info) (http.Handler, error) {
 	if publicURL != "" {
-		if err := CheckPublicURL(publicURL); err != nil {
+		if err := operatoraddress.CheckPublicURL(publicURL); err != nil {
 			return nil, err
 		}
 	}

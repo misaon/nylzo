@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
 const (
@@ -48,7 +50,7 @@ type Pages map[string]Page
 
 // Render fills the templates for an instance; every page may reach only the addresses ConnectionAllowlist names.
 func (b Build) Render(publicURL, contact string) (Pages, error) {
-	if err := CheckContact(contact); err != nil {
+	if err := operatoraddress.CheckContact(contact); err != nil {
 		return nil, fmt.Errorf("server: operator contact: %w", err)
 	}
 	allowlist := ConnectionAllowlist(contact)
@@ -75,7 +77,7 @@ func (p Pages) For(path string) Page {
 
 func render(template, publicURL string) (string, error) {
 	if publicURL != "" {
-		if err := CheckPublicURL(publicURL); err != nil {
+		if err := operatoraddress.CheckPublicURL(publicURL); err != nil {
 			return "", fmt.Errorf("public URL: %w", err)
 		}
 	}

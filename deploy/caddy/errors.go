@@ -10,6 +10,7 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -41,7 +42,7 @@ func (*ErrorPage) CaddyModule() caddy.ModuleInfo {
 }
 
 func (e *ErrorPage) Provision(_ caddy.Context) error {
-	if err := webclient.CheckContact(e.Contact); err != nil {
+	if err := operatoraddress.CheckContact(e.Contact); err != nil {
 		return fmt.Errorf("the contact %q: %w", e.Contact, err)
 	}
 	build, err := webclient.Load(web.Files())

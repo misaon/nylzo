@@ -11,7 +11,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/local"
 	"github.com/misaon/nylzo/internal/client"
-	"github.com/misaon/nylzo/internal/server/webclient"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
 var errLinkOtherInstance = errors.New("the link belongs to another instance than --server or " + envServer)
@@ -122,7 +122,7 @@ func localInstance(server string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err = webclient.CheckPublicURL(instance); err != nil {
+	if err = operatoraddress.CheckPublicURL(instance); err != nil {
 		return "", fmt.Errorf("the instance address %s: %w", instance, err)
 	}
 	return instance, nil

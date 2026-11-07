@@ -12,6 +12,7 @@ import (
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/localclient"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -119,7 +120,7 @@ func instanceContact(ctx context.Context, instance string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return webclient.OperatorContact(fetched.Body)
+	return operatoraddress.OperatorContact(fetched.Body)
 }
 
 func (s *session) keepNameLocal() {
