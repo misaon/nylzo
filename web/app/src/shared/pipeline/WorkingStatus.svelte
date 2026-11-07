@@ -21,7 +21,7 @@
 
 <div
   class={[
-    'relative flex h-11 items-center justify-between gap-4 overflow-hidden rounded-control bg-white/4 px-4 text-ui font-medium whitespace-nowrap text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/12 transition-opacity duration-500 ease-silk sm:min-w-44 md:h-9 md:px-3.5',
+    'relative flex h-11 items-center justify-between gap-4 overflow-hidden rounded-control bg-white/4 px-4 text-ui font-medium whitespace-nowrap text-ink shadow-rim ring-1 ring-white/12 transition-opacity duration-500 sm:min-w-44 md:h-9 md:px-3.5',
     shown ? 'opacity-100' : 'pointer-events-none opacity-0',
   ]}
   aria-hidden={!announced || !shown}

@@ -9,7 +9,7 @@ export const BUTTON_VARIANTS: Readonly<Record<ButtonVariant, string>> = {
 };
 
 export const BUTTON_BASE =
-  'group/act relative inline-flex shrink-0 items-center justify-center font-medium whitespace-nowrap';
+  'group/action inline-flex shrink-0 items-center justify-center font-medium whitespace-nowrap';
 
 export const BUTTON_SIZES: Readonly<Record<ButtonSize, string>> = {
   tight: 'h-11 gap-1.5 rounded-control px-3 text-sm md:h-10',

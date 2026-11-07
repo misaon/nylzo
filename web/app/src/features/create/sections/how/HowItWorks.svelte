@@ -2,6 +2,7 @@
   import { getTranslator } from '../../../../shared/language/translator.svelte.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
   import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
+  import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import { AutoCycle } from './auto-cycle.svelte.ts';
   import HowDiagram from './HowDiagram.svelte';
   import { LINK_PARTS } from './link-parts.ts';
@@ -28,15 +29,9 @@
 <span id="jak" class="block" aria-hidden="true"></span>
 
 <section id="how-it-works" class="px-4 pt-14 pb-28 sm:px-6 md:pt-16 md:pb-40" aria-labelledby="how-it-works-title">
-  <div class="mx-auto max-w-[1160px]">
+  <div class="mx-auto max-w-page">
     <div class="mx-auto max-w-[640px] text-center" {@attach reveal}>
-      <p class="rv-focus text-eyebrow text-aegis-300 uppercase [--rv-i:0]">{translate('how.eyebrow')}</p>
-      <h2
-        id="how-it-works-title"
-        class="mt-3 rv-focus font-display text-section font-light text-balance [--rv-i:1] md:text-section-lg"
-      >
-        {translate('how.title')}
-      </h2>
+      <SectionIntro id="how-it-works-title" eyebrow={translate('how.eyebrow')} title={translate('how.title')} />
       <p class="mx-auto mt-4 max-w-[600px] rv-focus text-center text-lead text-balance text-ink-soft [--rv-i:2]">
         {translate('how.lead')}
       </p>
@@ -105,7 +100,7 @@
                 <span class="flex w-fit max-w-full flex-col">
                   <span
                     class={[
-                      'rv-focus truncate text-ui whitespace-nowrap tabular-nums transition duration-500 ease-silk [--rv-blur:4px] [--rv-y:6px] lg:text-body',
+                      'rv-focus truncate text-ui whitespace-nowrap tabular-nums transition duration-500 [--rv-blur:4px] [--rv-y:6px] lg:text-body',
                       part.tone,
                       part.delays.text,
                       active ? 'opacity-100' : 'opacity-75 group-hover:opacity-100',
@@ -135,7 +130,7 @@
                 </span>
                 <span
                   class={[
-                    'mt-3 rv-focus text-body transition-colors duration-500 ease-silk [--rv-blur:4px] [--rv-y:6px]',
+                    'mt-3 rv-focus text-body transition-colors duration-500 [--rv-blur:4px] [--rv-y:6px]',
                     part.delays.title,
                     active ? 'text-ink' : 'text-ink-soft',
                   ]}>{translate(part.title)}</span
@@ -157,7 +152,7 @@
           {#each LINK_PARTS as part, index (part.id)}
             <p
               class={[
-                'text-body text-pretty text-ink-soft transition-opacity duration-500 ease-silk',
+                'text-body text-pretty text-ink-soft transition-opacity duration-500',
                 cycle.index === index ? 'opacity-100' : 'pointer-events-none opacity-0',
               ]}
               aria-hidden={cycle.index !== index}

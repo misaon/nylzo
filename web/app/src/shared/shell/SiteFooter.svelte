@@ -22,7 +22,7 @@
   const { compact = false, current, onlanguage }: Props = $props();
   const { translate } = getTranslator();
   const versionHref = buildSourceHref(BUILD_INFO);
-  const LINK = 'transition duration-300 ease-silk hover:text-ink';
+  const LINK = 'transition hover:text-ink';
 
   const groups: readonly { readonly key: MessageKey; readonly links: readonly FooterLink[] }[] = [
     {
@@ -69,7 +69,7 @@
 >
   {#if compact}
     <div
-      class="glass-soft mx-auto flex max-w-[1160px] flex-col gap-5 rounded-card p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:flex-row sm:items-center sm:justify-between md:px-8"
+      class="glass-soft mx-auto flex max-w-page flex-col gap-5 rounded-card p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] sm:flex-row sm:items-center sm:justify-between md:px-8"
     >
       <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
         <Logo class="h-7 w-[105px] shrink-0" label="Nylzo" />
@@ -85,7 +85,7 @@
       </div>
     </div>
   {:else}
-    <div class="glass-soft mx-auto max-w-[1160px] rounded-card p-6 md:p-10">
+    <div class="glass-soft mx-auto max-w-page rounded-card p-6 md:p-10">
       <div
         class="grid grid-cols-2 gap-x-6 gap-y-8 md:grid-cols-[minmax(0,1.3fr)_repeat(3,minmax(0,1fr))] md:gap-10"
         data-footer-mobile

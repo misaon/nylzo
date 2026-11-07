@@ -32,7 +32,7 @@
   <div class="relative flex flex-col gap-4 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
     <div
       class={[
-        'grid grid-cols-2 gap-1.5 transition-opacity duration-500 ease-silk sm:flex sm:items-center',
+        'grid grid-cols-2 gap-1.5 transition-opacity duration-500 sm:flex sm:items-center',
         composer.busy ? 'pointer-events-none opacity-40' : 'opacity-100',
       ]}
       inert={composer.busy}
@@ -40,7 +40,7 @@
       <TtlMenu {composer} />
       <OpensMenu {composer} />
       <SecurityMenu {composer} />
-      <div class="group/act relative">
+      <div class="group/action relative">
         <input
           id="{id}-file"
           {@attach composer.focus.attach('file')}
@@ -71,7 +71,7 @@
         type="submit"
         disabled={!composer.limits || composer.busy}
         class={[
-          'w-full transition-[opacity,translate,scale] duration-500 ease-silk max-sm:h-auto max-sm:min-h-11 max-sm:py-2.5 max-sm:text-left max-sm:whitespace-normal',
+          'w-full transition-[opacity,translate,scale] duration-500 max-sm:h-auto max-sm:min-h-11 max-sm:py-2.5 max-sm:text-left max-sm:whitespace-normal',
           composer.busy ? 'pointer-events-none opacity-0' : 'opacity-100',
         ]}
       >

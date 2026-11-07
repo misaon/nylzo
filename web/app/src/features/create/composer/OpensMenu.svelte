@@ -39,7 +39,7 @@
           disabled={composer.opensMax <= 1}
           onclick={() => (composer.opensMax = Math.max(1, composer.opensMax - 1))}
           aria-label={translate('compose.opens.less')}
-          class="group/act btn-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition duration-300 ease-silk disabled:opacity-40 md:size-9"
+          class="group/action btn-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition disabled:opacity-40 md:size-9"
         >
           <Icon name="minus" class="size-4 shrink-0" animated />
         </button>
@@ -54,7 +54,7 @@
           disabled={composer.opensMax >= composer.maxOpens}
           onclick={() => (composer.opensMax = Math.min(composer.maxOpens, composer.opensMax + 1))}
           aria-label={translate('compose.opens.more')}
-          class="group/act btn-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition duration-300 ease-silk disabled:opacity-40 md:size-9"
+          class="group/action btn-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition disabled:opacity-40 md:size-9"
         >
           <Icon name="plus" class="size-4 shrink-0" animated />
         </button>
@@ -63,8 +63,8 @@
         {#each SEGMENTS as segment (segment)}
           <span
             class={[
-              'h-1 flex-1 rounded-full transition duration-300 ease-silk',
-              segment <= composer.opensMax ? 'bg-aegis-300 shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)]' : 'bg-white/10',
+              'h-1 flex-1 rounded-full transition',
+              segment <= composer.opensMax ? 'bg-aegis-300 shadow-glow' : 'bg-white/10',
             ]}
           ></span>
         {/each}

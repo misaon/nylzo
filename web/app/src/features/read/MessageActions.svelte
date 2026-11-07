@@ -25,7 +25,7 @@
 </script>
 
 <div
-  class="relative z-30 mx-auto mt-6 flex max-w-[860px] flex-col-reverse items-center gap-6 px-1 sm:flex-row sm:justify-between sm:gap-4"
+  class="relative z-30 mx-auto mt-6 flex max-w-column flex-col-reverse items-center gap-6 px-1 sm:flex-row sm:justify-between sm:gap-4"
 >
   <div class="stack text-caption">
     <p
@@ -49,7 +49,7 @@
     </p>
   </div>
   <div
-    class={['flex items-center gap-1 transition-opacity duration-500 ease-silk max-sm:relative', ACTION_STATES[state]]}
+    class={['flex items-center gap-1 transition-opacity duration-500 max-sm:relative', ACTION_STATES[state]]}
     inert={state !== 'on'}
   >
     <Button
@@ -58,7 +58,7 @@
       size="compact"
       disabled={page.ready === undefined || page.deleting}
       onclick={page.askDelete}
-      class="transition duration-300 ease-silk"
+      class="transition"
     >
       <Icon name="trash" class="size-4 shrink-0" animated />
       {translate('read.delete')}

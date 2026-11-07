@@ -15,20 +15,19 @@
     { key: 'limits.abuse', icon: 'ban', order: '[--rv-i:3]' },
   ] as const;
   const DEVICE =
-    'rv-pop grid size-12 place-items-center rounded-pane text-white outline-1 outline-offset-[3px] outline-solar-300/30 outline-dashed tile-warning [--rv-delay:900ms]';
+    'rv-pop grid size-12 place-items-center rounded-pane text-white outline-1 outline-offset-3 outline-solar-300/30 outline-dashed tile-warning [--rv-delay:900ms]';
   const BADGE =
     'rv-pop grid size-5 shrink-0 place-items-center rounded-full bg-aegis-500/12 text-aegis-200 ring-1 ring-aegis-400/35 [--rv-delay:560ms]';
   const DASHED =
     'rv-draw mt-6 h-1 bg-[repeating-linear-gradient(90deg,oklch(0.86_0.12_85/0.55)_0_6px,transparent_6px_11px)] [--rv-delay:820ms]';
   const LABEL = 'rv-focus mt-3 text-center text-caption text-balance text-ink [--rv-blur:4px] [--rv-y:6px]';
-  const ZONE =
-    'rv-focus mt-0.5 text-center text-eyebrow font-medium whitespace-nowrap uppercase [--rv-blur:4px] [--rv-y:6px]';
+  const ZONE = 'rv-focus mt-0.5 text-center text-eyebrow whitespace-nowrap uppercase [--rv-blur:4px] [--rv-y:6px]';
 </script>
 
 <span id="hranice" class="block" aria-hidden="true"></span>
 
 <section id="limits" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="limits-title">
-  <div class="glass relative mx-auto max-w-[1160px] rv-rise overflow-hidden rounded-card p-6 md:p-10" {@attach reveal}>
+  <div class="glass mx-auto max-w-page rv-rise overflow-hidden rounded-card p-6 md:p-10" {@attach reveal}>
     <div
       class="pointer-events-none absolute -top-32 -right-24 size-96 rv-glow rounded-full bg-[radial-gradient(closest-side,oklch(0.86_0.12_85/0.1),transparent)] [--rv-delay:200ms]"
       aria-hidden="true"
@@ -72,7 +71,7 @@
           </div>
           <span class={[DASHED, 'origin-right rounded-l-full']}></span>
           <span
-            class="mt-6 h-1 origin-center rv-draw rounded-full bg-aegis-400 shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)] [--rv-delay:250ms] [--rv-time:1.1s]"
+            class="mt-6 h-1 origin-center rv-draw rounded-full bg-aegis-400 shadow-glow [--rv-delay:250ms] [--rv-time:1.1s]"
           ></span>
           <span class={[DASHED, 'origin-left rounded-r-full']}></span>
           <span class={[LABEL, '[--rv-delay:1000ms]']}>{translate('limits.you')}</span>
@@ -99,7 +98,7 @@
               size="medium"
               class={['row-span-2 rv-pop self-center [--rv-delay:150ms] [--rv-step:90ms]', limit.order]}
             />
-            <h3 class="col-start-2 text-title-sm font-medium text-balance text-ink">
+            <h3 class="col-start-2 text-title-sm text-balance text-ink">
               {translate(`${limit.key}.title`)}
             </h3>
             <p class="col-start-2 mt-1 text-caption text-pretty text-ink-soft">{translate(`${limit.key}.note`)}</p>

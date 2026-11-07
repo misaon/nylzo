@@ -65,7 +65,7 @@
   </h1>
   <p class="mt-3 text-caption text-ink-mute">{translate('terms.effective')}</p>
   <section class="glass-soft mt-8 rounded-card p-5 md:p-6">
-    <h2 class="text-title font-medium text-ink">{translate('terms.summary.title')}</h2>
+    <h2 class="text-title text-ink">{translate('terms.summary.title')}</h2>
     <ul class="mt-4 grid gap-2.5 text-body-sm text-pretty text-ink-soft">
       {#each SUMMARY as item (item)}
         <li class="flex gap-2.5">
@@ -77,7 +77,7 @@
     <p class="mt-4 text-caption text-ink-mute">{translate('terms.summary.note')}</p>
   </section>
   {#each SECTIONS as section (section.title)}
-    <h2 class="mt-10 text-title font-medium text-ink">{translate(section.title)}</h2>
+    <h2 class="mt-10 text-title text-ink">{translate(section.title)}</h2>
     <ul class="mt-3 grid list-disc gap-2 pl-5 text-body text-pretty text-ink-soft">
       {#if section.link}
         <li>

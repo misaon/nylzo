@@ -69,7 +69,7 @@ export const LINK_PARTS: readonly LinkPart[] = [
     body: 'how.link.key.body',
     tone: 'text-aegis-300',
     bar: 'bg-aegis-300/35',
-    glow: 'shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)]',
+    glow: 'shadow-glow',
     delays: {
       text: '[--rv-delay:770ms]',
       bar: '[--rv-delay:850ms]',

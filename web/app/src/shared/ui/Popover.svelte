@@ -43,7 +43,7 @@
   {@attach focusFirst}
   {@attach attachment}
   class={[
-    'absolute z-30 rounded-pane glass-pop duration-300 ease-silk',
+    'absolute z-30 rounded-pane glass-pop',
     open
       ? 'visible translate-y-0 opacity-100 transition-[opacity,translate]'
       : [

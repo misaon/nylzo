@@ -91,11 +91,7 @@
       placement === 'footer' ? 'bottom-full left-0 mb-2 sm:right-0 sm:left-auto' : 'top-full right-0 mt-2',
     ]}
   >
-    <ul
-      role="listbox"
-      aria-label={translate('language.list')}
-      class="-mx-0.5 grid [scrollbar-width:thin] gap-0.5 overflow-auto px-0.5 py-0.5"
-    >
+    <ul role="listbox" aria-label={translate('language.list')} class="-mx-0.5 grid gap-0.5 overflow-auto px-0.5 py-0.5">
       {#each ORDER as language (language)}
         {const selected = $derived(language === current)}
         <li
@@ -106,9 +102,9 @@
           onclick={() => choose(language)}
           onkeydown={(event) => onkeydown(event, language)}
           class={[
-            'flex h-11 cursor-pointer items-center gap-3 rounded-control px-2.5 text-ui transition duration-300 ease-silk md:h-10',
+            'flex h-11 cursor-pointer items-center gap-3 rounded-control px-2.5 text-ui transition md:h-10',
             selected
-              ? 'bg-aegis-500/12 text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-aegis-400/35'
+              ? 'bg-aegis-500/12 text-ink shadow-rim ring-1 ring-aegis-400/35'
               : 'text-ink-soft hover:bg-white/6 hover:text-ink',
           ]}
         >

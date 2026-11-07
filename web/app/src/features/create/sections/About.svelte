@@ -4,6 +4,7 @@
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import { ARROW_LINK, INLINE_TARGET, TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
+  import SectionIntro from '../../../shared/ui/section/SectionIntro.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
 
   const { translate } = getTranslator();
@@ -17,15 +18,9 @@
 </script>
 
 <section id="about" class="px-4 pt-20 pb-8 sm:px-6 md:pt-28" aria-labelledby="about-title">
-  <div class="mx-auto grid max-w-[1160px] gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:gap-10">
+  <div class="mx-auto grid max-w-page gap-8 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:gap-10">
     <div {@attach reveal}>
-      <p class="rv-focus text-eyebrow text-aegis-300 uppercase [--rv-i:0]">{translate('about.eyebrow')}</p>
-      <h2
-        id="about-title"
-        class="mt-3 rv-focus font-display text-section font-light text-balance [--rv-i:1] md:text-section-lg"
-      >
-        {translate('about.title')}
-      </h2>
+      <SectionIntro id="about-title" eyebrow={translate('about.eyebrow')} title={translate('about.title')} />
       <p class="mt-5 rv-focus text-lead text-pretty text-ink-soft [--rv-i:2] md:text-lead-lg">
         {translate('about.text')}
       </p>
@@ -39,7 +34,7 @@
             fact.order,
           ]}
         >
-          <dt class="flex items-center gap-3 text-title-sm font-medium text-ink">
+          <dt class="flex items-center gap-3 text-title-sm text-ink">
             <IconTile
               icon={fact.icon}
               tone="neutral"

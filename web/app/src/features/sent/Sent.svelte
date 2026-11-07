@@ -177,7 +177,7 @@
   <span class={['grid size-14 place-items-center rounded-full', tone]} aria-hidden="true">
     <Icon name={icon} class="size-6" stroke={1.6} />
   </span>
-  <p class="mt-5 text-title-sm font-medium text-ink">{title}</p>
+  <p class="mt-5 text-title-sm text-ink">{title}</p>
   <p role={icon === 'alert' ? 'alert' : undefined} class="mt-1.5 max-w-[380px] text-body-sm text-pretty text-ink-mute">
     {text}
   </p>
@@ -228,7 +228,7 @@
         {const pending = $derived(item.state.kind === 'loading')}
         {const live = $derived(pending || (item.state.kind === 'loaded' && !item.ended))}
         <li
-          class="rounded-pane bg-white/4 p-4 shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/8 sm:p-6"
+          class="rounded-pane bg-white/4 p-4 shadow-rim ring-1 ring-white/8 sm:p-6"
           animate:flip={{ duration: motionMs(500), easing: cubicOut }}
           out:fade={{ duration: motionMs(300) }}
         >
@@ -248,14 +248,14 @@
               <h3
                 id={headingId(item.id)}
                 tabindex="-1"
-                class="text-title-sm font-medium text-ink outline-none max-sm:basis-full"
+                class="text-title-sm text-ink outline-none max-sm:basis-full"
                 {@attach focus.attach(headingId(item.id))}
               >
                 {item.label ?? translate('sent.item')}
               </h3>
               <span
                 class={[
-                  'items-center gap-1.5 rounded-full px-2.5 py-1 text-micro font-medium ring-1 transition-[background-color,color,box-shadow] duration-300 ease-silk',
+                  'items-center gap-1.5 rounded-full px-2.5 py-1 text-micro font-medium ring-1 transition-[background-color,color,box-shadow]',
                   pending ? 'inline-grid' : 'inline-flex',
                   badge.tone === 'live' && 'bg-aegis-500/12 text-aegis-200 ring-aegis-400/35',
                   badge.tone === 'quiet' && 'bg-white/6 text-ink-soft ring-white/12',
@@ -268,9 +268,7 @@
                   </span>
                   <span class="[grid-area:1/1]">{translate(badge.key)}</span>
                 {:else if badge.tone === 'live'}
-                  <span
-                    class="size-1.5 animate-pulse-core rounded-full bg-aegis-300 shadow-[0_0_8px_oklch(0.86_0.06_246/0.9)]"
-                  ></span>
+                  <span class="size-1.5 animate-pulse-core rounded-full bg-aegis-300 shadow-glow"></span>
                 {:else if item.state.kind === 'loaded' && item.state.status.state === 'opened'}
                   <Icon name="check" class="size-3.5 shrink-0" />
                 {/if}
@@ -347,7 +345,7 @@
                 variant="ghost"
                 size="compact"
                 aria-describedby={headingId(item.id)}
-                class="transition duration-300 ease-silk max-sm:flex-auto"
+                class="transition max-sm:flex-auto"
                 onclick={() => askForget(item)}
               >
                 <Icon name="close" class="size-4 shrink-0" animated />

@@ -6,6 +6,7 @@
   import { FocusTargets } from '../../../../shared/ui/focus.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
   import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
+  import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import { arrowTarget } from '../../../../shared/ui/tabs.ts';
   import IconTile from '../../../../shared/ui/tile/IconTile.svelte';
   import { installLines, installText, LINE_DELAYS, TOKEN_CLASSES } from './commands.ts';
@@ -41,17 +42,9 @@
 <span id="vlastni-server" class="block" aria-hidden="true"></span>
 
 <section id="self-host" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="host-title">
-  <div
-    class="mx-auto grid max-w-[1160px] items-center gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16"
-  >
+  <div class="mx-auto grid max-w-page items-center gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16">
     <div {@attach reveal}>
-      <p class="rv-focus text-eyebrow text-aegis-300 uppercase [--rv-i:0]">{translate('host.eyebrow')}</p>
-      <h2
-        id="host-title"
-        class="mt-3 rv-focus font-display text-section font-light text-balance [--rv-i:1] md:text-section-lg"
-      >
-        {translate('host.title')}
-      </h2>
+      <SectionIntro id="host-title" eyebrow={translate('host.eyebrow')} title={translate('host.title')} />
       <p
         class="mt-5 max-w-[460px] rv-focus text-lead leading-relaxed text-pretty text-ink-soft [--rv-i:2] md:text-lead-lg"
       >
@@ -78,13 +71,13 @@
         class="flex rv-focus flex-col gap-2 [--rv-blur:4px] [--rv-delay:420ms] sm:flex-row sm:items-center sm:justify-between"
       >
         <div
-          class="relative grid grid-cols-3 rounded-pane bg-white/4 p-1 shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/8"
+          class="relative grid grid-cols-3 rounded-pane bg-white/4 p-1 shadow-rim ring-1 ring-white/8"
           role="tablist"
           aria-label={translate('host.tabs')}
         >
           <span
             class={[
-              'absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-control bg-white/10 shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/12 transition-transform duration-500 ease-silk',
+              'absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-control bg-white/10 shadow-rim ring-1 ring-white/12 transition-transform duration-500',
               indicator[index],
             ]}
             aria-hidden="true"
@@ -102,7 +95,7 @@
               onclick={() => (tab = id)}
               {onkeydown}
               class={[
-                'relative z-10 h-11 rounded-control px-3.5 text-ui transition duration-300 ease-silk md:h-9',
+                'relative z-10 h-11 rounded-control px-3.5 text-ui transition md:h-9',
                 selected ? 'text-ink' : 'text-ink-mute hover:text-ink',
               ]}
             >
@@ -127,14 +120,14 @@
           role="tabpanel"
           aria-labelledby="host-tab-{tab}"
           tabindex="0"
-          class="stack overflow-x-auto p-4 text-caption tabular-nums outline-2 outline-offset-[-2px] outline-transparent transition duration-300 ease-silk focus-visible:outline-offset-[-2px] md:text-body-sm"
+          class="stack overflow-x-auto p-4 text-caption tabular-nums outline-2 -outline-offset-2 outline-transparent transition focus-visible:-outline-offset-2 md:text-body-sm"
         >
           {#each tabs as id (id)}
             {const lines = $derived(installLines(id, domain))}
             <div
               class={[
-                'transition-opacity duration-300',
-                id === tab ? 'opacity-100 delay-[180ms] ease-silk' : 'pointer-events-none opacity-0 ease-in',
+                'transition-opacity',
+                id === tab ? 'opacity-100 delay-180' : 'pointer-events-none opacity-0 ease-in',
               ]}
               aria-hidden={id !== tab}
             >

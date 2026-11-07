@@ -13,7 +13,7 @@
 
 <div
   class={[
-    'flex flex-col items-center rounded-pane bg-white/4 px-6 py-12 text-center shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/8 md:py-14',
+    'flex flex-col items-center rounded-pane bg-white/4 px-6 py-12 text-center shadow-rim ring-1 ring-white/8 md:py-14',
     className,
   ]}
 >

@@ -102,7 +102,9 @@
   }
 
   function item(delay: string): string[] {
-    return entered ? ['translate-y-0 opacity-100 duration-500 ease-silk', delay] : ['translate-y-1.5 opacity-0'];
+    return entered
+      ? ['translate-y-0 opacity-100 duration-500', delay]
+      : ['translate-y-1.5 opacity-0 duration-150 ease-in-out'];
   }
 </script>
 
@@ -140,7 +142,7 @@
     <span
       class={[
         'relative grid size-12 shrink-0 place-items-center transition-[opacity,scale] md:size-14',
-        entered ? 'scale-100 opacity-100 delay-[60ms] duration-500 ease-silk' : 'scale-75 opacity-0',
+        entered ? 'scale-100 opacity-100 delay-60 duration-500' : 'scale-75 opacity-0 duration-150 ease-in-out',
       ]}
       aria-hidden="true"
     >
@@ -156,7 +158,7 @@
       tabindex="-1"
       class={[
         'relative mt-5 font-display text-panel font-light text-ink transition-[opacity,translate] outline-none md:text-panel-lg',
-        item('delay-[120ms]'),
+        item('delay-120'),
       ]}
     >
       {translate('created.title')}
@@ -164,17 +166,17 @@
     <p
       class={[
         'relative mt-2 text-ui text-pretty text-ink-soft transition-[opacity,translate] md:text-body',
-        item('delay-[120ms]'),
+        item('delay-120'),
       ]}
     >
       {translate(passphrase === '' ? 'created.sub' : 'created.sub.passphrase')}
     </p>
 
-    <div class={['relative mt-7 w-full max-w-[720px] transition-[opacity,translate] md:mt-8', item('delay-[180ms]')]}>
+    <div class={['relative mt-7 w-full max-w-[720px] transition-[opacity,translate] md:mt-8', item('delay-180')]}>
       <div class="relative rounded-card">
         <span
           class={[
-            'pointer-events-none absolute inset-0 rounded-card shadow-[0_0_36px_-6px_oklch(0.56_0.19_258/0.9)] ring-1 ring-aegis-300/50 transition-opacity duration-500 ease-silk max-sm:hidden',
+            'pointer-events-none absolute inset-0 rounded-card shadow-[0_0_36px_-6px_oklch(0.56_0.19_258/0.9)] ring-1 ring-aegis-300/50 transition-opacity duration-500 max-sm:hidden',
             copied.shown || clipboard === 'failed' ? 'opacity-100' : 'opacity-0',
           ]}
           aria-hidden="true"
@@ -182,7 +184,7 @@
         <div class="rounded-card well max-sm:p-2">
           <div class="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3 sm:p-2 sm:pl-4">
             <div
-              class="flex min-w-0 flex-1 items-center gap-3 rounded-pane px-2 py-1 text-left outline-2 outline-offset-3 outline-transparent transition duration-300 ease-silk has-[input:focus-visible]:outline-aegis-300 sm:p-0"
+              class="flex min-w-0 flex-1 items-center gap-3 rounded-pane px-2 py-1 text-left outline-2 outline-offset-3 outline-transparent transition has-[input:focus-visible]:outline-aegis-300 sm:p-0"
             >
               <Icon name="lock" class="size-4 shrink-0 text-aegis-300" />
               <div class="relative min-h-11 min-w-0 flex-1">
@@ -190,7 +192,7 @@
                   translate="no"
                   aria-hidden="true"
                   class={[
-                    'pointer-events-none flex h-full min-h-11 min-w-0 items-center text-body-sm whitespace-nowrap tabular-nums transition-opacity duration-300 ease-silk md:text-body',
+                    'pointer-events-none flex h-full min-h-11 min-w-0 items-center text-body-sm whitespace-nowrap tabular-nums transition-opacity md:text-body',
                     editing ? 'opacity-0' : 'opacity-100',
                   ]}
                 >
@@ -274,7 +276,7 @@
               aria-pressed={passphraseShown}
               aria-label={translate(passphraseShown ? 'created.passphrase.hide' : 'created.passphrase.show')}
               onclick={() => (passphraseShown = !passphraseShown)}
-              class="group/act ml-auto grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition duration-300 ease-silk hover:bg-white/6 hover:text-ink md:size-9"
+              class="group/action ml-auto grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition hover:bg-white/6 hover:text-ink md:size-9"
             >
               <SwapIcon from="eye" to="eyeOff" swapped={passphraseShown} />
             </button>
@@ -335,7 +337,7 @@
     <div
       class={[
         'flex flex-col gap-3 border-t border-white/8 px-4 py-4 text-left transition-[opacity,translate] sm:flex-row sm:items-center sm:gap-4',
-        item('delay-[220ms]'),
+        item('delay-220'),
       ]}
     >
       <div class="flex min-w-0 flex-1 items-center gap-3">
@@ -367,12 +369,12 @@
         <Button variant="tint" size="field" type="submit" disabled={tracking === 'saving' || tracking === 'remembered'}>
           <span class="stack place-items-center">
             <span
-              class={['transition-opacity duration-300 ease-silk', tracking === 'remembered' && 'opacity-0']}
+              class={['transition-opacity', tracking === 'remembered' && 'opacity-0']}
               aria-hidden={tracking === 'remembered'}>{translate('created.track.save')}</span
             >
             <span
               class={[
-                'transition-[opacity,scale] duration-300 ease-silk',
+                'transition-[opacity,scale]',
                 tracking === 'remembered' ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
               ]}
             >
@@ -388,7 +390,7 @@
   <div
     class={[
       'flex flex-col gap-2.5 border-t border-white/8 p-3 transition-[opacity,translate] sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:pl-4',
-      item('delay-[240ms]'),
+      item('delay-240'),
     ]}
   >
     <ul

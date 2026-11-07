@@ -10,11 +10,7 @@
 </script>
 
 <svg
-  class={[
-    className,
-    animated &&
-      'transition-transform duration-300 ease-silk motion-safe:group-hover/act:scale-110 motion-safe:group-focus-visible/act:scale-110',
-  ]}
+  class={[className, animated && 'transition-transform motion-safe:action:scale-110']}
   viewBox="0 0 24 24"
   fill="currentColor"
   aria-hidden="true"

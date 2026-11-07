@@ -35,7 +35,7 @@
   }
 
   const DAY_SECONDS = 86_400;
-  const CARD = 'min-w-0 rounded-pane bg-white/4 shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] ring-1 ring-white/8';
+  const CARD = 'min-w-0 rounded-pane bg-white/4 shadow-rim ring-1 ring-white/8';
   const CHIP =
     'flex items-center gap-1.5 rounded-full bg-white/4 py-1 pr-3 pl-2 text-caption text-ink-soft ring-1 ring-white/12';
 
@@ -162,7 +162,7 @@
 {#snippet heading(id: string, icon: IconName, title: string)}
   <div class="flex items-center gap-3">
     <IconTile {icon} tone="current" size="medium" />
-    <h2 {id} class="text-title font-medium text-ink">{title}</h2>
+    <h2 {id} class="text-title text-ink">{title}</h2>
   </div>
 {/snippet}
 
@@ -170,7 +170,7 @@
   <ul class="mt-6">
     {#each list as entry (entry.title)}
       <li class="border-t border-white/8 py-4 first:border-t-0 first:pt-0 last:pb-0">
-        <p class="text-title-sm font-medium text-ink">{entry.title}</p>
+        <p class="text-title-sm text-ink">{entry.title}</p>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{entry.text}</p>
       </li>
     {/each}
@@ -181,14 +181,14 @@
   <div class="mt-6 flex gap-3.5 rounded-pane bg-solar-300/[0.08] p-4 ring-1 ring-solar-300/30 sm:p-5">
     <IconTile icon="caution" tone="warning" size="small" />
     <div class="min-w-0">
-      <p class="text-title-sm font-medium text-ink">{title}</p>
+      <p class="text-title-sm text-ink">{title}</p>
       <p class="mt-1 text-body-sm text-pretty text-ink-soft">{text}</p>
     </div>
   </div>
 {/snippet}
 
 {#snippet chips(title: string, list: readonly MessageKey[], icon: IconName, tone: string)}
-  <p class="text-title-sm font-medium text-ink">{title}</p>
+  <p class="text-title-sm text-ink">{title}</p>
   <ul class="mt-3 flex flex-wrap gap-1.5">
     {#each list as chip (chip)}
       <li class={CHIP}>
@@ -233,7 +233,7 @@
             <li>
               <a
                 href={`#${section.id}`}
-                class="flex h-11 items-center rounded-full bg-white/4 px-3.5 text-caption text-ink-soft ring-1 ring-white/12 transition duration-300 ease-silk hover:bg-white/10 hover:text-ink md:h-9"
+                class="flex h-11 items-center rounded-full bg-white/4 px-3.5 text-caption text-ink-soft ring-1 ring-white/12 transition hover:bg-white/10 hover:text-ink md:h-9"
               >
                 {translate(section.nav)}
               </a>
@@ -249,7 +249,7 @@
   {:else if view.view === 'failed'}
     <StateCard>
       <IconTile icon="alert" tone="warning" class="size-14 rounded-full" iconClass="size-6" stroke={1.6} />
-      <p role="alert" class="mt-5 text-title-sm font-medium text-ink">{translate('transparency.failed')}</p>
+      <p role="alert" class="mt-5 text-title-sm text-ink">{translate('transparency.failed')}</p>
       <Button variant="primary" class="mt-6" onclick={load}>
         <Icon name="refresh" class="size-4 shrink-0" animated />
         <span class="relative">{translate('action.retry')}</span>
@@ -378,7 +378,7 @@
       </dl>
       <div class="mt-6">
         <div class="flex items-baseline justify-between gap-4">
-          <p id="transparency-files" class="text-title-sm font-medium text-ink">
+          <p id="transparency-files" class="text-title-sm text-ink">
             {translate('transparency.files.title')}
           </p>
           <p class="text-micro text-ink-mute tabular-nums">
@@ -389,7 +389,7 @@
         <div class="relative mt-3 rounded-pane well">
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div
-            class="max-h-72 [scrollbar-width:thin] overflow-auto px-4 py-1.5"
+            class="max-h-72 overflow-auto px-4 py-1.5"
             role="region"
             aria-labelledby="transparency-files"
             tabindex="0"
@@ -419,7 +419,7 @@
       </div>
       {@render caution(translate('transparency.verify.limit.title'), translate('transparency.verify.limit'))}
       <div class="mt-6">
-        <p class="text-title-sm font-medium text-ink">{translate('transparency.verify.apps.title')}</p>
+        <p class="text-title-sm text-ink">{translate('transparency.verify.apps.title')}</p>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{translate('transparency.verify.apps')}</p>
         <Button variant="tint" size="compact" href={VERIFIED_CLIENTS_URL} rel="noreferrer" class="mt-3">
           {translate('limits.server.link')}

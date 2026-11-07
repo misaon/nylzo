@@ -59,9 +59,6 @@
       display: none;
     }
   }
-}
-
-@layer base {
   @media (forced-colors: none) and (prefers-reduced-motion: no-preference) {
     :where(a[href], button, summary, input, textarea, select, [tabindex]) {
       outline: 2px solid transparent;
