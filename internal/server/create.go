@@ -431,18 +431,7 @@ func (s *Server) storeMessage(
 	uploaded, now time.Time,
 ) bool {
 	message := s.newMessage(request, envelopeHeader, uploaded, blob.salt)
-	locator := seal.LocatorOf(request.id[:])
-	err := errShareEpoch
-	if request.ratchetID != s.epochs.ID() {
-		err = errRatchetChanged
-	} else if shareOutlives(message.Epoch, message.ExpiresAt) {
-		var record store.Record
-		secretmode.Do(func() {
-			record = store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
-		})
-		defer clear(record.Key[:])
-		err = s.store.Create(r.Context(), &record.Row, s.storedCreateCounters(now)...)
-	}
+	err := s.persistMessage(r.Context(), request, message, blob, now)
 	if err == nil {
 		writeJSON(
 			w,
@@ -465,6 +454,28 @@ func (s *Server) storeMessage(
 		s.writeInternal(w, r, err)
 	}
 	return false
+}
+
+func (s *Server) persistMessage(
+	ctx context.Context,
+	request *createRequest,
+	message *store.Message,
+	blob *storedBlob,
+	now time.Time,
+) error {
+	if request.ratchetID != s.epochs.ID() {
+		return errRatchetChanged
+	}
+	if !shareOutlives(message.Epoch, message.ExpiresAt) {
+		return errShareEpoch
+	}
+	locator := seal.LocatorOf(request.id[:])
+	var record store.Record
+	secretmode.Do(func() {
+		record = store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
+	})
+	defer clear(record.Key[:])
+	return s.store.Create(ctx, &record.Row, s.storedCreateCounters(now)...)
 }
 
 var (
