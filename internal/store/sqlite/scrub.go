@@ -6,8 +6,15 @@ import (
 	sqldriver "database/sql/driver"
 	"errors"
 	"fmt"
+	"io/fs"
+	"net/url"
 	"os"
+	"strconv"
 	"time"
+
+	driver "modernc.org/sqlite"
+
+	"github.com/misaon/nylzo/internal/erase"
 )
 
 const (
@@ -260,4 +267,70 @@ func ignoreBadConn(err error) error {
 		return nil
 	}
 	return err
+}
+
+// resetLog checkpoints the log into the synced database and then zeroes the log and its index in place, so their
+// headers count only the writes after it. Only a connection in exclusive locking mode keeps every other connection
+// out meanwhile, so it skips the reset when another one has the database open.
+func resetLog(ctx context.Context, path string) (bool, error) {
+	switch info, err := os.Stat(path + "-wal"); {
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	case err != nil:
+		return false, err
+	case info.Size() == 0:
+		return false, nil
+	}
+	connector, err := driver.NewConnector(exclusiveDataSourceName(path))
+	if err != nil {
+		return false, err
+	}
+	database := sql.OpenDB(persistentLog{Connector: connector})
+	skipped, err := checkpointAndZero(ctx, database, path)
+	return skipped, errors.Join(err, database.Close())
+}
+
+// checkpointAndZero zeroes the header of the log first, so a crash midway leaves a log that SQLite ignores.
+func checkpointAndZero(ctx context.Context, database *sql.DB, path string) (bool, error) {
+	connection, err := database.Conn(ctx)
+	if busy(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer connection.Close()
+	var blocked, frames, moved int
+	err = connection.QueryRowContext(ctx, `PRAGMA wal_checkpoint(FULL)`).Scan(&blocked, &frames, &moved)
+	switch {
+	case busy(err):
+		return true, nil
+	case err != nil:
+		return false, err
+	case blocked != 0 || frames < 0 || moved != frames:
+		return true, nil
+	}
+	err = erase.Overwrite(path+"-wal", walHeaderLen)
+	if err == nil {
+		err = erase.Overwrite(path+"-wal", erase.WholeFile)
+	}
+	if err == nil {
+		err = erase.Overwrite(path+"-shm", erase.WholeFile)
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		err = nil
+	}
+	return false, err
+}
+
+// exclusiveDataSourceName sets the locking mode before anything reads the database, so the first read takes the
+// exclusive lock and keeps the index of the log in process memory; the driver runs _pragma values in lexical order,
+// so none that sorts before locking_mode may read.
+func exclusiveDataSourceName(path string) string {
+	query := url.Values{}
+	query.Set("_busy_timeout", strconv.Itoa(checkpointTimeoutMilliseconds))
+	query.Add("_pragma", "journal_size_limit(-1)")
+	query.Add("_pragma", "locking_mode(EXCLUSIVE)")
+	query.Add("_pragma", "synchronous(FULL)")
+	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?" + query.Encode()
 }

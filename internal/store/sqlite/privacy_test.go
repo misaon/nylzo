@@ -595,3 +595,114 @@ func (tr *traces) staleIn(data []byte, current map[string]bool) []string {
 	}
 	return stale
 }
+
+// TestOpenStartsTheLogOver covers the reset at open: the headers of the log and its index count every write since the
+// log was created, so Open zeroes both in place while it holds the only connection, after a checkpoint that keeps
+// every committed row.
+func TestOpenStartsTheLogOver(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	first, err := sqlite.Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	records := make([]*store.Record, 30)
+	for i := range records {
+		records[i] = newRecord(1, false)
+		create(t, first, records[i])
+	}
+	if err = first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	counted := binary.BigEndian.Uint32(readLog(t, path)[12:16])
+	if counted < uint32(len(records)) {
+		t.Fatalf("the test needs a log whose header counted the earlier writes, not %d", counted)
+	}
+	holder := openRaw(t, path)
+	if _, err = holder.Exec(`INSERT INTO rate_counters VALUES ('held', 0, 1, 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	held := readLog(t, path)[:32]
+	skipped := openStore(t, path)
+	if !skipped.LogResetSkipped() || !bytes.Equal(readLog(t, path)[:32], held) {
+		t.Fatal("Open reset the log while another connection had the database open")
+	}
+	if err = errors.Join(holder.Close(), skipped.Close()); err != nil {
+		t.Fatal(err)
+	}
+	before := fileInfos(t, path+"-wal", path+"-shm")
+	reopened := openStore(t, path)
+	zeroed := !slices.ContainsFunc(readLog(t, path), func(value byte) bool { return value != 0 })
+	if reopened.LogResetSkipped() || !zeroed {
+		t.Fatal("Open left the log as it was with no other connection")
+	}
+	for i, info := range fileInfos(t, path+"-wal", path+"-shm") {
+		if !os.SameFile(before[i], info) {
+			t.Fatalf("the reset replaced %s instead of overwriting it in place", info.Name())
+		}
+	}
+	create(t, reopened, newRecord(1, false))
+	if restarted := binary.BigEndian.Uint32(readLog(t, path)[12:16]); restarted >= counted {
+		t.Fatalf("the log header still counts the writes before the open: %d, before it %d", restarted, counted)
+	}
+	for _, record := range records {
+		if _, err = reopened.Load(t.Context(), record.Row.Locator); err != nil {
+			t.Fatalf("the reset lost a committed row: %v", err)
+		}
+	}
+	count, err := reopened.RateGet(t.Context(), "held", time.UnixMilli(0))
+	if err != nil || count.Count != 1 {
+		t.Fatalf("the reset lost a row that another connection committed: %+v %v", count, err)
+	}
+}
+
+// TestOpenCheckpointsTheLogBeforeItsReset copies a database whose last commit lives only in the log, as a crash leaves
+// it, and opens the copy.
+func TestOpenCheckpointsTheLogBeforeItsReset(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	openStore(t, path).Close()
+	writer := openRaw(t, path+"?_pragma=wal_autocheckpoint(0)")
+	if _, err := writer.Exec(`INSERT INTO rate_counters VALUES ('crash', 0, 7, 0, 0)`); err != nil {
+		t.Fatal(err)
+	}
+	copied := filepath.Join(t.TempDir(), "nylzo.db")
+	for _, suffix := range []string{"", "-wal"} {
+		data, err := os.ReadFile(path + suffix)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = os.WriteFile(copied+suffix, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	reopened := openStore(t, copied)
+	if reopened.LogResetSkipped() {
+		t.Fatal("Open skipped the reset of a copy that nothing else opened")
+	}
+	if count, err := reopened.RateGet(t.Context(), "crash", time.UnixMilli(0)); err != nil || count.Count != 7 {
+		t.Fatalf("the reset lost a commit that lived only in the log: %+v %v", count, err)
+	}
+}
+
+func readLog(t *testing.T, path string) []byte {
+	t.Helper()
+	wal, err := os.ReadFile(path + "-wal")
+	if err != nil || len(wal) < 32 {
+		t.Fatalf("read the log: %d bytes, %v", len(wal), err)
+	}
+	return wal
+}
+
+func fileInfos(t *testing.T, paths ...string) []os.FileInfo {
+	t.Helper()
+	infos := make([]os.FileInfo, 0, len(paths))
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		infos = append(infos, info)
+	}
+	return infos
+}

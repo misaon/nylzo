@@ -49,21 +49,38 @@ type Store struct {
 	unscrubbedFrames   atomic.Int64
 	changedSinceBuild  atomic.Bool
 	builtAtDataVersion atomic.Int64
+	logResetSkipped    bool
 }
 
 var _ store.Store = (*Store)(nil)
 
+// Open first zeroes the log and its index when no other process has the database open (spec §13).
 func Open(ctx context.Context, path string) (*Store, error) {
-	return openWith(ctx, path, func(ctx context.Context, database *sql.DB) error {
-		if err := createSchema(ctx, database); err != nil {
-			return err
+	skipped, err := resetLog(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: reset the log: %w", err)
+	}
+	opened, err := openWith(ctx, path, func(ctx context.Context, database *sql.DB) error {
+		if schemaErr := createSchema(ctx, database); schemaErr != nil {
+			return schemaErr
 		}
 		return ensureDummyRow(ctx, database)
 	})
+	if err != nil {
+		return nil, err
+	}
+	opened.logResetSkipped = skipped
+	return opened, nil
 }
 
 func OpenCurrent(ctx context.Context, path string) (*Store, error) {
 	return openWith(ctx, path, requireCurrent)
+}
+
+// LogResetSkipped reports that another process had the database open, so Open left the log and its index alone and
+// their headers still count the writes since the log was created.
+func (s *Store) LogResetSkipped() bool {
+	return s.logResetSkipped
 }
 
 // Close rebuilds and scrubs once more, so a process that changed rows leaves no older row version behind.
