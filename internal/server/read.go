@@ -114,7 +114,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	defer release()
 	granted, ok := s.authorizedLive(w, r, seal.Read)
 	defer granted.forget()
-	if !ok {
+	if !ok || !s.allowReadBytes(w, r, granted.record.Message.Size) {
 		return
 	}
 	verifier.Challenge = granted.signature.Challenge
@@ -261,7 +261,7 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	defer release()
 	leased, ok := s.activeLease(w, r)
 	defer clear(leased.record.Key[:])
-	if !ok {
+	if !ok || !s.allowReadBytes(w, r, leased.record.Message.Size) {
 		return
 	}
 	wrapped, ok := s.wrappedShare(w, r, &leased.record)

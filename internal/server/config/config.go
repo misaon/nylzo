@@ -42,6 +42,7 @@ type Rates struct {
 	CreatePerDay       int64
 	CreateBytesPerDay  int64
 	ReadPerHour        int64
+	ReadBytesPerHour   int64
 	AbusePerHour       int64
 	CoarseMultiplier   int64
 	BucketPerSecond    float64
@@ -98,6 +99,7 @@ func Defaults() Server {
 			CreatePerDay:      100,
 			CreateBytesPerDay: 50_000_000,
 			ReadPerHour:       300,
+			ReadBytesPerHour:  256 << 20,
 			AbusePerHour:      5,
 			CoarseMultiplier:  5,
 			BucketPerSecond:   500,
@@ -219,5 +221,12 @@ func (s *Server) rules() []rule {
 }
 
 func (r *Rates) counted() []int64 {
-	return []int64{r.CreatePerHour, r.CreatePerDay, r.CreateBytesPerDay, r.ReadPerHour, r.AbusePerHour}
+	return []int64{
+		r.CreatePerHour,
+		r.CreatePerDay,
+		r.CreateBytesPerDay,
+		r.ReadPerHour,
+		r.ReadBytesPerHour,
+		r.AbusePerHour,
+	}
 }

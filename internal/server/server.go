@@ -33,6 +33,8 @@ const (
 	writeTimeout        = 120 * time.Second
 	idleTimeout         = 30 * time.Second
 	maxHeaderBytes      = 4 << 10
+	maxHeaderValues     = 64
+	h2cMaxStreams       = 32
 	h2cStreamBuffer     = 64 << 10
 	h2cConnectionBuffer = 1 << 20
 	h2cMaxFrame         = 16 << 10
@@ -113,7 +115,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	}
 	server.setUpLimits()
 	server.challenges = proof.NewChallenges(ring, storage)
-	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency, settings.PoWDifficulty)
+	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency)
 	server.idTokens = proof.NewIDTokens(ring)
 	server.reports = abuse.NewReports(
 		settings.DataDir,
@@ -153,15 +155,18 @@ func (s *Server) HTTPServer() *http.Server {
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 	return &http.Server{
-		Addr:              s.settings.Listen,
-		Handler:           s.handler,
-		ReadHeaderTimeout: readHeaderTimeout,
-		ReadTimeout:       readTimeout,
-		WriteTimeout:      writeTimeout,
-		IdleTimeout:       idleTimeout,
-		MaxHeaderBytes:    maxHeaderBytes,
-		Protocols:         &protocols,
+		Addr:                  s.settings.Listen,
+		Handler:               s.handler,
+		ReadHeaderTimeout:     readHeaderTimeout,
+		ReadTimeout:           readTimeout,
+		WriteTimeout:          writeTimeout,
+		IdleTimeout:           idleTimeout,
+		MaxHeaderBytes:        maxHeaderBytes,
+		MaxHeaderValueCount:   maxHeaderValues,
+		DisableClientPriority: true,
+		Protocols:             &protocols,
 		HTTP2: &http.HTTP2Config{
+			MaxConcurrentStreams:          h2cMaxStreams,
 			MaxReceiveBufferPerConnection: h2cConnectionBuffer,
 			MaxReceiveBufferPerStream:     h2cStreamBuffer,
 			MaxReadFrameSize:              h2cMaxFrame,

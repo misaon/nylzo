@@ -110,6 +110,7 @@ func (s *Server) variables() []variable {
 		{"NYLZO_RATE_CREATE_DAY", int64Into(&s.Rates.CreatePerDay)},
 		{"NYLZO_RATE_CREATE_BYTES_DAY", int64Into(&s.Rates.CreateBytesPerDay)},
 		{"NYLZO_RATE_READ_HOUR", int64Into(&s.Rates.ReadPerHour)},
+		{"NYLZO_RATE_READ_BYTES_HOUR", int64Into(&s.Rates.ReadBytesPerHour)},
 		{"NYLZO_RATE_ABUSE_HOUR", int64Into(&s.Rates.AbusePerHour)},
 		{"NYLZO_RATE_COARSE_MULTIPLIER", int64Into(&s.Rates.CoarseMultiplier)},
 		{"NYLZO_RATE_BUCKET_RPS", floatInto(&s.Rates.BucketPerSecond)},

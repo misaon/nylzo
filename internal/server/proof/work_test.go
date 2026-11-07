@@ -52,10 +52,10 @@ func solve(t *testing.T, challenge string, id core.ID) string {
 func TestWorkWaitsForAVerifierSlot(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		work := NewWork(testRing(t), openStore(t), 1, 1)
+		work := NewWork(testRing(t), openStore(t), 1)
 		now := time.Now()
 		id := core.NewID()
-		token := solve(t, work.Challenge(now), id)
+		token := solve(t, work.Challenge(now, 1), id)
 		work.slots <- struct{}{}
 		if err := work.Verify(t.Context(), token, id, now); !errors.Is(err, ErrWorkBusy) {
 			t.Fatalf("saturated verifier: want ErrWorkBusy, got %v", err)
@@ -64,7 +64,7 @@ func TestWorkWaitsForAVerifierSlot(t *testing.T) {
 		if err := work.Verify(t.Context(), token, id, now); !errors.Is(err, ErrWork) {
 			t.Fatalf("a challenge is used once it is recorded, even after a busy answer: %v", err)
 		}
-		fresh := solve(t, work.Challenge(now), id)
+		fresh := solve(t, work.Challenge(now, 1), id)
 		work.slots <- struct{}{}
 		go func() {
 			time.Sleep(10 * time.Millisecond)
@@ -73,7 +73,7 @@ func TestWorkWaitsForAVerifierSlot(t *testing.T) {
 		if err := work.Verify(t.Context(), fresh, id, now); err != nil {
 			t.Fatalf("a slot that frees up within the wait must be used: %v", err)
 		}
-		gone := solve(t, work.Challenge(now), id)
+		gone := solve(t, work.Challenge(now, 1), id)
 		work.slots <- struct{}{}
 		defer func() { <-work.slots }()
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -86,7 +86,7 @@ func TestWorkWaitsForAVerifierSlot(t *testing.T) {
 
 func TestWorkTokensFollowTheSpec(t *testing.T) {
 	t.Parallel()
-	work := NewWork(testRing(t), openStore(t), 1, 1)
+	work := NewWork(testRing(t), openStore(t), 1)
 	now := time.Now()
 	id := core.NewID()
 	verify := func(token string, tokenID core.ID) error { return work.Verify(t.Context(), token, tokenID, now) }
@@ -94,11 +94,11 @@ func TestWorkTokensFollowTheSpec(t *testing.T) {
 		issued time.Duration
 		want   error
 	}{{time.Minute, ErrWork}, {-121 * time.Second, ErrWork}, {2 * time.Second, nil}} {
-		if err := verify(solve(t, work.Challenge(now.Add(window.issued)), id), id); !errors.Is(err, window.want) {
+		if err := verify(solve(t, work.Challenge(now.Add(window.issued), 1), id), id); !errors.Is(err, window.want) {
 			t.Errorf("a challenge issued %v from now: %v, want %v", window.issued, err, window.want)
 		}
 	}
-	challenge := work.Challenge(now)
+	challenge := work.Challenge(now, 1)
 	token, _ := work.parse(challenge+".00000000abcdef00", now)
 	for !token.satisfies(id, 1) {
 		token.counter++
@@ -122,7 +122,16 @@ func TestWorkTokensFollowTheSpec(t *testing.T) {
 			t.Fatalf("malformed token %q: %v", malformed, err)
 		}
 	}
-	other := solve(t, work.Challenge(now), id)
+	harder := work.Challenge(now, 3)
+	harderToken, _ := work.parse(harder+".0000000000000000", now)
+	for !harderToken.satisfies(id, 1) || harderToken.satisfies(id, 3) {
+		harderToken.counter++
+	}
+	easier := hex.EncodeToString(binary.BigEndian.AppendUint64(nil, harderToken.counter))
+	if err := verify(harder+"."+easier, id); !errors.Is(err, ErrWork) {
+		t.Fatalf("a token below the difficulty its challenge was issued with: %v", err)
+	}
+	other := solve(t, work.Challenge(now, 1), id)
 	otherToken, _ := work.parse(other, now)
 	otherID := core.NewID()
 	for otherToken.satisfies(otherID, 1) {

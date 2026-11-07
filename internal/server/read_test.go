@@ -1548,3 +1548,24 @@ func TestReadRateLimitCountsMetadataClaimAndBlob(t *testing.T) {
 		}
 	})
 }
+
+func TestReadBytesPerHourStopsAClaimBeforeItSpendsAnOpen(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 3, 3600, "x")
+		settings := harness.settings
+		settings.Rates.ReadBytesPerHour = int64(len(message.object))
+		harness.reopen(&settings)
+		harness.mustCreate(message)
+		if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
+			t.Fatalf("the first claim within the byte budget: %d", response.StatusCode)
+		}
+		if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusTooManyRequests {
+			t.Fatalf("a claim past the byte budget: %d", response.StatusCode)
+		}
+		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(2) {
+			t.Fatalf("a claim refused for its bytes spent an open: %v", metadata)
+		}
+	})
+}

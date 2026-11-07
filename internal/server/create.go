@@ -580,6 +580,7 @@ type transparencyRates struct {
 	CreatePerDay       int64 `json:"create_per_day"`
 	CreateBytesPerDay  int64 `json:"create_bytes_per_day"`
 	ReadPerHour        int64 `json:"read_per_hour"`
+	ReadBytesPerHour   int64 `json:"read_bytes_per_hour"`
 	AbusePerHour       int64 `json:"abuse_per_hour"`
 	CoarseMultiplier   int64 `json:"coarse_multiplier"`
 	GlobalDailyCreates int64 `json:"global_daily_creates"`
@@ -625,7 +626,8 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	if gate.workNeeded {
 		response.Work.Required = true
-		response.Work.Challenge = s.work.Challenge(now)
+		response.Work.Difficulty = gate.difficulty
+		response.Work.Challenge = s.work.Challenge(now, gate.difficulty)
 	}
 	writeJSON(w, http.StatusOK, response)
 }
@@ -700,6 +702,7 @@ func (s *Server) handleTransparency(w http.ResponseWriter, _ *http.Request) {
 			CreatePerDay:       rates.CreatePerDay,
 			CreateBytesPerDay:  rates.CreateBytesPerDay,
 			ReadPerHour:        rates.ReadPerHour,
+			ReadBytesPerHour:   rates.ReadBytesPerHour,
 			AbusePerHour:       rates.AbusePerHour,
 			CoarseMultiplier:   rates.CoarseMultiplier,
 			GlobalDailyCreates: rates.GlobalDailyCreates,

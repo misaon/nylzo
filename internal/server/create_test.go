@@ -928,6 +928,18 @@ func TestAK12GlobalCap(t *testing.T) {
 	})
 }
 
+func TestPoWDifficultyRisesAsTheCapFills(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.Rates.GlobalDailyCreates = 250
+	server := &Server{settings: *settings}
+	for creates, want := range map[int64]int{0: 4, 125: 4, 149: 4, 150: 5, 200: 7, 225: 8, 249: 8} {
+		if got := server.workDifficulty(creates); got != want {
+			t.Errorf("%d of 250 creates: difficulty %d, want %d", creates, got, want)
+		}
+	}
+}
+
 func TestAK12ForwardedForOnlyFromTrustedProxy(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
