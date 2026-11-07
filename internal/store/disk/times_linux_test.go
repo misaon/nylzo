@@ -47,17 +47,17 @@ func TestRestampHidesWhenEachBlobWasUploaded(t *testing.T) {
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
 	var paths []string
-	for _, ref := range []string{"first", "second"} {
+	for _, reference := range []string{"first", "second"} {
 		if _, err := blobs.PutExpiring(
 			t.Context(),
-			ref,
-			bytes.NewReader([]byte(ref)),
-			int64(len(ref)),
+			reference,
+			bytes.NewReader([]byte(reference)),
+			int64(len(reference)),
 			time.Hour,
 		); err != nil {
 			t.Fatal(err)
 		}
-		paths = append(paths, filepath.Join(directory, disk.Directory, hex.EncodeToString([]byte(ref))))
+		paths = append(paths, filepath.Join(directory, disk.Directory, hex.EncodeToString([]byte(reference))))
 		time.Sleep(50 * time.Millisecond)
 	}
 	restamped := time.Now()

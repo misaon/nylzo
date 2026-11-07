@@ -546,7 +546,7 @@ func TestDownloadAfterExpiryWithAStuckDeleteIsGone(t *testing.T) {
 		if response.StatusCode != http.StatusOK || lease == "" {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
-		faulty.FailDelete(harness.blobRef(message), errInjected)
+		faulty.FailDelete(harness.blobReference(message), errInjected)
 		synctest.Sleep(61 * time.Second)
 		if got, body := harness.blob(
 			message,
@@ -809,7 +809,7 @@ func runLifecycleAction(
 	case "lease download":
 		return harness.blob(message, lease)
 	case "blob vanished":
-		if err := harness.blobs.Delete(ctx, harness.blobRef(message)); err != nil {
+		if err := harness.blobs.Delete(ctx, harness.blobReference(message)); err != nil {
 			t.Fatal(err)
 		}
 		return harness.claim(message, "", "")
@@ -887,7 +887,7 @@ func TestVanishedBlobDuringLeaseIsAStorageFault(t *testing.T) {
 		harness.mustCreate(message)
 		response, _ := harness.claim(message, "", "")
 		lease := response.Header.Get("X-Nylzo-Lease")
-		if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
+		if err := harness.blobs.Delete(t.Context(), harness.blobReference(message)); err != nil {
 			t.Fatal(err)
 		}
 		if got, _ := harness.blob(message, lease); got.StatusCode != http.StatusInternalServerError {
@@ -916,10 +916,10 @@ func TestExpiryRacingADownloadAnswersGone(t *testing.T) {
 					harness.reopen(&harness.settings)
 				}
 				var once sync.Once
-				faulty.OnOpen(func(ref string) {
+				faulty.OnOpen(func(reference string) {
 					once.Do(func() {
 						time.Sleep(61 * time.Second)
-						if err := faulty.Blobs.Delete(t.Context(), ref); err != nil {
+						if err := faulty.Blobs.Delete(t.Context(), reference); err != nil {
 							t.Error(err)
 						}
 					})
@@ -971,14 +971,14 @@ func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 		harness.mustCreate(message)
-		ref := harness.blobRef(message)
-		if err := harness.blobs.Delete(t.Context(), ref); err != nil {
+		reference := harness.blobReference(message)
+		if err := harness.blobs.Delete(t.Context(), reference); err != nil {
 			t.Fatal(err)
 		}
 		short := message.object[:len(message.object)-1]
 		if _, err := harness.blobs.PutExpiring(
 			t.Context(),
-			ref,
+			reference,
 			bytes.NewReader(short),
 			int64(len(short)),
 			time.Hour,
@@ -1153,7 +1153,7 @@ func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 		for _, opens := range []uint16{1, 2} {
 			message := newMessage(t, core.KDFNone, "", opens, 3600, "x")
 			harness.mustCreate(message)
-			if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
+			if err := harness.blobs.Delete(t.Context(), harness.blobReference(message)); err != nil {
 				t.Fatal(err)
 			}
 			response, _ := harness.claim(message, "", "")
@@ -1187,7 +1187,7 @@ func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 			if _, err := store.MarkEnding(t.Context(), storage, &record, state, time.Now()); err != nil {
 				t.Error(err)
 			}
-			if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
+			if err := harness.blobs.Delete(t.Context(), harness.blobReference(message)); err != nil {
 				t.Error(err)
 			}
 		}
@@ -1429,8 +1429,8 @@ func TestExpiredMessageWithStuckDeleteReportsItsEnd(t *testing.T) {
 		if response, _ := harness.claim(spent, "", ""); response.StatusCode != http.StatusOK {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
-		faulty.FailDelete(harness.blobRef(unspent), errInjected)
-		faulty.FailDelete(harness.blobRef(spent), errInjected)
+		faulty.FailDelete(harness.blobReference(unspent), errInjected)
+		faulty.FailDelete(harness.blobReference(spent), errInjected)
 		synctest.Sleep(time.Hour)
 		if _, metadata := harness.metadata(unspent); metadata["state"] != "expired" {
 			t.Fatalf("unspent: %v", metadata)

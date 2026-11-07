@@ -195,14 +195,14 @@ type gatedPut struct {
 
 func (b *gatedPut) PutExpiring(
 	ctx context.Context,
-	ref string,
+	reference string,
 	body io.Reader,
 	size int64,
 	ttl time.Duration,
 ) (time.Time, error) {
 	close(b.entered)
 	<-b.release
-	return b.Blobs.PutExpiring(ctx, ref, body, size, ttl)
+	return b.Blobs.PutExpiring(ctx, reference, body, size, ttl)
 }
 
 func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
@@ -1162,7 +1162,9 @@ func TestAnEndedMessageStaysUnreadableWithItsLinkAndAnOlderRow(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		stored, err := os.Open(filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(older.BlobRef))))
+		stored, err := os.Open(
+			filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(older.BlobReference))),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1290,9 +1292,9 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		stuck.address = ip4
 		harness.mustCreate(stuck)
 		needles.addMessage("stuck", stuck, "")
-		faulty.FailDelete(harness.blobRef(stuck), &fs.PathError{
+		faulty.FailDelete(harness.blobReference(stuck), &fs.PathError{
 			Op:   "remove",
-			Path: filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(harness.blobRef(stuck)))),
+			Path: filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(harness.blobReference(stuck)))),
 			Err:  syscall.EROFS,
 		})
 		if response, _ := harness.post(

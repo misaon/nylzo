@@ -307,7 +307,7 @@ func (h *testHarness) create(message *testMessage) (testResponse, responseBody) 
 	h.t.Helper()
 	response, body := h.do(createRequestFor(message))
 	if response.StatusCode == http.StatusCreated {
-		h.blobRef(message)
+		h.blobReference(message)
 	}
 	return response, body
 }
@@ -382,11 +382,11 @@ func (h *testHarness) post(message *testMessage, action, token string) (testResp
 // blobExists checks the file under the blob reference the message got at creation.
 func (h *testHarness) blobExists(message *testMessage) bool {
 	h.t.Helper()
-	ref := h.blobRef(message)
-	if ref == "" {
+	reference := h.blobReference(message)
+	if reference == "" {
 		return false
 	}
-	blob, _, err := h.blobs.Open(h.t.Context(), ref)
+	blob, _, err := h.blobs.Open(h.t.Context(), reference)
 	if err != nil {
 		return false
 	}
@@ -403,13 +403,13 @@ func (h *testHarness) storedBlobs() int {
 	return len(objects)
 }
 
-func (h *testHarness) blobRef(message *testMessage) string {
-	if message.blobRef == "" {
+func (h *testHarness) blobReference(message *testMessage) string {
+	if message.blobReference == "" {
 		if record, err := h.record(message); err == nil {
-			message.blobRef = record.Row.BlobRef
+			message.blobReference = record.Row.BlobReference
 		}
 	}
-	return message.blobRef
+	return message.blobReference
 }
 
 // record opens the sealed row with the read key, as an authorized request would.
@@ -459,7 +459,7 @@ func (h *testHarness) rewrite(message *testMessage, change func(*store.Message))
 		record.Message,
 		readKey[:],
 		manageKey[:],
-		record.Row.BlobRef,
+		record.Row.BlobReference,
 		blobKey,
 	)
 	rebuilt.Row.BlobPurgeAt, rebuilt.Row.PurgeAt = record.Row.BlobPurgeAt, record.Row.PurgeAt
@@ -622,24 +622,24 @@ func (h *testHarness) withFaultyBlobs() *storetest.FaultyBlobs {
 }
 
 type testMessage struct {
-	id          core.ID
-	secret      *[core.SecretLen]byte
-	manage      *[core.SeedLen]byte
-	kdf         core.KDF
-	link        keys.LinkKeys
-	content     keys.ContentKeys
-	share       *[core.ShareLen]byte
-	verifierKey *[core.SeedLen]byte
-	idToken     string
-	epoch       uint32
-	policy      envelope.Policy
-	object      []byte
-	text        string
-	readToken   string
-	manageToken string
-	verifier    string
-	address     string
-	blobRef     string
+	id            core.ID
+	secret        *[core.SecretLen]byte
+	manage        *[core.SeedLen]byte
+	kdf           core.KDF
+	link          keys.LinkKeys
+	content       keys.ContentKeys
+	share         *[core.ShareLen]byte
+	verifierKey   *[core.SeedLen]byte
+	idToken       string
+	epoch         uint32
+	policy        envelope.Policy
+	object        []byte
+	text          string
+	readToken     string
+	manageToken   string
+	verifier      string
+	address       string
+	blobReference string
 }
 
 func newMessage(t *testing.T, kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) *testMessage {

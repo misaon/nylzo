@@ -399,7 +399,7 @@ func (s *Server) openOrFinishBlob(
 
 // openStoredBlob reads the erase block; a block that a concurrent deletion has overwritten counts as a missing blob.
 func (s *Server) openStoredBlob(ctx context.Context, record *store.Record) (io.ReadCloser, seal.EraseSalt, error) {
-	file, size, err := s.blobs.Open(ctx, record.Row.BlobRef)
+	file, size, err := s.blobs.Open(ctx, record.Row.BlobReference)
 	if err != nil {
 		return nil, seal.EraseSalt{}, err
 	}

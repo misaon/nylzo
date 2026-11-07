@@ -21,8 +21,8 @@ const (
 	leaseLen     = 42
 )
 
-// BlobRefLen is the number of random bytes in a blob reference.
-const BlobRefLen = 16
+// BlobReferenceLen is the number of random bytes in a blob reference.
+const BlobReferenceLen = 16
 
 var endings = []State{"", StateDeleted, StateCancelled}
 
@@ -31,14 +31,14 @@ var DummyLocator seal.Locator = sha256.Sum256([]byte("nylzo/v1/dummy-row"))
 
 // NewDummyRow has the shape of a live row and random keys, so no public key opens it.
 func NewDummyRow() Row {
-	var readKey, manageKey, ref [seal.KeyLen]byte
+	var readKey, manageKey, reference [seal.KeyLen]byte
 	rand.Read(readKey[:])
 	rand.Read(manageKey[:])
-	rand.Read(ref[:])
+	rand.Read(reference[:])
 	far := time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
 	message := &Message{Version: 2, OpensMax: 1, OpensRemaining: 1, CreatedAt: far, ExpiresAt: far}
-	blobRef := base64.RawURLEncoding.EncodeToString(ref[:BlobRefLen])
-	return NewRecord(DummyLocator, message, readKey[:], manageKey[:], blobRef, seal.NewKey()).Row
+	blobReference := base64.RawURLEncoding.EncodeToString(reference[:BlobReferenceLen])
+	return NewRecord(DummyLocator, message, readKey[:], manageKey[:], blobReference, seal.NewKey()).Row
 }
 
 // Record is a row opened with its record key, for the length of one request.
@@ -53,19 +53,19 @@ func NewRecord(
 	locator seal.Locator,
 	message *Message,
 	readKey, manageKey []byte,
-	blobRef string,
+	blobReference string,
 	blobKey seal.Key,
 ) Record {
 	key := seal.NewKey()
 	record := Record{
 		Row: Row{
-			Locator:     locator,
-			ReadWrap:    seal.Wrap(seal.KeyFor(readKey, locator, seal.Read), key, locator, seal.Read),
-			ManageWrap:  seal.Wrap(seal.KeyFor(manageKey, locator, seal.Manage), key, locator, seal.Manage),
-			BlobRef:     blobRef,
-			BlobWrap:    seal.WrapBlobKey(key, blobKey, locator),
-			BlobPurgeAt: BlobPurgeAt(message.ExpiresAt),
-			PurgeAt:     ceil(message.ExpiresAt.Add(TombstoneTTL), RowPurgeStep),
+			Locator:       locator,
+			ReadWrap:      seal.Wrap(seal.KeyFor(readKey, locator, seal.Read), key, locator, seal.Read),
+			ManageWrap:    seal.Wrap(seal.KeyFor(manageKey, locator, seal.Manage), key, locator, seal.Manage),
+			BlobReference: blobReference,
+			BlobWrap:      seal.WrapBlobKey(key, blobKey, locator),
+			BlobPurgeAt:   BlobPurgeAt(message.ExpiresAt),
+			PurgeAt:       ceil(message.ExpiresAt.Add(TombstoneTTL), RowPurgeStep),
 		},
 		Key:     key,
 		Message: message,

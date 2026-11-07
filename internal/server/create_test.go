@@ -1329,7 +1329,7 @@ type slowPutBlobs struct {
 
 func (b slowPutBlobs) PutExpiring(
 	ctx context.Context,
-	ref string,
+	reference string,
 	body io.Reader,
 	size int64,
 	ttl time.Duration,
@@ -1339,7 +1339,7 @@ func (b slowPutBlobs) PutExpiring(
 		return time.Time{}, err
 	}
 	time.Sleep(b.delay)
-	return b.Blobs.PutExpiring(ctx, ref, bytes.NewReader(received), size, ttl)
+	return b.Blobs.PutExpiring(ctx, reference, bytes.NewReader(received), size, ttl)
 }
 
 func TestExpiryCountsFromTheStoredUpload(t *testing.T) {
@@ -1389,7 +1389,11 @@ func TestStoredTimesAreWholeMinutes(t *testing.T) {
 			record.Row.PurgeAt.Truncate(store.RowPurgeStep) != record.Row.PurgeAt {
 			t.Fatalf("the cleanup times in the clear must be rounded: %v %v", blobPurge, record.Row.PurgeAt)
 		}
-		blobFile := filepath.Join(harness.directory, disk.Directory, hex.EncodeToString([]byte(record.Row.BlobRef)))
+		blobFile := filepath.Join(
+			harness.directory,
+			disk.Directory,
+			hex.EncodeToString([]byte(record.Row.BlobReference)),
+		)
 		if info, err := os.Stat(blobFile); err != nil || !info.ModTime().Equal(record.Row.BlobPurgeAt) {
 			t.Fatalf("the blob file must carry blob_purge_at, so its times add no TTL to the row: %v %v", info, err)
 		}

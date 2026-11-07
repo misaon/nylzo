@@ -352,7 +352,7 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 		t.Fatal(err)
 	}
 	stored, err := os.ReadFile(
-		filepath.Join(instance.directory, disk.Directory, hex.EncodeToString([]byte(row.BlobRef))),
+		filepath.Join(instance.directory, disk.Directory, hex.EncodeToString([]byte(row.BlobReference))),
 	)
 	if err != nil {
 		t.Fatal(err)

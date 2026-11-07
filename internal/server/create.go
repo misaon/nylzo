@@ -297,14 +297,14 @@ func (t *trackingReader) Read(buffer []byte) (int, error) {
 }
 
 type storedBlob struct {
-	ref  string
-	key  seal.Key
-	salt seal.EraseSalt
+	reference string
+	key       seal.Key
+	salt      seal.EraseSalt
 }
 
 func newStoredBlob() storedBlob {
-	ref := core.NewID()
-	return storedBlob{ref: core.Encode(ref[:]), key: seal.NewKey(), salt: seal.NewEraseSalt()}
+	reference := core.NewID()
+	return storedBlob{reference: core.Encode(reference[:]), key: seal.NewKey(), salt: seal.NewEraseSalt()}
 }
 
 // sealed puts the erase block first and pads the object with Padmé, so the stored length shows only a size class.
@@ -352,7 +352,7 @@ func (s *Server) receiveBlob(
 	}
 	uploaded, err := s.blobs.PutExpiring(
 		r.Context(),
-		blob.ref,
+		blob.reference,
 		blob.sealed(io.MultiReader(bytes.NewReader(raw[:]), body), size),
 		seal.StoredBlobSize(size),
 		request.ttl(),
@@ -400,7 +400,7 @@ func (s *Server) storeMessage(
 		)
 		return true
 	}
-	if deleteErr := s.blobs.Delete(context.WithoutCancel(r.Context()), blob.ref); deleteErr != nil {
+	if deleteErr := s.blobs.Delete(context.WithoutCancel(r.Context()), blob.reference); deleteErr != nil {
 		s.events.ErrorContext(r.Context(), "create-cleanup", "err", logging.ErrorText(deleteErr))
 	}
 	switch {
@@ -432,7 +432,7 @@ func (s *Server) persistMessage(
 	locator := seal.LocatorOf(request.id[:])
 	var record store.Record
 	secretmode.Do(func() {
-		record = store.NewRecord(locator, message, request.readKey, request.manageKey, blob.ref, blob.key)
+		record = store.NewRecord(locator, message, request.readKey, request.manageKey, blob.reference, blob.key)
 	})
 	defer clear(record.Key[:])
 	return s.store.Create(ctx, &record.Row, s.storedCreateCounters(now)...)

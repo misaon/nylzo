@@ -146,8 +146,8 @@ func (b *Blobs) forgetPool() {
 	b.known.Unlock()
 }
 
-// take writes the claim time into the pool file before the rename, so PurgeTemp never mistakes a fresh upload for a
-// stale one; it leaves a file that is not empty or that has another link, since it would overwrite data.
+// take writes the claim time into the pool file before the rename, so PurgeTemporary never mistakes a fresh upload
+// for a stale one; it leaves a file that is not empty or that has another link, since it would overwrite data.
 func (b *Blobs) take(name string) (upload, error) {
 	temporary := filepath.Join(b.root, temporaryDirectory)
 	pooledPath := filepath.Join(temporary, name)

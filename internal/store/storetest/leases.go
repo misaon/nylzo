@@ -29,7 +29,7 @@ func (f *fixture) leasesAndAcks() {
 			t.Fatal(err)
 		}
 		last := i == len(leases)-1
-		if f.blobExists(created.ref()) == last || f.get(created).HasBlob() == last {
+		if f.blobExists(created.reference()) == last || f.get(created).HasBlob() == last {
 			t.Fatalf("ack %d: the blob must go with the last lease and not before", i+1)
 		}
 	}
@@ -146,7 +146,12 @@ func (f *fixture) leaseExpiry() {
 	if err = f.download(created, &claimed.Lease, expiry); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download at the expiry: %v", err)
 	}
-	if finished, _ := f.finish(created, expiry.Add(-time.Second), f.blobs); finished || !f.blobExists(created.ref()) {
+	if finished, _ := f.finish(
+		created,
+		expiry.Add(-time.Second),
+		f.blobs,
+	); finished ||
+		!f.blobExists(created.reference()) {
 		t.Fatal("released before the expiry of the lease")
 	}
 	if row := f.get(created).Row; !row.BlobPurgeAt.Equal(baseTime.Add(store.BlobPurgeStep)) ||
@@ -166,7 +171,7 @@ func (f *fixture) timerReleasesAtTheLeaseEnd(created *message, expiry time.Time)
 	if finished, err := f.finish(created, expiry.Add(store.LeaseTimerSlack), f.blobs); err != nil || !finished {
 		t.Fatalf("release at the end of the lease: %v %v", finished, err)
 	}
-	if record := f.get(created); record.HasBlob() || f.blobExists(created.ref()) ||
+	if record := f.get(created); record.HasBlob() || f.blobExists(created.reference()) ||
 		!record.EndedAt(expiry).Equal(expiry) {
 		t.Fatalf("the timer must delete the blob and record the minute: %+v", record.Message)
 	}
@@ -178,7 +183,7 @@ func (f *fixture) sweepReleasesAfterTheLease(unattended *message, expiry time.Ti
 		t.Fatalf("the sweep must wait for blob_purge_at: %+v %v", report, err)
 	}
 	report, err := f.sweep(f.blobs, baseTime.Add(store.BlobPurgeStep))
-	if err != nil || report.Blobs != 1 || f.blobExists(unattended.ref()) {
+	if err != nil || report.Blobs != 1 || f.blobExists(unattended.reference()) {
 		t.Fatalf("sweep: %+v %v", report, err)
 	}
 	if record := f.get(unattended); record.State(expiry) != store.StateOpened || !record.EndedAt(expiry).Equal(expiry) {
@@ -191,10 +196,14 @@ func (f *fixture) blobStaysWhileOpensRemain() {
 	created := f.create(2, oneHour, false)
 	f.claimAndAck(created)
 	if finished, err := f.finish(created, baseTime.Add(time.Minute), f.blobs); err != nil || finished ||
-		!f.blobExists(created.ref()) {
+		!f.blobExists(created.reference()) {
 		t.Fatal("the blob must stay while opens remain")
 	}
-	if report, _ := f.sweep(f.blobs, baseTime.Add(10*time.Minute)); report.Blobs != 0 || !f.blobExists(created.ref()) {
+	if report, _ := f.sweep(
+		f.blobs,
+		baseTime.Add(10*time.Minute),
+	); report.Blobs != 0 ||
+		!f.blobExists(created.reference()) {
 		t.Fatal("the sweep removed a blob with opens remaining")
 	}
 }
@@ -222,7 +231,7 @@ func (f *fixture) staleLeaseLeavesOtherMessages() {
 	}
 	record := f.get(victim)
 	if len(record.Message.Leases) != 1 || record.Message.Leases[0].Downloads != 0 ||
-		record.Message.Ending != "" || !f.blobExists(victim.ref()) {
+		record.Message.Ending != "" || !f.blobExists(victim.reference()) {
 		t.Fatalf("a stale lease of another message touched this one: %+v", record.Message)
 	}
 }

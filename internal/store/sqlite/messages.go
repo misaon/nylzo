@@ -32,7 +32,7 @@ var rowQuery = fmt.Sprintf(`SELECT locator, read_wrap, manage_wrap, record,
 		ifnull(blob_wrap, zeroblob(%d)), blob_wrap IS NULL,
 		ifnull(blob_purge_at, 0), blob_purge_at IS NULL, purge_at
 		FROM messages WHERE locator = ?`,
-	strings.Repeat("0", base64.RawURLEncoding.EncodedLen(store.BlobRefLen)),
+	strings.Repeat("0", base64.RawURLEncoding.EncodedLen(store.BlobReferenceLen)),
 	seal.WrapLen,
 )
 
@@ -115,7 +115,7 @@ func (s *Store) Update(ctx context.Context, locator seal.Locator, change func(ro
 
 // sameRow ignores purge_at: SQLite rewrites its index whenever the column is set, even to the value it holds.
 func sameRow(stored, changed *store.Row) bool {
-	return stored.BlobRef == changed.BlobRef &&
+	return stored.BlobReference == changed.BlobReference &&
 		stored.BlobPurgeAt.Equal(changed.BlobPurgeAt) &&
 		bytes.Equal(stored.ReadWrap, changed.ReadWrap) &&
 		bytes.Equal(stored.ManageWrap, changed.ManageWrap) &&
@@ -125,9 +125,9 @@ func sameRow(stored, changed *store.Row) bool {
 }
 
 func rowValues(row *store.Row) []any {
-	var blobRef, blobWrap, blobPurgeAt any
-	if row.BlobRef != "" {
-		blobRef = row.BlobRef
+	var blobReference, blobWrap, blobPurgeAt any
+	if row.BlobReference != "" {
+		blobReference = row.BlobReference
 	}
 	if row.BlobWrap != nil {
 		blobWrap = row.BlobWrap
@@ -140,7 +140,7 @@ func rowValues(row *store.Row) []any {
 		row.ReadWrap,
 		row.ManageWrap,
 		row.Record,
-		blobRef,
+		blobReference,
 		blobWrap,
 		blobPurgeAt,
 		milliseconds(row.PurgeAt),
@@ -152,16 +152,16 @@ func rowValues(row *store.Row) []any {
 func scanRow(scanner *sql.Row) (store.Row, error) {
 	var row store.Row
 	var locator []byte
-	var blobRef string
-	var blobRefMissing, blobWrapMissing, blobPurgeMissing bool
+	var blobReference string
+	var blobReferenceMissing, blobWrapMissing, blobPurgeMissing bool
 	var blobPurgeAt, purgeAt int64
 	err := scanner.Scan(
 		&locator,
 		&row.ReadWrap,
 		&row.ManageWrap,
 		&row.Record,
-		&blobRef,
-		&blobRefMissing,
+		&blobReference,
+		&blobReferenceMissing,
 		&row.BlobWrap,
 		&blobWrapMissing,
 		&blobPurgeAt,
@@ -178,8 +178,8 @@ func scanRow(scanner *sql.Row) (store.Row, error) {
 		return store.Row{}, store.ErrCorrupt
 	}
 	row.Locator = seal.Locator(locator)
-	if !blobRefMissing {
-		row.BlobRef = blobRef
+	if !blobReferenceMissing {
+		row.BlobReference = blobReference
 	}
 	if blobWrapMissing {
 		row.BlobWrap = nil

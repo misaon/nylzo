@@ -29,17 +29,17 @@ func TestConnectionsKeepTheirCacheAndTemporaryCopiesInMemory(t *testing.T) {
 	t.Parallel()
 	storage := openTest(t)
 	for _, database := range []*sql.DB{storage.writer, storage.reader} {
-		var cacheKiB, tempStore int
+		var cacheKiB, temporaryStore int
 		if err := database.QueryRow("PRAGMA cache_size").Scan(&cacheKiB); err != nil {
 			t.Fatal(err)
 		}
 		if cacheKiB >= 0 || -cacheKiB > maxCacheKiB {
 			t.Fatalf("page cache %d, want at most %d KiB per connection outside the Go heap", cacheKiB, maxCacheKiB)
 		}
-		if err := database.QueryRow("PRAGMA temp_store").Scan(&tempStore); err != nil || tempStore != 2 {
+		if err := database.QueryRow("PRAGMA temp_store").Scan(&temporaryStore); err != nil || temporaryStore != 2 {
 			t.Fatalf(
 				"temp_store %d %v: SQLite may write temporary copies of rows outside the data directory",
-				tempStore,
+				temporaryStore,
 				err,
 			)
 		}
@@ -107,13 +107,19 @@ func TestACorruptRowLeavesTheRestOfItsPageToTheSweep(t *testing.T) {
 	insert := `INSERT INTO messages (locator, read_wrap, manage_wrap, record, blob_ref, blob_wrap, blob_purge_at, purge_at)
 		VALUES (?, x'00', x'00', x'00', ?, x'00', ?, ?)`
 	good := bytes.Repeat([]byte{2}, seal.LocatorLen)
-	for locator, ref := range map[string]string{string([]byte{1, 2, 3}): "corrupt", string(good): "good"} {
-		if _, err := storage.writer.Exec(insert, []byte(locator), ref, now.UnixMilli(), now.UnixMilli()); err != nil {
+	for locator, reference := range map[string]string{string([]byte{1, 2, 3}): "corrupt", string(good): "good"} {
+		if _, err := storage.writer.Exec(
+			insert,
+			[]byte(locator),
+			reference,
+			now.UnixMilli(),
+			now.UnixMilli(),
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
 	page, err := storage.DueBlobs(ctx, now, seal.Locator{}, store.SweepBatch)
-	if err != nil || len(page) != 1 || page[0].Ref != "good" {
+	if err != nil || len(page) != 1 || page[0].Reference != "good" {
 		t.Fatalf("a row with a corrupt locator must not hide the others: %+v %v", page, err)
 	}
 	if _, err = storage.Load(ctx, seal.Locator(good)); err != nil {

@@ -59,13 +59,13 @@ func TestBlobFilesAreLowerHexAndCarryTheirPurgeTime(t *testing.T) {
 	blobs := newBlobs(t, directory)
 	ctx := t.Context()
 	purgeAt := map[string]time.Time{}
-	for i, ref := range []string{"AbCdEfGhIjKlMnOpQrStUw", "abcdefghijklmnopqrstuw", "../escape"} {
+	for i, reference := range []string{"AbCdEfGhIjKlMnOpQrStUw", "abcdefghijklmnopqrstuw", "../escape"} {
 		ttl := time.Duration(i+1) * 61 * time.Minute
-		stored, err := blobs.PutExpiring(ctx, ref, strings.NewReader("x"), 1, ttl)
+		stored, err := blobs.PutExpiring(ctx, reference, strings.NewReader("x"), 1, ttl)
 		if err != nil {
 			t.Fatal(err)
 		}
-		purgeAt[hex.EncodeToString([]byte(ref))] = store.BlobPurgeAt(store.ExpiresAt(stored, ttl))
+		purgeAt[hex.EncodeToString([]byte(reference))] = store.BlobPurgeAt(store.ExpiresAt(stored, ttl))
 	}
 	if _, err := blobs.PutExpiring(ctx, "../escape", strings.NewReader("y"), 1, time.Hour); err == nil {
 		t.Fatal("a conflicting Put was accepted")
@@ -115,7 +115,7 @@ func TestPurgeTempRemovesOnlyStaleFiles(t *testing.T) {
 	stale, fresh := filepath.Join(temporary, "blob-stale"), filepath.Join(temporary, "blob-fresh")
 	writeAged(t, stale, time.Hour)
 	writeAged(t, fresh, 0)
-	purged, err := blobs.PurgeTemp(t.Context(), time.Now().Add(-30*time.Minute))
+	purged, err := blobs.PurgeTemporary(t.Context(), time.Now().Add(-30*time.Minute))
 	if err != nil || purged != 1 {
 		t.Fatalf("purge: %d %v", purged, err)
 	}
@@ -143,7 +143,7 @@ func TestPurgeTempReportsFailedRemovals(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.Chmod(temporary, 0o700) })
-	if purged, err := blobs.PurgeTemp(t.Context(), time.Now().Add(-30*time.Minute)); err == nil || purged != 0 {
+	if purged, err := blobs.PurgeTemporary(t.Context(), time.Now().Add(-30*time.Minute)); err == nil || purged != 0 {
 		t.Fatalf("a temporary file that cannot be removed must fail the sweep step: %d %v", purged, err)
 	}
 }
@@ -171,22 +171,22 @@ func TestEveryDeletionOverwritesTheEraseBlockWhereItLies(t *testing.T) {
 	root := filepath.Join(directory, disk.Directory)
 	content := bytes.Repeat([]byte{0xA5}, 2*erase.BlockLen)
 	opened := map[string]*os.File{}
-	for _, ref := range []string{"deleted", "batched", "stale-upload"} {
+	for _, reference := range []string{"deleted", "batched", "stale-upload"} {
 		if _, err := blobs.PutExpiring(
 			t.Context(),
-			ref,
+			reference,
 			bytes.NewReader(content),
 			int64(len(content)),
 			time.Hour,
 		); err != nil {
 			t.Fatal(err)
 		}
-		file, err := os.Open(filepath.Join(root, hex.EncodeToString([]byte(ref))))
+		file, err := os.Open(filepath.Join(root, hex.EncodeToString([]byte(reference))))
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { file.Close() })
-		opened[ref] = file
+		opened[reference] = file
 	}
 	stale := filepath.Join(root, "tmp", "blob-stale")
 	if err := os.Rename(filepath.Join(root, hex.EncodeToString([]byte("stale-upload"))), stale); err != nil {
@@ -201,17 +201,17 @@ func TestEveryDeletionOverwritesTheEraseBlockWhereItLies(t *testing.T) {
 	if errs := blobs.DeleteBatch(t.Context(), []string{"batched"}); errs[0] != nil {
 		t.Fatal(errs[0])
 	}
-	if _, err := blobs.PurgeTemp(t.Context(), time.Now().Add(-store.BlobGrace)); err != nil {
+	if _, err := blobs.PurgeTemporary(t.Context(), time.Now().Add(-store.BlobGrace)); err != nil {
 		t.Fatal(err)
 	}
-	for ref, file := range opened {
+	for reference, file := range opened {
 		left := make([]byte, len(content))
 		if _, err := file.ReadAt(
 			left,
 			0,
 		); err != nil ||
 			!bytes.Equal(left[:erase.BlockLen], make([]byte, erase.BlockLen)) {
-			t.Errorf("%s: the erase block survived the deletion in the file's own blocks: %v", ref, err)
+			t.Errorf("%s: the erase block survived the deletion in the file's own blocks: %v", reference, err)
 		}
 	}
 }

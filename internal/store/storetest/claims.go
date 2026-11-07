@@ -96,7 +96,7 @@ func (f *fixture) metadataDoesNotConsume() {
 			t.Fatalf("finish on a live message: %v %v", finished, err)
 		}
 	}
-	if !f.blobExists(created.ref()) {
+	if !f.blobExists(created.reference()) {
 		t.Fatal("the blob vanished")
 	}
 }

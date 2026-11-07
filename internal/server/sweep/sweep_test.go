@@ -40,17 +40,17 @@ func newFixture(t *testing.T) fixture {
 	return fixture{dataDirectory: dataDirectory, store: storage, blobs: storetest.NewFaultyBlobs(blobs)}
 }
 
-func (f fixture) putBlob(t *testing.T, ref string) {
+func (f fixture) putBlob(t *testing.T, reference string) {
 	t.Helper()
-	if _, err := f.blobs.PutExpiring(t.Context(), ref, strings.NewReader("x"), 1, time.Minute); err != nil {
+	if _, err := f.blobs.PutExpiring(t.Context(), reference, strings.NewReader("x"), 1, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func (f fixture) createExpiring(t *testing.T, now time.Time) string {
 	t.Helper()
-	id, ref := core.NewID(), core.NewID().String()
-	f.putBlob(t, ref)
+	id, reference := core.NewID(), core.NewID().String()
+	f.putBlob(t, reference)
 	message := &store.Message{
 		Version:        envelope.Version,
 		CreatedAt:      now.Truncate(time.Minute),
@@ -65,13 +65,13 @@ func (f fixture) createExpiring(t *testing.T, now time.Time) string {
 		message,
 		core.NewSecret()[:],
 		core.NewSecret()[:],
-		ref,
+		reference,
 		seal.NewKey(),
 	)
 	if err := f.store.Create(t.Context(), &record.Row); err != nil {
 		t.Fatal(err)
 	}
-	return ref
+	return reference
 }
 
 func (f fixture) run(t *testing.T, now time.Time) (store.SweepReport, error) {

@@ -21,13 +21,13 @@ import (
 const (
 	Directory          = "blobs"
 	temporaryDirectory = "tmp"
-	maxRefLen          = 64
+	maxReferenceLen    = 64
 	copyBufferLen      = 32 << 10
 )
 
 var copyBuffers = sync.Pool{New: func() any { return new([copyBufferLen]byte) }}
 
-var ErrRef = errors.New("disk: invalid blob reference")
+var ErrReference = errors.New("disk: invalid blob reference")
 
 type Blobs struct {
 	root      string
@@ -68,18 +68,18 @@ func New(dataDirectory string, options ...Option) (*Blobs, error) {
 // so its times show nothing the row does not (spec section 5.2).
 func (b *Blobs) PutExpiring(
 	ctx context.Context,
-	ref string,
+	reference string,
 	content io.Reader,
 	size int64,
 	ttl time.Duration,
 ) (time.Time, error) {
-	return b.putStamped(ctx, ref, content, size, func(stored time.Time) time.Time {
+	return b.putStamped(ctx, reference, content, size, func(stored time.Time) time.Time {
 		return store.BlobPurgeAt(store.ExpiresAt(stored, ttl))
 	})
 }
 
-func (b *Blobs) Open(ctx context.Context, ref string) (io.ReadCloser, int64, error) {
-	path, err := b.path(ref)
+func (b *Blobs) Open(ctx context.Context, reference string) (io.ReadCloser, int64, error) {
+	path, err := b.path(reference)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -122,20 +122,20 @@ func (r *blobReader) Close() error {
 	return r.file.Close()
 }
 
-func (b *Blobs) Delete(ctx context.Context, ref string) error {
-	if err := b.remove(ref); err != nil {
+func (b *Blobs) Delete(ctx context.Context, reference string) error {
+	if err := b.remove(reference); err != nil {
 		return err
 	}
 	return b.syncDirectory(ctx)
 }
 
-func (b *Blobs) DeleteBatch(ctx context.Context, refs []string) []error {
-	errs := make([]error, len(refs))
-	if len(refs) == 0 {
+func (b *Blobs) DeleteBatch(ctx context.Context, references []string) []error {
+	errs := make([]error, len(references))
+	if len(references) == 0 {
 		return errs
 	}
-	for i, ref := range refs {
-		errs[i] = b.remove(ref)
+	for i, reference := range references {
+		errs[i] = b.remove(reference)
 	}
 	if syncErr := b.syncDirectory(ctx); syncErr != nil {
 		for i := range errs {
@@ -155,7 +155,7 @@ func (b *Blobs) List(_ context.Context) ([]store.BlobInfo, error) {
 		if entry.IsDir() {
 			continue
 		}
-		ref, decodeErr := hex.DecodeString(entry.Name())
+		reference, decodeErr := hex.DecodeString(entry.Name())
 		if decodeErr != nil {
 			continue
 		}
@@ -166,7 +166,7 @@ func (b *Blobs) List(_ context.Context) ([]store.BlobInfo, error) {
 		if infoErr != nil {
 			return nil, infoErr
 		}
-		blobs = append(blobs, store.BlobInfo{Ref: string(ref), PurgeAt: info.ModTime()})
+		blobs = append(blobs, store.BlobInfo{Reference: string(reference), PurgeAt: info.ModTime()})
 	}
 	return blobs, nil
 }
@@ -202,8 +202,8 @@ func eraseDirectory(directory string) error {
 	return erase.SyncDirectory(directory)
 }
 
-// PurgeTemp shreds the files that crashed uploads left; the pool files wait for uploads, whatever their age.
-func (b *Blobs) PurgeTemp(_ context.Context, olderThan time.Time) (int, error) {
+// PurgeTemporary shreds the files that crashed uploads left; the pool files wait for uploads, whatever their age.
+func (b *Blobs) PurgeTemporary(_ context.Context, olderThan time.Time) (int, error) {
 	temporary := filepath.Join(b.root, temporaryDirectory)
 	entries, err := os.ReadDir(temporary)
 	if err != nil {
@@ -249,12 +249,12 @@ func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
 
 func (b *Blobs) putStamped(
 	ctx context.Context,
-	ref string,
+	reference string,
 	content io.Reader,
 	size int64,
 	purgeAt func(stored time.Time) time.Time,
 ) (time.Time, error) {
-	final, err := b.path(ref)
+	final, err := b.path(reference)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -284,7 +284,7 @@ func (b *Blobs) putStamped(
 }
 
 // removePublishedTemporary unlinks the temporary name of a published blob, whose final name keeps the data; a name it
-// cannot remove is left to PurgeTemp.
+// cannot remove is left to PurgeTemporary.
 func removePublishedTemporary(temporary string) {
 	iolimit.Hold()
 	os.Remove(temporary)
@@ -310,11 +310,11 @@ func (b *Blobs) probe() error {
 	return erase.SyncDirectory(b.root)
 }
 
-func (b *Blobs) path(ref string) (string, error) {
-	if ref == "" || len(ref) > maxRefLen {
-		return "", ErrRef
+func (b *Blobs) path(reference string) (string, error) {
+	if reference == "" || len(reference) > maxReferenceLen {
+		return "", ErrReference
 	}
-	return filepath.Join(b.root, hex.EncodeToString([]byte(ref))), nil
+	return filepath.Join(b.root, hex.EncodeToString([]byte(reference))), nil
 }
 
 // write copies through the pooled buffer, which it clears afterwards, and stamps the file once the content is synced.
@@ -397,8 +397,8 @@ func (b *Blobs) syncDirectory(ctx context.Context) error {
 }
 
 // remove overwrites the erase block in place before it unlinks the file, so no freed block holds its salt.
-func (b *Blobs) remove(ref string) error {
-	path, err := b.path(ref)
+func (b *Blobs) remove(reference string) error {
+	path, err := b.path(reference)
 	if err != nil {
 		return err
 	}
