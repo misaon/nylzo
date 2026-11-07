@@ -155,43 +155,77 @@ func runVerifyClient(ctx context.Context, environment *command.Environment, argu
 	return command.ExitOK
 }
 
+// comparison keeps searching after an error that is not a difference, so a failing page cannot hide a changed file.
+type comparison struct {
+	unfinished error
+}
+
+func (c *comparison) note(err error) error {
+	if isDifference(err) {
+		return err
+	}
+	c.unfinished = cmp.Or(c.unfinished, err)
+	return nil
+}
+
 func (v *verifier) run(ctx context.Context) (verified, error) {
-	if err := v.manifest(ctx); err != nil {
+	served, err := v.release(ctx)
+	if err != nil {
 		return verified{}, err
 	}
 	var result verified
+	var search comparison
+	err = search.note(v.manifest(ctx, &served))
+	if err != nil {
+		return verified{}, err
+	}
+	if search.unfinished == nil {
+		if result.pages, err = v.comparePages(ctx, &search); err != nil {
+			return verified{}, err
+		}
+	}
+	if result.files, err = v.compareAssets(ctx, &search); err != nil {
+		return verified{}, err
+	}
+	return result, search.unfinished
+}
+
+func (v *verifier) comparePages(ctx context.Context, search *comparison) (int, error) {
 	for _, page := range webclient.PagePaths {
 		path := strings.Replace(page, "{id}", core.NewID().String(), 1)
 		for _, encoding := range encodings {
-			if err := v.page(ctx, path, encoding); err != nil {
-				return verified{}, err
+			if err := search.note(v.page(ctx, path, encoding)); err != nil {
+				return 0, err
 			}
 		}
-		result.pages++
 	}
+	return len(webclient.PagePaths), nil
+}
+
+func (v *verifier) compareAssets(ctx context.Context, search *comparison) (int, error) {
 	for _, name := range slices.Sorted(maps.Keys(v.local.Assets)) {
 		asset := v.local.Assets[name]
 		for _, encoding := range encodings {
-			if err := v.asset(ctx, name, &asset, encoding); err != nil {
-				return verified{}, err
+			if err := search.note(v.asset(ctx, name, &asset, encoding)); err != nil {
+				return 0, err
 			}
 		}
-		result.files++
 	}
-	return result, nil
+	return len(v.local.Assets), nil
 }
 
-func (v *verifier) manifest(ctx context.Context) error {
+// release reads the served manifest; without the version of this binary no file can be compared.
+func (v *verifier) release(ctx context.Context) (webclient.Manifest, error) {
+	var served webclient.Manifest
 	fetched, err := v.api.Fetch(ctx, webclient.ManifestPath, identity, maxManifestBytes)
 	if err != nil {
-		return fetchFailed(webclient.ManifestPath, err)
+		return served, fetchFailed(webclient.ManifestPath, err)
 	}
-	var served webclient.Manifest
 	if err = json.Unmarshal(fetched.Body, &served); err != nil {
-		return differs("the server's client manifest is not valid JSON")
+		return served, differs("the server's client manifest is not valid JSON")
 	}
 	if served.Server != v.version {
-		return fmt.Errorf(
+		return served, fmt.Errorf(
 			"the server runs nylzo %s and this binary is %s; verify with the nylzo release the server runs",
 			shortened(served.Server),
 			v.version,
@@ -199,9 +233,16 @@ func (v *verifier) manifest(ctx context.Context) error {
 	}
 	if served.PublicURL != "" {
 		if err = webclient.CheckPublicURL(served.PublicURL); err != nil {
-			return differs("the server's client manifest names a public URL that this nylzo would refuse: %s", err)
+			return served, differs(
+				"the server's client manifest names a public URL that this nylzo would refuse: %s",
+				err,
+			)
 		}
 	}
+	return served, nil
+}
+
+func (v *verifier) manifest(ctx context.Context, served *webclient.Manifest) error {
 	contact, err := v.contact(ctx)
 	if err != nil {
 		return err
