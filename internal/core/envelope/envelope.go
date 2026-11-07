@@ -1,6 +1,7 @@
 package envelope
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -320,7 +321,7 @@ func parsePlaintext(plaintext []byte) (Payload, error) {
 			return Payload{}, err
 		}
 	} else {
-		file = append([]byte(nil), file...)
+		file = bytes.Clone(file)
 	}
 	return Payload{Meta: meta, File: file}, nil
 }

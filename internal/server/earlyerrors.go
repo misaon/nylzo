@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"maps"
 	"net"
 	"net/http"
 	"slices"
@@ -18,13 +19,7 @@ func SecureEarlyErrors(listener net.Listener) net.Listener {
 	header := http.Header{}
 	webclient.SetSecurityHeaders(header, false)
 	var block bytes.Buffer
-	for _, name := range slices.Sorted(func(yield func(string) bool) {
-		for name := range header {
-			if !yield(name) {
-				return
-			}
-		}
-	}) {
+	for _, name := range slices.Sorted(maps.Keys(header)) {
 		block.WriteString(name + ": " + header.Get(name) + "\r\n")
 	}
 	return &earlyErrorListener{Listener: listener, headers: block.Bytes()}

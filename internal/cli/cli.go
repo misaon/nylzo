@@ -109,10 +109,7 @@ func Run(arguments []string, environment *command.Environment) int {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-	go func() {
-		<-ctx.Done()
-		stop()
-	}()
+	context.AfterFunc(ctx, stop)
 	return commands()[index].run(ctx, environment, arguments[1:])
 }
 
