@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { saveFile } from './save-file.ts';
+import { revokeSavedFiles, saveFile } from './save-file.ts';
 
 describe('file download', () => {
   afterEach(() => {
@@ -28,5 +28,16 @@ describe('file download', () => {
     expect(revokeObjectURL).not.toHaveBeenCalled();
     vi.advanceTimersByTime(60_000);
     expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:synthetic');
+  });
+
+  it('releases every pending download when the page is left, before its timer would', () => {
+    vi.useFakeTimers();
+    const revokeObjectURL = vi.fn<(...arguments_: unknown[]) => void>();
+    vi.stubGlobal('URL', { createObjectURL: () => 'blob:synthetic', revokeObjectURL });
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(vi.fn<() => void>());
+    saveFile(new Uint8Array([1, 2]), 'synthetic.txt');
+    revokeSavedFiles();
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:synthetic');
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

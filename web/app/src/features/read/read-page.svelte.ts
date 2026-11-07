@@ -6,7 +6,7 @@ import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
 import { clearClipboard } from '../../shared/clipboard/clear-clipboard.ts';
 import { isKnownSafeFile } from '../../shared/files/file-name.ts';
-import { saveFile } from '../../shared/files/save-file.ts';
+import { revokeSavedFiles, saveFile } from '../../shared/files/save-file.ts';
 import { scryptInWorker, stopRunningWorkers } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
 import type { MessageKey } from '../../shared/language/czech.ts';
@@ -296,6 +296,7 @@ export class ReadPage {
 
   readonly leave = (): void => {
     stopRunningWorkers();
+    revokeSavedFiles();
     this.#left = true;
     this.burned = undefined;
     this.confirmingDownload = false;

@@ -12,6 +12,7 @@ import { createReader } from './reader.ts';
 
 vi.mock('./reader.ts', () => ({ createReader: vi.fn<typeof import('./reader.ts').createReader>() }));
 vi.mock('../../shared/files/save-file.ts', () => ({
+  revokeSavedFiles: vi.fn<typeof import('../../shared/files/save-file.ts').revokeSavedFiles>(),
   saveFile: vi.fn<typeof import('../../shared/files/save-file.ts').saveFile>(),
 }));
 vi.mock('../../shared/link/link-opener.ts', () => ({

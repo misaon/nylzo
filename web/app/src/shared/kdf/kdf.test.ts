@@ -60,6 +60,8 @@ describe('worker lifecycle', () => {
     stopRunningWorkers();
     await expect(result).rejects.toBeInstanceOf(KdfWorkerError);
     expect(stop).toHaveBeenCalledOnce();
+    reply({ kind: 'progress', fraction: 0.9 });
+    expect(progress).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
     const late = scryptInWorker('synthetic passphrase', salt, progress);
     stopRunningWorkers();

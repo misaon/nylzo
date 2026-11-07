@@ -25,10 +25,9 @@
     readonly remembered: Remembered;
     readonly onremember: (label: string) => void;
     readonly onanother: () => void;
-    readonly leaving: boolean;
   }
 
-  const { created, opensMax, passphrase, canRemember, remembered, onremember, onanother, leaving }: Props = $props();
+  const { created, opensMax, passphrase, canRemember, remembered, onremember, onanother }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
   const id = $props.id();
@@ -122,7 +121,7 @@
     entered ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
   ]}
   {@attach enter}
-  out:fade={{ duration: leaving ? 0 : motionMs(400) }}
+  out:fade={{ duration: motionMs(400) }}
 >
   <div
     class="relative flex min-h-0 flex-1 flex-col items-center justify-center px-5 py-9 text-center sm:px-10 md:py-12"

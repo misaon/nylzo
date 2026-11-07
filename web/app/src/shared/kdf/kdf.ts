@@ -28,7 +28,12 @@ async function runWorker(request: KdfRequest, onProgress: Progress): Promise<Kdf
   }
   return new Promise((resolve, reject) => {
     let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+    let settled = false;
     const finish = (settle: () => void) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       clearTimeout(silenceTimer);
       runningWorkers.delete(cancel);
       stop();
@@ -45,6 +50,9 @@ async function runWorker(request: KdfRequest, onProgress: Progress): Promise<Kdf
       );
     };
     worker.addEventListener('message', ({ data }: MessageEvent<KdfResponse>) => {
+      if (settled) {
+        return;
+      }
       if (data.kind === 'progress') {
         restartSilenceTimer();
         onProgress(data.fraction);

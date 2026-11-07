@@ -19,10 +19,13 @@
   const id = $props.id();
   const COUNTER_FROM = 0.8;
 
-  const keepName = lingering();
-  const keepSize = lingering();
-  const fileName = $derived(keepName(composer.file?.name ?? ''));
+  const keepName = $derived(composer.left ? undefined : lingering());
+  const keepSize = $derived(composer.left ? undefined : lingering());
+  const fileName = $derived(keepName?.(composer.file?.name ?? '') ?? '');
   const fileSize = $derived.by(() => {
+    if (!keepSize) {
+      return '';
+    }
     if (!composer.file) {
       return keepSize('');
     }

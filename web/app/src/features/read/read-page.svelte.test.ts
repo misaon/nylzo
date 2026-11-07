@@ -3,7 +3,9 @@ import { flushSync, onDestroy } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { Metadata } from '../../shared/api/api.ts';
-import { saveFile } from '../../shared/files/save-file.ts';
+import { revokeSavedFiles, saveFile } from '../../shared/files/save-file.ts';
+import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
+import { startWorker } from '../../shared/kdf/worker-source.ts';
 import { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { ReadPage } from './read-page.svelte.ts';
@@ -16,7 +18,12 @@ vi.mock(import('svelte'), (original) =>
 );
 vi.mock('./reader.ts', () => ({ createReader: vi.fn<typeof import('./reader.ts').createReader>() }));
 vi.mock('../../shared/files/save-file.ts', () => ({
+  revokeSavedFiles: vi.fn<typeof import('../../shared/files/save-file.ts').revokeSavedFiles>(),
   saveFile: vi.fn<typeof import('../../shared/files/save-file.ts').saveFile>(),
+}));
+vi.mock('../../shared/kdf/worker-source.ts', () => ({
+  prepareWorker: vi.fn<typeof import('../../shared/kdf/worker-source.ts').prepareWorker>(),
+  startWorker: vi.fn<typeof import('../../shared/kdf/worker-source.ts').startWorker>(),
 }));
 vi.mock('../../shared/link/link-handoff.ts', () => ({
   takeFragment: vi.fn<typeof import('../../shared/link/link-handoff.ts').takeFragment>(),
@@ -336,8 +343,13 @@ describe('read page interactions', () => {
     expect(page.afterFacts[0]?.text).toBe(translator.translate('open.chip.burned'));
   });
 
-  it('wipes page state on leave, settles an outstanding display wait, and stops all animation', async () => {
+  it('wipes page state on leave, stops key derivation, releases downloads, and stops all animation', async () => {
+    const stop = vi.fn<() => void>();
+    const worker = Object.assign(new EventTarget(), { postMessage: vi.fn<(...arguments_: unknown[]) => void>() });
+    vi.mocked(startWorker).mockResolvedValue({ worker: worker as unknown as Worker, stop });
     const page = new ReadPage(new Translator('en'));
+    const derivation = dependencies.scrypt('secret', new Uint8Array(16), vi.fn<(fraction: number) => void>());
+    await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledOnce());
     ready();
     notify({ view: 'busy', step: 'claiming' });
     notify({ view: 'revealed', text: 'must not reappear', burnable: true, opensRemaining: 1 });
@@ -349,6 +361,9 @@ describe('read page interactions', () => {
     page.askingDelete = true;
     page.leave();
     await displayed;
+    await expect(derivation).rejects.toBeInstanceOf(KdfWorkerError);
+    expect(stop).toHaveBeenCalledOnce();
+    expect(revokeSavedFiles).toHaveBeenCalledOnce();
     vi.advanceTimersByTime(10_000);
     expect(reader.clear).toHaveBeenCalledOnce();
     expect(page.shown).toEqual({ view: 'cleared' });

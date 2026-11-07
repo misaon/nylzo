@@ -34,7 +34,6 @@ describe('created message panel', () => {
         remembered: 'off',
         onremember: remember,
         onanother: another,
-        leaving: false,
       },
     });
     flushSync();

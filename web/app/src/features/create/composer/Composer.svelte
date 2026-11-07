@@ -99,17 +99,19 @@
           <ComposerBar {composer} {noticeId} />
         </form>
 
-        {#if composer.sealed}
-          <CreatedPanel
-            created={composer.sealed.created}
-            opensMax={composer.sealed.opensMax}
-            passphrase={composer.sealed.passphrase}
-            canRemember={composer.canRemember}
-            remembered={composer.remembered}
-            onremember={(label) => void composer.track(label)}
-            onanother={() => void composer.another()}
-            leaving={composer.leaving}
-          />
+        <!-- Leaving destroys the panel without its outro, which a frozen page would never finish. -->
+        {#if !composer.left}
+          {#if composer.sealed}
+            <CreatedPanel
+              created={composer.sealed.created}
+              opensMax={composer.sealed.opensMax}
+              passphrase={composer.sealed.passphrase}
+              canRemember={composer.canRemember}
+              remembered={composer.remembered}
+              onremember={(label) => void composer.remember(label)}
+              onanother={() => void composer.another()}
+            />
+          {/if}
         {/if}
       </div>
     </div>

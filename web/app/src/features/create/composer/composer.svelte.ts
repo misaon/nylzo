@@ -109,7 +109,7 @@ export class Composer {
   proving = $state(false);
   cipher = $state('');
   sealed = $state.raw<SealedMessage>();
-  leaving = $state(false);
+  left = $state(false);
   sealingWithPassphrase = $state(false);
   remembered = $state<Remembered>('off');
   readonly focus = new FocusTargets<ComposerTarget>();
@@ -219,7 +219,7 @@ export class Composer {
     return () => this.timeline.stop();
   };
 
-  readonly track = async (label: string): Promise<void> => {
+  readonly remember = async (label: string): Promise<void> => {
     const sealed = this.sealed;
     if (!sealed || !this.canRemember || this.remembered === 'saving' || this.remembered === 'remembered') {
       return;
@@ -248,7 +248,7 @@ export class Composer {
 
   readonly leave = (): void => {
     stopRunningWorkers();
-    this.leaving = true;
+    this.left = true;
     this.#run++;
     this.timeline.stop();
     this.#pending = undefined;
@@ -257,7 +257,6 @@ export class Composer {
     this.#reset();
     // Commit removal before pagehide returns and the browser freezes this document.
     flushSync();
-    this.leaving = false;
   };
 
   readonly loadLimits = async (): Promise<void> => {
