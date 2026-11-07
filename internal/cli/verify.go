@@ -288,25 +288,38 @@ func (v *verifier) headers(header http.Header, contentType, path, where string) 
 		return differs("%s: the Content-Security-Policy header differs from this nylzo", where)
 	}
 	for name, values := range header {
-		known := expected[name] != "" || name == "Content-Security-Policy" ||
-			name == "Connection-Allowlist" && strings.HasPrefix(contentType, "text/html") ||
-			slices.Contains(transportHeaders, name) || v.allowed[name]
-		if name == "Content-Encoding" {
-			known = len(values) == 1
-		}
-		switch {
-		case known:
-		case name == "Content-Encoding" || name == "Connection-Allowlist" || slices.Contains(neverAllowed, name):
-			return differs("%s: the server sent the %s header, which this nylzo never sends here", where, name)
-		default:
-			return fmt.Errorf(
-				"%s: the server sent the %s header, which this nylzo never sends; if a proxy adds it, allow it with --allow-header",
-				where,
-				shortened(name),
-			)
+		if err := v.unknownHeader(name, values, expected, contentType, where); err != nil {
+			return err
 		}
 	}
 	return nil
+}
+
+// unknownHeader refuses a header this version never sends with this response, unless a proxy may add it.
+func (v *verifier) unknownHeader(
+	name string,
+	values []string,
+	expected map[string]string,
+	contentType, where string,
+) error {
+	known := expected[name] != "" || name == "Content-Security-Policy" ||
+		name == "Connection-Allowlist" && strings.HasPrefix(contentType, "text/html") ||
+		slices.Contains(transportHeaders, name) || v.allowed[name]
+	if name == "Content-Encoding" {
+		known = len(values) == 1
+	}
+	switch {
+	case known:
+		return nil
+	case name == "Content-Encoding" || name == "Connection-Allowlist" || slices.Contains(neverAllowed, name):
+		return differs("%s: the server sent the %s header, which this nylzo never sends here", where, name)
+	default:
+		return fmt.Errorf(
+			"%s: the server sent the %s header, which this nylzo never sends; if a proxy adds it, allow it with --allow-header",
+			where,
+			shortened(name),
+		)
+	}
 }
 
 func shortened(text string) string {
