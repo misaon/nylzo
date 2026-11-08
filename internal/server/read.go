@@ -449,7 +449,10 @@ func (s *Server) serveBlob(
 	w.WriteHeader(http.StatusOK)
 	paced := s.pace.Writer(w, http.NewResponseController(w), overall)
 	buffer, _ := streamBuffers.Get().(*[streamBufferLength]byte)
-	defer streamBuffers.Put(buffer)
+	defer func() {
+		clear(buffer[:])
+		streamBuffers.Put(buffer)
+	}()
 	if copied, err := io.CopyBuffer(
 		paced,
 		blob,

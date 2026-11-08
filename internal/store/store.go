@@ -44,10 +44,6 @@ func CeilMinute(moment time.Time) time.Time {
 	return ceil(moment, time.Minute)
 }
 
-func CeilQuarterHour(moment time.Time) time.Time {
-	return ceil(moment, BlobPurgeStep)
-}
-
 // ExpiresAt is when a message whose upload was stored at uploaded expires: ttl later, rounded up to the minute.
 func ExpiresAt(uploaded time.Time, ttl time.Duration) time.Time {
 	return CeilMinute(uploaded.UTC().Add(ttl))
@@ -55,7 +51,7 @@ func ExpiresAt(uploaded time.Time, ttl time.Duration) time.Time {
 
 // BlobPurgeAt is when the sweep deletes the blob of a message that expires at expiresAt.
 func BlobPurgeAt(expiresAt time.Time) time.Time {
-	return CeilQuarterHour(expiresAt)
+	return ceil(expiresAt, BlobPurgeStep)
 }
 
 func ceil(moment time.Time, step time.Duration) time.Time {

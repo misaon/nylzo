@@ -80,7 +80,7 @@ func withPepper(name, value string) func(string) string {
 	return environment(map[string]string{"NYLZO_PEPPER_FILE": currentPepperFile, name: value})
 }
 
-func TestFromEnvReadsEveryVariable(t *testing.T) {
+func TestFromEnvironmentReadsEveryVariable(t *testing.T) {
 	t.Parallel()
 	settings, err := config.FromEnvironment(environment(map[string]string{
 		"NYLZO_PEPPER_FILE":          currentPepperFile,
@@ -123,7 +123,7 @@ func TestFromEnvReadsEveryVariable(t *testing.T) {
 	}
 }
 
-func TestFromEnvRefusesInvalidValues(t *testing.T) {
+func TestFromEnvironmentRefusesInvalidValues(t *testing.T) {
 	t.Parallel()
 	for _, testCase := range []struct {
 		name, value string

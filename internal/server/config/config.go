@@ -210,6 +210,10 @@ func (s *Server) rules() []rule {
 		{rates.BucketBurst >= 1, "NYLZO_RATE_BUCKET_BURST must be at least 1"},
 		{rates.SourceBurst >= 1, "NYLZO_RATE_SOURCE_BURST must be at least 1"},
 		{
+			rates.ReadBytesPerHour == 0 || rates.ReadBytesPerHour >= limits.MaxObjectBytes,
+			"NYLZO_RATE_READ_BYTES_HOUR must be 0 or at least the largest object, or no such message could be read",
+		},
+		{
 			slices.Min(rates.counted()) >= 0 && rates.GlobalDailyCreates >= 0 && rates.CoarseMultiplier >= 0,
 			"the NYLZO_RATE_* limits must not be negative",
 		},

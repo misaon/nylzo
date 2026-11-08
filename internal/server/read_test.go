@@ -1563,18 +1563,24 @@ func TestReadBytesPerHourStopsAClaimBeforeItSpendsAnOpen(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
-		message := newMessage(t, core.KDFNone, "", 3, 3600, "x")
 		settings := harness.settings
-		settings.Rates.ReadBytesPerHour = int64(len(message.object))
+		settings.Limits.MaxFileBytes = 1
+		settings.Limits.MaxObjectBytes = envelope.ObjectLimit(1)
+		settings.Rates.ReadBytesPerHour = settings.Limits.MaxObjectBytes
 		harness.reopen(&settings)
+		probe := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		within := int(settings.Rates.ReadBytesPerHour / int64(len(probe.object)))
+		message := newMessage(t, core.KDFNone, "", uint16(within+1), 3600, "x")
 		harness.mustCreate(message)
-		if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
-			t.Fatalf("the first claim within the byte budget: %d", response.StatusCode)
+		for range within {
+			if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
+				t.Fatalf("a claim within the byte budget: %d", response.StatusCode)
+			}
 		}
 		if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusTooManyRequests {
 			t.Fatalf("a claim past the byte budget: %d", response.StatusCode)
 		}
-		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(2) {
+		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
 			t.Fatalf("a claim refused for its bytes spent an open: %v", metadata)
 		}
 	})

@@ -331,8 +331,10 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	blobs.OnFillFailure(func(err error) {
 		instance.Events().ErrorContext(ctx, "pool-fill", "err", logging.ErrorText(err))
 	})
-	if returnErr := instance.ReturnUnstoredCreates(ctx); returnErr != nil {
-		return returnErr
+	if !database.LogResetSkipped() {
+		if returnErr := instance.ReturnUnstoredCreates(ctx); returnErr != nil {
+			return returnErr
+		}
 	}
 	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", settings.Listen)
 	if err != nil {

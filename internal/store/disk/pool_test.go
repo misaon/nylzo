@@ -265,7 +265,7 @@ func TestPutWaitsForAFreeFileSlotNoLongerThanItsRequest(t *testing.T) {
 }
 
 type cancelAfterLink struct {
-	context.Context
+	context.Context //nolint:containedctx // wraps the test context to end it once the blob is linked
 
 	final string
 }
@@ -282,7 +282,7 @@ func TestABlobWhoseDirectorySyncFailsIsShredded(t *testing.T) {
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
 	final := filepath.Join(directory, disk.Directory, hexName("unsynced"))
-	ctx := cancelAfterLink{Context: context.Background(), final: final}
+	ctx := cancelAfterLink{Context: t.Context(), final: final}
 	if _, err := blobs.PutExpiring(ctx, "unsynced", strings.NewReader("x"), 1, time.Hour); !errors.Is(
 		err,
 		context.Canceled,

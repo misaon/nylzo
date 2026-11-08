@@ -13,8 +13,13 @@ func StartWindow(now time.Time) Window {
 }
 
 // Ended reports whether the window ended by now and then starts the next one. The wall clock aligns the end to the
-// hour; the monotonic clock keeps a clock step from ending a window early.
+// hour; the monotonic clock keeps a clock step from ending a window early, and a wall clock that stepped back before
+// the start restarts the window, so the step cannot hold the counts back until the clock catches up.
 func (w *Window) Ended(now time.Time) bool {
+	if now.Round(0).Before(w.start.Round(0)) {
+		w.start = now
+		return false
+	}
 	toLastHour := now.Truncate(time.Hour).Sub(w.start.Truncate(time.Minute))
 	if toLastHour < time.Hour || now.Sub(w.start) < time.Hour-time.Minute {
 		return false

@@ -99,7 +99,7 @@ func TestRunDeletesExpiredBlobsAndPurgesStaleUploads(t *testing.T) {
 	}
 	stale("blob-first")
 	report, err := setup.run(t, now.Add(store.BlobPurgeStep))
-	if err != nil || report.Blobs != 1 || report.StaleTempFiles != 1 {
+	if err != nil || report.Blobs != 1 || report.StaleTemporaryFiles != 1 {
 		t.Fatalf("first sweep: %+v %v", report, err)
 	}
 	if _, _, openErr := setup.blobs.Open(t.Context(), id); !errors.Is(openErr, store.ErrBlobMissing) {
@@ -107,7 +107,7 @@ func TestRunDeletesExpiredBlobsAndPurgesStaleUploads(t *testing.T) {
 	}
 	stale("blob-second")
 	report, err = setup.run(t, now.Add(store.BlobPurgeStep+time.Minute))
-	if err != nil || report.StaleTempFiles != 1 {
+	if err != nil || report.StaleTemporaryFiles != 1 {
 		t.Fatalf("a sweep after the daily reconcile must still purge temp files: %+v %v", report, err)
 	}
 }

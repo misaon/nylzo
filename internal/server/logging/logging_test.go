@@ -177,6 +177,12 @@ func TestWindowEndsAtTheStartOfAnHourOnceItSpansAnHour(t *testing.T) {
 			ticks: []time.Time{at(17, 23, 0), at(18, 0, 0), at(19, 0, 0)},
 			ended: []bool{true, false, true},
 		},
+		{
+			name:  "a wall clock that stepped back two days",
+			start: at(14, 0, 0).Add(48 * time.Hour),
+			ticks: []time.Time{at(14, 1, 0), at(15, 0, 0), at(16, 0, 0)},
+			ended: []bool{false, false, true},
+		},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()

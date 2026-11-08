@@ -142,7 +142,7 @@ func (w *Work) spend(ctx context.Context, challenge *[proofofwork.ChallengeLen]b
 }
 
 func (w *Work) tag(signed []byte, difficulty int) []byte {
-	var encoded byte
+	encoded := byte(proofofwork.MaxDifficulty)
 	if difficulty >= 0 && difficulty <= proofofwork.MaxDifficulty {
 		encoded = byte(difficulty)
 	}

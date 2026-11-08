@@ -10,11 +10,11 @@ import (
 )
 
 type SweepReport struct {
-	Blobs          int
-	Rows           int
-	Counters       int
-	OrphanedBlobs  int
-	StaleTempFiles int
+	Blobs               int
+	Rows                int
+	Counters            int
+	OrphanedBlobs       int
+	StaleTemporaryFiles int
 }
 
 // SweepAll never opens a record: it deletes the blobs and rows whose cleanup time has passed and replenishes the pool
@@ -33,7 +33,7 @@ func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (S
 		return purge(ctx, "counters", storage.RatePurge, now, CounterPurgeBatch)
 	})
 	errs = append(errs, storage.Checkpoint(ctx))
-	count(&report.StaleTempFiles, func() (int, error) { return blobs.PurgeTemporary(ctx, now.Add(-BlobGrace)) })
+	count(&report.StaleTemporaryFiles, func() (int, error) { return blobs.PurgeTemporary(ctx, now.Add(-BlobGrace)) })
 	errs = append(errs, blobs.Replenish(ctx))
 	return report, errors.Join(errs...)
 }
