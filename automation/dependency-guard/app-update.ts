@@ -1,8 +1,7 @@
 import { repositoryName } from '../github/client.ts';
 import { isBot } from '../github/identity.ts';
 import type { BotIdentity } from '../github/identity.ts';
-import { compareVersions, isSafeUpgrade, parseVersion } from '../versions/semantic-version.ts';
-import type { SemanticVersion } from '../versions/semantic-version.ts';
+import { compareVersions, isSafeUpgrade, stableVersion } from '../versions/semantic-version.ts';
 import { binaryAssetsPath, hostToolchainPath, ruleFor } from './rules/dependency-files.ts';
 import { mergeReviews } from './rules/file-review.ts';
 import type { FileReview, VersionUpdate } from './rules/file-review.ts';
@@ -21,14 +20,6 @@ export interface AppUpdate {
 
 const maximumChangedFiles = 80;
 const supportedBase = /^(?:main|release\/v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/u;
-
-function stableVersion(value: string): SemanticVersion | undefined {
-  try {
-    return parseVersion(value);
-  } catch {
-    return undefined;
-  }
-}
 
 export function upgradeProblem(update: VersionUpdate): string | undefined {
   const before = stableVersion(update.before);

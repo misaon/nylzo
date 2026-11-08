@@ -192,7 +192,6 @@ formatters:
   enable: [gofumpt, goimports, golines]
   settings:
     gofumpt:
-      module-path: github.com/misaon/nylzo
       extra:
         group-params: true
         clothe-returns: true
