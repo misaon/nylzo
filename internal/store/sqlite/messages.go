@@ -6,8 +6,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"errors"
+	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/misaon/nylzo/internal/seal"
@@ -15,16 +18,22 @@ import (
 )
 
 const (
-	rowColumns = `locator, read_wrap, manage_wrap, record, blob_ref, blob_wrap, blob_purge_at, purge_at`
-	rowQuery   = `SELECT locator, read_wrap, manage_wrap, record,
-		ifnull(blob_ref, '0000000000000000000000'), blob_ref IS NULL,
-		ifnull(blob_wrap, zeroblob(60)), blob_wrap IS NULL,
-		ifnull(blob_purge_at, 0), blob_purge_at IS NULL, purge_at
-		FROM messages WHERE locator = ?`
+	insertRow = `INSERT INTO messages (locator, read_wrap, manage_wrap, record, blob_ref, blob_wrap, blob_purge_at,
+		purge_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(locator) DO NOTHING`
 	updateRow = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
 		blob_purge_at = ? WHERE locator = ?`
 	updateRowAndPurge = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
 		blob_purge_at = ?, purge_at = ? WHERE locator = ?`
+)
+
+// rowQuery fills each NULL with a value of the length a live row holds there.
+var rowQuery = fmt.Sprintf(`SELECT locator, read_wrap, manage_wrap, record,
+		ifnull(blob_ref, '%s'), blob_ref IS NULL,
+		ifnull(blob_wrap, zeroblob(%d)), blob_wrap IS NULL,
+		ifnull(blob_purge_at, 0), blob_purge_at IS NULL, purge_at
+		FROM messages WHERE locator = ?`,
+	strings.Repeat("0", base64.RawURLEncoding.EncodedLen(store.BlobReferenceLen)),
+	seal.WrapLen,
 )
 
 // absentLocator is never stored: finding an id that hashes to it is a preimage.
@@ -32,11 +41,7 @@ var absentLocator seal.Locator = sha256.Sum256([]byte("nylzo/v1/absent-row"))
 
 func (s *Store) Create(ctx context.Context, row *store.Row, counters ...store.RateHit) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
-		inserted, err := tx.ExecContext(
-			ctx,
-			`INSERT INTO messages (`+rowColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(locator) DO NOTHING`,
-			rowValues(row)...,
-		)
+		inserted, err := execIn(ctx, tx, s.statements.insertRow, rowValues(row)...)
 		if err != nil {
 			return err
 		}
@@ -79,18 +84,16 @@ func (s *Store) Lookup(ctx context.Context, locator seal.Locator) (store.Row, bo
 // ensureDummyRow stores the row that Lookup reads for an unknown locator; random keys seal it, so nothing opens it.
 func ensureDummyRow(ctx context.Context, database *sql.DB) error {
 	row := store.NewDummyRow()
-	_, err := database.ExecContext(
-		ctx,
-		`INSERT INTO messages (`+rowColumns+`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(locator) DO NOTHING`,
-		rowValues(&row)...,
-	)
+	_, err := database.ExecContext(ctx, insertRow, rowValues(&row)...)
 	return err
 }
 
 // Update hands the row to change inside one write transaction and stores what change replaced.
 func (s *Store) Update(ctx context.Context, locator seal.Locator, change func(row *store.Row) error) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
-		row, err := scanRow(tx.QueryRowContext(ctx, rowQuery, locator[:]))
+		reload := tx.StmtContext(ctx, s.statements.reloadRow)
+		defer reload.Close()
+		row, err := scanRow(reload.QueryRowContext(ctx, locator[:]))
 		if err != nil {
 			return err
 		}
@@ -101,9 +104,9 @@ func (s *Store) Update(ctx context.Context, locator seal.Locator, change func(ro
 		values := rowValues(&row)
 		switch {
 		case !stored.PurgeAt.Equal(row.PurgeAt):
-			_, err = tx.ExecContext(ctx, updateRowAndPurge, append(values[1:], locator[:])...)
+			_, err = execIn(ctx, tx, s.statements.updateRowAndPurge, append(values[1:], locator[:])...)
 		case !sameRow(&stored, &row):
-			_, err = tx.ExecContext(ctx, updateRow, slices.Concat(values[1:7], []any{locator[:]})...)
+			_, err = execIn(ctx, tx, s.statements.updateRow, slices.Concat(values[1:7], []any{locator[:]})...)
 		default:
 		}
 		return err
@@ -112,7 +115,7 @@ func (s *Store) Update(ctx context.Context, locator seal.Locator, change func(ro
 
 // sameRow ignores purge_at: SQLite rewrites its index whenever the column is set, even to the value it holds.
 func sameRow(stored, changed *store.Row) bool {
-	return stored.BlobRef == changed.BlobRef &&
+	return stored.BlobReference == changed.BlobReference &&
 		stored.BlobPurgeAt.Equal(changed.BlobPurgeAt) &&
 		bytes.Equal(stored.ReadWrap, changed.ReadWrap) &&
 		bytes.Equal(stored.ManageWrap, changed.ManageWrap) &&
@@ -122,9 +125,9 @@ func sameRow(stored, changed *store.Row) bool {
 }
 
 func rowValues(row *store.Row) []any {
-	var blobRef, blobWrap, blobPurgeAt any
-	if row.BlobRef != "" {
-		blobRef = row.BlobRef
+	var blobReference, blobWrap, blobPurgeAt any
+	if row.BlobReference != "" {
+		blobReference = row.BlobReference
 	}
 	if row.BlobWrap != nil {
 		blobWrap = row.BlobWrap
@@ -137,7 +140,7 @@ func rowValues(row *store.Row) []any {
 		row.ReadWrap,
 		row.ManageWrap,
 		row.Record,
-		blobRef,
+		blobReference,
 		blobWrap,
 		blobPurgeAt,
 		milliseconds(row.PurgeAt),
@@ -149,16 +152,16 @@ func rowValues(row *store.Row) []any {
 func scanRow(scanner *sql.Row) (store.Row, error) {
 	var row store.Row
 	var locator []byte
-	var blobRef string
-	var blobRefMissing, blobWrapMissing, blobPurgeMissing bool
+	var blobReference string
+	var blobReferenceMissing, blobWrapMissing, blobPurgeMissing bool
 	var blobPurgeAt, purgeAt int64
 	err := scanner.Scan(
 		&locator,
 		&row.ReadWrap,
 		&row.ManageWrap,
 		&row.Record,
-		&blobRef,
-		&blobRefMissing,
+		&blobReference,
+		&blobReferenceMissing,
 		&row.BlobWrap,
 		&blobWrapMissing,
 		&blobPurgeAt,
@@ -175,8 +178,8 @@ func scanRow(scanner *sql.Row) (store.Row, error) {
 		return store.Row{}, store.ErrCorrupt
 	}
 	row.Locator = seal.Locator(locator)
-	if !blobRefMissing {
-		row.BlobRef = blobRef
+	if !blobReferenceMissing {
+		row.BlobReference = blobReference
 	}
 	if blobWrapMissing {
 		row.BlobWrap = nil

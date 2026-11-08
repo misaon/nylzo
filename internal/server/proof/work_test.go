@@ -16,9 +16,10 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
-	"github.com/misaon/nylzo/internal/core/vectors"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/store/sqlite"
+	"github.com/misaon/nylzo/internal/vectors"
 )
 
 func testRing(t *testing.T) *pepper.Ring {
@@ -52,10 +53,10 @@ func solve(t *testing.T, challenge string, id core.ID) string {
 func TestWorkWaitsForAVerifierSlot(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
-		work := NewWork(testRing(t), openStore(t), 1, 1)
+		work := NewWork(testRing(t), openStore(t), 1)
 		now := time.Now()
 		id := core.NewID()
-		token := solve(t, work.Challenge(now), id)
+		token := solve(t, work.Challenge(now, 1), id)
 		work.slots <- struct{}{}
 		if err := work.Verify(t.Context(), token, id, now); !errors.Is(err, ErrWorkBusy) {
 			t.Fatalf("saturated verifier: want ErrWorkBusy, got %v", err)
@@ -64,7 +65,7 @@ func TestWorkWaitsForAVerifierSlot(t *testing.T) {
 		if err := work.Verify(t.Context(), token, id, now); !errors.Is(err, ErrWork) {
 			t.Fatalf("a challenge is used once it is recorded, even after a busy answer: %v", err)
 		}
-		fresh := solve(t, work.Challenge(now), id)
+		fresh := solve(t, work.Challenge(now, 1), id)
 		work.slots <- struct{}{}
 		go func() {
 			time.Sleep(10 * time.Millisecond)
@@ -73,7 +74,7 @@ func TestWorkWaitsForAVerifierSlot(t *testing.T) {
 		if err := work.Verify(t.Context(), fresh, id, now); err != nil {
 			t.Fatalf("a slot that frees up within the wait must be used: %v", err)
 		}
-		gone := solve(t, work.Challenge(now), id)
+		gone := solve(t, work.Challenge(now, 1), id)
 		work.slots <- struct{}{}
 		defer func() { <-work.slots }()
 		ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
@@ -86,7 +87,7 @@ func TestWorkWaitsForAVerifierSlot(t *testing.T) {
 
 func TestWorkTokensFollowTheSpec(t *testing.T) {
 	t.Parallel()
-	work := NewWork(testRing(t), openStore(t), 1, 1)
+	work := NewWork(testRing(t), openStore(t), 1)
 	now := time.Now()
 	id := core.NewID()
 	verify := func(token string, tokenID core.ID) error { return work.Verify(t.Context(), token, tokenID, now) }
@@ -94,11 +95,11 @@ func TestWorkTokensFollowTheSpec(t *testing.T) {
 		issued time.Duration
 		want   error
 	}{{time.Minute, ErrWork}, {-121 * time.Second, ErrWork}, {2 * time.Second, nil}} {
-		if err := verify(solve(t, work.Challenge(now.Add(window.issued)), id), id); !errors.Is(err, window.want) {
+		if err := verify(solve(t, work.Challenge(now.Add(window.issued), 1), id), id); !errors.Is(err, window.want) {
 			t.Errorf("a challenge issued %v from now: %v, want %v", window.issued, err, window.want)
 		}
 	}
-	challenge := work.Challenge(now)
+	challenge := work.Challenge(now, 1)
 	token, _ := work.parse(challenge+".00000000abcdef00", now)
 	for !token.satisfies(id, 1) {
 		token.counter++
@@ -122,7 +123,16 @@ func TestWorkTokensFollowTheSpec(t *testing.T) {
 			t.Fatalf("malformed token %q: %v", malformed, err)
 		}
 	}
-	other := solve(t, work.Challenge(now), id)
+	harder := work.Challenge(now, 3)
+	harderToken, _ := work.parse(harder+".0000000000000000", now)
+	for !harderToken.satisfies(id, 1) || harderToken.satisfies(id, 3) {
+		harderToken.counter++
+	}
+	easier := hex.EncodeToString(binary.BigEndian.AppendUint64(nil, harderToken.counter))
+	if err := verify(harder+"."+easier, id); !errors.Is(err, ErrWork) {
+		t.Fatalf("a token below the difficulty its challenge was issued with: %v", err)
+	}
+	other := solve(t, work.Challenge(now, 1), id)
 	otherToken, _ := work.parse(other, now)
 	otherID := core.NewID()
 	for otherToken.satisfies(otherID, 1) {
@@ -161,19 +171,19 @@ func TestIDTokensFollowTheSpec(t *testing.T) {
 	tokens := NewIDTokens(testRing(t))
 	now := time.Now()
 	id := core.NewID()
-	const epoch = 493_000
-	ratchet := [RatchetIDLen]byte{7}
-	ahead, _ := tokens.Issue(id, epoch, ratchet, now.Add(5*time.Second))
-	if named, ok := tokens.Valid(id, epoch, ahead, now); !ok || named != ratchet {
+	const shareEpoch = 493_000
+	ratchet := epoch.RatchetID{7}
+	ahead, _ := tokens.Issue(id, shareEpoch, ratchet, now.Add(5*time.Second))
+	if named, ok := tokens.Valid(id, shareEpoch, ahead, now); !ok || named != ratchet {
 		t.Fatal("a token from an instance 5 s ahead must pass and name its ratchet")
 	}
-	future, _ := tokens.Issue(id, epoch, ratchet, now.Add(time.Minute))
-	expired, _ := tokens.Issue(id, epoch, ratchet, now.Add(-idTokenTTL-time.Second))
-	if valid(tokens, id, epoch, future, now) || valid(tokens, id, epoch, expired, now) ||
-		valid(tokens, core.NewID(), epoch, ahead, now) {
+	future, _ := tokens.Issue(id, shareEpoch, ratchet, now.Add(time.Minute))
+	expired, _ := tokens.Issue(id, shareEpoch, ratchet, now.Add(-idTokenTTL-time.Second))
+	if valid(tokens, id, shareEpoch, future, now) || valid(tokens, id, shareEpoch, expired, now) ||
+		valid(tokens, core.NewID(), shareEpoch, ahead, now) {
 		t.Fatal("a token outside its window or for another id was accepted")
 	}
-	if valid(tokens, id, epoch+1, ahead, now) {
+	if valid(tokens, id, shareEpoch+1, ahead, now) {
 		t.Fatal("F3: a token was accepted for another epoch than its share")
 	}
 	raw, err := core.DecodeExact(ahead, idTokenLength)
@@ -181,12 +191,12 @@ func TestIDTokensFollowTheSpec(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw[8] ^= 1
-	if valid(tokens, id, epoch, core.Encode(raw), now) {
+	if valid(tokens, id, shareEpoch, core.Encode(raw), now) {
 		t.Fatal("a token whose ratchet was changed passed")
 	}
 }
 
-func valid(tokens IDTokens, id core.ID, epoch uint32, token string, now time.Time) bool {
-	_, ok := tokens.Valid(id, epoch, token, now)
+func valid(tokens IDTokens, id core.ID, shareEpoch uint32, token string, now time.Time) bool {
+	_, ok := tokens.Valid(id, shareEpoch, token, now)
 	return ok
 }

@@ -1,6 +1,7 @@
 package envelope
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hmac"
@@ -120,7 +121,6 @@ func (p Policy) Bytes() []byte {
 	return binary.BigEndian.AppendUint32(binary.BigEndian.AppendUint16(nil, p.OpensMax), p.TTLSeconds)
 }
 
-// AAD binds the header, the commitment, the id and the policy.
 func AAD(header Header, commitment []byte, id core.ID, policy Policy) []byte {
 	aad := make([]byte, 0, HeaderLen+len(commitment)+core.IDLen+PolicyLen)
 	aad = append(aad, header.Bytes()...)
@@ -258,16 +258,12 @@ func padPlaintext(payload Payload, compress bool) ([]byte, error) {
 		return nil, err
 	}
 	defer clear(meta)
-	hasFile := payload.Meta.File != nil
-	if hasFile && int64(len(payload.File)) != payload.Meta.File.Size {
-		return nil, ErrMeta
-	}
-	if !hasFile && len(payload.File) != 0 {
+	if !fileMatchesMeta(payload) {
 		return nil, ErrMeta
 	}
 	overhead := PrefixLen + MetaLenPrefix + TagLen
 	file, objectLen := payload.File, padded(overhead+len(meta)+len(payload.File))
-	if compress && hasFile {
+	if compress && payload.Meta.File != nil {
 		encoded := compressAttachment(payload.Meta, meta, file)
 		if encoded.objectLen != 0 {
 			defer clear(encoded.file)
@@ -287,6 +283,13 @@ func padPlaintext(payload Payload, compress bool) ([]byte, error) {
 	copy(plaintext[MetaLenPrefix:], meta)
 	copy(plaintext[MetaLenPrefix+len(meta):], file)
 	return plaintext, nil
+}
+
+func fileMatchesMeta(payload Payload) bool {
+	if payload.Meta.File == nil {
+		return len(payload.File) == 0
+	}
+	return int64(len(payload.File)) == payload.Meta.File.Size
 }
 
 func parsePlaintext(plaintext []byte) (Payload, error) {
@@ -320,7 +323,7 @@ func parsePlaintext(plaintext []byte) (Payload, error) {
 			return Payload{}, err
 		}
 	} else {
-		file = append([]byte(nil), file...)
+		file = bytes.Clone(file)
 	}
 	return Payload{Meta: meta, File: file}, nil
 }

@@ -23,7 +23,7 @@ func Hour(now time.Time) Window {
 func Day(now time.Time) Window {
 	utc := now.UTC()
 	start := time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
-	return Window{Start: start, End: start.Add(24 * time.Hour)}
+	return Window{Start: start, End: start.AddDate(0, 0, 1)}
 }
 
 type Hit struct {
@@ -78,7 +78,7 @@ func (c *Counters) Purge(now time.Time) {
 	defer c.mutex.Unlock()
 	nowSeconds := now.Unix()
 	for _, table := range c.tables {
-		table.entries = Rebuilt(table.entries, func(entry counter) bool {
+		table.entries = rebuilt(table.entries, func(entry counter) bool {
 			return nowSeconds < entry.start+table.windowSeconds
 		})
 	}
@@ -88,7 +88,7 @@ func (c *Counters) Reset() {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	for kind, table := range c.tables {
-		table.entries = Rebuilt(table.entries, func(counter) bool { return false })
+		table.entries = rebuilt(table.entries, func(counter) bool { return false })
 		delete(c.tables, kind)
 	}
 }

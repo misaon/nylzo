@@ -49,7 +49,7 @@ func writeHandoffFile(address string) (handoffFile, error) {
 		path:   filepath.Join(directory, "open.html"),
 		remove: func() { os.RemoveAll(directory) },
 	}
-	file, err := os.OpenFile(written.path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, command.PrivateFileMode)
+	file, err := command.CreatePrivateFile(written.path)
 	if err != nil {
 		written.remove()
 		return handoffFile{}, err

@@ -20,37 +20,37 @@ import (
 )
 
 type fixture struct {
-	dataDir string
-	store   *sqlite.Store
-	blobs   *storetest.FaultyBlobs
+	dataDirectory string
+	store         *sqlite.Store
+	blobs         *storetest.FaultyBlobs
 }
 
 func newFixture(t *testing.T) fixture {
 	t.Helper()
-	dataDir := t.TempDir()
-	storage, err := sqlite.Open(t.Context(), filepath.Join(dataDir, "nylzo.db"))
+	dataDirectory := t.TempDir()
+	storage, err := sqlite.Open(t.Context(), filepath.Join(dataDirectory, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { storage.Close() })
-	blobs, err := disk.New(dataDir)
+	blobs, err := disk.New(dataDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return fixture{dataDir: dataDir, store: storage, blobs: storetest.NewFaultyBlobs(blobs)}
+	return fixture{dataDirectory: dataDirectory, store: storage, blobs: storetest.NewFaultyBlobs(blobs)}
 }
 
-func (f fixture) putBlob(t *testing.T, ref string) {
+func (f fixture) putBlob(t *testing.T, reference string) {
 	t.Helper()
-	if err := f.blobs.Put(t.Context(), ref, strings.NewReader("x"), 1); err != nil {
+	if _, err := f.blobs.PutExpiring(t.Context(), reference, strings.NewReader("x"), 1, time.Minute); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func (f fixture) createExpiring(t *testing.T, now time.Time) string {
 	t.Helper()
-	id, ref := core.NewID(), core.NewID().String()
-	f.putBlob(t, ref)
+	id, reference := core.NewID(), core.NewID().String()
+	f.putBlob(t, reference)
 	message := &store.Message{
 		Version:        envelope.Version,
 		CreatedAt:      now.Truncate(time.Minute),
@@ -65,18 +65,18 @@ func (f fixture) createExpiring(t *testing.T, now time.Time) string {
 		message,
 		core.NewSecret()[:],
 		core.NewSecret()[:],
-		ref,
+		reference,
 		seal.NewKey(),
 	)
 	if err := f.store.Create(t.Context(), &record.Row); err != nil {
 		t.Fatal(err)
 	}
-	return ref
+	return reference
 }
 
 func (f fixture) run(t *testing.T, now time.Time) (store.SweepReport, error) {
 	t.Helper()
-	return sweep.Run(t.Context(), f.store, f.blobs, f.dataDir, now)
+	return sweep.Run(t.Context(), f.store, f.blobs, f.dataDirectory, now)
 }
 
 func nextDay() time.Time {
@@ -89,13 +89,17 @@ func TestRunDeletesExpiredBlobsAndPurgesStaleUploads(t *testing.T) {
 	now := nextDay()
 	id := setup.createExpiring(t, now)
 	stale := func(name string) {
-		if err := os.WriteFile(filepath.Join(setup.dataDir, "blobs", "tmp", name), []byte("x"), 0o600); err != nil {
+		if err := os.WriteFile(
+			filepath.Join(setup.dataDirectory, "blobs", "tmp", name),
+			[]byte("x"),
+			0o600,
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
 	stale("blob-first")
 	report, err := setup.run(t, now.Add(store.BlobPurgeStep))
-	if err != nil || report.Blobs != 1 || report.StaleTempFiles != 1 {
+	if err != nil || report.Blobs != 1 || report.StaleTemporaryFiles != 1 {
 		t.Fatalf("first sweep: %+v %v", report, err)
 	}
 	if _, _, openErr := setup.blobs.Open(t.Context(), id); !errors.Is(openErr, store.ErrBlobMissing) {
@@ -103,7 +107,7 @@ func TestRunDeletesExpiredBlobsAndPurgesStaleUploads(t *testing.T) {
 	}
 	stale("blob-second")
 	report, err = setup.run(t, now.Add(store.BlobPurgeStep+time.Minute))
-	if err != nil || report.StaleTempFiles != 1 {
+	if err != nil || report.StaleTemporaryFiles != 1 {
 		t.Fatalf("a sweep after the daily reconcile must still purge temp files: %+v %v", report, err)
 	}
 }
@@ -146,23 +150,17 @@ func TestReconcileRunsOncePerDayUntilItHasListedTheStore(t *testing.T) {
 	}
 }
 
-func TestLogAttributesCountEveryFailedItem(t *testing.T) {
+func TestFirstErrorNamesOneFailureAndNoCount(t *testing.T) {
 	t.Parallel()
 	setup := newFixture(t)
 	now := nextDay()
 	setup.blobs.FailDelete(setup.createExpiring(t, now), storetest.ErrInjected)
 	setup.blobs.FailDelete(setup.createExpiring(t, now), storetest.ErrInjected)
-	report, err := setup.run(t, now.Add(store.BlobPurgeStep))
-	attributes := sweep.LogAttributes(report, err)
-	got := map[any]any{}
-	for i := 0; i+1 < len(attributes); i += 2 {
-		got[attributes[i]] = attributes[i+1]
+	_, err := setup.run(t, now.Add(store.BlobPurgeStep))
+	if got := sweep.FirstError(err); got != "store: delete blob: "+storetest.ErrInjected.Error() {
+		t.Fatalf("want only the first of two failures: %q", got)
 	}
-	if got["errors"] != 2 || strings.Contains(fmt.Sprint(got["err"]), "\n") {
-		t.Fatalf("want 2 failed items and only the first error: %v", got)
-	}
-	empty := sweep.LogAttributes(store.SweepReport{}, fmt.Errorf("%w %w", nil, nil))
-	if len(empty) < 4 || empty[len(empty)-4] != "errors" || empty[len(empty)-3] != 1 {
-		t.Fatalf("an empty join: %v", empty)
+	if sweep.FirstError(fmt.Errorf("%w %w", nil, nil)) == "" {
+		t.Fatal("an empty join must still name the failure")
 	}
 }

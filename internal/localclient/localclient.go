@@ -15,7 +15,7 @@ import (
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -107,10 +107,6 @@ func (s *Server) Instance() string {
 	return s.instance
 }
 
-func (s *Server) Handler() http.Handler {
-	return s.handler
-}
-
 func (s *Server) HTTPServer() *http.Server {
 	return &http.Server{
 		Handler:           s.handler,
@@ -123,26 +119,14 @@ func (s *Server) HTTPServer() *http.Server {
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	for _, path := range webclient.PagePaths {
-		mux.HandleFunc("GET "+pattern(path), s.page(path))
-	}
-	mux.HandleFunc("GET /cs", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/cs/", http.StatusPermanentRedirect)
-	})
+	webclient.HandlePages(mux, s.page)
 	mux.HandleFunc("GET "+HandoffPath, s.pages.For(HandoffPath).Serve)
 	mux.Handle("POST "+HandoffPath, s.fromThisPage(http.HandlerFunc(s.handleRedeem)))
 	mux.HandleFunc("GET /assets/{name}", s.handleAsset)
 	mux.HandleFunc("GET "+webclient.ManifestPath, s.handleManifest)
-	mux.Handle("/api/v1/", s.fromThisPage(s.relay))
-	mux.Handle("GET "+server.TransparencyPath, s.fromThisPage(s.relay))
+	mux.Handle(api.VersionPrefix, s.fromThisPage(s.relay))
+	mux.Handle("GET "+api.TransparencyPath, s.fromThisPage(s.relay))
 	return securityHeaders(s.onlyThisHost(mux))
-}
-
-func pattern(path string) string {
-	if strings.HasSuffix(path, "/") {
-		return path + "{$}"
-	}
-	return path
 }
 
 func (s *Server) page(path string) http.HandlerFunc {

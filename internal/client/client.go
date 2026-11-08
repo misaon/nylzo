@@ -11,12 +11,12 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
-	"slices"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/loopback"
 )
 
@@ -26,7 +26,7 @@ const (
 	minTransfer               = 120 * time.Second
 	minTransferBytesPerSecond = 16000
 	maxJSONBytes              = 64 << 10
-	MaxFetchBytes             = 8 << 20
+	maxFetchBytes             = 8 << 20
 	UserAgent                 = "nylzo-cli"
 )
 
@@ -41,8 +41,6 @@ var (
 		"client: the message already has its reports for the day, so the server did not store this one",
 	)
 )
-
-var states = []string{"available", "opened", "expired", "cancelled", "deleted"}
 
 type APIError struct {
 	Status       int
@@ -131,7 +129,7 @@ func (c *Client) Fetch(ctx context.Context, path, acceptEncoding string, limit i
 	if response.StatusCode != http.StatusOK {
 		return Fetched{}, &APIError{Status: response.StatusCode, Kind: "unexpected"}
 	}
-	limit = min(limit, MaxFetchBytes)
+	limit = min(limit, maxFetchBytes)
 	body, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
 		return Fetched{}, err
@@ -208,22 +206,19 @@ func loopbackOnly(_, address string, _ syscall.RawConn) error {
 func apiError(response *http.Response) error {
 	apiErr := &APIError{Status: response.StatusCode, Kind: "unexpected"}
 	var body struct {
-		Error        string `json:"error"`
-		RetryAfter   *int64 `json:"retry_after"`
-		AttemptsLeft *int   `json:"attempts_left"`
-		State        string `json:"state"`
+		api.PassphraseResponse
+
+		State string `json:"state"`
 	}
 	data, _ := io.ReadAll(io.LimitReader(response.Body, maxJSONBytes))
 	if json.Unmarshal(data, &body) == nil && body.Error != "" {
 		apiErr.Kind = body.Error
-		if knownState(body.State) {
+		if api.KnownState(body.State) {
 			apiErr.State = body.State
 		}
-		if body.AttemptsLeft != nil {
-			apiErr.AttemptsLeft = *body.AttemptsLeft
-		}
-		if body.RetryAfter != nil && *body.RetryAfter >= 0 {
-			apiErr.RetryAfter = time.Duration(*body.RetryAfter) * time.Second
+		apiErr.AttemptsLeft = body.AttemptsLeft
+		if body.RetryAfter >= 0 {
+			apiErr.RetryAfter = time.Duration(body.RetryAfter) * time.Second
 		}
 	}
 	seconds, err := strconv.ParseInt(response.Header.Get("Retry-After"), 10, 64)
@@ -249,10 +244,6 @@ func drain(response *http.Response) error {
 	defer response.Body.Close()
 	_, err := io.Copy(io.Discard, io.LimitReader(response.Body, maxJSONBytes))
 	return err
-}
-
-func knownState(state string) bool {
-	return slices.Contains(states, state)
 }
 
 func timesValid(times ...string) bool {

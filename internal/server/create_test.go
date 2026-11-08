@@ -27,12 +27,15 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
-	"github.com/misaon/nylzo/internal/core/vectors"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/server/config"
-	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/server/proof"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
+	"github.com/misaon/nylzo/internal/store/disk"
+	"github.com/misaon/nylzo/internal/vectors"
 )
 
 func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
@@ -40,13 +43,13 @@ func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		for _, headers := range []map[string]string{
-			{ttlHeaderName: "3600"},
-			{shareKeyHeaderName: testShareKeyHeader},
-			{ttlHeaderName: "59", shareKeyHeaderName: testShareKeyHeader},
-			{ttlHeaderName: "0600", shareKeyHeaderName: testShareKeyHeader},
-			{ttlHeaderName: "604801", shareKeyHeaderName: testShareKeyHeader},
-			{ttlHeaderName: "3600", shareKeyHeaderName: testShareKeyHeader + "A"},
-			{ttlHeaderName: "3600", shareKeyHeaderName: core.Encode(make([]byte, 32)) + ", " + testShareKeyHeader},
+			{api.TTLHeaderName: "3600"},
+			{api.ShareKeyHeaderName: testShareKeyHeader},
+			{api.TTLHeaderName: "59", api.ShareKeyHeaderName: testShareKeyHeader},
+			{api.TTLHeaderName: "0600", api.ShareKeyHeaderName: testShareKeyHeader},
+			{api.TTLHeaderName: "604801", api.ShareKeyHeaderName: testShareKeyHeader},
+			{api.TTLHeaderName: "3600", api.ShareKeyHeaderName: testShareKeyHeader + "A"},
+			{api.TTLHeaderName: "3600", api.ShareKeyHeaderName: core.Encode(make([]byte, 32)) + ", " + testShareKeyHeader},
 		} {
 			if response, body := harness.do(
 				&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: headers},
@@ -69,13 +72,13 @@ func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
 			if expiryShare := unwrapShare(t, response); expiryShare != *message.share {
 				t.Fatal("the claim recomputed another share than the instance issued")
 			}
-			if _, err := harness.openObject(message, object, response.Header.Get(policyHeaderName)); err != nil {
+			if _, err := harness.openObject(message, object, response.Header.Get(api.PolicyHeaderName)); err != nil {
 				t.Fatalf("decrypt with the share of the claim: %v", err)
 			}
-			if response.Header.Get(shareHeaderName) == previous {
+			if response.Header.Get(api.ShareHeaderName) == previous {
 				t.Fatal("two responses wrapped the share alike; each needs a fresh server key")
 			}
-			previous = response.Header.Get(shareHeaderName)
+			previous = response.Header.Get(api.ShareHeaderName)
 		}
 	})
 }
@@ -129,18 +132,6 @@ func FuzzCreateHeader(f *testing.F) {
 	f.Add("not base64!")
 	settings := config.Defaults()
 	settings.ReportKey = testReportKey.PublicKey()
-	allowed := map[string]bool{
-		"id":           true,
-		"id_token":     true,
-		"epoch":        true,
-		"read_key":     true,
-		"verifier_key": true,
-		"manage_key":   true,
-		"kdf_id":       true,
-		"opens_max":    true,
-		"ttl_s":        true,
-		"size":         true,
-	}
 	f.Fuzz(func(t *testing.T, value string) {
 		if !parsesCreateHeader(settings.Limits, value) {
 			return
@@ -154,7 +145,7 @@ func FuzzCreateHeader(f *testing.F) {
 			t.Fatalf("accepted invalid JSON: %v", unmarshalErr)
 		}
 		for name := range fields {
-			if !allowed[name] {
+			if !createHeaderMembers[name] {
 				t.Fatalf("accepted key %q", name)
 			}
 		}
@@ -176,15 +167,32 @@ func FuzzCreateHeader(f *testing.F) {
 	})
 }
 
+var createHeaderMembers = map[string]bool{
+	"id":           true,
+	"id_token":     true,
+	"epoch":        true,
+	"read_key":     true,
+	"verifier_key": true,
+	"manage_key":   true,
+	"kdf_id":       true,
+	"opens_max":    true,
+	"ttl_s":        true,
+	"size":         true,
+}
+
 func TestCreateHeaderKeysMatchStruct(t *testing.T) {
 	t.Parallel()
 	tags := map[string]bool{}
-	for field := range reflect.TypeFor[createHeader]().Fields() {
+	for field := range reflect.TypeFor[api.CreateHeader]().Fields() {
 		tag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		tags[tag] = true
 	}
-	if !reflect.DeepEqual(tags, createHeaderKeys) {
-		t.Fatalf("createHeaderKeys %v differ from the createHeader tags %v", createHeaderKeys, tags)
+	if !reflect.DeepEqual(tags, createHeaderMembers) {
+		t.Fatalf(
+			"the create header members of spec §6.2 %v differ from the CreateHeader tags %v",
+			createHeaderMembers,
+			tags,
+		)
 	}
 }
 
@@ -200,6 +208,16 @@ func TestCreateHeaderRules(t *testing.T) {
 	raw, _ := base64.RawURLEncoding.DecodeString(none.createHeader(0))
 	cases := map[string]string{
 		"unknown-key": mutateHeader(t, none, func(fields map[string]any) { fields["extra"] = 1 }),
+		"unpadded-size": mutateHeader(
+			t,
+			none,
+			func(fields map[string]any) { fields["size"] = envelope.Pad + 1 },
+		),
+		"below-one-block": mutateHeader(
+			t,
+			none,
+			func(fields map[string]any) { fields["size"] = envelope.Pad / 2 },
+		),
 		"case-variant-key": mutateHeader(
 			t,
 			none,
@@ -225,6 +243,7 @@ func TestCreateHeaderRules(t *testing.T) {
 		"trailing-brace":  core.Encode(append(append([]byte(nil), raw...), '}')),
 		"trailing-object": core.Encode(append(append([]byte(nil), raw...), []byte(" {}")...)),
 		"not-an-object":   core.Encode([]byte(`[1,2]`)),
+		"repeated-member": core.Encode(append([]byte(`{"opens_max":1,`), raw[1:]...)),
 	}
 	for name, value := range cases {
 		if parsesCreateHeader(settings.Limits, value) {
@@ -371,8 +390,8 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 func issuedID(t *testing.T, harness *testHarness) (core.ID, string, time.Time) {
 	t.Helper()
 	_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: map[string]string{
-		ttlHeaderName:      "3600",
-		shareKeyHeaderName: testShareKeyHeader,
+		api.TTLHeaderName:      "3600",
+		api.ShareKeyHeaderName: testShareKeyHeader,
 	}})
 	create, ok := decodeJSON(t, body)["create"].(map[string]any)
 	if !ok {
@@ -562,6 +581,46 @@ func (s *slotSignals) RateRelease(ctx context.Context, key string, windowStart t
 		s.released <- struct{}{}
 	}
 	return err
+}
+
+func TestStartupReturnsTheCapSlotsOfUnstoredCreates(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.Rates.GlobalDailyCreates = 10
+	harness := newHarness(t, settings)
+	harness.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "x"))
+	day := ratelimit.Day(time.Now())
+	leaked := store.RateHit{Key: globalCreatesKey, WindowStart: day.Start, PurgeAt: day.PurgeAt(), Limit: 10}
+	for range 3 {
+		if _, err := harness.store.RateReserve(t.Context(), leaked); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := harness.server.ReturnUnstoredCreates(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	count, err := harness.store.RateGet(t.Context(), globalCreatesKey, day.Start)
+	if err != nil || count.Count != 1 {
+		t.Fatalf("startup kept the slots of unstored creates: %+v %v", count, err)
+	}
+}
+
+func TestAnEmptyUploadPoolAnswers503AndReturnsTheCapSlot(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.GlobalDailyCreates = 10
+		harness := newHarness(t, settings)
+		harness.withFaultyBlobs().FailPut(store.ErrPoolEmpty)
+		response, _ := harness.create(newMessage(t, core.KDFNone, "", 1, 3600, "x"))
+		if response.StatusCode != http.StatusServiceUnavailable || response.Header.Get("Retry-After") != "5" {
+			t.Fatalf("an empty upload pool: %d %q", response.StatusCode, response.Header.Get("Retry-After"))
+		}
+		count, err := harness.store.RateGet(t.Context(), globalCreatesKey, ratelimit.Day(time.Now()).Start)
+		if err != nil || count.Count != 0 {
+			t.Fatalf("the refused create kept its cap slot: %+v %v", count, err)
+		}
+	})
 }
 
 func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
@@ -757,8 +816,9 @@ func TestCreateWaitsWhileTheDiskIsNearlyFull(t *testing.T) {
 		if response, _ := harness.post(live, "burn", live.readToken); response.StatusCode != http.StatusNoContent {
 			t.Fatalf("burn on a nearly full disk: %d", response.StatusCode)
 		}
-		if count := strings.Count(harness.logs.String(), `"msg":"disk-full"`); count != 1 {
-			t.Fatalf("logged disk-full %d times, want once per change", count)
+		harness.server.flushCounts(t.Context())
+		if count := strings.Count(harness.logs.String(), `"msg":"disk-full","count":1`); count != 1 {
+			t.Fatalf("logged disk-full %d times, want once per change: %s", count, harness.logs.String())
 		}
 		harness.setFreeSpace(func(string) (uint64, error) { return math.MaxUint64, errors.New("statfs failed") })
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
@@ -780,7 +840,8 @@ func TestCreateWaitsWhileTheDiskIsNearlyFull(t *testing.T) {
 				response.StatusCode,
 			)
 		}
-		if count := strings.Count(harness.logs.String(), `"msg":"disk-free-again"`); count != 1 {
+		harness.server.flushCounts(t.Context())
+		if count := strings.Count(harness.logs.String(), `"msg":"disk-free-again","count":1`); count != 1 {
 			t.Fatalf("logged disk-free-again %d times", count)
 		}
 
@@ -893,6 +954,18 @@ func TestAK12GlobalCap(t *testing.T) {
 			t.Fatalf("instance after restart must still report pow: %s", body)
 		}
 	})
+}
+
+func TestPoWDifficultyRisesAsTheCapFills(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.Rates.GlobalDailyCreates = 250
+	server := &Server{settings: *settings}
+	for creates, want := range map[int64]int{0: 4, 125: 4, 149: 4, 150: 5, 200: 7, 225: 8, 249: 8} {
+		if got := server.workDifficulty(creates); got != want {
+			t.Errorf("%d of 250 creates: difficulty %d, want %d", creates, got, want)
+		}
+	}
 }
 
 func TestAK12ForwardedForOnlyFromTrustedProxy(t *testing.T) {
@@ -1272,13 +1345,19 @@ type slowPutBlobs struct {
 	delay time.Duration
 }
 
-func (b slowPutBlobs) Put(ctx context.Context, ref string, body io.Reader, size int64) error {
+func (b slowPutBlobs) PutExpiring(
+	ctx context.Context,
+	reference string,
+	body io.Reader,
+	size int64,
+	ttl time.Duration,
+) (time.Time, error) {
 	received, err := io.ReadAll(body)
 	if err != nil {
-		return err
+		return time.Time{}, err
 	}
 	time.Sleep(b.delay)
-	return b.Blobs.Put(ctx, ref, bytes.NewReader(received), size)
+	return b.Blobs.PutExpiring(ctx, reference, bytes.NewReader(received), size, ttl)
 }
 
 func TestExpiryCountsFromTheStoredUpload(t *testing.T) {
@@ -1327,6 +1406,14 @@ func TestStoredTimesAreWholeMinutes(t *testing.T) {
 		if blobPurge := record.Row.BlobPurgeAt; blobPurge.Truncate(store.BlobPurgeStep) != blobPurge ||
 			record.Row.PurgeAt.Truncate(store.RowPurgeStep) != record.Row.PurgeAt {
 			t.Fatalf("the cleanup times in the clear must be rounded: %v %v", blobPurge, record.Row.PurgeAt)
+		}
+		blobFile := filepath.Join(
+			harness.directory,
+			disk.Directory,
+			hex.EncodeToString([]byte(record.Row.BlobReference)),
+		)
+		if info, err := os.Stat(blobFile); err != nil || !info.ModTime().Equal(record.Row.BlobPurgeAt) {
+			t.Fatalf("the blob file must carry blob_purge_at, so its times add no TTL to the row: %v %v", info, err)
 		}
 	})
 }
@@ -1453,7 +1540,7 @@ func TestCreateRefusesAnIDWhoseShareCameFromAnEarlierSeed(t *testing.T) {
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("a message of the new seed: %d", response.StatusCode)
 		}
-		if _, err := harness.openObject(fresh, object, response.Header.Get(policyHeaderName)); err != nil {
+		if _, err := harness.openObject(fresh, object, response.Header.Get(api.PolicyHeaderName)); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -1468,7 +1555,7 @@ func TestASmallOrderShareKeyIsMalformed(t *testing.T) {
 			response, body := harness.do(&testRequest{
 				method:  http.MethodGet,
 				path:    "/api/v1/instance",
-				headers: map[string]string{ttlHeaderName: "3600", shareKeyHeaderName: key},
+				headers: map[string]string{api.TTLHeaderName: "3600", api.ShareKeyHeaderName: key},
 			})
 			if response.StatusCode != http.StatusBadRequest {
 				t.Fatalf("instance with the share key %s: %d %s", key, response.StatusCode, body)
@@ -1484,6 +1571,7 @@ func TestASmallOrderShareKeyIsMalformed(t *testing.T) {
 		if response, _ := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusOK {
 			t.Fatalf("the refused claims spent the open: %d", response.StatusCode)
 		}
+		harness.server.flushCounts(t.Context())
 		if strings.Contains(harness.logs.String(), `"level":"ERROR"`) {
 			t.Fatalf("a malformed share key logged an error: %s", harness.logs.String())
 		}
@@ -1506,7 +1594,7 @@ func smallOrderKeys(t *testing.T) []string {
 func (h *testHarness) claimWithShareKey(message *testMessage, key string) (testResponse, responseBody) {
 	h.t.Helper()
 	request := claimRequestFor(message, message.verifier, "")
-	request.headers = map[string]string{shareKeyHeaderName: key}
+	request.headers = map[string]string{api.ShareKeyHeaderName: key}
 	return h.do(request)
 }
 

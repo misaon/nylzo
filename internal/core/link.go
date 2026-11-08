@@ -8,6 +8,9 @@ import (
 	"strings"
 )
 
+// The fragment carries the version, the KDF profile, the id, S and the object hash.
+const linkFieldCount = 5
+
 const (
 	FragmentVersion = 2
 	LinkPath        = "/r"
@@ -85,7 +88,7 @@ func parseFragment(path, fragment string) (Link, error) {
 		return Link{}, ErrLink
 	}
 	fields := strings.Split(fragment, ".")
-	if len(fields) != 5 {
+	if len(fields) != linkFieldCount {
 		return Link{}, ErrLink
 	}
 	var link Link
@@ -94,7 +97,7 @@ func parseFragment(path, fragment string) (Link, error) {
 		return Link{}, ErrLink
 	}
 	link.ID = id
-	if !decodeInto(link.Secret[:], fields[3]) || !decodeInto(link.ObjectHash[:], fields[4]) {
+	if !DecodeInto(link.Secret[:], fields[3]) || !DecodeInto(link.ObjectHash[:], fields[4]) {
 		link.Wipe()
 		return Link{}, ErrLink
 	}
@@ -130,16 +133,6 @@ func releasedLink(path, fragment string) bool {
 	secret, secretErr := DecodeExact(fields[2], SecretLen)
 	clear(secret)
 	return idErr == nil && secretErr == nil
-}
-
-func decodeInto(destination []byte, text string) bool {
-	decoded, err := DecodeExact(text, len(destination))
-	if err != nil {
-		return false
-	}
-	copy(destination, decoded)
-	clear(decoded)
-	return true
 }
 
 func newerFragment(fragment string) bool {

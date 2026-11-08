@@ -3,16 +3,29 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
 
+const (
+	shredBlob  = `UPDATE messages SET blob_wrap = NULL WHERE locator = ? AND blob_ref = ?`
+	forgetBlob = `UPDATE messages SET blob_ref = NULL, blob_wrap = NULL, blob_purge_at = NULL
+		WHERE locator = ? AND blob_ref = ?`
+)
+
+var dueBlobsQuery = fmt.Sprintf(
+	`SELECT locator, blob_ref FROM messages WHERE blob_ref IS NOT NULL AND blob_purge_at <= ? AND locator > ?
+		AND length(locator) = %d ORDER BY locator LIMIT ?`,
+	seal.LocatorLen,
+)
+
 func (s *Store) DueBlobs(ctx context.Context, now time.Time, after seal.Locator, limit int) ([]store.DueBlob, error) {
 	rows, err := s.reader.QueryContext(
 		ctx,
-		`SELECT locator, blob_ref FROM messages WHERE blob_ref IS NOT NULL AND blob_purge_at <= ? AND locator > ? AND length(locator) = 32 ORDER BY locator LIMIT ?`,
+		dueBlobsQuery,
 		milliseconds(now),
 		after[:],
 		limit,
@@ -25,7 +38,7 @@ func (s *Store) DueBlobs(ctx context.Context, now time.Time, after seal.Locator,
 	for rows.Next() {
 		var due store.DueBlob
 		var locator []byte
-		if scanErr := rows.Scan(&locator, &due.Ref); scanErr != nil {
+		if scanErr := rows.Scan(&locator, &due.Reference); scanErr != nil {
 			return nil, scanErr
 		}
 		due.Locator = seal.Locator(locator)
@@ -35,26 +48,19 @@ func (s *Store) DueBlobs(ctx context.Context, now time.Time, after seal.Locator,
 }
 
 func (s *Store) ShredBlobs(ctx context.Context, due []store.DueBlob) error {
-	return s.eachDue(ctx, `UPDATE messages SET blob_wrap = NULL WHERE locator = ? AND blob_ref = ?`, due)
+	return s.eachDue(ctx, s.statements.shredBlob, due)
 }
 
-// ForgetBlobs asks for a scrub of the log, so no older version of these rows stays in a frame of the WAL.
 func (s *Store) ForgetBlobs(ctx context.Context, due []store.DueBlob) error {
-	err := s.eachDue(
-		ctx,
-		`UPDATE messages SET blob_ref = NULL, blob_wrap = NULL, blob_purge_at = NULL WHERE locator = ? AND blob_ref = ?`,
-		due,
-	)
-	if err == nil {
-		s.requestScrub()
-	}
-	return err
+	return s.eachDue(ctx, s.statements.forgetBlob, due)
 }
 
-func (s *Store) eachDue(ctx context.Context, query string, due []store.DueBlob) error {
+func (s *Store) eachDue(ctx context.Context, prepared *sql.Stmt, due []store.DueBlob) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
+		statement := tx.StmtContext(ctx, prepared)
+		defer statement.Close()
 		for _, blob := range due {
-			if _, err := tx.ExecContext(ctx, query, blob.Locator[:], blob.Ref); err != nil {
+			if _, err := statement.ExecContext(ctx, blob.Locator[:], blob.Reference); err != nil {
 				return err
 			}
 		}
@@ -71,24 +77,28 @@ func (s *Store) PurgeRows(ctx context.Context, now time.Time, limit int) (int, e
 	)
 }
 
-func (s *Store) KnownBlobRefs(ctx context.Context) (map[string]struct{}, error) {
-	refs, err := s.strings(ctx, `SELECT blob_ref FROM messages WHERE blob_ref IS NOT NULL`)
+func (s *Store) KnownBlobReferences(ctx context.Context) (map[string]struct{}, error) {
+	references, err := s.strings(ctx, `SELECT blob_ref FROM messages WHERE blob_ref IS NOT NULL`)
 	if err != nil {
 		return nil, err
 	}
-	known := make(map[string]struct{}, len(refs))
-	for _, ref := range refs {
-		known[ref] = struct{}{}
+	known := make(map[string]struct{}, len(references))
+	for _, reference := range references {
+		known[reference] = struct{}{}
 	}
 	return known, nil
 }
 
 func (s *Store) purge(ctx context.Context, query string, now time.Time, limit int) (int, error) {
-	result, err := s.writer.ExecContext(ctx, query, milliseconds(now), limit)
-	if err != nil {
-		return 0, err
-	}
-	purged, err := result.RowsAffected()
+	var purged int64
+	err := s.transaction(ctx, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, query, milliseconds(now), limit)
+		if err != nil {
+			return err
+		}
+		purged, err = result.RowsAffected()
+		return err
+	})
 	return int(purged), err
 }
 

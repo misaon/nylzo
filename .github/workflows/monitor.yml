@@ -95,7 +95,7 @@ jobs:
         run: bun tools/security/monitor-domain.mts
 
   web-client:
-    name: Signed release and message lifecycle (AK25)
+    name: Signed release and message lifecycle
     if: vars.NYLZO_MONITOR_URL != '' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *')
     # The instance accepts only X25519MLKEM768, which needs OpenSSL 3.5 or newer in curl.
     runs-on: ubuntu-26.04

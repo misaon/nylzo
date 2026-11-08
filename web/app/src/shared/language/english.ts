@@ -258,7 +258,7 @@ export const english: Record<MessageKey, string> = {
   'busy.decrypting': 'Decrypting…',
 
   'revealed.title': 'Message content',
-  'revealed.note': 'It will be deleted in a few minutes, save what you need',
+  'revealed.note': 'The server deletes it within minutes, save what you need',
   'revealed.sender': 'The sender is not verified',
   'revealed.sender.title': 'Nylzo does not verify senders',
   'revealed.sender.text': 'Check any request for money, a sign-in or an installation with the sender another way.',
@@ -314,10 +314,10 @@ export const english: Record<MessageKey, string> = {
     'Daily totals of created messages for {days} after the day ends, and used one-time challenges for a few minutes.',
   'transparency.stores.addresses.title': 'IP addresses',
   'transparency.stores.addresses':
-    'It does not store them. Per-address limits live only in memory and are forgotten on restart.',
+    'It does not store them. Per-address limits live only in memory that is never swapped to disk, and are forgotten on restart.',
   'transparency.stores.enforced.title': 'The server enforces expiry and opens',
   'transparency.stores.enforced':
-    "Expiry and the number of opens are rules this server enforces, not something the encryption guarantees. A server in someone else's hands could keep the encrypted message, and then only the secrecy of the link and of the passphrase protect it.",
+    "This server enforces expiry and the number of opens. Within about two hours after expiry, it erases the part of the key the message needs, so a copy taken after that no longer opens it. Until then, a server in someone else's hands could keep the message and that key part, and only the secrecy of the link and of the passphrase protect it.",
   'transparency.logs.title': 'What the server logs',
   'transparency.logs.written': 'Writes',
   'transparency.logs.written.time': 'Time to the minute',
@@ -326,7 +326,7 @@ export const english: Record<MessageKey, string> = {
   'transparency.logs.written.status': 'Response status',
   'transparency.logs.written.count': 'Number of requests',
   'transparency.logs.written.note':
-    'It writes no line per request. Once a minute it writes only how many requests there were per method, kind of path and status.',
+    'It writes no line per request, only counts of requests and errors every one to two hours. Message requests count together, by status class only (2xx, 4xx, 5xx).',
   'transparency.logs.never': 'Never writes',
   'transparency.logs.never.id': 'Message id',
   'transparency.logs.never.address': 'IP address',
@@ -374,7 +374,8 @@ export const english: Record<MessageKey, string> = {
   'transparency.limits.read': 'Reads from one address',
   'transparency.limits.read.value': '{hour} requests per hour',
   'transparency.limits.global': 'New messages in total per day',
-  'transparency.limits.global.value': '{max}, from half of that with an anti-flooding check in the browser',
+  'transparency.limits.global.value':
+    '{max}, from half of that with an anti-flooding check in the browser that takes longer as the cap fills',
   'transparency.limits.none': 'no limit',
   'transparency.verify.title': 'Web client verification',
   'transparency.verify.short': 'Client check',
@@ -507,7 +508,7 @@ export const english: Record<MessageKey, string> = {
   'open.title.ended': 'The message can no longer be opened',
   'open.intro': 'The message is decrypted only in this browser.',
   'open.ready.title': 'The message is waiting to be opened',
-  'open.ready.sub': 'It appears only after you click. You see it once, then the server deletes it.',
+  'open.ready.sub': 'It appears only after you click, which uses one open. After the last open, the server deletes it.',
   'open.loading.text': 'Checking the link with the server.',
   'open.passphrase.placeholder': 'Passphrase from the sender',
   'open.passphrase.hint': 'The sender sent you the passphrase separately, for example by text message or phone.',
@@ -737,10 +738,10 @@ export const english: Record<MessageKey, string> = {
   'extra.signed.proof': 'Without the key: denied',
   'extra.padding.title': 'A password and a paragraph look the same',
   'extra.padding.text': 'We pad messages to whole blocks, so the server cannot tell a short password from a long text.',
-  'extra.padding.proof': 'Blocks of 4 KiB and 64 KiB',
+  'extra.padding.proof': 'Blocks of 64 KiB',
   'extra.forget.title': 'The server forgets',
   'extra.forget.text':
-    'It overwrites deleted database records with zeros. It keeps message times encrypted and rounded to the minute.',
+    'It overwrites deleted records and their older copies with zeros and erases the key of every deleted file. Message times stay encrypted and rounded to the minute.',
   'extra.forget.proof': 'Stores no IP addresses',
   'extra.twice.title': 'Two independent implementations',
   'extra.twice.text':
@@ -748,7 +749,7 @@ export const english: Record<MessageKey, string> = {
   'extra.twice.proof': 'Go and TypeScript',
   'extra.standards.title': 'No home-made cryptography',
   'extra.standards.text': 'Only proven standards with a public specification.',
-  'extra.standards.proof': 'AES-256-GCM and 5 more standards',
+  'extra.standards.proof': 'AES-256-GCM and 6 more standards',
 
   'host.eyebrow': 'Self-hosting',
   'host.title': 'Run Nylzo yourself',

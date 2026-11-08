@@ -17,9 +17,9 @@ var previewTexts = map[string]previewText{
 	"cs": {"Jednorázová zpráva · Nylzo", "Otevřete odkaz v prohlížeči, zpráva se zobrazí až po kliknutí."},
 }
 
-// PreviewHTML is the page link-preview agents get for a message link. It is the same for every message,
+// previewHTML is the page link-preview agents get for a message link. It is the same for every message,
 // so a chat preview tells nothing about the message, its sender or its expiry.
-func PreviewHTML(language, publicURL, image string) string {
+func previewHTML(language, publicURL, image string) string {
 	text := previewTexts[language]
 	var page strings.Builder
 	page.WriteString(`<!doctype html><html lang="` + language + `"><head><meta charset="utf-8">`)
@@ -48,7 +48,7 @@ func previewPages(publicURL string, assets map[string]Asset) map[string][]byte {
 	}
 	pages := map[string][]byte{}
 	for _, language := range pageLanguages {
-		pages[language] = []byte(PreviewHTML(language, publicURL, image))
+		pages[language] = []byte(previewHTML(language, publicURL, image))
 	}
 	return pages
 }

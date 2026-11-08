@@ -8,21 +8,23 @@ import (
 	"net/http"
 	"os"
 	"runtime"
-	"sync/atomic"
 	"time"
 
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
-	"github.com/misaon/nylzo/internal/server/epoch"
+	"github.com/misaon/nylzo/internal/server/leasetimer"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/sweep"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/server/web"
+	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -33,6 +35,8 @@ const (
 	writeTimeout        = 120 * time.Second
 	idleTimeout         = 30 * time.Second
 	maxHeaderBytes      = 4 << 10
+	maxHeaderValues     = 64
+	h2cMaxStreams       = 32
 	h2cStreamBuffer     = 64 << 10
 	h2cConnectionBuffer = 1 << 20
 	h2cMaxFrame         = 16 << 10
@@ -49,13 +53,21 @@ func WithLogger(logger *slog.Logger) Option {
 	}
 }
 
+func WithWebFiles(files fs.FS) Option {
+	return func(server *Server) {
+		if files != nil {
+			server.webFiles = files
+		}
+	}
+}
+
 type Server struct {
 	settings      config.Server
 	store         store.Store
 	blobs         store.Blobs
 	ring          *pepper.Ring
 	epochs        *epoch.Ratchet
-	leaseTimers   *releases
+	leaseTimers   *leasetimer.Timers
 	logger        *slog.Logger
 	instance      *ratelimit.Fair
 	sourceLimiter *ratelimit.Limiter
@@ -64,7 +76,6 @@ type Server struct {
 	proxies       ratelimit.Proxies
 	counters      *ratelimit.Counters
 	streams       *ratelimit.Streams
-	forwardedHour atomic.Int64
 	challenges    *proof.Challenges
 	work          *proof.Work
 	idTokens      proof.IDTokens
@@ -74,7 +85,9 @@ type Server struct {
 	webFiles      fs.FS
 	frontend      http.Handler
 	requestCounts *logging.RequestCounts
-	pace          pace
+	eventCounts   *logging.Events
+	events        *slog.Logger
+	pace          transport.Pace
 	handler       http.Handler
 }
 
@@ -82,7 +95,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	if err := settings.Validate(); err != nil {
 		return nil, err
 	}
-	if err := abuse.RefuseLegacyReports(settings.DataDir); err != nil {
+	if err := abuse.RefuseLegacyReports(settings.DataDirectory); err != nil {
 		return nil, err
 	}
 	ring, err := pepper.NewRing(settings.Pepper, settings.PepperPrevious)
@@ -94,12 +107,13 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		store:       storage,
 		blobs:       blobs,
 		ring:        ring,
-		leaseTimers: newReleases(),
+		leaseTimers: leasetimer.New(),
 		logger:      logging.New(os.Stderr),
 		webFiles:    web.Files(),
 		dummyRow:    newDummyRow(),
-		pace:        defaultPace(),
+		pace:        transport.DefaultPace(),
 	}
+	server.settings.Pepper, server.settings.PepperPrevious = nil, nil
 	for _, option := range options {
 		option(server)
 	}
@@ -107,27 +121,37 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		return nil, loadErr
 	}
 	server.requestCounts = logging.NewRequestCounts(server.logger)
+	server.eventCounts = logging.NewEvents(server.logger)
+	server.events = server.eventCounts.Logger()
 	if ratchetErr := server.openRatchet(); ratchetErr != nil {
 		return nil, ratchetErr
 	}
 	server.setUpLimits()
 	server.challenges = proof.NewChallenges(ring, storage)
-	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency, settings.PoWDifficulty)
+	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency)
 	server.idTokens = proof.NewIDTokens(ring)
 	server.reports = abuse.NewReports(
-		settings.DataDir,
+		settings.DataDirectory,
 		settings.ReportKey,
-		server.logger,
+		server.events,
 		abuse.FilesBytes(settings.Rates.GlobalDailyCreates, store.ReportsPerMessage),
 	)
-	server.disk = diskspace.NewReserver(settings.DataDir, settings.MinFreeBytes, diskspace.Free, server.logger)
+	if prepareErr := abuse.Prepare(settings.DataDirectory, time.Now()); prepareErr != nil {
+		return nil, prepareErr
+	}
+	server.disk = server.newDiskReserver(diskspace.Free)
 	server.handler = server.routes()
 	return server, nil
 }
 
 func (s *Server) Close() {
-	s.leaseTimers.stop()
+	s.leaseTimers.Stop()
 	s.epochs.Close()
+}
+
+// Events logs what happens to a request or a message: its lines wait for the hourly flush of RunHousekeeping.
+func (s *Server) Events() *slog.Logger {
+	return s.events
 }
 
 // RunRatchet erases the epoch key of every hour that has passed within a minute of the next one. It reads the wall
@@ -152,20 +176,23 @@ func (s *Server) HTTPServer() *http.Server {
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
 	return &http.Server{
-		Addr:              s.settings.Listen,
-		Handler:           s.handler,
-		ReadHeaderTimeout: readHeaderTimeout,
-		ReadTimeout:       readTimeout,
-		WriteTimeout:      writeTimeout,
-		IdleTimeout:       idleTimeout,
-		MaxHeaderBytes:    maxHeaderBytes,
-		Protocols:         &protocols,
+		Addr:                  s.settings.Listen,
+		Handler:               s.handler,
+		ReadHeaderTimeout:     readHeaderTimeout,
+		ReadTimeout:           readTimeout,
+		WriteTimeout:          writeTimeout,
+		IdleTimeout:           idleTimeout,
+		MaxHeaderBytes:        maxHeaderBytes,
+		MaxHeaderValueCount:   maxHeaderValues,
+		DisableClientPriority: true,
+		Protocols:             &protocols,
 		HTTP2: &http.HTTP2Config{
+			MaxConcurrentStreams:          h2cMaxStreams,
 			MaxReceiveBufferPerConnection: h2cConnectionBuffer,
 			MaxReceiveBufferPerStream:     h2cStreamBuffer,
 			MaxReadFrameSize:              h2cMaxFrame,
 		},
-		ErrorLog: logging.NewHTTPErrorLog(s.logger),
+		ErrorLog: logging.NewHTTPErrorLog(s.eventCounts),
 	}
 }
 
@@ -176,15 +203,14 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	ticker := time.NewTicker(s.settings.SweepInterval)
 	defer ticker.Stop()
 	for {
-		report, err := s.sweepOnce(ctx)
+		_, err := s.sweepOnce(ctx)
 		switch {
 		case ctx.Err() != nil:
-			s.logger.InfoContext(ctx, "sweep-stopped", report.LogAttrs()...)
+			s.logger.InfoContext(ctx, "sweep-stopped")
 			return
 		case err != nil:
-			s.logger.ErrorContext(ctx, "sweep", sweep.LogAttributes(report, err)...)
+			s.logger.ErrorContext(ctx, "sweep", "err", sweep.FirstError(err))
 		default:
-			s.logger.InfoContext(ctx, "sweep", report.LogAttrs()...)
 		}
 		select {
 		case <-ctx.Done():
@@ -194,28 +220,65 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	}
 }
 
-// RunHousekeeping works at every minute boundary: it writes the request counts of the minute, drops rate-limit
-// entries that no longer limit anything and draws a new address key when a UTC day begins (spec §5.3, §10).
+// RunHousekeeping works at every minute boundary: it writes the request counts and events of a window that ended,
+// drops rate-limit entries that no longer limit anything and draws a new address key when a UTC day begins (spec
+// §5.3, §10). It drops the counts of the last window at shutdown, which would end that window early.
 func (s *Server) RunHousekeeping(ctx context.Context) {
 	day := ratelimit.Day(time.Now()).Start
+	window := logging.StartWindow(time.Now())
 	for {
 		now := time.Now()
 		select {
 		case <-ctx.Done():
-			s.requestCounts.Flush()
 			return
 		case <-time.After(now.Truncate(time.Minute).Add(time.Minute).Sub(now)):
 		}
 		now = time.Now()
-		s.requestCounts.Flush()
+		if window.Ended(now) {
+			s.flushCounts(ctx)
+		}
 		if today := ratelimit.Day(now).Start; !today.Equal(day) {
 			day = today
 			s.addressKey.Rotate()
 			s.forgetAddresses()
+			s.prepareReportDays(ctx, now)
 		} else {
 			s.purgeRateTables(now)
 		}
 		eraseUnreachableSecrets()
+	}
+}
+
+func (s *Server) loadWebClient() error {
+	build, err := webclient.Load(s.webFiles)
+	if err != nil {
+		return err
+	}
+	if s.frontend, err = webclient.NewHandler(
+		build,
+		s.settings.PublicURL,
+		s.settings.Operator.Contact,
+		s.buildInformation(),
+	); err != nil {
+		return err
+	}
+	s.logger.Info("web-client", "built", build.Built, "assets", len(build.Assets), "public_url", s.settings.PublicURL)
+	return nil
+}
+
+func (s *Server) newDiskReserver(free diskspace.FreeFunc) *diskspace.Reserver {
+	return diskspace.NewReserver(s.settings.DataDirectory, s.settings.MinFreeBytes, free, s.events)
+}
+
+func (s *Server) flushCounts(ctx context.Context) {
+	s.requestCounts.Flush(ctx)
+	s.eventCounts.Flush(ctx)
+}
+
+// prepareReportDays keeps the day files ready when no sweep runs in this process or an external one stopped.
+func (s *Server) prepareReportDays(ctx context.Context, now time.Time) {
+	if err := abuse.Prepare(s.settings.DataDirectory, now); err != nil {
+		s.events.ErrorContext(ctx, "abuse-prepare", "err", logging.ErrorText(err))
 	}
 }
 
@@ -255,7 +318,7 @@ func (s *Server) forgetAddresses() {
 
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := time.Now()
-	report, err := sweep.Run(ctx, s.store, s.blobs, s.settings.DataDir, now)
+	report, err := sweep.Run(ctx, s.store, s.blobs, s.settings.DataDirectory, now)
 	return report, errors.Join(err, s.advanceRatchet(now))
 }
 
@@ -302,7 +365,7 @@ func (s *Server) openRatchet() error {
 // PrepareEpochDirectory creates the default epoch directory inside the data directory. A directory that the
 // operator names must exist already, so a volume that failed to mount stops the server instead of a new seed.
 func PrepareEpochDirectory(settings *config.Server) error {
-	if settings.EpochDir != "" {
+	if settings.EpochDirectoryOverride != "" {
 		return nil
 	}
 	return os.MkdirAll(settings.EpochDirectory(), 0o700)

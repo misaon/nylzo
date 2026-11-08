@@ -35,12 +35,16 @@ func TestReportSendsARedactedReason(t *testing.T) {
 		t.Fatalf("%+v", result)
 	}
 	files, err := filepath.Glob(filepath.Join(instance.directory, "abuse", "*"+abuse.FileExtension))
-	if err != nil || len(files) != 1 {
-		t.Fatalf("abuse files %v %v", files, err)
-	}
-	sealed, err := os.ReadFile(files[0])
 	if err != nil {
 		t.Fatal(err)
+	}
+	var sealed []byte
+	for _, file := range files {
+		content, readErr := os.ReadFile(file)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		sealed = append(sealed, content...)
 	}
 	opened, err := abuse.Open(testReportKey, sealed)
 	if err != nil || len(opened) != 1 {

@@ -3,6 +3,7 @@ package envelope
 import (
 	"bytes"
 	"compress/gzip"
+	"errors"
 	"io"
 )
 
@@ -12,6 +13,22 @@ const (
 	gzipReservedFlags = 0xe0
 )
 
+var errNotShorter = errors.New("envelope: the compressed file is not shorter")
+
+// shorterBuffer refuses to grow past its capacity, so compression stops once it cannot help and no regrown copy of
+// the compressed plaintext stays behind.
+type shorterBuffer struct {
+	data []byte
+}
+
+func (b *shorterBuffer) Write(chunk []byte) (int, error) {
+	if len(chunk) > cap(b.data)-len(b.data) {
+		return 0, errNotShorter
+	}
+	b.data = append(b.data, chunk...)
+	return len(chunk), nil
+}
+
 type encodedAttachment struct {
 	meta      []byte
 	file      []byte
@@ -20,13 +37,13 @@ type encodedAttachment struct {
 
 // compressAttachment gives a fresh compression context to this file alone and reports objectLen 0 when it keeps the original.
 func compressAttachment(meta Meta, metadata, file []byte) encodedAttachment {
-	var buffer bytes.Buffer
+	buffer := shorterBuffer{data: make([]byte, 0, max(0, len(file)-1))}
 	writer := gzip.NewWriter(&buffer)
 	_, writeErr := writer.Write(file)
 	closeErr := writer.Close()
-	compressed := buffer.Bytes()
-	if writeErr != nil || closeErr != nil || len(compressed) >= len(file) {
-		clear(compressed)
+	compressed := buffer.data
+	if writeErr != nil || closeErr != nil {
+		clear(compressed[:cap(compressed)])
 		return encodedAttachment{}
 	}
 	encodedMeta, err := encodeStoredMeta(meta, int64(len(compressed)))
@@ -77,10 +94,24 @@ func decompressAttachment(compressed []byte, size int64) ([]byte, error) {
 	}
 	defer reader.Close()
 	reader.Multistream(false)
-	file, err := io.ReadAll(io.LimitReader(reader, size+1))
-	if err != nil || int64(len(file)) != size || source.Len() != 0 {
+	file, ended := readToEnd(reader, size)
+	if !ended || source.Len() != 0 {
 		clear(file)
 		return nil, ErrPlaintext
 	}
 	return file, nil
+}
+
+// readToEnd reads into one allocation of size+1 bytes and reports whether the stream ended cleanly after exactly size
+// bytes; a truncated stream ends with io.ErrUnexpectedEOF instead, and a longer one fills the extra byte.
+func readToEnd(reader io.Reader, size int64) ([]byte, bool) {
+	file := make([]byte, size+1)
+	read := 0
+	var err error
+	for err == nil && read < len(file) {
+		var chunk int
+		chunk, err = reader.Read(file[read:])
+		read += chunk
+	}
+	return file[:read], errors.Is(err, io.EOF) && int64(read) == size
 }

@@ -15,13 +15,15 @@ import (
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
+	"github.com/misaon/nylzo/internal/core/api"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
-const (
-	transparencyPath = "/.well-known/nylzo/transparency.json"
-	healthPath       = "/healthz"
+var (
+	errNotAbsolute         = errors.New("is not an absolute path")
+	errBuildWithoutVersion = errors.New("frontend build identity has no version")
 )
 
 func init() {
@@ -49,14 +51,14 @@ func (*Frontend) CaddyModule() caddy.ModuleInfo {
 }
 
 func (f *Frontend) Provision(_ caddy.Context) error {
-	if err := webclient.CheckPublicURL(f.PublicURL); err != nil {
+	if err := operatoraddress.CheckPublicURL(f.PublicURL); err != nil {
 		return err
 	}
-	if err := webclient.CheckContact(f.Contact); err != nil {
+	if err := operatoraddress.CheckContact(f.Contact); err != nil {
 		return fmt.Errorf("the contact %q: %w", f.Contact, err)
 	}
 	if f.Maintenance != "" && !filepath.IsAbs(f.Maintenance) {
-		return fmt.Errorf("the maintenance file %q is not an absolute path", f.Maintenance)
+		return fmt.Errorf("the maintenance file %q %w", f.Maintenance, errNotAbsolute)
 	}
 	build, err := webclient.Load(web.Files())
 	if err != nil {
@@ -68,7 +70,7 @@ func (f *Frontend) Provision(_ caddy.Context) error {
 			return fmt.Errorf("frontend build identity: %w", decodeErr)
 		}
 		if information.Version == "" {
-			return errors.New("frontend build identity has no version")
+			return errBuildWithoutVersion
 		}
 	}
 	if f.pages, err = build.Render(f.PublicURL, f.Contact); err != nil {
@@ -84,19 +86,8 @@ func (f *Frontend) UnmarshalCaddyfile(dispenser *caddyfile.Dispenser) error {
 			return dispenser.ArgErr()
 		}
 		for dispenser.NextBlock(0) {
-			switch dispenser.Val() {
-			case "maintenance":
-				if !dispenser.AllArgs(&f.Maintenance) {
-					return dispenser.ArgErr()
-				}
-			case "contact":
-				contact, err := contactArgument(dispenser)
-				if err != nil {
-					return err
-				}
-				f.Contact = contact
-			default:
-				return dispenser.Errf("unknown subdirective %q", dispenser.Val())
+			if err := f.unmarshalSubdirective(dispenser); err != nil {
+				return err
 			}
 		}
 	}
@@ -115,9 +106,9 @@ func contactArgument(dispenser *caddyfile.Dispenser) (string, error) {
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	maintenance := f.underMaintenance()
 	switch {
-	case r.URL.Path == healthPath:
+	case r.URL.Path == api.HealthPath:
 		return next.ServeHTTP(&dataResponse{ResponseWriter: w, header: make(http.Header), path: r.URL.Path}, r)
-	case strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == transparencyPath:
+	case strings.HasPrefix(r.URL.Path, api.Prefix) || r.URL.Path == api.TransparencyPath:
 		response := &dataResponse{ResponseWriter: w, header: make(http.Header), path: r.URL.Path}
 		if maintenance {
 			webclient.WriteUnavailable(response, webclient.MaintenanceRetry)
@@ -131,6 +122,24 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyh
 		f.handler.ServeHTTP(w, r)
 		return nil
 	}
+}
+
+func (f *Frontend) unmarshalSubdirective(dispenser *caddyfile.Dispenser) error {
+	switch dispenser.Val() {
+	case "maintenance":
+		if !dispenser.AllArgs(&f.Maintenance) {
+			return dispenser.ArgErr()
+		}
+	case "contact":
+		contact, err := contactArgument(dispenser)
+		if err != nil {
+			return err
+		}
+		f.Contact = contact
+	default:
+		return dispenser.Errf("unknown subdirective %q", dispenser.Val())
+	}
+	return nil
 }
 
 // The operator switches maintenance on and off by creating and removing the file, without restarting Caddy.

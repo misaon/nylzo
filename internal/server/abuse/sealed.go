@@ -3,6 +3,7 @@ package abuse
 import (
 	"bytes"
 	"crypto/hpke"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,11 +17,11 @@ import (
 )
 
 const (
-	info         = "nylzo/v1/abuse-report"
-	plaintextLen = 1808
-	encLen       = 1120
-	tagLen       = 16
-	SealedLen    = encLen + plaintextLen + tagLen
+	info               = "nylzo/v1/abuse-report"
+	plaintextLen       = 1808
+	encapsulatedKeyLen = 1120
+	tagLen             = 16
+	SealedLen          = encapsulatedKeyLen + plaintextLen + tagLen
 )
 
 var (
@@ -161,7 +162,7 @@ func ParsePrivateKey(text string) (hpke.PrivateKey, error) {
 //nolint:ireturn // Key is hpke.PublicKey or hpke.PrivateKey, the interfaces the exported parsers return.
 func parseKey[Key any](text string, newKey func(raw []byte) (Key, error)) (Key, error) {
 	var none Key
-	raw, err := core.DecodeExact(text, len(text)*3/4)
+	raw, err := core.DecodeExact(text, base64.RawURLEncoding.DecodedLen(len(text)))
 	if err != nil {
 		return none, ErrReportKey
 	}

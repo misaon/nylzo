@@ -19,8 +19,10 @@ import (
 	"testing/synctest"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -188,7 +190,7 @@ func TestSecurityHeadersAndStaticPolicy(t *testing.T) {
 			!bytes.Contains(preview, []byte(`name="robots" content="noindex, nofollow"`)) {
 			t.Fatalf("preview agent page: %d %s", response.StatusCode, preview)
 		}
-		client, err := EmbeddedWebClient()
+		client, err := webclient.Load(web.Files())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -502,7 +504,7 @@ func TestTransparencyReportsWhatTheServerUses(t *testing.T) {
 		Hosting: "Vultr, Frankfurt",
 	}
 	harness := newHarness(t, settings, WithWebFiles(builtClient(t)))
-	report := harness.get(TransparencyPath, nil)
+	report := harness.get(api.TransparencyPath, nil)
 	if report.StatusCode != http.StatusOK || report.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP {
 		t.Fatalf("%d %v", report.StatusCode, report.Header)
 	}
@@ -520,7 +522,7 @@ func TestTransparencyReportsWhatTheServerUses(t *testing.T) {
 		}
 	}
 	plain := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
-	if report = plain.get(TransparencyPath, nil); strings.Contains(report.body, "operator") {
+	if report = plain.get(api.TransparencyPath, nil); strings.Contains(report.body, "operator") {
 		t.Fatalf("an unset operator must not appear: %s", report.body)
 	}
 }

@@ -17,14 +17,14 @@ func Run(
 	ctx context.Context,
 	storage store.Store,
 	blobs store.Blobs,
-	dataDir string,
+	dataDirectory string,
 	now time.Time,
 ) (store.SweepReport, error) {
 	report, err := store.SweepAll(ctx, storage, blobs, now)
-	pruneErr := abuse.Prune(dataDir, now)
+	pruneErr := errors.Join(abuse.Prune(dataDirectory, now), abuse.Prepare(dataDirectory, now))
 	orphans, reconcileErr := reconcileOncePerDay(ctx, storage, blobs, now)
 	report.OrphanedBlobs = orphans
-	restampErr := errors.Join(blobs.Restamp(ctx, now), abuse.Restamp(dataDir, now))
+	restampErr := errors.Join(blobs.Restamp(ctx, now), abuse.Restamp(dataDirectory, now))
 	return report, errors.Join(err, pruneErr, reconcileErr, restampErr)
 }
 
@@ -45,14 +45,12 @@ func reconcileOncePerDay(ctx context.Context, storage store.Store, blobs store.B
 	return report.Orphans, errors.Join(err, markErr)
 }
 
-func LogAttributes(report store.SweepReport, err error) []any {
-	attributes := report.LogAttrs()
-	if err == nil {
-		return attributes
-	}
+// FirstError names only the first failure of a sweep; a count of the failed items would count the blobs and rows
+// that came due while the storage failed (spec §10).
+func FirstError(err error) string {
 	failures := logging.JoinedErrors(err)
 	if len(failures) == 0 {
-		failures = []error{err}
+		return logging.ErrorText(err)
 	}
-	return append(attributes, "errors", len(failures), "err", logging.ErrorText(failures[0]))
+	return logging.ErrorText(failures[0])
 }

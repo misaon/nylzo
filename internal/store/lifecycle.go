@@ -141,11 +141,14 @@ func consumeOpen(record *Record, parameters *ClaimParameters, now time.Time) Lea
 	return lease
 }
 
+// The cap keeps the shift far from overflowing a Duration; MaxBackoff bounds the result long before it.
+const maxBackoffDoublings = 20
+
 func backoff(failures int) time.Duration {
 	if failures <= FreeAttempts {
 		return 0
 	}
-	return min(MaxBackoff, time.Second<<min(failures-FreeAttempts, 20))
+	return min(MaxBackoff, time.Second<<min(failures-FreeAttempts, maxBackoffDoublings))
 }
 
 func RecordDownload(ctx context.Context, messages Messages, record *Record, leaseMAC []byte, now time.Time) error {
@@ -220,7 +223,7 @@ func End(
 	if err != nil {
 		return "", err
 	}
-	if record.Row.BlobRef != "" {
+	if record.Row.BlobReference != "" {
 		err = deleteBlobOf(ctx, messages, blobs, record)
 	}
 	return final, err
@@ -229,7 +232,7 @@ func End(
 // Finish deletes the blob of a message that has ended or whose last lease is over; a release records its minute.
 func Finish(ctx context.Context, messages Messages, blobs Blobs, record *Record, now time.Time) (bool, error) {
 	ctx = context.WithoutCancel(ctx)
-	if record.Row.BlobRef == "" || (!record.Ended(now) && !record.Releasable(now)) {
+	if record.Row.BlobReference == "" || (!record.Ended(now) && !record.Releasable(now)) {
 		return false, nil
 	}
 	if !record.Ended(now) {
@@ -243,34 +246,34 @@ func Finish(ctx context.Context, messages Messages, blobs Blobs, record *Record,
 			return false, err
 		}
 	}
-	if record.Row.BlobRef == "" {
+	if record.Row.BlobReference == "" {
 		return false, nil
 	}
 	return true, deleteBlobOf(ctx, messages, blobs, record)
 }
 
 // DeleteBlob makes the blob unreadable before it deletes it, so a failure in between leaves nothing to read.
-func DeleteBlob(ctx context.Context, messages Messages, blobs Blobs, locator seal.Locator, ref string) error {
+func DeleteBlob(ctx context.Context, messages Messages, blobs Blobs, locator seal.Locator, reference string) error {
 	ctx = context.WithoutCancel(ctx)
-	if err := messages.ShredBlobs(ctx, []DueBlob{{Locator: locator, Ref: ref}}); err != nil {
+	if err := messages.ShredBlobs(ctx, []DueBlob{{Locator: locator, Reference: reference}}); err != nil {
 		return err
 	}
-	return forgetBlob(ctx, messages, blobs, locator, ref)
+	return forgetBlob(ctx, messages, blobs, locator, reference)
 }
 
 // deleteBlobOf skips the shred when the record already holds no blob wrap, which no write ever restores.
 func deleteBlobOf(ctx context.Context, messages Messages, blobs Blobs, record *Record) error {
 	if record.HasBlob() {
-		return DeleteBlob(ctx, messages, blobs, record.Row.Locator, record.Row.BlobRef)
+		return DeleteBlob(ctx, messages, blobs, record.Row.Locator, record.Row.BlobReference)
 	}
-	return forgetBlob(context.WithoutCancel(ctx), messages, blobs, record.Row.Locator, record.Row.BlobRef)
+	return forgetBlob(context.WithoutCancel(ctx), messages, blobs, record.Row.Locator, record.Row.BlobReference)
 }
 
-func forgetBlob(ctx context.Context, messages Messages, blobs Blobs, locator seal.Locator, ref string) error {
-	if err := blobs.Delete(ctx, ref); err != nil {
+func forgetBlob(ctx context.Context, messages Messages, blobs Blobs, locator seal.Locator, reference string) error {
+	if err := blobs.Delete(ctx, reference); err != nil {
 		return err
 	}
-	return messages.ForgetBlobs(ctx, []DueBlob{{Locator: locator, Ref: ref}})
+	return messages.ForgetBlobs(ctx, []DueBlob{{Locator: locator, Reference: reference}})
 }
 
 // CountReport takes one of the reports a message may get over its life and reports false when they are used up, so
@@ -312,9 +315,9 @@ func TakeDown(
 ) (Removal, error) {
 	ctx = context.WithoutCancel(ctx)
 	removal := Removed
-	var ref string
+	var reference string
 	err := messages.Update(ctx, locator, func(row *Row) error {
-		ref = row.BlobRef
+		reference = row.BlobReference
 		if row.BlobWrap == nil {
 			removal = AlreadyEnded
 			return nil
@@ -327,10 +330,10 @@ func TakeDown(
 		row.PurgeAt = earlier(row.PurgeAt, ceil(now.Add(TombstoneTTL), RowPurgeStep))
 		return nil
 	})
-	if err != nil || ref == "" {
+	if err != nil || reference == "" {
 		return removal, err
 	}
-	return removal, forgetBlob(ctx, messages, blobs, locator, ref)
+	return removal, forgetBlob(ctx, messages, blobs, locator, reference)
 }
 
 type ReconcileReport struct {
@@ -338,8 +341,10 @@ type ReconcileReport struct {
 	Listed  bool
 }
 
+// Reconcile deletes a blob that no row holds once the blob_purge_at it carries has passed, so an upload whose row is
+// still being written stays, and an orphan goes when its message would have expired.
 func Reconcile(ctx context.Context, messages Messages, blobs Blobs, now time.Time) (ReconcileReport, error) {
-	known, err := messages.KnownBlobRefs(ctx)
+	known, err := messages.KnownBlobReferences(ctx)
 	if err != nil {
 		return ReconcileReport{}, err
 	}
@@ -347,17 +352,16 @@ func Reconcile(ctx context.Context, messages Messages, blobs Blobs, now time.Tim
 	if err != nil {
 		return ReconcileReport{}, err
 	}
-	cutoff := now.Add(-BlobGrace)
 	orphans := 0
 	var errs []error
 	for _, object := range objects {
 		if ctx.Err() != nil {
 			break
 		}
-		if _, live := known[object.Ref]; live || object.Modified.After(cutoff) {
+		if _, live := known[object.Reference]; live || object.PurgeAt.After(now) {
 			continue
 		}
-		if err = blobs.Delete(ctx, object.Ref); err != nil {
+		if err = blobs.Delete(ctx, object.Reference); err != nil {
 			errs = append(errs, err)
 			continue
 		}

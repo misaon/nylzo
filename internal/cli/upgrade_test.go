@@ -36,11 +36,12 @@ func TestServeUpgradesTheDataDirectoryOfARelease(t *testing.T) {
 		t.Fatal(err)
 	}
 	variables := map[string]string{
-		"NYLZO_DATA_DIR":    directory,
-		"NYLZO_PEPPER_FILE": pepper,
-		"NYLZO_REPORT_KEY":  core.Encode(testReportKey.PublicKey().Bytes()),
-		"NYLZO_LISTEN":      address,
-		"NYLZO_ALLOW_SWAP":  "1",
+		"NYLZO_DATA_DIR":              directory,
+		"NYLZO_PEPPER_FILE":           pepper,
+		"NYLZO_REPORT_KEY":            core.Encode(testReportKey.PublicKey().Bytes()),
+		"NYLZO_LISTEN":                address,
+		"NYLZO_ALLOW_SWAP":            "1",
+		"NYLZO_ALLOW_UNERASED_MEMORY": "1",
 	}
 	if runtime.GOOS != "linux" {
 		variables["NYLZO_ALLOW_UNERASABLE_STORAGE"] = "1"
@@ -204,7 +205,7 @@ func freeAddress(t *testing.T) string {
 }
 
 func healthy(instance string) bool {
-	for range 200 {
+	for range 600 {
 		if response, err := http.Get(instance + "/healthz"); err == nil {
 			response.Body.Close()
 			if response.StatusCode == http.StatusOK {

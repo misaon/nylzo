@@ -15,6 +15,8 @@ import (
 	"time"
 )
 
+var errParentNotPrivate = errors.New("the identity needs a private parent directory")
+
 type credentials struct {
 	certificate []byte
 	key         []byte
@@ -58,7 +60,7 @@ func create(destination string) error {
 		return err
 	}
 	if information.Mode().Perm()&0o077 != 0 {
-		return errors.New("the identity needs a private parent directory")
+		return errParentNotPrivate
 	}
 	name := filepath.Base(destination)
 	if directoryErr := parent.Mkdir(name, 0o700); directoryErr != nil {

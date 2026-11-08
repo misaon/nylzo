@@ -10,24 +10,15 @@ import (
 )
 
 type SweepReport struct {
-	Blobs          int
-	Rows           int
-	Counters       int
-	OrphanedBlobs  int
-	StaleTempFiles int
+	Blobs               int
+	Rows                int
+	Counters            int
+	OrphanedBlobs       int
+	StaleTemporaryFiles int
 }
 
-func (r SweepReport) LogAttrs() []any {
-	return []any{
-		"blobs", r.Blobs,
-		"rows", r.Rows,
-		"counters", r.Counters,
-		"orphans", r.OrphanedBlobs,
-		"temp", r.StaleTempFiles,
-	}
-}
-
-// SweepAll never opens a record: it deletes the blobs and rows whose cleanup time has passed.
+// SweepAll never opens a record: it deletes the blobs and rows whose cleanup time has passed and replenishes the pool
+// of files that uploads take.
 func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (SweepReport, error) {
 	var report SweepReport
 	var errs []error
@@ -37,10 +28,13 @@ func SweepAll(ctx context.Context, storage Store, blobs Blobs, now time.Time) (S
 		errs = append(errs, err)
 	}
 	count(&report.Blobs, func() (int, error) { return deleteDueBlobs(ctx, storage, blobs, now) })
-	count(&report.Rows, func() (int, error) { return purge(ctx, "rows", storage.PurgeRows, now) })
-	count(&report.Counters, func() (int, error) { return purge(ctx, "counters", storage.RatePurge, now) })
+	count(&report.Rows, func() (int, error) { return purge(ctx, "rows", storage.PurgeRows, now, SweepBatch) })
+	count(&report.Counters, func() (int, error) {
+		return purge(ctx, "counters", storage.RatePurge, now, CounterPurgeBatch)
+	})
 	errs = append(errs, storage.Checkpoint(ctx))
-	count(&report.StaleTempFiles, func() (int, error) { return blobs.PurgeTemp(ctx, now.Add(-BlobGrace)) })
+	count(&report.StaleTemporaryFiles, func() (int, error) { return blobs.PurgeTemporary(ctx, now.Add(-BlobGrace)) })
+	errs = append(errs, blobs.Replenish(ctx))
 	return report, errors.Join(errs...)
 }
 
@@ -71,13 +65,13 @@ func deleteBlobPage(ctx context.Context, messages Messages, blobs Blobs, page []
 	if err := messages.ShredBlobs(ctx, page); err != nil {
 		return 0, fmt.Errorf("store: shred blobs: %w", err)
 	}
-	refs := make([]string, len(page))
+	references := make([]string, len(page))
 	for i, due := range page {
-		refs[i] = due.Ref
+		references[i] = due.Reference
 	}
 	var errs []error
 	deleted := make([]DueBlob, 0, len(page))
-	for i, err := range blobs.DeleteBatch(ctx, refs) {
+	for i, err := range blobs.DeleteBatch(ctx, references) {
 		if err != nil {
 			errs = append(errs, fmt.Errorf("store: delete blob: %w", err))
 			continue
@@ -97,15 +91,16 @@ func purge(
 	step string,
 	page func(context.Context, time.Time, int) (int, error),
 	now time.Time,
+	batch int,
 ) (int, error) {
 	total := 0
 	for {
-		purged, err := page(ctx, now, SweepBatch)
+		purged, err := page(ctx, now, batch)
 		if err != nil {
 			return total, fmt.Errorf("store: purge %s: %w", step, err)
 		}
 		total += purged
-		if purged < SweepBatch {
+		if purged < batch {
 			return total, nil
 		}
 	}

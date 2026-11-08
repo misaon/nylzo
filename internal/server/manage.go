@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/report"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
@@ -22,17 +23,6 @@ const (
 	abuseAccepted  = "accepted"
 	abuseLimit     = "limit"
 )
-
-type statusResponse struct {
-	State                    string `json:"state"`
-	OpensUsed                int    `json:"opens_used"`
-	OpensMax                 int    `json:"opens_max"`
-	CreatedAt                string `json:"created_at,omitempty"`
-	ExpiresAt                string `json:"expires_at,omitempty"`
-	FirstOpenedAt            string `json:"first_opened_at,omitempty"`
-	EndedAt                  string `json:"ended_at,omitempty"`
-	FailedPassphraseAttempts int    `json:"failed_passphrase_attempts"`
-}
 
 type abuseRequest struct {
 	ID        string `json:"id"`
@@ -60,7 +50,7 @@ func (s *Server) end(w http.ResponseWriter, r *http.Request, purpose seal.Purpos
 		return
 	}
 	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, state, time.Now())
-	s.leaseTimers.cancel(granted.record.Row.Locator)
+	s.leaseTimers.Cancel(granted.record.Row.Locator)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		s.writeCurrentGone(w, r, &granted.record)
@@ -86,14 +76,14 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	record := &granted.record
 	message := record.Message
 	if !record.HasBlob() {
-		writeJSON(w, http.StatusOK, statusResponse{
+		writeJSON(w, http.StatusOK, api.Status{
 			State:         string(record.State(now)),
 			FirstOpenedAt: formatOptionalTime(message.FirstOpenedAt),
 			EndedAt:       formatEnd(record.EndedAt(now)),
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, statusResponse{
+	writeJSON(w, http.StatusOK, api.Status{
 		State:                    string(record.State(now)),
 		OpensUsed:                int(message.OpensMax) - int(message.OpensRemaining),
 		OpensMax:                 int(message.OpensMax),
@@ -177,10 +167,10 @@ func (s *Server) recordAbuse(
 		return
 	}
 	if uncountErr := store.UncountReport(r.Context(), s.store, record, now); uncountErr != nil {
-		s.logger.ErrorContext(r.Context(), "abuse-release", "err", logging.ErrorText(uncountErr))
+		s.events.ErrorContext(r.Context(), "abuse-release", "err", logging.ErrorText(uncountErr))
 	}
 	if errors.Is(err, abuse.ErrFull) {
-		s.logger.ErrorContext(r.Context(), "abuse-file-full")
+		s.events.ErrorContext(r.Context(), "abuse-file-full")
 		setRetryAfter(w, abuseFullRetry)
 		writeError(w, http.StatusServiceUnavailable, errUnavailable)
 		return

@@ -13,8 +13,21 @@
 			idle 2m
 		}
 	}
+	# A listener block replaces the one above for :80, which serves only HTTP/1.1 redirects and aborts.
+	servers :80 {
+		protocols h1
+		0rtt off
+		max_header_size 16KB
+		timeouts {
+			read_header 10s
+			read_body 20s
+			read_body_idle 20s
+			write 20s
+			idle 2m
+		}
+	}
 	log default {
-		exclude http.log http.handlers http.stdlib
+		exclude http.log http.handlers http.stdlib http.auto_https admin
 	}
 }
 

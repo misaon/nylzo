@@ -52,7 +52,13 @@ func expectSameResponse(t *testing.T, response *http.Response, status int, write
 	expected := httptest.NewRecorder()
 	write(expected)
 	if response.StatusCode != status || expected.Code != status || !bytes.Equal(body, expected.Body.Bytes()) {
-		t.Fatalf("status %d with %d bytes, want %d with %d bytes", response.StatusCode, len(body), status, expected.Body.Len())
+		t.Fatalf(
+			"status %d with %d bytes, want %d with %d bytes",
+			response.StatusCode,
+			len(body),
+			status,
+			expected.Body.Len(),
+		)
 	}
 	for _, name := range []string{"Connection-Allowlist", "Content-Security-Policy", "Content-Type", "Retry-After", "Vary"} {
 		if got, want := response.Header.Get(name), expected.Header().Get(name); got != want {
@@ -124,11 +130,12 @@ func rewrite(value any, apply func(key string, value any) any) any {
 		for i, child := range typed {
 			typed[i] = rewrite(child, apply)
 		}
+	default:
 	}
 	return value
 }
 
-func startCaddy(t *testing.T, caddyfile string, backend string) (address string, roots *x509.CertPool) {
+func startCaddy(t *testing.T, caddyfile, backend string) (string, *x509.CertPool) {
 	t.Helper()
 	return startCaddyWithMaintenance(t, caddyfile, backend, "")
 }
@@ -146,19 +153,21 @@ func startCaddyWithMaintenance(t *testing.T, caddyfile, backend, maintenance str
 		t.Fatal(err)
 	}
 	var config map[string]any
-	if err := json.Unmarshal(adapted, &config); err != nil {
+	if err = json.Unmarshal(adapted, &config); err != nil {
 		t.Fatal(err)
 	}
 	httpPort, httpsPort := freePort(t), freePort(t)
 	storage := t.TempDir()
 	config["storage"] = map[string]any{"module": "file_system", "root": storage}
 	applications := config["apps"].(map[string]any)
-	applications["pki"] = map[string]any{"certificate_authorities": map[string]any{"local": map[string]any{"install_trust": false}}}
+	applications["pki"] = map[string]any{
+		"certificate_authorities": map[string]any{"local": map[string]any{"install_trust": false}},
+	}
 	server := applications["http"].(map[string]any)
 	server["http_port"], server["https_port"] = httpPort, httpsPort
 	rewrite(config, func(key string, value any) any {
-		switch {
-		case key == "listen":
+		switch key {
+		case "listen":
 			listeners := value.([]any)
 			for i, listener := range listeners {
 				port := httpsPort
@@ -167,12 +176,13 @@ func startCaddyWithMaintenance(t *testing.T, caddyfile, backend, maintenance str
 				}
 				listeners[i] = fmt.Sprintf("127.0.0.1:%d", port)
 			}
-		case key == "dial":
+		case "dial":
 			return backend
-		case key == "maintenance":
+		case "maintenance":
 			return maintenance
-		case key == "issuers":
+		case "issuers":
 			return []any{map[string]any{"module": "internal"}}
+		default:
 		}
 		return value
 	})
@@ -180,7 +190,7 @@ func startCaddyWithMaintenance(t *testing.T, caddyfile, backend, maintenance str
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := caddy.Load(encoded, true); err != nil {
+	if err = caddy.Load(encoded, true); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = caddy.Stop() })
@@ -188,9 +198,12 @@ func startCaddyWithMaintenance(t *testing.T, caddyfile, backend, maintenance str
 	roots := x509.NewCertPool()
 	deadline := time.Now().Add(20 * time.Second)
 	for time.Now().Before(deadline) {
-		if pem, err := os.ReadFile(filepath.Join(storage, "pki", "authorities", "local", "root.crt")); err == nil && roots.AppendCertsFromPEM(pem) {
-			connection, err := tls.Dial("tcp", address, &tls.Config{RootCAs: roots, ServerName: "localhost"})
-			if err == nil {
+		if pem, readErr := os.ReadFile(
+			filepath.Join(storage, "pki", "authorities", "local", "root.crt"),
+		); readErr == nil &&
+			roots.AppendCertsFromPEM(pem) {
+			connection, dialErr := tls.Dial("tcp", address, &tls.Config{RootCAs: roots, ServerName: "localhost"})
+			if dialErr == nil {
 				_ = connection.Close()
 				return address, roots
 			}
@@ -223,13 +236,24 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 					t.Errorf("Caddy accepted a handshake with %s", refused)
 				}
 			}
-			connection, err := tls.Dial("tcp", address, &tls.Config{RootCAs: roots, ServerName: "localhost", CurvePreferences: []tls.CurveID{tls.X25519MLKEM768}})
+			connection, err := tls.Dial(
+				"tcp",
+				address,
+				&tls.Config{
+					RootCAs:          roots,
+					ServerName:       "localhost",
+					CurvePreferences: []tls.CurveID{tls.X25519MLKEM768},
+				},
+			)
 			if err != nil {
 				t.Fatalf("X25519MLKEM768 handshake: %v", err)
 			}
 			_ = connection.Close()
 
-			client := &http.Client{Transport: &http.Transport{TLSClientConfig: base.Clone(), ForceAttemptHTTP2: true}, Timeout: 10 * time.Second}
+			client := &http.Client{
+				Transport: &http.Transport{TLSClientConfig: base.Clone(), ForceAttemptHTTP2: true},
+				Timeout:   10 * time.Second,
+			}
 			request, _ := http.NewRequest(http.MethodGet, "https://"+address+"/api/v1/instance", http.NoBody)
 			for header, value := range map[string]string{"X-Real-IP": "7.7.7.7", "Forwarded": "for=8.8.8.8", "X-Forwarded-For": "9.9.9.9", "True-Client-IP": "6.6.6.6", "X-Client-IP": "5.5.5.5"} {
 				request.Header.Set(header, value)
@@ -248,7 +272,11 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 			if value := forwarded.Get("X-Forwarded-For"); value != "127.0.0.1" {
 				t.Errorf("X-Forwarded-For = %q, want only the peer address", value)
 			}
-			oversized, _ := http.NewRequest(http.MethodPost, "https://"+address+"/api/v1/messages", io.LimitReader(zeros{}, 7<<20))
+			oversized, _ := http.NewRequest(
+				http.MethodPost,
+				"https://"+address+"/api/v1/messages",
+				io.LimitReader(zeros{}, 7<<20),
+			)
 			response, err = client.Do(oversized)
 			if err != nil {
 				t.Fatal(err)
@@ -262,7 +290,9 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 			quicConfig := base.Clone()
 			quicConfig.ClientSessionCache = sessions
 			first := &http3.Transport{TLSClientConfig: quicConfig}
-			response, err = (&http.Client{Transport: first, Timeout: 10 * time.Second}).Get("https://" + address + "/api/first")
+			response, err = (&http.Client{Transport: first, Timeout: 10 * time.Second}).Get(
+				"https://" + address + "/api/first",
+			)
 			if err != nil {
 				t.Fatalf("HTTP/3: %v", err)
 			}
@@ -271,11 +301,14 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 			time.Sleep(300 * time.Millisecond)
 			_ = first.Close()
 			var early *quic.Conn
-			second := &http3.Transport{TLSClientConfig: quicConfig, Dial: func(ctx context.Context, address string, config *tls.Config, quicConfig *quic.Config) (*quic.Conn, error) {
-				connection, err := quic.DialAddrEarly(ctx, address, config, quicConfig)
-				early = connection
-				return connection, err
-			}}
+			second := &http3.Transport{
+				TLSClientConfig: quicConfig,
+				Dial: func(ctx context.Context, address string, config *tls.Config, quicConfig *quic.Config) (*quic.Conn, error) {
+					connection, dialErr := quic.DialAddrEarly(ctx, address, config, quicConfig)
+					early = connection
+					return connection, dialErr
+				},
+			}
 			defer second.Close()
 			request, _ = http.NewRequest(http3.MethodGet0RTT, "https://"+address+"/api/early", http.NoBody)
 			response, err = (&http.Client{Transport: second, Timeout: 10 * time.Second}).Do(request)
@@ -360,7 +393,7 @@ func TestCaddyfilesBoundSlowAndLargeRequests(t *testing.T) {
 					} `json:"http"`
 				} `json:"apps"`
 			}
-			if err := json.Unmarshal(adapted, &config); err != nil {
+			if err = json.Unmarshal(adapted, &config); err != nil {
 				t.Fatal(err)
 			}
 			if !config.Admin.Disabled {
@@ -372,7 +405,12 @@ func TestCaddyfilesBoundSlowAndLargeRequests(t *testing.T) {
 				}
 				for setting, value := range map[string]caddy.Duration{"read_body": server.ReadTimeout, "read_header": server.ReadHeaderTimeout, "read_body_idle": server.ReadIdleTimeout, "write": server.WriteTimeout, "idle": server.IdleTimeout} {
 					if value <= 0 || time.Duration(value) > 6*time.Minute {
-						t.Errorf("%s timeout %s is %s, want a bound of at most six minutes", name, setting, time.Duration(value))
+						t.Errorf(
+							"%s timeout %s is %s, want a bound of at most six minutes",
+							name,
+							setting,
+							time.Duration(value),
+						)
 					}
 				}
 				if server.MaxHeaderBytes <= 0 || server.MaxHeaderBytes > 16<<10 {

@@ -74,7 +74,7 @@ This compares the served web client with the client embedded in the binary. It f
 
 It exits with 0 when everything matches, 3 when a page, file, manifest or header differs from the release or the server answers with a redirect or an oversized response, and 1 when the check could not finish. The check compares every page and file even after an unexpected header or a failed request, and exits 1 for those only when nothing differs. A malformed transparency document counts as a difference. For headers added by a proxy or CDN, explicitly allow each with `--allow-header NAME`. Behavior-changing headers such as `Refresh` or `Set-Cookie` always exit 3 and cannot be allowed. The binary and server must run the same version; a binary without an embedded web client cannot perform this check.
 
-The result applies only to that invocation. A malicious server can recognize the CLI and serve browsers different JavaScript. Run checks regularly and from another network; a successful check does not prove what other visitors receive. The repository's `watch.yml` runs it every few minutes after an operator configures `NYLZO_MONITOR_URL`, using a binary from a signature-verified release.
+The result applies only to that invocation. A malicious server can recognize the CLI and serve browsers different JavaScript. Run checks regularly and from another network; a successful check does not prove what other visitors receive. The repository's `watch.yml` runs it about every 30 minutes after an operator configures `NYLZO_MONITOR_URL`, using a binary from a signature-verified release.
 
 ## Report abusive content
 

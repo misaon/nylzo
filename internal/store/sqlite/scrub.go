@@ -6,8 +6,15 @@ import (
 	sqldriver "database/sql/driver"
 	"errors"
 	"fmt"
+	"io/fs"
+	"net/url"
 	"os"
+	"strconv"
 	"time"
+
+	driver "modernc.org/sqlite"
+
+	"github.com/misaon/nylzo/internal/erase"
 )
 
 const (
@@ -18,6 +25,8 @@ const (
 	maxScrubGrowths               = 4
 	scrubRetries                  = 5
 	scrubRetryDelay               = time.Second
+	scrubDelay                    = 100 * time.Millisecond
+	writeScrubFrames              = 32
 )
 
 var (
@@ -25,20 +34,44 @@ var (
 	errScrubShort     = errors.New("sqlite: the scrub table did not grow to the size of the log")
 )
 
-// Checkpoint copies the log into the database and then overwrites every frame of the log in place (spec §5.2).
+// Checkpoint rebuilds the tables whose rows changed, copies the log into the database and then overwrites every frame
+// of the log in place (spec §5.2).
 func (s *Store) Checkpoint(ctx context.Context) error {
+	return errors.Join(s.rebuildChanged(ctx), s.scrubLog(ctx, true))
+}
+
+// scrubLog overwrites every frame of the log, or the first writeScrubFrames frames when the writes since the last
+// scrub filled no frame beyond them; that scrub always writes the same frames, so it says nothing about the writes.
+func (s *Store) scrubLog(ctx context.Context, everyFrame bool) error {
+	if !everyFrame && s.unscrubbedFrames.Load() == 0 {
+		return nil
+	}
 	connection, err := s.writer.Conn(ctx)
 	if err != nil {
 		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
 	}
 	defer connection.Close()
-	if _, err = connection.ExecContext(
+	written := s.unscrubbedFrames.Load()
+	err = withCheckpointTimeout(ctx, connection, func() error {
+		if everyFrame || written > writeScrubFrames {
+			return s.scrubAll(ctx, connection)
+		}
+		return s.scrubFirst(ctx, connection)
+	})
+	if err == nil {
+		s.unscrubbedFrames.Store(0)
+	}
+	return err
+}
+
+func withCheckpointTimeout(ctx context.Context, connection *sql.Conn, body func() error) error {
+	if _, err := connection.ExecContext(
 		ctx,
 		fmt.Sprintf(`PRAGMA busy_timeout = %d`, checkpointTimeoutMilliseconds),
 	); err != nil {
 		return fmt.Errorf("sqlite: wal checkpoint: %w", err)
 	}
-	err = s.scrub(ctx, connection)
+	err := body()
 	restore := fmt.Sprintf(`PRAGMA busy_timeout = %d`, busyTimeoutMilliseconds)
 	if _, restoreErr := connection.ExecContext(context.WithoutCancel(ctx), restore); restoreErr != nil {
 		discarded := connection.Raw(func(any) error { return sqldriver.ErrBadConn })
@@ -47,8 +80,8 @@ func (s *Store) Checkpoint(ctx context.Context) error {
 	return err
 }
 
-// scrub rewrites one zero-filled page per frame from the start of the log, over every older version of a row.
-func (s *Store) scrub(ctx context.Context, connection *sql.Conn) error {
+// scrubAll rewrites one zero-filled page per frame from the start of the log, over every older version of a row.
+func (s *Store) scrubAll(ctx context.Context, connection *sql.Conn) error {
 	for range maxScrubGrowths {
 		if err := restartLog(ctx, connection); err != nil {
 			return err
@@ -57,19 +90,66 @@ func (s *Store) scrub(ctx context.Context, connection *sql.Conn) error {
 		if err != nil {
 			return fmt.Errorf("sqlite: wal scrub: %w", err)
 		}
-		var slots int
-		if err = connection.QueryRowContext(ctx, `SELECT COUNT(*) FROM wal_scrub`).Scan(&slots); err != nil {
+		slots, err := scrubSlots(ctx, connection)
+		if err != nil {
 			return wrapScrub(err)
 		}
-		if slots >= frames {
-			_, err = connection.ExecContext(ctx, `UPDATE wal_scrub SET generation = 1 - generation`)
-			return wrapScrub(err)
+		needed := max(frames, writeScrubFrames)
+		if slots >= needed {
+			return rewriteSlots(ctx, connection, slots)
 		}
-		if growErr := growScrub(ctx, connection, frames-slots); growErr != nil {
+		if growErr := growScrub(ctx, connection, needed-slots); growErr != nil {
 			return growErr
 		}
 	}
 	return errScrubShort
+}
+
+// scrubFirst rewrites the first writeScrubFrames frames, which hold every frame the writes since the last scrub filled.
+func (s *Store) scrubFirst(ctx context.Context, connection *sql.Conn) error {
+	if err := restartLog(ctx, connection); err != nil {
+		return err
+	}
+	slots, err := scrubSlots(ctx, connection)
+	if err != nil {
+		return wrapScrub(err)
+	}
+	if slots < writeScrubFrames {
+		return s.scrubAll(ctx, connection)
+	}
+	return rewriteSlots(ctx, connection, writeScrubFrames)
+}
+
+// rewriteSlots checks that the rewrite filled the log from its first frame: each slot fills one page, and a log that
+// did not start over would keep its first frames.
+func rewriteSlots(ctx context.Context, connection *sql.Conn, slots int) error {
+	if _, err := connection.ExecContext(
+		ctx,
+		`UPDATE wal_scrub SET generation = 1 - generation WHERE slot <= ?`,
+		slots,
+	); err != nil {
+		return wrapScrub(err)
+	}
+	frames, err := logFrames(ctx, connection)
+	switch {
+	case err != nil:
+		return wrapScrub(err)
+	case frames != int64(slots):
+		return fmt.Errorf(
+			"%w: the log did not start over, %d frames after a scrub of %d",
+			ErrCheckpointBusy,
+			frames,
+			slots,
+		)
+	default:
+		return nil
+	}
+}
+
+func scrubSlots(ctx context.Context, connection *sql.Conn) (int, error) {
+	var slots int
+	err := connection.QueryRowContext(ctx, `SELECT ifnull(max(slot), 0) FROM wal_scrub`).Scan(&slots)
+	return slots, err
 }
 
 // restartLog checkpoints the whole log and waits until no reader uses it, so the next write starts at its first frame.
@@ -89,12 +169,17 @@ func restartLog(ctx context.Context, connection *sql.Conn) error {
 }
 
 // growScrub adds slack for the pages the insert itself writes, so the scrub soon covers the log in one pass.
+const (
+	scrubSlackDivisor = 16
+	scrubSlackRows    = 4
+)
+
 func growScrub(ctx context.Context, connection *sql.Conn, missing int) error {
 	_, err := connection.ExecContext(
 		ctx,
 		`WITH RECURSIVE slot(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM slot WHERE n < ?)
 		INSERT INTO wal_scrub (generation, filler) SELECT 0, zeroblob(?) FROM slot`,
-		missing+missing/16+4,
+		missing+missing/scrubSlackDivisor+scrubSlackRows,
 		scrubFillerLen,
 	)
 	return wrapScrub(err)
@@ -132,19 +217,29 @@ func (s *Store) requestScrub() {
 	}
 }
 
-// OnScrubFailure sets what receives the error of a scrub that an ending asked for and that failed after its retries;
+// OnScrubFailure sets what receives the error of a scrub that a write asked for and that failed after its retries;
 // the older row versions then stay in the log until the next sweep scrubs it.
 func (s *Store) OnScrubFailure(report func(error)) {
 	s.scrubFailed.Store(&report)
 }
 
-// scrubWhenAsked runs the scrubs that endings ask for, one at a time, and tries a busy one again a few times.
+// scrubWhenAsked waits scrubDelay after a write asks, so a burst of writes shares one scrub, then scrubs and tries a
+// busy scrub again a few times.
 func (s *Store) scrubWhenAsked(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-s.scrubs:
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(scrubDelay):
+		}
+		select {
+		case <-s.scrubs:
+		default:
 		}
 		if err := s.scrubWithRetries(ctx); err != nil && ctx.Err() == nil {
 			if report := s.scrubFailed.Load(); report != nil {
@@ -155,14 +250,14 @@ func (s *Store) scrubWhenAsked(ctx context.Context) {
 }
 
 func (s *Store) scrubWithRetries(ctx context.Context) error {
-	err := s.Checkpoint(ctx)
+	err := s.scrubLog(ctx, false)
 	for retry := 1; retry < scrubRetries && errors.Is(err, ErrCheckpointBusy); retry++ {
 		select {
 		case <-ctx.Done():
 			return err
 		case <-time.After(scrubRetryDelay):
 		}
-		err = s.Checkpoint(ctx)
+		err = s.scrubLog(ctx, false)
 	}
 	return err
 }
@@ -172,4 +267,70 @@ func ignoreBadConn(err error) error {
 		return nil
 	}
 	return err
+}
+
+// resetLog checkpoints the log into the synced database and then zeroes the log and its index in place, so their
+// headers count only the writes after it. Only a connection in exclusive locking mode keeps every other connection
+// out meanwhile, so it skips the reset when another one has the database open.
+func resetLog(ctx context.Context, path string) (bool, error) {
+	switch info, err := os.Stat(path + "-wal"); {
+	case errors.Is(err, fs.ErrNotExist):
+		return false, nil
+	case err != nil:
+		return false, err
+	case info.Size() == 0:
+		return false, nil
+	}
+	connector, err := driver.NewConnector(exclusiveDataSourceName(path))
+	if err != nil {
+		return false, err
+	}
+	database := sql.OpenDB(persistentLog{Connector: connector})
+	skipped, err := checkpointAndZero(ctx, database, path)
+	return skipped, errors.Join(err, database.Close())
+}
+
+// checkpointAndZero zeroes the header of the log first, so a crash midway leaves a log that SQLite ignores.
+func checkpointAndZero(ctx context.Context, database *sql.DB, path string) (bool, error) {
+	connection, err := database.Conn(ctx)
+	if busy(err) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer connection.Close()
+	var blocked, frames, moved int
+	err = connection.QueryRowContext(ctx, `PRAGMA wal_checkpoint(FULL)`).Scan(&blocked, &frames, &moved)
+	switch {
+	case busy(err):
+		return true, nil
+	case err != nil:
+		return false, err
+	case blocked != 0 || frames < 0 || moved != frames:
+		return true, nil
+	}
+	err = erase.Overwrite(path+"-wal", walHeaderLen)
+	if err == nil {
+		err = erase.Overwrite(path+"-wal", erase.WholeFile)
+	}
+	if err == nil {
+		err = erase.Overwrite(path+"-shm", erase.WholeFile)
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		err = nil
+	}
+	return false, err
+}
+
+// exclusiveDataSourceName sets the locking mode before anything reads the database, so the first read takes the
+// exclusive lock and keeps the index of the log in process memory; the driver runs _pragma values in lexical order,
+// so none that sorts before locking_mode may read.
+func exclusiveDataSourceName(path string) string {
+	query := url.Values{}
+	query.Set("_busy_timeout", strconv.Itoa(checkpointTimeoutMilliseconds))
+	query.Add("_pragma", "journal_size_limit(-1)")
+	query.Add("_pragma", "locking_mode(EXCLUSIVE)")
+	query.Add("_pragma", "synchronous(FULL)")
+	return "file:" + (&url.URL{Path: path}).EscapedPath() + "?" + query.Encode()
 }

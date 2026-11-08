@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/misaon/nylzo/internal/core/vectors"
+	"github.com/misaon/nylzo/internal/vectors"
 )
 
 func TestVectorCommandEntrypoint(t *testing.T) {

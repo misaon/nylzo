@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	ScryptN = 1 << 18
-	ScryptR = 8
-	ScryptP = 1
+	scryptN = 1 << 18
+	scryptR = 8
+	scryptP = 1
 )
 
 var ErrMalformedPassphrase = errors.New("core: passphrase is not well-formed Unicode")
@@ -39,7 +39,7 @@ func DerivePassphraseKey(kdf core.KDF, passphrase string, salt *[32]byte) ([]byt
 	defer clear(normalized)
 	derivations <- struct{}{}
 	defer func() { <-derivations }()
-	return scrypt.Key(normalized, salt[:], ScryptN, ScryptR, ScryptP, core.KeyLen)
+	return scrypt.Key(normalized, salt[:], scryptN, scryptR, scryptP, core.KeyLen)
 }
 
 func checkPassphrase(kdf core.KDF, passphrase string) error {

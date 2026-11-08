@@ -14,11 +14,11 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/server/diskspace"
-	"github.com/misaon/nylzo/internal/server/webclient"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
 const (
-	ProxyModeNone     = ""
+	proxyModeNone     = ""
 	ProxyModeScaleway = "scaleway"
 	MaxPoWConcurrency = 4
 	MaxPoWDifficulty  = proofofwork.MaxDifficulty
@@ -42,6 +42,7 @@ type Rates struct {
 	CreatePerDay       int64
 	CreateBytesPerDay  int64
 	ReadPerHour        int64
+	ReadBytesPerHour   int64
 	AbusePerHour       int64
 	CoarseMultiplier   int64
 	BucketPerSecond    float64
@@ -52,38 +53,39 @@ type Rates struct {
 }
 
 type Server struct {
-	Listen         string
-	DataDir        string
-	EpochDir       string
-	Pepper         []byte
-	PepperPrevious []byte
-	ReportKey      hpke.PublicKey
-	TrustedProxies []netip.Prefix
-	ProxyMode      string
-	SweepInterval  time.Duration
-	Limits         Limits
-	Rates          Rates
-	PoWDifficulty  int
-	PoWConcurrency int
-	MaxStreams     int
-	MinFreeBytes   int64
-	Operator       Operator
-	PublicURL      string
-	Version        string
-	Build          buildinfo.Info
-	Development    Development
+	Listen                 string
+	DataDirectory          string
+	EpochDirectoryOverride string
+	Pepper                 []byte
+	PepperPrevious         []byte
+	ReportKey              hpke.PublicKey
+	TrustedProxies         []netip.Prefix
+	ProxyMode              string
+	SweepInterval          time.Duration
+	Limits                 Limits
+	Rates                  Rates
+	PoWDifficulty          int
+	PoWConcurrency         int
+	MaxStreams             int
+	MinFreeBytes           int64
+	Operator               Operator
+	PublicURL              string
+	Version                string
+	Build                  buildinfo.Info
+	Development            Development
 }
 
 // Development holds the opt-outs a developer machine needs; each one weakens what a stolen server reveals.
 type Development struct {
 	AllowSwap              bool
 	AllowUnerasableStorage bool
+	AllowUnerasedMemory    bool
 }
 
 func Defaults() Server {
 	return Server{
 		Listen:        "127.0.0.1:8080",
-		DataDir:       "data",
+		DataDirectory: "data",
 		SweepInterval: 5 * time.Minute,
 		Limits: Limits{
 			MaxFileBytes:   envelope.MaxFileBytes,
@@ -97,6 +99,7 @@ func Defaults() Server {
 			CreatePerDay:      100,
 			CreateBytesPerDay: 50_000_000,
 			ReadPerHour:       300,
+			ReadBytesPerHour:  256 << 20,
 			AbusePerHour:      5,
 			CoarseMultiplier:  5,
 			BucketPerSecond:   500,
@@ -119,10 +122,10 @@ type rule struct {
 
 // EpochDirectory is where the epoch seed lives; keep it out of every backup (spec section 5.6).
 func (s *Server) EpochDirectory() string {
-	if s.EpochDir != "" {
-		return s.EpochDir
+	if s.EpochDirectoryOverride != "" {
+		return s.EpochDirectoryOverride
 	}
-	return filepath.Join(s.DataDir, "epoch")
+	return filepath.Join(s.DataDirectory, "epoch")
 }
 
 // Validate checks a configuration that serves requests, which needs the operator's report key.
@@ -148,7 +151,7 @@ func (s *Server) validateWithoutReports() error {
 	if s.PublicURL == "" {
 		return nil
 	}
-	if err := webclient.CheckPublicURL(s.PublicURL); err != nil {
+	if err := operatoraddress.CheckPublicURL(s.PublicURL); err != nil {
 		return fmt.Errorf("%w: NYLZO_PUBLIC_URL: %w", ErrInvalid, err)
 	}
 	return nil
@@ -197,7 +200,7 @@ func (s *Server) rules() []rule {
 			"NYLZO_MIN_FREE_BYTES must be 0 on a system where nylzo cannot measure free space",
 		},
 		{
-			s.ProxyMode == ProxyModeNone || s.ProxyMode == ProxyModeScaleway,
+			s.ProxyMode == proxyModeNone || s.ProxyMode == ProxyModeScaleway,
 			"NYLZO_PROXY_MODE must be empty or scaleway",
 		},
 		{
@@ -206,6 +209,10 @@ func (s *Server) rules() []rule {
 		},
 		{rates.BucketBurst >= 1, "NYLZO_RATE_BUCKET_BURST must be at least 1"},
 		{rates.SourceBurst >= 1, "NYLZO_RATE_SOURCE_BURST must be at least 1"},
+		{
+			rates.ReadBytesPerHour == 0 || rates.ReadBytesPerHour >= limits.MaxObjectBytes,
+			"NYLZO_RATE_READ_BYTES_HOUR must be 0 or at least the largest object, or no such message could be read",
+		},
 		{
 			slices.Min(rates.counted()) >= 0 && rates.GlobalDailyCreates >= 0 && rates.CoarseMultiplier >= 0,
 			"the NYLZO_RATE_* limits must not be negative",
@@ -218,5 +225,12 @@ func (s *Server) rules() []rule {
 }
 
 func (r *Rates) counted() []int64 {
-	return []int64{r.CreatePerHour, r.CreatePerDay, r.CreateBytesPerDay, r.ReadPerHour, r.AbusePerHour}
+	return []int64{
+		r.CreatePerHour,
+		r.CreatePerDay,
+		r.CreateBytesPerDay,
+		r.ReadPerHour,
+		r.ReadBytesPerHour,
+		r.AbusePerHour,
+	}
 }

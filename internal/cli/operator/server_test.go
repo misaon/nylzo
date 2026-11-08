@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 
@@ -58,7 +59,7 @@ func TestShutdownPastItsTimeoutIsAnOrderlyExit(t *testing.T) {
 	go func() { served <- httpServer.Serve(listener) }()
 	go http.Get("http://" + listener.Addr().String())
 	<-entered
-	if err = shutdown(httpServer, 50*time.Millisecond, slog.New(slog.DiscardHandler)); err != nil {
+	if err = shutdown(t.Context(), httpServer, 50*time.Millisecond, slog.New(slog.DiscardHandler)); err != nil {
 		t.Fatalf("a shutdown that outlives its timeout must still end cleanly: %v", err)
 	}
 	if err = <-served; !errors.Is(err, http.ErrServerClosed) {
@@ -93,7 +94,14 @@ func TestServeSetsASoftMemoryLimitUnlessGOMEMLIMITIsSet(t *testing.T) {
 
 func TestRequireStoreAcceptsWhatOpenCreates(t *testing.T) {
 	directory := t.TempDir()
-	storage, _, err := openStore(directory, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
+	storage, _, err := openStore(
+		t.Context(),
+		directory,
+		testDevelopment,
+		testPool,
+		sqlite.Open,
+		slog.New(slog.DiscardHandler),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,6 +114,7 @@ func TestRequireStoreAcceptsWhatOpenCreates(t *testing.T) {
 func TestSweepOnceLeavesAMissingStoreAlone(t *testing.T) {
 	directory := filepath.Join(t.TempDir(), "absent")
 	if err := sweepOnce(
+		t.Context(),
 		getenvFrom(map[string]string{"NYLZO_DATA_DIR": directory}),
 		slog.New(slog.DiscardHandler),
 	); !errors.Is(
@@ -128,7 +137,14 @@ func TestConfigErrorsNameTheVariable(t *testing.T) {
 
 func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 	directory := t.TempDir()
-	storage, _, err := openStore(directory, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
+	storage, _, err := openStore(
+		t.Context(),
+		directory,
+		testDevelopment,
+		testPool,
+		sqlite.Open,
+		slog.New(slog.DiscardHandler),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,8 +161,8 @@ func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 	if result.code != 0 {
 		t.Fatalf("sweep-once without a pepper: exit %d, %s", result.code, result.stderr)
 	}
-	if strings.Count(result.stderr, `"level":"ERROR"`) != 0 {
-		t.Fatalf("a clean sweep logged an error: %s", result.stderr)
+	if strings.Count(result.stderr, `"level":"ERROR"`) != 0 || strings.Contains(result.stderr, `"msg":"sweep-once"`) {
+		t.Fatalf("a clean sweep logged an error or a report: %s", result.stderr)
 	}
 	if _, err = os.Stat(old); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("sweep-once kept an abuse report older than 7 days: %v", err)
@@ -177,6 +193,33 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 	}
 }
 
+func TestServeRefusesABuildThatLeavesKeysInMemory(t *testing.T) {
+	if secretmode.Supported() {
+		t.Skip("this test binary erases request memory")
+	}
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer taken.Close()
+	result := run(
+		t,
+		"",
+		map[string]string{
+			"NYLZO_DATA_DIR":              t.TempDir(),
+			"NYLZO_PEPPER_FILE":           pepperFile(t),
+			"NYLZO_REPORT_KEY":            testReportKeyText,
+			"NYLZO_LISTEN":                taken.Addr().String(),
+			"NYLZO_ALLOW_UNERASED_MEMORY": "0",
+		},
+		nil,
+		RunServe,
+	)
+	if result.code != 1 || !strings.Contains(result.stderr, "GOEXPERIMENT=runtimesecret") {
+		t.Fatalf("a build without secret mode: exit %d, %s", result.code, result.stderr)
+	}
+}
+
 func TestLogLinesOfTheCommandCarryTheMinuteOnly(t *testing.T) {
 	stderr := run(
 		t,
@@ -199,13 +242,20 @@ func TestLogLinesOfTheCommandCarryTheMinuteOnly(t *testing.T) {
 
 func TestOpenCreatesPrivateDirectories(t *testing.T) {
 	settings := config.Defaults()
-	settings.DataDir = filepath.Join(t.TempDir(), "data")
-	storage, _, err := openStore(settings.DataDir, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
+	settings.DataDirectory = filepath.Join(t.TempDir(), "data")
+	storage, _, err := openStore(
+		t.Context(),
+		settings.DataDirectory,
+		testDevelopment,
+		testPool,
+		sqlite.Open,
+		slog.New(slog.DiscardHandler),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	storage.Close()
-	for _, directory := range []string{settings.DataDir, filepath.Join(settings.DataDir, disk.Directory), filepath.Join(settings.DataDir, disk.Directory, "tmp")} {
+	for _, directory := range []string{settings.DataDirectory, filepath.Join(settings.DataDirectory, disk.Directory), filepath.Join(settings.DataDirectory, disk.Directory, "tmp")} {
 		info, statErr := os.Stat(directory)
 		if statErr != nil {
 			t.Fatal(statErr)
@@ -218,7 +268,14 @@ func TestOpenCreatesPrivateDirectories(t *testing.T) {
 
 func TestSweepOnceRefusesAnotherSchemaVersion(t *testing.T) {
 	directory := t.TempDir()
-	storage, _, err := openStore(directory, testDevelopment, sqlite.Open, slog.New(slog.DiscardHandler))
+	storage, _, err := openStore(
+		t.Context(),
+		directory,
+		testDevelopment,
+		testPool,
+		sqlite.Open,
+		slog.New(slog.DiscardHandler),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,7 +301,7 @@ func TestSweepOnceRefusesAnotherSchemaVersion(t *testing.T) {
 	if err = database.QueryRow(`PRAGMA user_version`).Scan(&version); err != nil || version != 3 {
 		t.Fatalf("sweep-once changed the version of a database it refused: version %d %v", version, err)
 	}
-	if _, err = database.Exec(`PRAGMA user_version = 8`); err != nil {
+	if _, err = database.Exec(`PRAGMA user_version = 9`); err != nil {
 		t.Fatal(err)
 	}
 	if result = run(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, RunSweepOnce); result.code != 1 ||

@@ -11,61 +11,60 @@ import (
 	"path/filepath"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
-	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
+var errUnknownReadiness = errors.New("store-check: readiness")
+
 // RunStoreCheck tells, without writing anything, whether serve of this build can open the data directory, so an
 // updater can refuse a build before it stops the running one.
-func RunStoreCheck(_ context.Context, environment *command.Environment, arguments []string) int {
-	return runServer(
-		environment,
-		arguments,
-		"store-check",
-		func(logger *slog.Logger) error { return storeCheck(environment.Getenv, environment.Stdout, logger) },
-	)
+func RunStoreCheck(ctx context.Context, environment *command.Environment, arguments []string) int {
+	return runServer(ctx, environment, arguments, "store-check", func(ctx context.Context, logger *slog.Logger) error {
+		return storeCheck(ctx, environment.Getenv, environment.Stdout, logger)
+	})
 }
 
-func storeCheck(getenv func(string) string, output io.Writer, logger *slog.Logger) error {
-	settings, err := config.FromEnv(getenv, false)
+func storeCheck(ctx context.Context, getenv func(string) string, output io.Writer, logger *slog.Logger) error {
+	settings, err := config.FromEnvironment(getenv, false)
 	if err != nil {
 		return err
 	}
-	if dataErr := checkDataDirectory(&settings, output, logger); dataErr != nil {
+	if dataErr := checkDataDirectory(ctx, &settings, output, logger); dataErr != nil {
 		return dataErr
 	}
 	return checkEpochDirectory(&settings, output, logger)
 }
 
-func checkDataDirectory(settings *config.Server, output io.Writer, logger *slog.Logger) error {
-	dataDir := settings.DataDir
-	if _, err := os.Stat(dataDir); errors.Is(err, fs.ErrNotExist) {
+func checkDataDirectory(ctx context.Context, settings *config.Server, output io.Writer, logger *slog.Logger) error {
+	dataDirectory := settings.DataDirectory
+	if _, err := os.Stat(dataDirectory); errors.Is(err, fs.ErrNotExist) {
 		fmt.Fprintln(output, "store: no data directory yet; serve creates it")
 		return nil
 	}
-	databasePath := filepath.Join(dataDir, databaseFile)
+	databasePath := filepath.Join(dataDirectory, databaseFile)
 	err := datadir.Check(datadir.Layout{
-		Directory: dataDir,
+		Directory: dataDirectory,
 		Files:     []string{databasePath, databasePath + "-wal", databasePath + "-shm"},
-		Trees:     []string{filepath.Join(dataDir, disk.Directory), abuse.Directory(dataDir)},
+		Trees:     []string{filepath.Join(dataDirectory, disk.Directory), abuse.Directory(dataDirectory)},
 	})
 	if err != nil {
 		return err
 	}
-	paths := []string{dataDir}
-	if len(existing(filepath.Join(dataDir, disk.Directory, "tmp"))) > 0 {
-		if paths, err = erasablePaths(dataDir); err != nil {
+	paths := []string{dataDirectory}
+	if len(existing(filepath.Join(dataDirectory, disk.Directory, "tmp"))) > 0 {
+		if paths, err = erasablePaths(dataDirectory); err != nil {
 			return err
 		}
 	}
 	if erasableErr := requireErasable(paths, settings.Development, logger); erasableErr != nil {
 		return erasableErr
 	}
-	readiness, err := sqlite.Inspect(context.Background(), databasePath)
+	readiness, err := sqlite.Inspect(ctx, databasePath)
 	if err != nil {
 		return err
 	}
@@ -77,7 +76,7 @@ func checkDataDirectory(settings *config.Server, output io.Writer, logger *slog.
 	case sqlite.ReadinessCreate:
 		fmt.Fprintln(output, "store: no database yet; serve creates it")
 	default:
-		return fmt.Errorf("store-check: readiness %d is unknown", readiness)
+		return fmt.Errorf("%w %d is unknown", errUnknownReadiness, readiness)
 	}
 	return nil
 }
@@ -86,7 +85,7 @@ func checkEpochDirectory(settings *config.Server, output io.Writer, logger *slog
 	directory := settings.EpochDirectory()
 	state, err := epoch.Inspect(directory)
 	switch {
-	case errors.Is(err, epoch.ErrNoDirectory) && settings.EpochDir == "":
+	case errors.Is(err, epoch.ErrNoDirectory) && settings.EpochDirectoryOverride == "":
 		fmt.Fprintln(output, "epoch: no directory yet; serve creates it in the data directory")
 		return nil
 	case err != nil:

@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const shortCommitLength = 12
+
 const development = "dev"
 
 type Info struct {
@@ -43,7 +45,7 @@ func versionOf(override, module, commit string, dirty bool) string {
 	if commit == "" {
 		return development
 	}
-	version := "0.0.0-dev.g" + commit[:min(12, len(commit))]
+	version := "0.0.0-dev.g" + commit[:min(shortCommitLength, len(commit))]
 	if dirty {
 		version += ".dirty"
 	}

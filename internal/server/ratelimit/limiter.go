@@ -61,7 +61,7 @@ func (l *Limiter) Purge(now time.Time) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 	second := l.second(now)
-	l.buckets = Rebuilt(l.buckets, func(bucket tokenBucket) bool {
+	l.buckets = rebuilt(l.buckets, func(bucket tokenBucket) bool {
 		return l.refilled(bucket, second).tokens < l.burst
 	})
 }
@@ -69,7 +69,7 @@ func (l *Limiter) Purge(now time.Time) {
 func (l *Limiter) Reset() {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	l.buckets = Rebuilt(l.buckets, func(tokenBucket) bool { return false })
+	l.buckets = rebuilt(l.buckets, func(tokenBucket) bool { return false })
 }
 
 func (l *Limiter) second(now time.Time) int64 {
@@ -88,9 +88,9 @@ func (l *Limiter) trim(second int64) {
 	Trim(l.buckets, l.maxEntries, func(bucket tokenBucket) bool { return l.refilled(bucket, second).tokens >= l.burst })
 }
 
-// Rebuilt copies the entries to keep into a new map and drops the old one, because a deleted slot keeps its key
+// rebuilt copies the entries to keep into a new map and drops the old one, because a deleted slot keeps its key
 // bytes in the map's memory; under secret mode the dropped map is erased once the collector finds it unreachable.
-func Rebuilt[K comparable, V any](table map[K]V, keep func(V) bool) map[K]V {
+func rebuilt[K comparable, V any](table map[K]V, keep func(V) bool) map[K]V {
 	kept := make(map[K]V, len(table))
 	for key, value := range table {
 		if keep(value) {

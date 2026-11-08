@@ -16,8 +16,8 @@ var (
 	dataBlockType   = regexp.MustCompile(`(?i)\stype\s*=\s*"application/ld\+json"`)
 )
 
-// PagePolicy allows the inline scripts and styles of html by hash, so every response carries the same header.
-func PagePolicy(html string) string {
+// pagePolicy allows the inline scripts and styles of html by hash, so every response carries the same header.
+func pagePolicy(html string) string {
 	hashes := inlineHashes(html)
 	return fmt.Sprintf(pagePolicyFormat, sourceList(hashes.scripts), sourceList(hashes.styles))
 }

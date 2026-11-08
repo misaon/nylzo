@@ -7,6 +7,7 @@ import (
 	sqldriver "database/sql/driver"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand/v2"
 	"net/url"
 	"os"
@@ -30,36 +31,59 @@ const (
 	busyTimeoutMilliseconds = 5000
 )
 
-var errNoFileControl = errors.New("sqlite: the driver cannot keep the log file, so it would free its blocks")
+var (
+	errNoFileControl = errors.New("sqlite: the driver cannot keep the log file, so it would free its blocks")
+	errNoStatus      = errors.New("sqlite: the driver cannot count the pages a write puts into the log")
+)
 
 type Store struct {
-	path        string
-	pageSize    int
-	writer      *sql.DB
-	reader      *sql.DB
-	statements  *statements
-	scrubs      chan struct{}
-	stopScrubs  context.CancelFunc
-	scrubbersUp sync.WaitGroup
-	scrubFailed atomic.Pointer[func(error)]
+	path               string
+	pageSize           int
+	writer             *sql.DB
+	reader             *sql.DB
+	statements         *statements
+	scrubs             chan struct{}
+	stopScrubs         context.CancelFunc
+	scrubbersUp        sync.WaitGroup
+	scrubFailed        atomic.Pointer[func(error)]
+	unscrubbedFrames   atomic.Int64
+	changedSinceBuild  atomic.Bool
+	builtAtDataVersion atomic.Int64
+	logResetSkipped    bool
 }
 
 var _ store.Store = (*Store)(nil)
 
+// Open first zeroes the log and its index when no other process has the database open (spec §13).
 func Open(ctx context.Context, path string) (*Store, error) {
-	return openWith(ctx, path, func(ctx context.Context, database *sql.DB) error {
-		if err := createSchema(ctx, database); err != nil {
-			return err
+	skipped, err := resetLog(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite: reset the log: %w", err)
+	}
+	opened, err := openWith(ctx, path, func(ctx context.Context, database *sql.DB) error {
+		if schemaErr := createSchema(ctx, database); schemaErr != nil {
+			return schemaErr
 		}
 		return ensureDummyRow(ctx, database)
 	})
+	if err != nil {
+		return nil, err
+	}
+	opened.logResetSkipped = skipped
+	return opened, nil
 }
 
 func OpenCurrent(ctx context.Context, path string) (*Store, error) {
 	return openWith(ctx, path, requireCurrent)
 }
 
-// Close scrubs the log once more, so a process that ended messages leaves no older row version in it.
+// LogResetSkipped reports that another process had the database open, so Open left the log and its index alone and
+// their headers still count the writes since the log was created.
+func (s *Store) LogResetSkipped() bool {
+	return s.logResetSkipped
+}
+
+// Close rebuilds and scrubs once more, so a process that changed rows leaves no older row version behind.
 func (s *Store) Close() error {
 	s.stopScrubs()
 	s.scrubbersUp.Wait()
@@ -70,8 +94,26 @@ func (s *Store) Close() error {
 	return errors.Join(scrubErr, s.statements.close(), s.reader.Close(), s.writer.Close())
 }
 
+// transaction commits body on the only writer connection, then asks for a scrub of the frames the commit wrote and
+// marks the tables for the next rebuild.
 func (s *Store) transaction(ctx context.Context, body func(tx *sql.Tx) error) error {
-	tx, err := s.writer.BeginTx(ctx, nil)
+	connection, err := s.writer.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer connection.Close()
+	if _, err = writtenPages(connection); err != nil {
+		return err
+	}
+	err = commit(ctx, connection, body)
+	if s.noteFrames(ctx, connection, err == nil) && err == nil {
+		s.changedSinceBuild.Store(true)
+	}
+	return err
+}
+
+func commit(ctx context.Context, connection *sql.Conn, body func(tx *sql.Tx) error) error {
+	tx, err := connection.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -87,18 +129,76 @@ func (s *Store) transaction(ctx context.Context, body func(tx *sql.Tx) error) er
 	return nil
 }
 
+// noteFrames reports whether a transaction wrote to the log and asks for a scrub of what it wrote; it asks for a full
+// scrub when it cannot tell the last frame, or when a transaction that rolled back had spilled pages into the log.
+func (s *Store) noteFrames(ctx context.Context, connection *sql.Conn, committed bool) bool {
+	pages, err := writtenPages(connection)
+	if err == nil && pages == 0 {
+		return false
+	}
+	frames := int64(math.MaxInt64)
+	if err == nil && committed {
+		if logged, logErr := logFrames(context.WithoutCancel(ctx), connection); logErr == nil {
+			frames = logged
+		}
+	}
+	if frames > s.unscrubbedFrames.Load() {
+		s.unscrubbedFrames.Store(frames)
+	}
+	s.requestScrub()
+	return true
+}
+
+// writtenPages counts the pages the connection wrote to the log since it last asked, spilled pages included.
+func writtenPages(connection *sql.Conn) (int, error) {
+	var pages int
+	err := connection.Raw(func(driverConnection any) error {
+		status, ok := driverConnection.(driver.DBStatus)
+		if !ok {
+			return errNoStatus
+		}
+		var statusErr error
+		pages, _, statusErr = status.Status(driver.DBStatusCacheWrite, true)
+		return statusErr
+	})
+	return pages, err
+}
+
+// logFrames reads the last frame of the log that holds a commit since the log last started over.
+func logFrames(ctx context.Context, connection *sql.Conn) (int64, error) {
+	var blocked, frames, moved int64
+	err := connection.QueryRowContext(ctx, `PRAGMA wal_checkpoint(PASSIVE)`).Scan(&blocked, &frames, &moved)
+	return frames, err
+}
+
 type statements struct {
-	loadRow        *sql.Stmt
-	hitCounter     *sql.Stmt
-	reserveCounter *sql.Stmt
+	loadRow           *sql.Stmt
+	reloadRow         *sql.Stmt
+	insertRow         *sql.Stmt
+	updateRow         *sql.Stmt
+	updateRowAndPurge *sql.Stmt
+	shredBlob         *sql.Stmt
+	forgetBlob        *sql.Stmt
+	hitCounter        *sql.Stmt
+	reserveCounter    *sql.Stmt
+	releaseCounter    *sql.Stmt
+	loadCounter       *sql.Stmt
 }
 
 func prepare(ctx context.Context, writer, reader *sql.DB) (*statements, error) {
 	prepared := &statements{}
-	var errs [3]error
+	var errs [11]error
 	prepared.loadRow, errs[0] = reader.PrepareContext(ctx, rowQuery)
-	prepared.hitCounter, errs[1] = writer.PrepareContext(ctx, hitQuery)
-	prepared.reserveCounter, errs[2] = writer.PrepareContext(ctx, reserveQuery)
+	prepared.reloadRow, errs[1] = writer.PrepareContext(ctx, rowQuery)
+	prepared.insertRow, errs[2] = writer.PrepareContext(ctx, insertRow)
+	prepared.updateRow, errs[3] = writer.PrepareContext(ctx, updateRow)
+	prepared.updateRowAndPurge, errs[4] = writer.PrepareContext(ctx, updateRowAndPurge)
+	prepared.shredBlob, errs[5] = writer.PrepareContext(ctx, shredBlob)
+	prepared.forgetBlob, errs[6] = writer.PrepareContext(ctx, forgetBlob)
+	prepared.hitCounter, errs[7] = writer.PrepareContext(ctx, hitQuery)
+	prepared.reserveCounter, errs[8] = writer.PrepareContext(ctx, reserveQuery)
+	prepared.releaseCounter, errs[9] = writer.PrepareContext(ctx, releaseQuery)
+	prepared.loadCounter, errs[10] = reader.PrepareContext(ctx, counterQuery)
 	if err := errors.Join(errs[:]...); err != nil {
 		return nil, errors.Join(err, prepared.close())
 	}
@@ -106,13 +206,33 @@ func prepare(ctx context.Context, writer, reader *sql.DB) (*statements, error) {
 }
 
 func (p *statements) close() error {
-	var errs []error
-	for _, statement := range []*sql.Stmt{p.loadRow, p.hitCounter, p.reserveCounter} {
+	all := []*sql.Stmt{
+		p.loadRow,
+		p.reloadRow,
+		p.insertRow,
+		p.updateRow,
+		p.updateRowAndPurge,
+		p.shredBlob,
+		p.forgetBlob,
+		p.hitCounter,
+		p.reserveCounter,
+		p.releaseCounter,
+		p.loadCounter,
+	}
+	errs := make([]error, 0, len(all))
+	for _, statement := range all {
 		if statement != nil {
 			errs = append(errs, statement.Close())
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// execIn runs a prepared statement inside tx; closing it leaves the statement prepared on the connection.
+func execIn(ctx context.Context, tx *sql.Tx, prepared *sql.Stmt, arguments ...any) (sql.Result, error) {
+	statement := tx.StmtContext(ctx, prepared)
+	defer statement.Close()
+	return statement.ExecContext(ctx, arguments...)
 }
 
 func openWith(ctx context.Context, path string, prepareSchema func(context.Context, *sql.DB) error) (*Store, error) {
@@ -173,6 +293,7 @@ func connect(ctx context.Context, path string, prepareSchema func(context.Contex
 	reader.SetMaxOpenConns(readerConnections)
 	reader.SetMaxIdleConns(readerConnections)
 	opened := &Store{path: path, writer: writer, reader: reader, scrubs: make(chan struct{}, 1)}
+	opened.changedSinceBuild.Store(true)
 	err = reader.QueryRowContext(ctx, `PRAGMA page_size`).Scan(&opened.pageSize)
 	if err == nil {
 		opened.statements, err = prepare(ctx, writer, reader)

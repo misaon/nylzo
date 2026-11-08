@@ -30,7 +30,7 @@ type Challenges struct {
 	batches *spendBatcher
 }
 
-func NewChallenges(ring *pepper.Ring, counters store.Counters) *Challenges {
+func NewChallenges(ring *pepper.Ring, counters BatchReserver) *Challenges {
 	return &Challenges{ring: ring, seen: newSeenNonces(), batches: newSpendBatcher(counters)}
 }
 
