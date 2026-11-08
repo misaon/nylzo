@@ -1,0 +1,34 @@
+[Unit]
+Description=Static IPv6 address that Hetzner assigns to the server
+Wants=network-online.target
+After=network-online.target nylzo-firewall.service
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/nylzo/runtime/public-address
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/run/systemd/network
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RestrictRealtime=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+CapabilityBoundingSet=CAP_NET_ADMIN
+RestrictAddressFamilies=AF_NETLINK AF_UNIX AF_INET AF_INET6
+IPAddressAllow=169.254.169.254
+IPAddressDeny=any
+LimitCORE=0
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export LC_ALL=C
+export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
+# Hetzner assigns IPv6 statically and announces it only through its metadata service, not DHCPv6 or router advertisements.
+readonly metadata=${NYLZO_NETWORK_METADATA:-http://169.254.169.254/hetzner/v1/metadata/network-config}
+readonly directory=${NYLZO_NETWORK_DROPIN:-/run/systemd/network/zz-default.network.d}
+config=$(curl --fail --silent --show-error --proto '=http' --max-time 10 --retry 5 --retry-connrefused --max-filesize 65536 "$metadata")
+address=$(sed -n 's/^[[:space:]-]*address:[[:space:]]*\([0-9a-f:]*\/64\)[[:space:]]*$/\1/p' <<< "$config" | head -n 1)
+gateway=$(sed -n 's/^[[:space:]-]*gateway:[[:space:]]*\(fe80::1\)[[:space:]]*$/\1/p' <<< "$config" | head -n 1)
+if [[ ! "$address" =~ ^[0-9a-f]{1,4}(:[0-9a-f]{0,4}){1,7}/64$ || "$gateway" != fe80::1 ]]; then
+  echo 'The Hetzner metadata names no static IPv6 address; IPv6 stays unconfigured.' >&2
+  exit 0
+fi
+interface=$(ip -o -4 route show default | awk '{ print $5; exit }')
+[[ "$interface" =~ ^[a-z0-9]{1,15}$ ]] || { echo 'No interface carries the default IPv4 route.' >&2; exit 1; }
+install -d -m 0755 "$directory"
+printf '[Network]\nAddress=%s\nGateway=%s\n' "$address" "$gateway" > "$directory/50-nylzo-ipv6.conf"
+# Adding the address directly leaves the IPv4 lease untouched; the drop-in keeps it when networkd reconfigures the link.
+ip -6 address replace "$address" dev "$interface"
+ip -6 route replace default via "$gateway" dev "$interface"
+echo "IPv6 $address via $gateway on $interface"
