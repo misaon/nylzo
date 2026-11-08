@@ -1,0 +1,5 @@
+# Scorecard reads this file; the dependency gate passes security/osv-scanner.toml instead and checks security/sca-policy.json.
+[[IgnoredVulns]]
+id = "GHSA-gcqx-w48m-w2h4"
+ignoreUntil = 2026-11-27T00:00:00Z
+reason = "Fixed by web/patches/deepmerge@4.3.1.patch, which installation verifies. Assessed in security/sca-policy.json."

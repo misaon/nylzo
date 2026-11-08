@@ -2,6 +2,8 @@
 
 Assessment date: **2026-10-27**. Scope: the published Nylzo 0.1.1 application, its Go server and CLI, browser client, protocol, storage, Compose deployment, and the reviewed release controls. This is a project self-assessment based on source review, protocol requirements, and automated security tests. It is not an independent audit or penetration test.
 
+Two cryptographic changes shipped after this date and are not yet assessed here: [attachment compression](https://github.com/misaon/nylzo/pull/166) and [protocol version 2](https://github.com/misaon/nylzo/pull/206) with committed envelopes and expiring key shares. Both need the fresh assessment that the next paragraph requires.
+
 Review this assessment before a release that changes cryptography, capabilities, message lifecycle, external interfaces, storage, trusted proxies, dependencies, or publishing authority. Update the affected threats, controls, tests, and accepted risks in the same PR. A new protocol primitive or trust boundary needs a fresh assessment rather than an assertion that existing tests still pass.
 
 ## Assets and security goals

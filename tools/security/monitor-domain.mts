@@ -64,8 +64,8 @@ export function registrationProblems(registration: Registration, now = Date.now(
   return problems;
 }
 
-async function json(url: string, headers: Record<string, string> = {}): Promise<unknown> {
-  const response = await fetch(url, { headers: { accept: "application/json", ...headers }, redirect: "error", signal: AbortSignal.timeout(30000) });
+async function json(url: string): Promise<unknown> {
+  const response = await fetch(url, { headers: { accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(30000) });
   const reader = response.body?.getReader();
   assert(reader, "The monitor API returned an empty body");
   const chunks: Uint8Array[] = [];
@@ -101,7 +101,7 @@ function registration(domain: string) {
   return json(base + domain) as Promise<Registration>;
 }
 
-export async function domainProblems(domain: string, options: { accountUri?: string; reviewedUntil?: string; token?: string; now?: number } = {}) {
+export async function domainProblems(domain: string, options: { accountUri?: string; reviewedUntil?: string; now?: number } = {}) {
   assert.match(domain, /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u);
   const now = options.now ?? Date.now();
   const resolve = (name: string, type: string) => json(`https://dns.google/resolve?name=${name}&type=${type}&do=true`) as Promise<Lookup>;
@@ -112,8 +112,7 @@ export async function domainProblems(domain: string, options: { accountUri?: str
   ];
   const since = new Date(Math.max(now - 8 * day, options.reviewedUntil ? new Date(options.reviewedUntil).getTime() : 0));
   for (let after = "", page = 0; page < maxCertificatePages; page++) {
-    const batch = await json(`https://api.certspotter.com/v1/issuances?domain=${domain}&include_subdomains=true&expand=dns_names&expand=issuer${after ? `&after=${encodeURIComponent(after)}` : ""}`,
-      options.token ? { authorization: `Bearer ${options.token}` } : {}) as Issuance[];
+    const batch = await json(`https://api.certspotter.com/v1/issuances?domain=${domain}&include_subdomains=true&expand=dns_names&expand=issuer${after ? `&after=${encodeURIComponent(after)}` : ""}`) as Issuance[];
     if (batch.length === 0) return problems;
     for (const problem of issuanceProblems(batch, domain, since)) problems.push(problem);
     after = batch.at(-1)!.id;
@@ -123,7 +122,7 @@ export async function domainProblems(domain: string, options: { accountUri?: str
 
 if (import.meta.main) {
   try {
-    const problems = await domainProblems(process.env.DOMAIN ?? "", { accountUri: process.env.ACME_ACCOUNT || undefined, reviewedUntil: process.env.CT_REVIEWED_UNTIL || undefined, token: process.env.CERTSPOTTER_TOKEN || undefined });
+    const problems = await domainProblems(process.env.DOMAIN ?? "", { accountUri: process.env.ACME_ACCOUNT || undefined, reviewedUntil: process.env.CT_REVIEWED_UNTIL || undefined });
     for (const problem of problems) console.error(problem);
     if (problems.length > 0) process.exitCode = 1;
     else console.log("DNS, certificate transparency and registration of the domain match the expected state.");

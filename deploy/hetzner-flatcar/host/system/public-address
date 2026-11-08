@@ -3,8 +3,8 @@ set -euo pipefail
 export LC_ALL=C
 export PATH="/usr/sbin:/usr/bin:/sbin:/bin"
 # Hetzner assigns IPv6 statically and announces it only through its metadata service, not DHCPv6 or router advertisements.
-readonly metadata=${NYLZO_NETWORK_METADATA:-http://169.254.169.254/hetzner/v1/metadata/network-config}
-readonly directory=${NYLZO_NETWORK_DROPIN:-/run/systemd/network/zz-default.network.d}
+readonly metadata=http://169.254.169.254/hetzner/v1/metadata/network-config
+readonly directory=/run/systemd/network/zz-default.network.d
 config=$(curl --fail --silent --show-error --proto '=http' --max-time 10 --retry 5 --retry-connrefused --max-filesize 65536 "$metadata")
 address=$(sed -n 's/^[[:space:]-]*address:[[:space:]]*\([0-9a-f:]*\/64\)[[:space:]]*$/\1/p' <<< "$config" | head -n 1)
 gateway=$(sed -n 's/^[[:space:]-]*gateway:[[:space:]]*\(fe80::1\)[[:space:]]*$/\1/p' <<< "$config" | head -n 1)

@@ -37,12 +37,12 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
       groups.deployment = true;
       groups.repository = true;
     } else if (
-      /^(docs\/wiki\/.*\.md|README\.md|SECURITY\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|LICENSE)$/u.test(file) ||
+      /^(docs\/wiki\/.*\.md|README\.md|SECURITY\.md|SUPPORT\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|LICENSE)$/u.test(file) ||
       /^(assets\/readme\/|skills\/.*\.md$|\.github\/(ISSUE_TEMPLATE\/|PULL_REQUEST_TEMPLATE\.md$))/u.test(file)
     ) {
       continue;
     } else if (
-      /^(go\.(mod|sum)|mise\.(toml|lock)|bunfig\.toml|\.goreleaser\.yaml|\.golangci\.yml)$/u.test(file) ||
+      /^(go\.(mod|sum)|mise\.(toml|lock)|\.goreleaser\.yaml|\.golangci\.yml)$/u.test(file) ||
       /^(\.github\/workflows\/|tools\/|mise-tasks\/|deploy\/caddy\/)/u.test(file) ||
       /^web\/(.*\/)?(package\.json|bun\.lock|bunfig\.toml)$/u.test(file)
     ) {

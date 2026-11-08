@@ -18,8 +18,9 @@ test("release scanning covers every archive and image architecture and fails clo
     "windows_arm64.zip",
   ];
   try {
-    for (const archive of archives) writeFileSync(join(directory, `nylzo_1.2.3_${archive}.sbom.json`), "{}\n");
-    for (const architecture of ["amd64", "arm64"]) writeFileSync(join(directory, `nylzo-caddy_1.2.3_linux_${architecture}.tar.gz.sbom.json`), "{}\n");
+    for (const archive of archives) writeFileSync(join(directory, `nylzo_1.2.3_${archive}`), "archive\n");
+    for (const architecture of ["amd64", "arm64"]) writeFileSync(join(directory, `nylzo-caddy_1.2.3_linux_${architecture}.tar.gz`), "archive\n");
+    writeFileSync(join(directory, "nylzo_1.2.3_linux_amd64.tar.gz.sbom.json"), "{}\n");
     const executable = join(directory, "grype");
     const log = join(directory, "calls");
     writeFileSync(
@@ -35,7 +36,7 @@ test("release scanning covers every archive and image architecture and fails clo
     assert.equal(scan().status, 0);
     const calls = readFileSync(log, "utf8").trim().split("\n");
     assert.equal(calls.length, 12);
-    assert.equal(calls.filter((call) => call.startsWith("sbom:")).length, 8);
+    assert.equal(calls.filter((call) => call.startsWith(`file:${directory}/nylzo`)).length, 8);
     for (const architecture of ["amd64", "arm64"])
       for (const reference of [image, caddy])
         assert.ok(calls.includes(`registry:${reference} --platform linux/${architecture} --fail-on high --output json --file ${join(directory, "reports", `${reference === caddy ? "caddy-" : ""}image-linux-${architecture}.grype.json`)}`));
@@ -47,7 +48,7 @@ test("release scanning covers every archive and image architecture and fails clo
     assert.notEqual(scan("ghcr.io/misaon/nylzo:latest").status, 0);
     assert.notEqual(scan(image, "0", `caddy@sha256:${"b".repeat(64)}`).status, 0);
     assert.notEqual(scan(image, "0", image).status, 0);
-    rmSync(join(directory, `nylzo_1.2.3_${archives[0]}.sbom.json`));
+    rmSync(join(directory, `nylzo_1.2.3_${archives[0]}`));
     assert.notEqual(scan().status, 0);
   } finally {
     rmSync(directory, { recursive: true, force: true });
