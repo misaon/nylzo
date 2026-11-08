@@ -4,11 +4,15 @@ export interface SemanticVersion {
   readonly patch: number;
 }
 
-const releasePattern = /^v?(0|[1-9]\d{0,14})\.(0|[1-9]\d{0,14})\.(0|[1-9]\d{0,14})$/u;
+const releasePattern = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 
 export function stableVersion(value: string): SemanticVersion | undefined {
   const match = releasePattern.exec(value);
-  return match ? { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) } : undefined;
+  if (!match) {
+    return undefined;
+  }
+  const version = { major: Number(match[1]), minor: Number(match[2]), patch: Number(match[3]) };
+  return Object.values(version).every((part) => Number.isSafeInteger(part)) ? version : undefined;
 }
 
 export function parseVersion(value: string): SemanticVersion {
@@ -20,7 +24,7 @@ export function parseVersion(value: string): SemanticVersion {
 }
 
 export function isReleaseTag(value: string): boolean {
-  return value.startsWith('v') && releasePattern.test(value);
+  return value.startsWith('v') && stableVersion(value) !== undefined;
 }
 
 export function formatTag(version: SemanticVersion): string {
