@@ -25,7 +25,7 @@ export const deployTask = pinRule([
 export const openTofuVersions = pinRule([
   {
     name: 'setting',
-    pattern: /^ +(?<setting>required_version|version) += "= (?<version>\d+\.\d+\.\d+)"$/dgmu,
+    pattern: /^ +(?<setting>opentofu|required_version|version) += "= (?<version>\d+\.\d+\.\d+)"$/dgmu,
     values: { version: 'version' },
   },
 ]);

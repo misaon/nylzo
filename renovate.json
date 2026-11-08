@@ -453,7 +453,7 @@
         "/^deploy/hetzner-flatcar/infrastructure/(image|server|dns)/main\\.tf$/"
       ],
       "matchStrings": [
-        "required_version = \"= (?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
+        "(?:opentofu|required_version) = \"= (?<currentValue>[0-9]+\\.[0-9]+\\.[0-9]+)\""
       ],
       "depNameTemplate": "opentofu/opentofu",
       "datasourceTemplate": "github-releases"
