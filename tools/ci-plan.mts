@@ -42,7 +42,7 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
     ) {
       continue;
     } else if (
-      /^(go\.(mod|sum)|mise\.(toml|lock)|bunfig\.toml|\.goreleaser\.yaml|\.golangci\.yml)$/u.test(file) ||
+      /^(go\.(mod|sum)|mise\.(toml|lock)|\.goreleaser\.yaml|\.golangci\.yml)$/u.test(file) ||
       /^(\.github\/workflows\/|tools\/|mise-tasks\/|deploy\/caddy\/)/u.test(file) ||
       /^web\/(.*\/)?(package\.json|bun\.lock|bunfig\.toml)$/u.test(file)
     ) {
