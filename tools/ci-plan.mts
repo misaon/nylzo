@@ -104,12 +104,13 @@ if (import.meta.main) {
     }
   } else {
     const event = process.env.EVENT ?? "";
+    const forced = process.env.FORCE_FULL_VERIFICATION === "true";
     const files =
-      event === "schedule" || event === "workflow_dispatch" || process.env.FORCE_FULL_VERIFICATION === "true"
+      event === "schedule" || event === "workflow_dispatch" || forced
         ? []
         : changedFiles(process.env.BASE_SHA ?? "", process.env.HEAD_SHA ?? "");
     const plan = planChecks(files, event, process.env.TRUSTED_COVERAGE === "true");
-    const output = Object.entries(plan)
+    const output = Object.entries({ ...plan, forced })
       .map(([key, value]) => `${key}=${JSON.stringify(value)}\n`)
       .join("");
     appendFileSync(process.env.GITHUB_OUTPUT!, output);
