@@ -339,9 +339,7 @@ jobs:
           merge-multiple: true
           digest-mismatch: error
       - name: Upload Go coverage
-        if: >-
-          needs.changes.outputs.go == 'true' && github.repository == 'misaon/nylzo' &&
-          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: needs.changes.outputs.go == 'true' && github.repository == 'misaon/nylzo'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           use_oidc: true
@@ -358,9 +356,7 @@ jobs:
           plugins: noop
           fail_ci_if_error: false
       - name: Upload TypeScript coverage
-        if: >-
-          needs.changes.outputs.web == 'true' && github.repository == 'misaon/nylzo' &&
-          (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: needs.changes.outputs.web == 'true' && github.repository == 'misaon/nylzo'
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
           use_oidc: true
@@ -391,13 +387,10 @@ jobs:
         include:
           - browser: chromium
             runner: ubuntu-26.04
-            install: chromium
           - browser: firefox
             runner: ubuntu-26.04
-            install: firefox
           - browser: webkit
             runner: macos-26
-            install: webkit
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
@@ -433,13 +426,12 @@ jobs:
         working-directory: web/e2e
         timeout-minutes: 15
         env:
-          INSTALL: ${{ matrix.install }}
+          BROWSER: ${{ matrix.browser }}
         run: |
           limit=()
           if command -v timeout > /dev/null; then limit=(timeout --kill-after=15s 120); fi
-          read -ra install <<< "$INSTALL"
           for attempt in 1 2 3; do
-            "${limit[@]}" bun --bun playwright install "${install[@]}" && exit 0
+            "${limit[@]}" bun --bun playwright install "$BROWSER" && exit 0
             echo "browser install attempt $attempt failed or hung"
           done
           exit 1
