@@ -3,7 +3,7 @@ import { parseArgs } from 'node:util';
 
 import { z } from 'zod';
 
-import { createGitHubClient, repository } from '../github/client.ts';
+import { createGitHubClient, repository, unlessMissing } from '../github/client.ts';
 import type { GitHubClient } from '../github/client.ts';
 import { maintenanceBranch, parseVersion } from '../versions/semantic-version.ts';
 import { globalSettings } from './global-settings.ts';
@@ -16,15 +16,7 @@ const inventory = z.object({
 const assets = z.record(z.string(), z.object({ version: z.string() }));
 
 async function existingBranch(client: GitHubClient, branch: string): Promise<string | null> {
-  try {
-    await client.rest.repos.getBranch({ ...repository, branch });
-    return branch;
-  } catch (error) {
-    if (error instanceof Error && 'status' in error && error.status === 404) {
-      return null;
-    }
-    throw error;
-  }
+  return (await unlessMissing(client.rest.repos.getBranch({ ...repository, branch }))) === undefined ? null : branch;
 }
 
 function affectedPackages(path: string | undefined): string[] {

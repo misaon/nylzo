@@ -13,7 +13,6 @@ concurrency:
 
 env:
   GOTOOLCHAIN: local
-  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
   DEPENDENCY_APP_SLUG: ${{ vars.DEPENDENCY_APP_SLUG }}
 
 jobs:
@@ -30,14 +29,11 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: gitsign
           cache: none
+          fetch-depth: 0
       - name: Verify the tag name, source, and authorized signing identity
         id: tag
         env:
@@ -71,14 +67,10 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: go bun osv-scanner
           cache: none
-      - run: tools/verify-go-toolchain
       - name: Install locked dependencies without lifecycle scripts
         run: bun automation/web-install/main.ts
       - name: Check source dependencies and generate the release SBOM and VEX
@@ -134,10 +126,11 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: $/.github/actions/setup
         with:
+          tools: go grype bun
+          cache: none
           fetch-depth: 0
-          persist-credentials: false
       - name: The tag still names the commit the guard checked
         run: |
           git fetch --force --no-tags origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
@@ -167,11 +160,6 @@ jobs:
           cd "$RUNNER_TEMP/web-client"
           test "$(sha256sum < evidence.sha256 | cut -d ' ' -f 1)" = "$EXPECTED_EVIDENCE_SHA256"
           (cd evidence && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | cmp - evidence.sha256
-      - uses: $/.github/actions/mise
-        with:
-          tools: go grype bun
-          cache: none
-      - run: tools/verify-go-toolchain
       - name: Host configuration bundle for Hetzner Flatcar servers
         run: bun tools/deploy/bundle.mts ".host-bundle/nylzo-host_${GITHUB_REF_NAME#v}.tar"
       - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3

@@ -66,27 +66,23 @@ export function registrationProblems(registration: Registration, now = Date.now(
 
 async function json(url: string): Promise<unknown> {
   const response = await fetch(url, { headers: { accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(30000) });
-  const reader = response.body?.getReader();
-  assert(reader, "The monitor API returned an empty body");
+  const body = response.body;
+  assert(body, "The monitor API returned an empty body");
   const chunks: Uint8Array[] = [];
   let length = 0;
   try {
     assert(response.ok, `${new URL(url).host} answered HTTP ${response.status}`);
     const declared = response.headers.get("content-length");
     assert(declared === null || Number(declared) <= maxJsonBytes, "The monitor API response exceeds 1 MiB");
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      length += value.byteLength;
+    for await (const chunk of body) {
+      length += chunk.byteLength;
       assert(length <= maxJsonBytes, "The monitor API response exceeds 1 MiB");
-      chunks.push(value);
+      chunks.push(chunk);
     }
     return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks, length)));
   } catch (error) {
-    await reader.cancel().catch(() => {});
+    await body.cancel().catch(() => {});
     throw error;
-  } finally {
-    reader.releaseLock();
   }
 }
 

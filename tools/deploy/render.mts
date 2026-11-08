@@ -15,6 +15,7 @@ const remote = (filename: string, bundle: { url: string; sha256: string }) => {
   return { path: filename, mode: 0o600, overwrite: true, contents: { source: bundle.url, verification: { hash: `sha256-${bundle.sha256}` } } };
 };
 const service = (name: string, contents: string, enabled = false) => ({ name, contents, enabled });
+const environmentFile = (values: Record<string, unknown>) => Object.entries(values).map(([name, value]) => `${name}=${value}`).join("\n") + "\n";
 export const key = await read("bootstrap/flatcar.asc");
 export const toolchain = JSON.parse(await read("toolchain.json"));
 const early = ["/etc/ssh/sshd_config.d/20-nylzo.conf", "/etc/sysctl.d/90-nylzo.conf", "/etc/systemd/journald.conf.d/20-nylzo.conf", "/etc/systemd/coredump.conf.d/20-nylzo.conf"];
@@ -36,29 +37,29 @@ ExecStart=/usr/bin/bash /opt/nylzo/host/initial/update/activate --first-boot /op
 WantedBy=sysinit.target
 `;
 
-export type HostBundle = { url: string; sha256: string } | Map<string, string>;
+type HostBundle = { url: string; sha256: string } | Map<string, string>;
 
 export const releaseBundle = (release: string, sha256: string) => ({ url: `https://github.com/misaon/nylzo/releases/download/${release}/nylzo-host_${release.slice(1)}.tar`, sha256 });
 
 export async function render(input: unknown, bundle: HostBundle) {
   const site = configuration(input);
   const host = bundle instanceof Map ? bundle : await hostSources();
-  const tools = [
-    `ARCHITECTURE=${site.architecture}`,
-    ...["gh", "cosign", "jq"].flatMap(name => [`${name.toUpperCase()}_VERSION=${toolchain[name].version}`, `${name.toUpperCase()}_SHA256=${toolchain[name][site.architecture]}`]),
-  ].join("\n") + "\n";
-  const environment = Object.entries({
+  const tools = environmentFile({
+    ARCHITECTURE: site.architecture,
+    ...Object.fromEntries(["gh", "cosign", "jq"].flatMap(name => [[`${name.toUpperCase()}_VERSION`, toolchain[name].version], [`${name.toUpperCase()}_SHA256`, toolchain[name][site.architecture]]])),
+  });
+  const environment = environmentFile({
     NYLZO_LISTEN: ":8080", NYLZO_DATA_DIR: "/home/nonroot", NYLZO_PEPPER_FILE: "/run/nylzo-pepper",
     NYLZO_REPORT_KEY: site.reportPublicKey, NYLZO_TRUSTED_PROXIES: "172.30.81.1/32",
     NYLZO_GLOBAL_DAILY_CREATES: site.dailyCreates, NYLZO_OPERATOR: site.operator,
     NYLZO_MIN_FREE_BYTES: 4 * 1024 ** 3,
     NYLZO_CONTACT: site.contact, NYLZO_HOSTING: site.hosting, NYLZO_PUBLIC_URL: `https://${site.domain}`,
-  }).map(([name, value]) => `${name}=${value}`).join("\n") + "\n";
-  const settings = Object.entries({
+  });
+  const settings = environmentFile({
     AUTOMATIC_UPDATES: site.automaticUpdates, PUBLIC_ACCESS: site.publicAccess ?? false,
     WWW_REDIRECT: site.dnsZone === site.domain, ADMINISTRATOR_NETWORKS: site.administratorNetworks.map((network: string) => network.toLowerCase()).join(","),
     HARDWARE_KEYS_ONLY: administratorKeyIsHardware(site.administratorPublicKey),
-  }).map(([name, value]) => `${name}=${value}`).join("\n") + "\n";
+  });
   const manifest = new Map(host.get("manifest")!.trimEnd().split("\n").slice(1).map(line => line.split(" ") as [string, string]));
   const runtime = JSON.parse(host.get("system/runtime.json")!);
   assert.match(runtime.docker, /^[0-9]+\.[0-9]+\.[0-9]+$/u);
@@ -97,15 +98,17 @@ export async function render(input: unknown, bundle: HostBundle) {
       { path: "/etc/extensions/docker.raw", target: runtimePath, overwrite: true },
     ] }, systemd: { units: [
       { name: "serial-getty@ttyS0.service", mask: true }, { name: "getty@tty1.service", mask: true }, service("nylzo-host.service", firstBoot, true),
-    ] as any[] },
+    ] },
   };
   const board = site.architecture === "amd64" ? "amd64-usr" : "arm64-usr";
   const installer = {
     ignition: { version: "3.4.0" },
     storage: { files: [embedded("/opt/nylzo-image/flatcar.asc", key), embedded("/opt/nylzo-image/install", await read("bootstrap/install"), 0o700)] },
-    systemd: { units: [service("nylzo-image-install.service", `[Unit]\nWants=network-online.target\nAfter=network-online.target\n[Service]\nType=oneshot\nEnvironment=FLATCAR_BOARD=${board}\nEnvironment=FLATCAR_VERSION=${toolchain.flatcar}\nEnvironment=EXPECTED_BUILDER_NAME=${site.name}-image-builder\nExecStart=/opt/nylzo-image/install\nTimeoutStartSec=20min\n[Install]\nWantedBy=multi-user.target\n`, true)] },
+    systemd: { units: [
+      service("nylzo-image-install.service", `[Unit]\nWants=network-online.target\nAfter=network-online.target\n[Service]\nType=oneshot\nEnvironment=FLATCAR_BOARD=${board}\nEnvironment=FLATCAR_VERSION=${toolchain.flatcar}\nEnvironment=EXPECTED_BUILDER_NAME=${site.name}-image-builder\nExecStart=/opt/nylzo-image/install\nTimeoutStartSec=20min\n[Install]\nWantedBy=multi-user.target\n`, true),
+      ...["update-engine.service", "locksmithd.service", "sshd.service", "sshd.socket"].map(name => ({ name, mask: true })),
+    ] },
   };
-  installer.systemd.units.push({ name: "update-engine.service", mask: true } as any, { name: "locksmithd.service", mask: true } as any, { name: "sshd.service", mask: true } as any, { name: "sshd.socket", mask: true } as any);
   const cloudInstaller = structuredClone(installer);
   cloudInstaller.storage.files[0]!.contents.source = "@@FLATCAR_IMAGE_KEY@@";
   const cloud = "#cloud-config\n" + JSON.stringify({

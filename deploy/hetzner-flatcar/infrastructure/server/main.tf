@@ -1,5 +1,10 @@
+language {
+  compatible_with {
+    opentofu = "= 1.13.9"
+  }
+}
+
 terraform {
-  required_version = "= 1.13.9"
   required_providers {
     hcloud = {
       source  = "hetznercloud/hcloud"
@@ -37,6 +42,11 @@ variable "monitoring_enabled" {
 
 data "hcloud_image" "flatcar" { id = var.image_id }
 
+locals {
+  everywhere     = ["0.0.0.0/0", "::/0"]
+  public_sources = var.public_access ? local.everywhere : var.administrator_networks
+}
+
 resource "hcloud_firewall" "server" {
   name   = var.name
   labels = { application = "nylzo" }
@@ -46,31 +56,31 @@ resource "hcloud_firewall" "server" {
       direction  = "in"
       protocol   = "tcp"
       port       = "8443"
-      source_ips = ["0.0.0.0/0", "::/0"]
+      source_ips = local.everywhere
     }
   }
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "80"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = local.everywhere
   }
   rule {
     direction  = "in"
     protocol   = "tcp"
     port       = "443"
-    source_ips = var.public_access ? ["0.0.0.0/0", "::/0"] : var.administrator_networks
+    source_ips = local.public_sources
   }
   rule {
     direction  = "in"
     protocol   = "udp"
     port       = "443"
-    source_ips = var.public_access ? ["0.0.0.0/0", "::/0"] : var.administrator_networks
+    source_ips = local.public_sources
   }
   rule {
     direction  = "in"
     protocol   = "icmp"
-    source_ips = ["0.0.0.0/0", "::/0"]
+    source_ips = local.everywhere
   }
   rule {
     direction  = "in"
