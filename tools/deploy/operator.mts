@@ -173,7 +173,13 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
   }
   if (kind === "dns") {
     assert.match(site.cloudflareAccountId, /^[a-f0-9]{32}$/u, "Set the Cloudflare account ID in site.json");
-    const outputs = JSON.parse(execute(path.join(root, "server"), { ...process.env, TF_ENCRYPTION: await encryption(root) }, ["output", "-json"], true));
+    const server = path.join(root, "server");
+    const serverSource = path.join(profile, "infrastructure", "server");
+    // Only the configuration: output refuses a lock file that init has not installed.
+    for (const filename of await readdir(serverSource)) {
+      if (filename.endsWith(".tf")) await copyFile(path.join(serverSource, filename), path.join(server, filename));
+    }
+    const outputs = JSON.parse(execute(server, environment, ["output", "-json"], true));
     variables = { account_id: site.cloudflareAccountId, zone: site.dnsZone ?? site.domain, domain: site.domain, ipv4_address: outputs.ipv4_address.value, ipv6_address: outputs.ipv6_address.value, acme_account_uri: site.acmeAccountUri ?? "" };
   }
   await writeFile(path.join(directory, "deployment.auto.tfvars.json"), JSON.stringify(variables), { mode: 0o600 });
