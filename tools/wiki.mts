@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -6,36 +6,15 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const destination = path.join(root, "dist/wiki");
 const repository = "https://github.com/misaon/nylzo";
 const wiki = `${repository}/wiki`;
-const sources = new Map([
-  ["docs/wiki/Home.md", "Home"],
-  ["docs/wiki/guides/Getting-started.md", "Getting-started"],
-  ["docs/wiki/guides/Self-hosting.md", "Self-hosting"],
-  ["docs/wiki/guides/Hetzner-Flatcar.md", "Hetzner-Flatcar"],
-  ["docs/wiki/guides/Host-monitoring.md", "Host-monitoring"],
-  ["docs/wiki/guides/Security-model.md", "Security-model"],
-  ["docs/wiki/guides/Verify-a-release.md", "Verify-a-release"],
-  ["docs/wiki/guides/Development.md", "Development"],
-  ["docs/wiki/reference/Repository-map.md", "Repository-map"],
-  ["docs/wiki/guides/Name-and-logo.md", "Name-and-logo"],
-  ["docs/wiki/guides/CLI.md", "CLI"],
-  ["docs/wiki/guides/Operations.md", "Operations"],
-  ["docs/wiki/maintainers/Releasing.md", "Releasing"],
-  ["docs/wiki/maintainers/Release-checklist.md", "Release-checklist"],
-  ["docs/wiki/maintainers/Repository-governance.md", "Repository-governance"],
-  ["docs/wiki/maintainers/Security-checks.md", "Security-checks"],
-  ["docs/wiki/maintainers/Security-updates.md", "Security-updates"],
-  ["docs/wiki/maintainers/Security-assessment.md", "Security-assessment"],
-  ["docs/wiki/maintainers/Deployment-security-review.md", "Deployment-security-review"],
-  ["docs/wiki/maintainers/Security-controls.md", "Security-controls"],
-  ["docs/wiki/community/Contributing.md", "Contributing"],
-  ["docs/wiki/community/Security-policy.md", "Security-policy"],
-  ["docs/wiki/reference/Protocol.md", "Protocol"],
-  ["docs/wiki/guides/Brand-assets.md", "Brand-assets"],
-  ["docs/wiki/maintainers/Publishing.md", "Publishing"],
-  ["CODE_OF_CONDUCT.md", "Code-of-conduct"],
-  ["docs/wiki/guides/Fonts.md", "Fonts"],
-  ["docs/wiki/_Sidebar.md", "_Sidebar"],
-]);
+const pages = (await readdir(path.join(root, "docs/wiki"), { recursive: true }))
+  .filter(file => file.endsWith(".md"))
+  .sort()
+  .map(file => [path.join("docs/wiki", file), path.basename(file, ".md")] as const);
+const sources = new Map([...pages, ["CODE_OF_CONDUCT.md", "Code-of-conduct"]]);
+const duplicates = [...sources.values()].filter((page, index, all) => all.indexOf(page) !== index);
+if (duplicates.length > 0) {
+  throw new Error(`Two Wiki sources map to the same page: ${duplicates.join(", ")}`);
+}
 
 await rm(destination, { recursive: true, force: true });
 await mkdir(destination, { recursive: true });

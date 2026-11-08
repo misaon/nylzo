@@ -28,6 +28,6 @@ rsvg-convert -w 1200 -h 630 -o web/app/icons/og-image.png web/app/icons/og-image
 
 ## README covers
 
-[assets/readme](../../../assets/readme) contains matching light and dark SVG covers using the original logo geometry and theme colors. The sealed-message artwork illustrates sharing and expiry; it is not a product screenshot or a security certification.
+[assets/readme](../../../assets/readme) contains matching light and dark SVG covers using the original logo geometry and theme colors. The sealed-message artwork illustrates sharing and expiry and does not show the product.
 
 The covers are self-contained SVG files with accessible descriptions. They use opaque artwork, with no scripts, animation, embedded HTML, remote assets, or custom font downloads. Keep their compositions aligned when editing them.

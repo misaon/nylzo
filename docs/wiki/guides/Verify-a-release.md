@@ -1,6 +1,10 @@
 # Verify a release
 
-Use only [misaon/nylzo releases](https://github.com/misaon/nylzo/releases), `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. Published release tags and assets are immutable. Choose a stable version from the releases page; the examples below use `v0.1.1`.
+Use only [misaon/nylzo releases](https://github.com/misaon/nylzo/releases), `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. Published release tags and assets are immutable. The examples verify the latest release; set `tag` to another stable version from the releases page if you need one:
+
+```sh
+tag=$(gh release view --repo misaon/nylzo --json tagName --jq .tagName)
+```
 
 Install [GitHub CLI](https://cli.github.com/) and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) from their official sources. Choose the archive for your platform: `linux`, `darwin` (macOS), or `windows`; architecture `amd64` (x64) or `arm64`. Windows archives are ZIP files; Linux and macOS use `tar.gz`.
 
@@ -9,7 +13,6 @@ Install [GitHub CLI](https://cli.github.com/) and [cosign](https://docs.sigstore
 This example selects Linux x64:
 
 ```sh
-tag=v0.1.1
 archive="nylzo_${tag#v}_linux_amd64.tar.gz"
 gh release download "$tag" --repo misaon/nylzo \
   --pattern "$archive" --pattern checksums.txt --pattern checksums.txt.sigstore.json
@@ -44,10 +47,9 @@ Releases up to `v0.2.3` list `index.html` and the assets but not the two home te
 
 ## Verify dependency evidence
 
-Starting with `v0.1.2`, releases also provide a source SPDX inventory for Go and npm, the raw dependency scan, import-graph evidence, and an OpenVEX assessment when applicable. These files use a separate signed manifest. For example:
+Starting with `v0.1.2`, releases also provide a source SPDX inventory for Go and npm, the raw dependency scan, import-graph evidence, and an OpenVEX assessment when applicable. These files use a separate signed manifest:
 
 ```sh
-tag=v0.1.2
 evidence="nylzo_${tag#v}.evidence.sha256"
 gh release download "$tag" --repo misaon/nylzo --pattern "nylzo_${tag#v}.*.json" \
   --pattern "$evidence"
@@ -71,7 +73,6 @@ Verify every listed file. An OpenVEX statement applies only to its named product
 Resolve the selected version to a digest, verify that digest, then deploy that same digest:
 
 ```sh
-tag=v0.1.1
 image="ghcr.io/misaon/nylzo:${tag#v}"
 digest=$(docker buildx imagetools inspect "$image" --format '{{.Manifest.Digest}}')
 image="ghcr.io/misaon/nylzo@${digest}"
@@ -109,7 +110,7 @@ Use a clean checkout of the release tag, install its pinned tools, and sign in w
 
 ```sh
 git fetch --tags
-git checkout v0.1.1
+git checkout "$tag"
 mise trust
 mise install
 mise run release:verify
