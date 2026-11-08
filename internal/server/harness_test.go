@@ -26,16 +26,18 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
-	"github.com/misaon/nylzo/internal/server/epoch"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -131,7 +133,7 @@ func baseSettings(pepper, previous []byte) *config.Server {
 func newHarness(t *testing.T, settings *config.Server, options ...Option) *testHarness {
 	t.Helper()
 	directory := t.TempDir()
-	settings.DataDir = directory
+	settings.DataDirectory = directory
 	blobs, err := disk.New(directory)
 	if err != nil {
 		t.Fatal(err)
@@ -184,7 +186,7 @@ func (h *testHarness) capture(r *http.Request) {
 func (h *testHarness) reopen(settings *config.Server) {
 	h.httpServer.Close()
 	h.server.Close()
-	settings.DataDir = h.directory
+	settings.DataDirectory = h.directory
 	h.settings = *settings
 	h.open()
 }
@@ -206,7 +208,7 @@ func (h *testHarness) listen() string {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	go httpServer.Serve(SecureEarlyErrors(listener))
+	go httpServer.Serve(transport.SecureEarlyErrors(listener))
 	h.t.Cleanup(func() { httpServer.Close() })
 	return listener.Addr().String()
 }
@@ -231,7 +233,7 @@ func shareEpochFor(ttlSeconds float64) uint32 {
 }
 
 func (h *testHarness) setFreeSpace(free diskspace.FreeFunc) {
-	h.server.disk = diskspace.NewReserver(h.settings.DataDir, h.settings.MinFreeBytes, free, h.server.logger)
+	h.server.disk = h.server.newDiskReserver(free)
 }
 
 func (h *testHarness) do(request *testRequest) (testResponse, responseBody) {
@@ -256,8 +258,8 @@ func (h *testHarness) tryDo(request *testRequest) (testResponse, responseBody, e
 		r.Header.Set(name, value)
 	}
 	streams := strings.HasSuffix(request.path, "/claim") || strings.HasSuffix(request.path, "/blob")
-	if _, set := request.headers[shareKeyHeaderName]; streams && !set {
-		r.Header.Set(shareKeyHeaderName, testShareKeyHeader)
+	if _, set := request.headers[api.ShareKeyHeaderName]; streams && !set {
+		r.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
 	}
 	if request.address != "" {
 		r.Header.Set("X-Forwarded-For", request.address)
@@ -305,7 +307,7 @@ func (h *testHarness) create(message *testMessage) (testResponse, responseBody) 
 	h.t.Helper()
 	response, body := h.do(createRequestFor(message))
 	if response.StatusCode == http.StatusCreated {
-		h.blobRef(message)
+		h.blobReference(message)
 	}
 	return response, body
 }
@@ -380,11 +382,11 @@ func (h *testHarness) post(message *testMessage, action, token string) (testResp
 // blobExists checks the file under the blob reference the message got at creation.
 func (h *testHarness) blobExists(message *testMessage) bool {
 	h.t.Helper()
-	ref := h.blobRef(message)
-	if ref == "" {
+	reference := h.blobReference(message)
+	if reference == "" {
 		return false
 	}
-	blob, _, err := h.blobs.Open(h.t.Context(), ref)
+	blob, _, err := h.blobs.Open(h.t.Context(), reference)
 	if err != nil {
 		return false
 	}
@@ -401,13 +403,13 @@ func (h *testHarness) storedBlobs() int {
 	return len(objects)
 }
 
-func (h *testHarness) blobRef(message *testMessage) string {
-	if message.blobRef == "" {
+func (h *testHarness) blobReference(message *testMessage) string {
+	if message.blobReference == "" {
 		if record, err := h.record(message); err == nil {
-			message.blobRef = record.Row.BlobRef
+			message.blobReference = record.Row.BlobReference
 		}
 	}
-	return message.blobRef
+	return message.blobReference
 }
 
 // record opens the sealed row with the read key, as an authorized request would.
@@ -457,7 +459,7 @@ func (h *testHarness) rewrite(message *testMessage, change func(*store.Message))
 		record.Message,
 		readKey[:],
 		manageKey[:],
-		record.Row.BlobRef,
+		record.Row.BlobReference,
 		blobKey,
 	)
 	rebuilt.Row.BlobPurgeAt, rebuilt.Row.PurgeAt = record.Row.BlobPurgeAt, record.Row.PurgeAt
@@ -620,24 +622,24 @@ func (h *testHarness) withFaultyBlobs() *storetest.FaultyBlobs {
 }
 
 type testMessage struct {
-	id          core.ID
-	secret      *[core.SecretLen]byte
-	manage      *[core.SeedLen]byte
-	kdf         core.KDF
-	link        keys.LinkKeys
-	content     keys.ContentKeys
-	share       *[core.ShareLen]byte
-	verifierKey *[core.SeedLen]byte
-	idToken     string
-	epoch       uint32
-	policy      envelope.Policy
-	object      []byte
-	text        string
-	readToken   string
-	manageToken string
-	verifier    string
-	address     string
-	blobRef     string
+	id            core.ID
+	secret        *[core.SecretLen]byte
+	manage        *[core.SeedLen]byte
+	kdf           core.KDF
+	link          keys.LinkKeys
+	content       keys.ContentKeys
+	share         *[core.ShareLen]byte
+	verifierKey   *[core.SeedLen]byte
+	idToken       string
+	epoch         uint32
+	policy        envelope.Policy
+	object        []byte
+	text          string
+	readToken     string
+	manageToken   string
+	verifier      string
+	address       string
+	blobReference string
 }
 
 func newMessage(t *testing.T, kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) *testMessage {
@@ -679,8 +681,8 @@ func (h *testHarness) issueMessage(
 ) *testMessage {
 	h.t.Helper()
 	response, body := h.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: map[string]string{
-		ttlHeaderName:      strconv.FormatUint(uint64(ttl), 10),
-		shareKeyHeaderName: testShareKeyHeader,
+		api.TTLHeaderName:      strconv.FormatUint(uint64(ttl), 10),
+		api.ShareKeyHeaderName: testShareKeyHeader,
 	}})
 	create, ok := decodeJSON(h.t, body)["create"].(map[string]any)
 	if response.StatusCode != http.StatusOK || !ok {
@@ -825,7 +827,7 @@ var (
 // unwrapShare reads the share a claim or download carried, as a client does.
 func unwrapShare(t *testing.T, response testResponse) [core.ShareLen]byte {
 	t.Helper()
-	wrapped, err := core.DecodeExact(response.Header.Get(shareHeaderName), share.WrappedLen)
+	wrapped, err := core.DecodeExact(response.Header.Get(api.ShareHeaderName), share.WrappedLen)
 	if err != nil {
 		t.Fatalf("no share in the response: %v", err)
 	}

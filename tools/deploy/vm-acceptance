@@ -99,7 +99,7 @@ level=s0:c0,c1
 if [[ "$(docker inspect nylzo --format '{{.ProcessLabel}}')" = *":$level" ]]; then level=s0:c2,c3; fi
 if timeout 15 docker run --rm --name nylzo-selinux-test --network none --user 65532:65532 \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true --security-opt "label=level:$level" \
-  --memory 1g --cpus 1 --pids-limit 128 --ulimit memlock=-1:-1 --ulimit core=0:0 \
+  --memory 1g --cpus 1 --pids-limit 1024 --ulimit memlock=-1:-1 --ulimit core=0:0 \
   --env-file /etc/nylzo/service.env --env NYLZO_EPOCH_DIR=/run/nylzo-epoch \
   --volume "$probe/data:/home/nonroot:Z" \
   --volume "$probe/epoch:/run/nylzo-epoch:Z" \

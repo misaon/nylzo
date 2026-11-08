@@ -76,14 +76,14 @@ func ParseAuthorization(header string) (Signature, error) {
 	if !ok || scheme != AuthScheme {
 		return Signature{}, ErrAuthorization
 	}
-	fields := strings.Split(value, ".")
-	if len(fields) != 3 {
-		return Signature{}, ErrAuthorization
-	}
 	var signature Signature
 	targets := [][]byte{signature.PublicKey[:], signature.Challenge[:], signature.Value[:]}
+	fields := strings.Split(value, ".")
+	if len(fields) != len(targets) {
+		return Signature{}, ErrAuthorization
+	}
 	for i, target := range targets {
-		if !decodeInto(target, fields[i]) {
+		if !core.DecodeInto(target, fields[i]) {
 			return Signature{}, ErrAuthorization
 		}
 	}
@@ -96,7 +96,8 @@ func ParseVerifierHeader(header string, challenge [ChallengeLen]byte) (Signature
 		return Signature{}, ErrAuthorization
 	}
 	signature := Signature{Challenge: challenge}
-	if !decodeInto(signature.PublicKey[:], encodedPublicKey) || !decodeInto(signature.Value[:], encodedSignature) {
+	if !core.DecodeInto(signature.PublicKey[:], encodedPublicKey) ||
+		!core.DecodeInto(signature.Value[:], encodedSignature) {
 		return Signature{}, ErrAuthorization
 	}
 	return signature, nil
@@ -118,13 +119,4 @@ func (s *Signature) Authorization() string {
 
 func (s *Signature) VerifierHeader() string {
 	return core.Encode(s.PublicKey[:]) + "." + core.Encode(s.Value[:])
-}
-
-func decodeInto(target []byte, text string) bool {
-	decoded, err := core.DecodeExact(text, len(target))
-	if err != nil {
-		return false
-	}
-	copy(target, decoded)
-	return true
 }

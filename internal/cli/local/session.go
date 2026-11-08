@@ -10,8 +10,9 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/client"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/localclient"
-	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -67,7 +68,7 @@ func Serve(ctx context.Context, environment *command.Environment, options Option
 		cleanup:     func() {},
 	}
 	if current.contact, err = instanceContact(ctx, options.Instance); err != nil {
-		current.note(
+		current.notef(
 			"the pages link no operator contact, because the instance's transparency document is unreadable: %s",
 			err,
 		)
@@ -79,7 +80,7 @@ func Serve(ctx context.Context, environment *command.Environment, options Option
 	httpServer := current.server.HTTPServer()
 	served := make(chan error, 1)
 	go func() { served <- listeners.Serve(httpServer) }()
-	defer shutdown(httpServer)
+	defer shutdown(ctx, httpServer)
 	defer func() { current.cleanup() }()
 	current.keepNameLocal()
 	timers, err := current.announce()
@@ -107,19 +108,40 @@ func (s *session) config() *localclient.Config {
 	}
 }
 
-// instanceContact reads the operator's contact, the one address outside the client its pages may reach.
 func instanceContact(ctx context.Context, instance string) (string, error) {
-	api, err := client.New(instance)
+	server, err := client.New(instance)
 	if err != nil {
 		return "", err
 	}
 	ctx, cancel := context.WithTimeout(ctx, contactTimeout)
 	defer cancel()
-	fetched, err := api.Fetch(ctx, server.TransparencyPath, "identity", maxContactBytes)
+	return OperatorContact(ctx, server)
+}
+
+// ContactError is a transparency document that was fetched but names no contact the pages could link.
+type ContactError struct {
+	err error
+}
+
+func (e *ContactError) Error() string {
+	return e.err.Error()
+}
+
+func (e *ContactError) Unwrap() error {
+	return e.err
+}
+
+// OperatorContact reads the operator's contact, the one address outside the client its pages may reach.
+func OperatorContact(ctx context.Context, server *client.Client) (string, error) {
+	fetched, err := server.Fetch(ctx, api.TransparencyPath, "identity", maxContactBytes)
 	if err != nil {
 		return "", err
 	}
-	return webclient.OperatorContact(fetched.Body)
+	contact, err := operatoraddress.OperatorContact(fetched.Body)
+	if err != nil {
+		return "", &ContactError{err: err}
+	}
+	return contact, nil
 }
 
 func (s *session) keepNameLocal() {
@@ -129,7 +151,7 @@ func (s *session) keepNameLocal() {
 	}
 	if s.options.OpenBrowser && !resolves() {
 		s.options.OpenBrowser = false
-		s.note("Safari on macOS before 26 asks the network for names under localhost, so open the address below " +
+		s.notef("Safari on macOS before 26 asks the network for names under localhost, so open the address below " +
 			"in Chrome, Edge or Firefox, which keep them on this computer")
 	}
 }
@@ -181,11 +203,11 @@ func (s *session) run(ctx context.Context, served <-chan error, timers deadlines
 func (s *session) compose() {
 	address := s.server.Origin() + "/"
 	fmt.Fprintln(s.environment.Stdout, address)
-	s.note("the verified client runs at %s and sends only API calls to %s; links it creates point to %s. "+
+	s.notef("the verified client runs at %s and sends only API calls to %s; links it creates point to %s. "+
 		"Press Ctrl-C to stop it", address, s.server.Instance(), s.server.Instance())
 	if s.options.OpenBrowser {
 		if err := browser(s.environment)(address); err != nil {
-			s.note("no browser opened; open %s yourself", address)
+			s.notef("no browser opened; open %s yourself", address)
 		}
 	}
 }
@@ -201,14 +223,14 @@ func (s *session) handOver() (bool, error) {
 		if writeErr == nil {
 			s.cleanup = sync.OnceFunc(page.remove)
 			if openErr := browser(s.environment)(page.path); openErr == nil {
-				s.note("opening the message in your browser through the verified client at %s", s.server.Origin())
+				s.notef("opening the message in your browser through the verified client at %s", s.server.Origin())
 				return true, nil
 			}
 			s.cleanup()
 		}
 	}
 	fmt.Fprintln(s.environment.Stdout, s.address)
-	s.note("open this address in your browser within %s; it works once and carries no part of the link",
+	s.notef("open this address in your browser within %s; it works once and carries no part of the link",
 		s.options.Link.Lifetime)
 	return false, nil
 }
@@ -216,7 +238,7 @@ func (s *session) handOver() (bool, error) {
 // remind gives the address to a user whose browser could not read the handoff file, such as a confined one.
 func (s *session) remind() {
 	fmt.Fprintln(s.environment.Stdout, s.address)
-	s.note("no browser has taken the link yet. If none opened the message, open this address in your browser; " +
+	s.notef("no browser has taken the link yet. If none opened the message, open this address in your browser; " +
 		"it works once and carries no part of the link")
 }
 
@@ -225,11 +247,11 @@ func (s *session) report(notice localclient.Notice) {
 	case localclient.HandoffTaken:
 		s.taken = true
 		s.cleanup()
-		s.note("the browser took the link and the handoff address no longer works. " +
+		s.notef("the browser took the link and the handoff address no longer works. " +
 			"Press Ctrl-C to stop the verified client when you are done reading")
 	case localclient.HandoffRefused:
 		if s.taken {
-			s.note("warning: something asked for the link again after a browser took it. If your browser " +
+			s.notef("warning: something asked for the link again after a browser took it. If your browser " +
 				"did not show the message, another program has the link: delete the message with nylzo burn " +
 				"and ask the sender for a new one")
 		}
@@ -237,12 +259,12 @@ func (s *session) report(notice localclient.Notice) {
 	}
 }
 
-func (s *session) note(format string, arguments ...any) {
+func (s *session) notef(format string, arguments ...any) {
 	fmt.Fprintf(s.environment.Stderr, command.Program+": "+format+"\n", arguments...)
 }
 
-func shutdown(httpServer *http.Server) {
-	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+func shutdown(ctx context.Context, httpServer *http.Server) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
 	if err := httpServer.Shutdown(ctx); errors.Is(err, context.DeadlineExceeded) {
 		httpServer.Close()

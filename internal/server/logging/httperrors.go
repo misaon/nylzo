@@ -2,19 +2,11 @@ package logging
 
 import (
 	"bytes"
-	"context"
 	"log"
 	"log/slog"
-	"sync"
-	"time"
-
-	"github.com/misaon/nylzo/internal/server/ratelimit"
 )
 
-const (
-	httpErrorRate  = 1
-	httpErrorBurst = 20
-)
+const httpErrorMessage = "net/http error"
 
 var httpErrorCategories = []struct {
 	prefix string
@@ -29,55 +21,24 @@ var httpErrorCategories = []struct {
 	{"http: superfluous response.WriteHeader", "superfluous-write-header", slog.LevelWarn},
 }
 
-type levelLimit struct {
-	limiter *ratelimit.Limiter
-	dropped int
-}
-
 type httpErrorLog struct {
-	logger   *slog.Logger
-	mutex    sync.Mutex
-	warnings levelLimit
-	errors   levelLimit
+	events *Events
 }
 
-// NewHTTPErrorLog logs net/http errors by category only, because their text can carry a peer address.
-func NewHTTPErrorLog(logger *slog.Logger) *log.Logger {
-	sink := &httpErrorLog{
-		logger:   logger,
-		warnings: levelLimit{limiter: ratelimit.NewLimiter(httpErrorRate, httpErrorBurst)},
-		errors:   levelLimit{limiter: ratelimit.NewLimiter(httpErrorRate, httpErrorBurst)},
-	}
-	return log.New(sink, "", 0)
+// NewHTTPErrorLog holds net/http errors as events of their category only, because their text can carry a peer
+// address and their time can date a request.
+func NewHTTPErrorLog(events *Events) *log.Logger {
+	return log.New(httpErrorLog{events: events}, "", 0)
 }
 
-func (e *httpErrorLog) Write(line []byte) (int, error) {
-	category, level := "other", slog.LevelWarn
+func (e httpErrorLog) Write(line []byte) (int, error) {
+	kind := eventKind{message: httpErrorMessage, category: "other", level: slog.LevelWarn}
 	for _, known := range httpErrorCategories {
 		if bytes.HasPrefix(line, []byte(known.prefix)) {
-			category, level = known.name, known.level
+			kind.category, kind.level = known.name, known.level
 			break
 		}
 	}
-	limit := &e.warnings
-	if level >= slog.LevelError {
-		limit = &e.errors
-	}
-	dropped, allowed := e.take(limit)
-	if allowed {
-		e.logger.Log(context.Background(), level, "net/http error", "category", category, "dropped", dropped)
-	}
+	e.events.add(kind, "")
 	return len(line), nil
-}
-
-func (e *httpErrorLog) take(limit *levelLimit) (int, bool) {
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-	if !limit.limiter.Allow(ratelimit.Bucket{}, time.Now()) {
-		limit.dropped++
-		return 0, false
-	}
-	dropped := limit.dropped
-	limit.dropped = 0
-	return dropped, true
 }

@@ -27,6 +27,7 @@ exec env \
   NYLZO_PEPPER_FILE=.dev/pepper \
   NYLZO_ALLOW_SWAP=1 \
   NYLZO_ALLOW_UNERASABLE_STORAGE=1 \
+  NYLZO_ALLOW_UNERASED_MEMORY=1 \
   NYLZO_REPORT_KEY="$(cat .dev/report-key.pub)" \
   NYLZO_DATA_DIR=.dev/data \
   NYLZO_RATE_CREATE_HOUR=0 \

@@ -20,10 +20,11 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
-	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -56,7 +57,7 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("a message after the loss: %d", response.StatusCode)
 		}
-		if _, err := harness.openObject(fresh, object, response.Header.Get(policyHeaderName)); err != nil {
+		if _, err := harness.openObject(fresh, object, response.Header.Get(api.PolicyHeaderName)); err != nil {
 			t.Fatal(err)
 		}
 		if err := os.WriteFile(seedPath, []byte("damaged"), 0o600); err != nil {
@@ -65,7 +66,7 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		if _, err := New(&harness.settings, harness.store, harness.blobs); !errors.Is(err, epoch.ErrCorrupt) {
 			t.Fatalf("a damaged seed must stop the server: %v", err)
 		}
-		harness.settings.EpochDir = filepath.Join(t.TempDir(), "unmounted")
+		harness.settings.EpochDirectoryOverride = filepath.Join(t.TempDir(), "unmounted")
 		if _, err := New(&harness.settings, harness.store, harness.blobs); !errors.Is(err, epoch.ErrNoDirectory) {
 			t.Fatalf("a missing epoch directory must stop the server: %v", err)
 		}
@@ -173,6 +174,7 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 			t.Fatalf("status: %v", status)
 		}
 		synctest.Sleep(store.LeaseDuration + store.LeaseTimerSlack)
+		harness.server.flushCounts(t.Context())
 		if strings.Contains(harness.logs.String(), "lease-timer") {
 			t.Fatalf("the lease timer of an acknowledged message failed: %s", harness.logs.String())
 		}
@@ -508,17 +510,16 @@ func TestClaimBodyVariants(t *testing.T) {
 			status["opens_used"].(float64) != 0 {
 			t.Fatalf("malformed claim bodies changed the message: %v", status)
 		}
-		r, _ := http.NewRequest(
-			http.MethodPost,
-			harness.httpServer.URL+path,
-			io.MultiReader(strings.NewReader(`{"verifier":"`+message.verifier+`"}`)),
-		)
+		unfinished, sender := io.Pipe()
+		defer sender.Close()
+		r, _ := http.NewRequest(http.MethodPost, harness.httpServer.URL+path, unfinished)
 		r.Header.Set(
 			"Authorization",
 			signing.SignRequest(&message.link.R, signing.PurposeRead, "POST", path, harness.challenge(), nil).
 				Authorization(),
 		)
 		r.Header.Set("X-Forwarded-For", "203.0.113.4")
+		r.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
 		response, err := harness.client.Do(r)
 		if err != nil {
 			t.Fatal(err)
@@ -545,7 +546,7 @@ func TestDownloadAfterExpiryWithAStuckDeleteIsGone(t *testing.T) {
 		if response.StatusCode != http.StatusOK || lease == "" {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
-		faulty.FailDelete(harness.blobRef(message), errInjected)
+		faulty.FailDelete(harness.blobReference(message), errInjected)
 		synctest.Sleep(61 * time.Second)
 		if got, body := harness.blob(
 			message,
@@ -808,7 +809,7 @@ func runLifecycleAction(
 	case "lease download":
 		return harness.blob(message, lease)
 	case "blob vanished":
-		if err := harness.blobs.Delete(ctx, harness.blobRef(message)); err != nil {
+		if err := harness.blobs.Delete(ctx, harness.blobReference(message)); err != nil {
 			t.Fatal(err)
 		}
 		return harness.claim(message, "", "")
@@ -886,7 +887,7 @@ func TestVanishedBlobDuringLeaseIsAStorageFault(t *testing.T) {
 		harness.mustCreate(message)
 		response, _ := harness.claim(message, "", "")
 		lease := response.Header.Get("X-Nylzo-Lease")
-		if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
+		if err := harness.blobs.Delete(t.Context(), harness.blobReference(message)); err != nil {
 			t.Fatal(err)
 		}
 		if got, _ := harness.blob(message, lease); got.StatusCode != http.StatusInternalServerError {
@@ -915,10 +916,10 @@ func TestExpiryRacingADownloadAnswersGone(t *testing.T) {
 					harness.reopen(&harness.settings)
 				}
 				var once sync.Once
-				faulty.OnOpen(func(ref string) {
+				faulty.OnOpen(func(reference string) {
 					once.Do(func() {
 						time.Sleep(61 * time.Second)
-						if err := faulty.Blobs.Delete(t.Context(), ref); err != nil {
+						if err := faulty.Blobs.Delete(t.Context(), reference); err != nil {
 							t.Error(err)
 						}
 					})
@@ -970,12 +971,18 @@ func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 		harness.mustCreate(message)
-		ref := harness.blobRef(message)
-		if err := harness.blobs.Delete(t.Context(), ref); err != nil {
+		reference := harness.blobReference(message)
+		if err := harness.blobs.Delete(t.Context(), reference); err != nil {
 			t.Fatal(err)
 		}
 		short := message.object[:len(message.object)-1]
-		if err := harness.blobs.Put(t.Context(), ref, bytes.NewReader(short), int64(len(short))); err != nil {
+		if _, err := harness.blobs.PutExpiring(
+			t.Context(),
+			reference,
+			bytes.NewReader(short),
+			int64(len(short)),
+			time.Hour,
+		); err != nil {
 			t.Fatal(err)
 		}
 		response, _ := harness.claim(message, "", "")
@@ -1146,7 +1153,7 @@ func TestBlobLossWithoutEndingIsAStorageFault(t *testing.T) {
 		for _, opens := range []uint16{1, 2} {
 			message := newMessage(t, core.KDFNone, "", opens, 3600, "x")
 			harness.mustCreate(message)
-			if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
+			if err := harness.blobs.Delete(t.Context(), harness.blobReference(message)); err != nil {
 				t.Fatal(err)
 			}
 			response, _ := harness.claim(message, "", "")
@@ -1180,7 +1187,7 @@ func TestInterruptedEndingIsFinishedOnAccess(t *testing.T) {
 			if _, err := store.MarkEnding(t.Context(), storage, &record, state, time.Now()); err != nil {
 				t.Error(err)
 			}
-			if err := harness.blobs.Delete(t.Context(), harness.blobRef(message)); err != nil {
+			if err := harness.blobs.Delete(t.Context(), harness.blobReference(message)); err != nil {
 				t.Error(err)
 			}
 		}
@@ -1233,7 +1240,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 			t.Fatal(err)
 		}
 		harness.sign(request, message.readToken, "", nil)
-		request.Header.Set(shareKeyHeaderName, testShareKeyHeader)
+		request.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
 		request.Header.Set("X-Forwarded-For", message.address)
 		claimed, err := harness.client.Do(request)
 		if err != nil {
@@ -1250,6 +1257,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 				readErr,
 			)
 		}
+		harness.server.flushCounts(t.Context())
 		if !strings.Contains(harness.logs.String(), `"msg":"blob-stream"`) {
 			t.Fatalf("a failed stream must be logged: %s", harness.logs.String())
 		}
@@ -1261,8 +1269,9 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 			delete(entry, "time")
 			delete(entry, "level")
 			delete(entry, "msg")
+			delete(entry, "count")
 			if len(entry) != 0 {
-				t.Fatalf("the stream warning carries more than its name: %s", line)
+				t.Fatalf("the stream warning carries more than its name and count: %s", line)
 			}
 		}
 		faulty.FailRead(nil)
@@ -1420,8 +1429,8 @@ func TestExpiredMessageWithStuckDeleteReportsItsEnd(t *testing.T) {
 		if response, _ := harness.claim(spent, "", ""); response.StatusCode != http.StatusOK {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
-		faulty.FailDelete(harness.blobRef(unspent), errInjected)
-		faulty.FailDelete(harness.blobRef(spent), errInjected)
+		faulty.FailDelete(harness.blobReference(unspent), errInjected)
+		faulty.FailDelete(harness.blobReference(spent), errInjected)
 		synctest.Sleep(time.Hour)
 		if _, metadata := harness.metadata(unspent); metadata["state"] != "expired" {
 			t.Fatalf("unspent: %v", metadata)
@@ -1546,6 +1555,60 @@ func TestReadRateLimitCountsMetadataClaimAndBlob(t *testing.T) {
 		message.address = "203.0.113.6"
 		if response, _ := harness.blob(message, lease); response.StatusCode != http.StatusOK {
 			t.Fatalf("another address keeps its own read budget: %d", response.StatusCode)
+		}
+	})
+}
+
+func TestReadBytesPerHourStopsAClaimBeforeItSpendsAnOpen(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		settings := harness.settings
+		settings.Limits.MaxFileBytes = 1
+		settings.Limits.MaxObjectBytes = envelope.ObjectLimit(1)
+		settings.Rates.ReadBytesPerHour = settings.Limits.MaxObjectBytes
+		harness.reopen(&settings)
+		probe := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		within := int(settings.Rates.ReadBytesPerHour / int64(len(probe.object)))
+		message := newMessage(t, core.KDFNone, "", uint16(within+1), 3600, "x")
+		harness.mustCreate(message)
+		for range within {
+			if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
+				t.Fatalf("a claim within the byte budget: %d", response.StatusCode)
+			}
+		}
+		if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusTooManyRequests {
+			t.Fatalf("a claim past the byte budget: %d", response.StatusCode)
+		}
+		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
+			t.Fatalf("a claim refused for its bytes spent an open: %v", metadata)
+		}
+	})
+}
+
+func TestASignedRequestWithAnEmptyChunkedBodyIsServed(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		harness.mustCreate(message)
+		path := "/api/v1/messages/" + message.id.String()
+		r, _ := http.NewRequest(http.MethodGet, harness.httpServer.URL+path, strings.NewReader(""))
+		r.ContentLength = -1
+		r.TransferEncoding = []string{"chunked"}
+		r.Header.Set(
+			"Authorization",
+			signing.SignRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil).
+				Authorization(),
+		)
+		r.Header.Set("X-Forwarded-For", message.address)
+		response, err := harness.client.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("a proxy's empty chunked body on a signed request: %d", response.StatusCode)
 		}
 	})
 }

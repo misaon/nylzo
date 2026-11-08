@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -30,11 +31,11 @@ func TestFrontendIsIndependentOfTheBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, caddyfile := range []string{
+	for _, configuration := range []string{
 		filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),
 		filepath.Join("..", "compose", "Caddyfile"),
 	} {
-		t.Run(caddyfile, func(t *testing.T) {
+		t.Run(configuration, func(t *testing.T) {
 			var requests atomic.Int64
 			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				requests.Add(1)
@@ -42,26 +43,26 @@ func TestFrontendIsIndependentOfTheBackend(t *testing.T) {
 				_, _ = io.WriteString(w, `<script>globalThis.compromised=true</script>`)
 			}))
 			defer backend.Close()
-			address, roots := startCaddy(t, caddyfile, backend.Listener.Addr().String())
+			address, roots := startCaddy(t, configuration, backend.Listener.Addr().String())
 			client := &http.Client{
 				Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}},
 				Timeout:   10 * time.Second,
 			}
 			check := func(path string, expected []byte) http.Header {
 				t.Helper()
-				response, err := client.Get("https://" + address + path)
-				if err != nil {
-					t.Fatal(err)
+				response, getErr := client.Get("https://" + address + path)
+				if getErr != nil {
+					t.Fatal(getErr)
 				}
-				body, err := io.ReadAll(response.Body)
+				body, readErr := io.ReadAll(response.Body)
 				_ = response.Body.Close()
-				if err != nil || response.StatusCode != http.StatusOK || !bytes.Equal(body, expected) {
+				if readErr != nil || response.StatusCode != http.StatusOK || !bytes.Equal(body, expected) {
 					t.Fatalf(
 						"%s: status %d, body matches embedded release %v, error %v",
 						path,
 						response.StatusCode,
 						bytes.Equal(body, expected),
-						err,
+						readErr,
 					)
 				}
 				return response.Header
@@ -77,15 +78,15 @@ func TestFrontendIsIndependentOfTheBackend(t *testing.T) {
 			}
 			check("/robots.txt", webclient.Robots("https://localhost"))
 			check("/sitemap.xml", webclient.Sitemap("https://localhost"))
-			response, err := client.Get("https://" + address + webclient.ManifestPath)
-			if err != nil {
-				t.Fatal(err)
+			response, getErr := client.Get("https://" + address + webclient.ManifestPath)
+			if getErr != nil {
+				t.Fatal(getErr)
 			}
 			var manifest webclient.Manifest
-			err = json.NewDecoder(response.Body).Decode(&manifest)
+			decodeErr := json.NewDecoder(response.Body).Decode(&manifest)
 			_ = response.Body.Close()
-			if err != nil || manifest.PublicURL != "https://localhost" || manifest.Built != build.Built {
-				t.Fatalf("client manifest did not come from the embedded frontend: %+v, %v", manifest, err)
+			if decodeErr != nil || manifest.PublicURL != "https://localhost" || manifest.Built != build.Built {
+				t.Fatalf("client manifest did not come from the embedded frontend: %+v, %v", manifest, decodeErr)
 			}
 			if requests.Load() != 0 {
 				t.Fatal("a frontend request reached the hostile backend")
@@ -97,11 +98,11 @@ func TestFrontendIsIndependentOfTheBackend(t *testing.T) {
 }
 
 func TestBackendResponsesCannotBecomeExecutableContent(t *testing.T) {
-	for _, caddyfile := range []string{
+	for _, configuration := range []string{
 		filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),
 		filepath.Join("..", "compose", "Caddyfile"),
 	} {
-		t.Run(caddyfile, func(t *testing.T) {
+		t.Run(configuration, func(t *testing.T) {
 			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				for name, value := range map[string]string{
 					"Content-Type": "application/json", "Set-Cookie": "attacker=true; Path=/", "Clear-Site-Data": `"*"`,
@@ -137,7 +138,7 @@ func TestBackendResponsesCannotBecomeExecutableContent(t *testing.T) {
 				_, _ = io.WriteString(w, `{"data":"<script>globalThis.compromised=true</script>"}`)
 			}))
 			defer backend.Close()
-			address, roots := startCaddy(t, caddyfile, backend.Listener.Addr().String())
+			address, roots := startCaddy(t, configuration, backend.Listener.Addr().String())
 			client := &http.Client{
 				Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}}, Timeout: 10 * time.Second,
 				CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
@@ -145,11 +146,13 @@ func TestBackendResponsesCannotBecomeExecutableContent(t *testing.T) {
 			for _, attack := range []string{"headers", "html", "javascript", "redirect", "encoding", "early-hints", "blob", "claim"} {
 				path := "/api/v1/instance"
 				method := http.MethodGet
-				if attack == "blob" {
+				switch attack {
+				case "blob":
 					path = "/api/v1/messages/test/blob"
-				} else if attack == "claim" {
+				case "claim":
 					path = "/api/v1/messages/test/claim"
 					method = http.MethodPost
+				default:
 				}
 				request, requestErr := http.NewRequest(method, "https://"+address+path+"?attack="+attack, http.NoBody)
 				if requestErr != nil {
@@ -201,7 +204,11 @@ func TestBackendResponsesCannotBecomeExecutableContent(t *testing.T) {
 					}
 				}
 			}
-			request, err := http.NewRequest(http.MethodGet, "https://"+address+"/api/upgrade?attack=upgrade", http.NoBody)
+			request, err := http.NewRequest(
+				http.MethodGet,
+				"https://"+address+"/api/upgrade?attack=upgrade",
+				http.NoBody,
+			)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -220,11 +227,11 @@ func TestBackendResponsesCannotBecomeExecutableContent(t *testing.T) {
 }
 
 func TestMaintenanceFileTurnsPagesAndDataAway(t *testing.T) {
-	for _, caddyfile := range []string{
+	for _, configuration := range []string{
 		filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),
 		filepath.Join("..", "compose", "Caddyfile"),
 	} {
-		t.Run(caddyfile, func(t *testing.T) {
+		t.Run(configuration, func(t *testing.T) {
 			var requests atomic.Int64
 			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests.Add(1)
@@ -233,7 +240,7 @@ func TestMaintenanceFileTurnsPagesAndDataAway(t *testing.T) {
 			}))
 			defer backend.Close()
 			maintenance := filepath.Join(t.TempDir(), "maintenance")
-			address, roots := startCaddyWithMaintenance(t, caddyfile, backend.Listener.Addr().String(), maintenance)
+			address, roots := startCaddyWithMaintenance(t, configuration, backend.Listener.Addr().String(), maintenance)
 			client := &http.Client{
 				Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}},
 				Timeout:   10 * time.Second,
@@ -259,8 +266,8 @@ func TestMaintenanceFileTurnsPagesAndDataAway(t *testing.T) {
 				t.Fatal(err)
 			}
 			for _, path := range []string{"/", "/sent", "/r", "/missing"} {
-				response, request := get(path, "document")
-				expectSameResponse(t, response, http.StatusServiceUnavailable, func(w http.ResponseWriter) {
+				pageResponse, request := get(path, "document")
+				expectSameResponse(t, pageResponse, http.StatusServiceUnavailable, func(w http.ResponseWriter) {
 					pages.ServeMaintenance(w, request)
 				})
 			}
@@ -275,7 +282,11 @@ func TestMaintenanceFileTurnsPagesAndDataAway(t *testing.T) {
 			response, _ = get("/healthz", "empty")
 			_ = response.Body.Close()
 			if response.StatusCode != http.StatusOK || requests.Load() != 1 {
-				t.Fatalf("health check during maintenance: %d, backend requests %d", response.StatusCode, requests.Load())
+				t.Fatalf(
+					"health check during maintenance: %d, backend requests %d",
+					response.StatusCode,
+					requests.Load(),
+				)
 			}
 			if err := os.Remove(maintenance); err != nil {
 				t.Fatal(err)
@@ -296,7 +307,10 @@ func TestFrontendTakesTheOperatorContactForItsAllowlist(t *testing.T) {
 		"nylzo_frontend https://localhost":                                     "",
 	} {
 		var frontend Frontend
-		if err := frontend.UnmarshalCaddyfile(caddyfile.NewTestDispenser(source)); err != nil || frontend.Contact != want {
+		if err := frontend.UnmarshalCaddyfile(
+			caddyfile.NewTestDispenser(source),
+		); err != nil ||
+			frontend.Contact != want {
 			t.Fatalf("%q: contact %q, %v", source, frontend.Contact, err)
 		}
 	}
@@ -311,7 +325,9 @@ func TestFrontendTakesTheOperatorContactForItsAllowlist(t *testing.T) {
 		}
 	}
 	var frontend Frontend
-	if err := frontend.UnmarshalCaddyfile(caddyfile.NewTestDispenser("nylzo_frontend https://localhost {\n contact a@b.example c@d.example\n}")); err == nil {
+	if err := frontend.UnmarshalCaddyfile(
+		caddyfile.NewTestDispenser("nylzo_frontend https://localhost {\n contact a@b.example c@d.example\n}"),
+	); err == nil {
 		t.Fatal("two contacts were accepted")
 	}
 	var page ErrorPage

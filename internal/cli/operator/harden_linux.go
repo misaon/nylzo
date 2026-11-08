@@ -41,7 +41,8 @@ func requireUnlimitedLock() error {
 	if err := unix.Capget(&header, &capabilities[0]); err != nil {
 		return err
 	}
-	if capabilities[unix.CAP_IPC_LOCK/32].Effective&(1<<(unix.CAP_IPC_LOCK%32)) != 0 {
+	const bitsPerWord = 32
+	if capabilities[unix.CAP_IPC_LOCK/bitsPerWord].Effective&(1<<(unix.CAP_IPC_LOCK%bitsPerWord)) != 0 {
 		return nil
 	}
 	return errFiniteMemoryLock

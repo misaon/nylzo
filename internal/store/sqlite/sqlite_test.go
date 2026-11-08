@@ -64,7 +64,7 @@ func openRaw(t *testing.T, path string) *sql.DB {
 }
 
 func newRecord(opens uint16, passphrase bool) *store.Record {
-	id, ref := core.NewID(), core.NewID()
+	id, reference := core.NewID(), core.NewID()
 	message := &store.Message{
 		Version:        1,
 		CreatedAt:      testNow,
@@ -84,7 +84,7 @@ func newRecord(opens uint16, passphrase bool) *store.Record {
 		message,
 		core.NewSecret()[:],
 		core.NewSecret()[:],
-		ref.String(),
+		reference.String(),
 		seal.NewKey(),
 	)
 	return &record
@@ -99,14 +99,14 @@ func create(tb testing.TB, storage *sqlite.Store, record *store.Record, counters
 
 func claim(tb testing.TB, storage store.Messages, record *store.Record, now time.Time) store.ClaimResult {
 	tb.Helper()
-	claimed, err := store.Claim(tb.Context(), storage, record, claimParams(now))
+	claimed, err := store.Claim(tb.Context(), storage, record, claimParameters(now))
 	if err != nil {
 		tb.Fatal(err)
 	}
 	return claimed
 }
 
-func claimParams(now time.Time) store.ClaimParameters {
+func claimParameters(now time.Time) store.ClaimParameters {
 	return store.ClaimParameters{
 		Clock:         func() time.Time { return now },
 		LeaseMAC:      core.NewSecret()[:],
@@ -240,9 +240,9 @@ type cancelOnDelete struct {
 	cancel context.CancelFunc
 }
 
-func (b cancelOnDelete) Delete(ctx context.Context, ref string) error {
+func (b cancelOnDelete) Delete(ctx context.Context, reference string) error {
 	b.cancel()
-	return b.Blobs.Delete(ctx, ref)
+	return b.Blobs.Delete(ctx, reference)
 }
 
 func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
@@ -250,7 +250,13 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 	directory := t.TempDir()
 	storage, blobs := openStore(t, filepath.Join(directory, "nylzo.db")), newBlobs(t, directory)
 	record := newRecord(1, false)
-	if err := blobs.Put(t.Context(), record.Row.BlobRef, bytes.NewReader(make([]byte, 64)), 64); err != nil {
+	if _, err := blobs.PutExpiring(
+		t.Context(),
+		record.Row.BlobReference,
+		bytes.NewReader(make([]byte, 64)),
+		64,
+		time.Hour,
+	); err != nil {
 		t.Fatal(err)
 	}
 	create(t, storage, record)
@@ -261,7 +267,7 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 		t.Fatalf("an ack whose client left after the commit: %v", err)
 	}
 	row, err := storage.Load(t.Context(), record.Row.Locator)
-	if err != nil || row.BlobRef != "" || row.BlobWrap != nil {
+	if err != nil || row.BlobReference != "" || row.BlobWrap != nil {
 		t.Fatalf("the ack left the blob behind: %+v %v", row, err)
 	}
 }

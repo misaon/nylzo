@@ -7,8 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/misaon/nylzo/internal/erase"
+	"github.com/misaon/nylzo/internal/iolimit"
 )
 
 func TestShredOverwritesTheEraseBlockWhereItLies(t *testing.T) {
@@ -41,6 +43,29 @@ func TestShredOverwritesTheEraseBlockWhereItLies(t *testing.T) {
 	}
 	if err = erase.Remove(path, erase.BlockLen); err != nil {
 		t.Fatalf("a missing file counts as removed: %v", err)
+	}
+}
+
+func TestShredWaitsForAFreeFileSlot(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "blob")
+	if err := os.WriteFile(path, make([]byte, erase.BlockLen), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range iolimit.Slots {
+		iolimit.Hold()
+	}
+	shredded := make(chan error, 1)
+	go func() { shredded <- erase.Shred(path, erase.BlockLen) }()
+	select {
+	case err := <-shredded:
+		t.Fatalf("the shred wrote and synced while every file slot was taken: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	for range iolimit.Slots {
+		iolimit.Release()
+	}
+	if err := <-shredded; err != nil {
+		t.Fatal(err)
 	}
 }
 

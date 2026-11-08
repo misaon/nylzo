@@ -6,6 +6,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
@@ -25,14 +26,42 @@ func (s *Server) clientAddress(r *http.Request) netip.Addr {
 	return s.proxies.ClientAddress(r)
 }
 
-// allowAPI asks the token buckets in order, so a refused source or range takes no later token.
-func (s *Server) allowAPI(r *http.Request) bool {
-	now := time.Now()
+// clientBuckets holds the /32 or /64 source and the /24 or /48 range of a request's client; each is an HMAC, so a
+// request computes them once.
+type clientBuckets struct {
+	address      netip.Addr
+	source       ratelimit.Bucket
+	addressRange ratelimit.Bucket
+}
+
+type clientBucketsKey struct{}
+
+func (s *Server) newClientBuckets(r *http.Request) *clientBuckets {
 	address := s.clientAddress(r)
-	addressRange := s.addressKey.Range(address)
-	return s.sourceLimiter.Allow(s.addressKey.Source(address), now) &&
-		s.rangeLimiter.Allow(addressRange, now) &&
-		s.instance.Allow(addressRange, now)
+	return &clientBuckets{
+		address:      address,
+		source:       s.addressKey.Source(address),
+		addressRange: s.addressKey.Range(address),
+	}
+}
+
+func withClientBuckets(r *http.Request, buckets *clientBuckets) *http.Request {
+	return r.WithContext(context.WithValue(r.Context(), clientBucketsKey{}, buckets))
+}
+
+func (s *Server) bucketsOf(r *http.Request) *clientBuckets {
+	if buckets, ok := r.Context().Value(clientBucketsKey{}).(*clientBuckets); ok {
+		return buckets
+	}
+	return s.newClientBuckets(r)
+}
+
+// allowAPI asks the token buckets in order, so a refused source or range takes no later token.
+func (s *Server) allowAPI(buckets *clientBuckets) bool {
+	now := time.Now()
+	return s.sourceLimiter.Allow(buckets.source, now) &&
+		s.rangeLimiter.Allow(buckets.addressRange, now) &&
+		s.instance.Allow(buckets.addressRange, now)
 }
 
 func (s *Server) allowRead(w http.ResponseWriter, r *http.Request) bool {
@@ -40,19 +69,31 @@ func (s *Server) allowRead(w http.ResponseWriter, r *http.Request) bool {
 }
 
 func (s *Server) allowHourly(w http.ResponseWriter, r *http.Request, kind string, limit int64) bool {
+	return s.countHourly(w, r, &ratelimit.Hit{Kind: kind, Limit: limit})
+}
+
+// allowReadBytes counts the object that a claim or download is about to stream, so a few clients cannot fill the
+// uplink that every other reader shares.
+func (s *Server) allowReadBytes(w http.ResponseWriter, r *http.Request, size int64) bool {
+	limit := s.settings.Rates.ReadBytesPerHour
+	if limit <= 0 {
+		return true
+	}
+	return s.countHourly(w, r, &ratelimit.Hit{Kind: "read-bytes", Bytes: size, BytesLimit: limit})
+}
+
+// countHourly counts a hit against the hour of its /32 or /64 source and, with limits times the coarse multiplier,
+// of its /24 or /48 range.
+func (s *Server) countHourly(w http.ResponseWriter, r *http.Request, hit *ratelimit.Hit) bool {
 	now := time.Now()
-	address := s.clientAddress(r)
-	hour := ratelimit.Hour(now)
-	retry := s.counters.Count([]ratelimit.Hit{
-		{Kind: kind + ":h", Bucket: s.addressKey.Source(address), Window: hour, Limit: limit},
-		{
-			Kind:   kind + ":h:c",
-			Bucket: s.addressKey.Range(address),
-			Window: hour,
-			Limit:  limit * s.settings.Rates.CoarseMultiplier,
-		},
-	}, now)
-	if retry > 0 {
+	buckets := s.bucketsOf(r)
+	coarse := s.settings.Rates.CoarseMultiplier
+	source := *hit
+	source.Kind, source.Bucket, source.Window = hit.Kind+":h", buckets.source, ratelimit.Hour(now)
+	addressRange := source
+	addressRange.Kind, addressRange.Bucket = hit.Kind+":h:c", buckets.addressRange
+	addressRange.Limit, addressRange.BytesLimit = hit.Limit*coarse, hit.BytesLimit*coarse
+	if retry := s.counters.Count([]ratelimit.Hit{source, addressRange}, now); retry > 0 {
 		writeRateLimited(w, retry)
 		return false
 	}
@@ -61,8 +102,8 @@ func (s *Server) allowHourly(w http.ResponseWriter, r *http.Request, kind string
 
 // takeStream holds one of the slots that bound claim and blob responses; it answers 503 when none is free.
 func (s *Server) takeStream(w http.ResponseWriter, r *http.Request) (func(), bool) {
-	address := s.clientAddress(r)
-	source, addressRange := s.addressKey.Source(address), s.addressKey.Range(address)
+	buckets := s.bucketsOf(r)
+	source, addressRange := buckets.source, buckets.addressRange
 	if !s.streams.Take(source, addressRange) {
 		setRetryAfter(w, streamBusyRetry)
 		writeError(w, http.StatusServiceUnavailable, errUnavailable)
@@ -71,8 +112,8 @@ func (s *Server) takeStream(w http.ResponseWriter, r *http.Request) (func(), boo
 	return func() { s.streams.Release(source, addressRange) }, true
 }
 
-func (s *Server) limitCreate(now time.Time, address netip.Addr, size int64) time.Duration {
-	source, addressRange := s.addressKey.Source(address), s.addressKey.Range(address)
+func (s *Server) limitCreate(now time.Time, buckets *clientBuckets, size int64) time.Duration {
+	source, addressRange := buckets.source, buckets.addressRange
 	hour, day := ratelimit.Hour(now), ratelimit.Day(now)
 	rates := s.settings.Rates
 	coarse := rates.CoarseMultiplier
@@ -107,7 +148,7 @@ func (s *Server) limitCreate(now time.Time, address netip.Addr, size int64) time
 			},
 			ratelimit.Hit{
 				Kind:   "create:d:wide",
-				Bucket: s.addressKey.Wide(address),
+				Bucket: s.addressKey.Wide(buckets.address),
 				Window: day,
 				Limit:  max(minimumCapShare, daily/wideCapShare),
 			},
@@ -119,6 +160,7 @@ func (s *Server) limitCreate(now time.Time, address netip.Addr, size int64) time
 type globalGate struct {
 	full       bool
 	workNeeded bool
+	difficulty int
 }
 
 func (s *Server) globalGate(ctx context.Context, now time.Time) (globalGate, error) {
@@ -127,7 +169,22 @@ func (s *Server) globalGate(ctx context.Context, now time.Time) (globalGate, err
 		return globalGate{}, nil
 	}
 	creates, err := s.store.RateGet(ctx, globalCreatesKey, ratelimit.Day(now).Start)
-	return globalGate{full: creates.Count >= limit, workNeeded: s.workNeededAfter(creates.Count)}, err
+	return globalGate{
+		full:       creates.Count >= limit,
+		workNeeded: s.workNeededAfter(creates.Count),
+		difficulty: s.workDifficulty(creates.Count),
+	}, err
+}
+
+// workDifficulty adds one to the configured difficulty for each tenth of the cap taken past half, up to the most a
+// client accepts, so each create costs more the fuller the cap gets.
+func (s *Server) workDifficulty(creates int64) int {
+	base, limit := s.settings.PoWDifficulty, s.settings.Rates.GlobalDailyCreates
+	if limit <= 0 {
+		return base
+	}
+	tenthsPastHalf := max(0, (creates*2-limit)*5/limit)
+	return int(min(int64(proofofwork.MaxDifficulty), int64(base)+tenthsPastHalf))
 }
 
 func (s *Server) workNeededAfter(creates int64) bool {
@@ -159,8 +216,18 @@ func (s *Server) releaseGlobalCreate(ctx context.Context, now time.Time) {
 	}
 	err := s.store.RateRelease(context.WithoutCancel(ctx), globalCreatesKey, ratelimit.Day(now).Start)
 	if err != nil {
-		s.logger.ErrorContext(ctx, "global-release", "err", logging.ErrorText(err))
+		s.events.ErrorContext(ctx, "global-release", "err", logging.ErrorText(err))
 	}
+}
+
+// ReturnUnstoredCreates gives back the cap slots that a crashed or killed process left taken, by setting the counter
+// of the day to the messages stored. It runs before the server listens, while no upload of this data directory is in
+// flight, since one process serves a data directory at a time.
+func (s *Server) ReturnUnstoredCreates(ctx context.Context) error {
+	if s.settings.Rates.GlobalDailyCreates <= 0 {
+		return nil
+	}
+	return s.store.RateCopy(ctx, globalStoredKey, globalCreatesKey, ratelimit.Day(time.Now()).Start)
 }
 
 func (s *Server) storedCreateCounters(now time.Time) []store.RateHit {

@@ -15,5 +15,5 @@ mkdirSync(dirname(output), { recursive: true });
 execFileSync(process.env["NYLZO_GO"] ?? "go", ["build", "-trimpath", "-ldflags", flags, "-o", output, "./cmd/nylzo"], {
   cwd: root,
   stdio: "inherit",
-  env: { ...process.env, CGO_ENABLED: "0" },
+  env: { ...process.env, CGO_ENABLED: "0", GOEXPERIMENT: "runtimesecret" },
 });

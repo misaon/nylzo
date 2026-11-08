@@ -77,7 +77,7 @@ func newKey(secret []byte) (*key, error) {
 		macKeys: make(map[Purpose][32]byte, len(purposes)),
 	}
 	for _, purpose := range purposes {
-		macKey, err := hkdf.Key(sha256.New, secret, nil, infoBase+string(purpose), 32)
+		macKey, err := hkdf.Key(sha256.New, secret, nil, infoBase+string(purpose), sha256.Size)
 		if err != nil {
 			return nil, err
 		}

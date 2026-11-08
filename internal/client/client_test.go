@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
@@ -137,8 +138,8 @@ func TestInstanceRefusesWhatTheSpecForbids(t *testing.T) {
 		"an id without an epoch": {`{"limits":{},"pow":{},"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t","share":"` + wrapped + `"}}`, creation, false},
 		"a short share":          {`{"limits":{},"pow":{},"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t","epoch":1,"share":"AAAA"}}`, creation, false},
 	} {
-		api := serve(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(test.body)) })
-		if _, err := api.Instance(t.Context(), test.creation); (err == nil) != test.valid {
+		server := serve(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(test.body)) })
+		if _, err := server.Instance(t.Context(), test.creation); (err == nil) != test.valid {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -245,7 +246,7 @@ func TestRetriedClaimDrawsANewShareKeyAndReportsTheOneAnswered(t *testing.T) {
 			w.Write([]byte(challenge))
 			return
 		}
-		sent = append(sent, r.Header.Get(shareKeyHeader))
+		sent = append(sent, r.Header.Get(api.ShareKeyHeaderName))
 		if len(sent) == 1 {
 			w.WriteHeader(http.StatusNotFound)
 			w.Write([]byte(`{"error":"not_found"}`))

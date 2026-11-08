@@ -10,6 +10,7 @@ import (
 	"slices"
 	"time"
 
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 )
 
@@ -18,8 +19,10 @@ const (
 	macLen       = 32
 	fieldsLen    = 123
 	leaseLen     = 42
-	blobRefLen   = 16
 )
+
+// BlobReferenceLen is the number of random bytes in a blob reference.
+const BlobReferenceLen = 16
 
 var endings = []State{"", StateDeleted, StateCancelled}
 
@@ -28,14 +31,14 @@ var DummyLocator seal.Locator = sha256.Sum256([]byte("nylzo/v1/dummy-row"))
 
 // NewDummyRow has the shape of a live row and random keys, so no public key opens it.
 func NewDummyRow() Row {
-	var readKey, manageKey, ref [seal.KeyLen]byte
+	var readKey, manageKey, reference [seal.KeyLen]byte
 	rand.Read(readKey[:])
 	rand.Read(manageKey[:])
-	rand.Read(ref[:])
+	rand.Read(reference[:])
 	far := time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
 	message := &Message{Version: 2, OpensMax: 1, OpensRemaining: 1, CreatedAt: far, ExpiresAt: far}
-	blobRef := base64.RawURLEncoding.EncodeToString(ref[:blobRefLen])
-	return NewRecord(DummyLocator, message, readKey[:], manageKey[:], blobRef, seal.NewKey()).Row
+	blobReference := base64.RawURLEncoding.EncodeToString(reference[:BlobReferenceLen])
+	return NewRecord(DummyLocator, message, readKey[:], manageKey[:], blobReference, seal.NewKey()).Row
 }
 
 // Record is a row opened with its record key, for the length of one request.
@@ -50,19 +53,19 @@ func NewRecord(
 	locator seal.Locator,
 	message *Message,
 	readKey, manageKey []byte,
-	blobRef string,
+	blobReference string,
 	blobKey seal.Key,
 ) Record {
 	key := seal.NewKey()
 	record := Record{
 		Row: Row{
-			Locator:     locator,
-			ReadWrap:    seal.Wrap(seal.KeyFor(readKey, locator, seal.Read), key, locator, seal.Read),
-			ManageWrap:  seal.Wrap(seal.KeyFor(manageKey, locator, seal.Manage), key, locator, seal.Manage),
-			BlobRef:     blobRef,
-			BlobWrap:    seal.WrapBlobKey(key, blobKey, locator),
-			BlobPurgeAt: ceil(message.ExpiresAt, BlobPurgeStep),
-			PurgeAt:     ceil(message.ExpiresAt.Add(TombstoneTTL), RowPurgeStep),
+			Locator:       locator,
+			ReadWrap:      seal.Wrap(seal.KeyFor(readKey, locator, seal.Read), key, locator, seal.Read),
+			ManageWrap:    seal.Wrap(seal.KeyFor(manageKey, locator, seal.Manage), key, locator, seal.Manage),
+			BlobReference: blobReference,
+			BlobWrap:      seal.WrapBlobKey(key, blobKey, locator),
+			BlobPurgeAt:   BlobPurgeAt(message.ExpiresAt),
+			PurgeAt:       ceil(message.ExpiresAt.Add(TombstoneTTL), RowPurgeStep),
 		},
 		Key:     key,
 		Message: message,
@@ -199,21 +202,21 @@ func encodeMessage(message *Message) []byte {
 	data = binary.BigEndian.AppendUint64(data, narrow64(message.Size))
 	data = append(data, message.VerifierPepperID, boolByte(message.PassphraseRequired()))
 	data = append(data, fixedMAC(message.VerifierMAC)...)
-	data = binary.BigEndian.AppendUint16(data, narrow16(message.FailCountTotal))
+	data = binary.BigEndian.AppendUint16(data, saturate[uint16](int64(message.FailCountTotal)))
 	data = appendTime(data, message.NextAttemptAt)
 	data = appendTime(data, optional(message.FirstOpenedAt))
-	data = append(data, narrow8(slices.Index(endings, message.Ending)))
+	data = append(data, saturate[uint8](int64(slices.Index(endings, message.Ending))))
 	data = appendTime(data, message.EndedAt)
-	data = binary.BigEndian.AppendUint32(data, narrow32(message.ReportDay))
-	data = append(data, narrow8(message.Reports))
+	data = binary.BigEndian.AppendUint32(data, saturate[uint32](message.ReportDay))
+	data = append(data, saturate[uint8](int64(message.Reports)))
 	data = binary.BigEndian.AppendUint32(data, message.Epoch)
 	data = append(data, message.RatchetID[:]...)
-	data = append(data, narrow8(len(message.Leases)))
+	data = append(data, saturate[uint8](int64(len(message.Leases))))
 	for _, lease := range message.Leases {
 		data = append(data, lease.PepperID)
 		data = append(data, fixedMAC(lease.MAC)...)
 		data = appendTime(data, lease.ExpiresAt)
-		data = append(data, narrow8(lease.Downloads))
+		data = append(data, saturate[uint8](int64(lease.Downloads)))
 	}
 	return data
 }
@@ -221,6 +224,12 @@ func encodeMessage(message *Message) []byte {
 type decoder struct {
 	data []byte
 }
+
+const (
+	uint16Bytes = 2
+	uint32Bytes = 4
+	uint64Bytes = 8
+)
 
 func (d *decoder) next(length int) []byte {
 	if len(d.data) < length {
@@ -233,10 +242,11 @@ func (d *decoder) next(length int) []byte {
 }
 
 func (d *decoder) readByte() byte     { return d.next(1)[0] }
-func (d *decoder) readUint16() uint16 { return binary.BigEndian.Uint16(d.next(2)) }
-func (d *decoder) readUint32() uint32 { return binary.BigEndian.Uint32(d.next(4)) }
+func (d *decoder) readUint16() uint16 { return binary.BigEndian.Uint16(d.next(uint16Bytes)) }
+func (d *decoder) readUint32() uint32 { return binary.BigEndian.Uint32(d.next(uint32Bytes)) }
+func (d *decoder) readUint64() uint64 { return binary.BigEndian.Uint64(d.next(uint64Bytes)) }
 func (d *decoder) readTime() time.Time {
-	return fromMilliseconds(signed(binary.BigEndian.Uint64(d.next(8))))
+	return fromMilliseconds(signed(d.readUint64()))
 }
 func (d *decoder) readMAC() []byte           { return slices.Clone(d.next(macLen)) }
 func (d *decoder) truncated() bool           { return d.data == nil }
@@ -254,7 +264,7 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.TTLSeconds = fields.readUint32()
 	message.OpensMax = fields.readUint16()
 	message.OpensRemaining = fields.readUint16()
-	message.Size = signed(binary.BigEndian.Uint64(fields.next(8)))
+	message.Size = signed(fields.readUint64())
 	message.VerifierPepperID = fields.readByte()
 	hasVerifier, verifierMAC := fields.readByte(), fields.readMAC()
 	if hasVerifier == 1 {
@@ -270,7 +280,7 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.ReportDay = int64(fields.readUint32())
 	message.Reports = int(fields.readByte())
 	message.Epoch = fields.readUint32()
-	copy(message.RatchetID[:], fields.next(RatchetIDLen))
+	copy(message.RatchetID[:], fields.next(epoch.RatchetIDLen))
 	leases := int(fields.readByte())
 	if fields.truncated() || ending >= len(endings) || hasVerifier > 1 || !fields.remaining(leases*leaseLen) {
 		return nil, fmt.Errorf("%w: truncated or unknown field", ErrCorrupt)
@@ -295,7 +305,7 @@ func appendTime(data []byte, moment time.Time) []byte {
 	return binary.BigEndian.AppendUint64(data, narrow64(moment.UnixMilli()))
 }
 
-// The narrowing helpers store a value the record cannot hold as its nearest bound; decodeMessage then rejects it.
+// narrow64 and saturate store a value the record cannot hold as its nearest bound; decodeMessage then rejects it.
 func narrow64(value int64) uint64 {
 	if value < 0 {
 		return 0
@@ -303,34 +313,15 @@ func narrow64(value int64) uint64 {
 	return uint64(value)
 }
 
-func narrow32(value int64) uint32 {
+//nolint:ireturn // T is always a concrete unsigned integer type, never an interface.
+func saturate[T uint8 | uint16 | uint32](value int64) T {
 	if value < 0 {
 		return 0
 	}
-	if value > math.MaxUint32 {
-		return math.MaxUint32
+	if bound := ^T(0); value > int64(bound) {
+		return bound
 	}
-	return uint32(value)
-}
-
-func narrow16(value int) uint16 {
-	if value < 0 {
-		return 0
-	}
-	if value > math.MaxUint16 {
-		return math.MaxUint16
-	}
-	return uint16(value)
-}
-
-func narrow8(value int) byte {
-	if value < 0 {
-		return 0
-	}
-	if value > math.MaxUint8 {
-		return math.MaxUint8
-	}
-	return byte(value)
+	return T(value)
 }
 
 func signed(value uint64) int64 {

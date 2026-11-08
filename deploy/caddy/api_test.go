@@ -43,7 +43,11 @@ func TestSuccessfulNoContentSurvivesTheDataBoundary(t *testing.T) {
 			address, roots := startCaddy(t, caddyfile, backend.Listener.Addr().String())
 			for protocol, client := range dataClients(t, roots) {
 				for _, action := range []string{"ack", "burn", "cancel"} {
-					request, err := http.NewRequest(http.MethodPost, "https://"+address+"/api/v1/messages/test/"+action, http.NoBody)
+					request, err := http.NewRequest(
+						http.MethodPost,
+						"https://"+address+"/api/v1/messages/test/"+action,
+						http.NoBody,
+					)
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -53,8 +57,17 @@ func TestSuccessfulNoContentSurvivesTheDataBoundary(t *testing.T) {
 					}
 					body, err := io.ReadAll(response.Body)
 					_ = response.Body.Close()
-					if err != nil || response.StatusCode != http.StatusNoContent || len(body) != 0 || response.Proto != protocol {
-						t.Fatalf("%s %s: status %d, protocol %s, body %q, error %v", protocol, action, response.StatusCode, response.Proto, body, err)
+					if err != nil || response.StatusCode != http.StatusNoContent || len(body) != 0 ||
+						response.Proto != protocol {
+						t.Fatalf(
+							"%s %s: status %d, protocol %s, body %q, error %v",
+							protocol,
+							action,
+							response.StatusCode,
+							response.Proto,
+							body,
+							err,
+						)
 					}
 					for _, name := range []string{"Set-Cookie", "Refresh", "Content-Type", "Content-Length"} {
 						if response.Header.Get(name) != "" {
@@ -103,14 +116,24 @@ func TestRejectedResponsesCloseUpstreamWithoutReadingTheirBody(t *testing.T) {
 			for protocol, client := range dataClients(t, roots) {
 				for _, mode := range []string{"withhold", "drip"} {
 					name := protocol + "/" + mode
-					response, err := client.Get("https://" + address + "/api/v1/instance?test=" + name + "&body=" + mode)
+					response, err := client.Get(
+						"https://" + address + "/api/v1/instance?test=" + name + "&body=" + mode,
+					)
 					if err != nil {
 						t.Fatal(err)
 					}
 					body, err := io.ReadAll(response.Body)
 					_ = response.Body.Close()
-					if err != nil || response.StatusCode != http.StatusBadGateway || string(body) != badGatewayBody || response.Proto != protocol {
-						t.Fatalf("%s: status %d, body %q, protocol %s, error %v", name, response.StatusCode, body, response.Proto, err)
+					if err != nil || response.StatusCode != http.StatusBadGateway || string(body) != badGatewayBody ||
+						response.Proto != protocol {
+						t.Fatalf(
+							"%s: status %d, body %q, protocol %s, error %v",
+							name,
+							response.StatusCode,
+							body,
+							response.Proto,
+							err,
+						)
 					}
 					select {
 					case got := <-closed:

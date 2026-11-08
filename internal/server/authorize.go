@@ -128,14 +128,14 @@ func signedPurpose(purpose seal.Purpose) string {
 func (s *Server) settle(ctx context.Context, record *store.Record, now time.Time) {
 	finished, err := store.Finish(ctx, s.store, s.blobs, record, now)
 	if finished {
-		s.leaseTimers.cancel(record.Row.Locator)
+		s.leaseTimers.Cancel(record.Row.Locator)
 	}
 	if err == nil && finished {
 		err = s.reload(ctx, record)
 	}
 	if err != nil {
 		entry := failure(ctx, err)
-		s.logger.Log(ctx, entry.level, "settle", "err", entry.text)
+		s.events.Log(ctx, entry.level, "settle", "err", entry.text)
 	}
 }
 
@@ -182,18 +182,25 @@ func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose 
 	return granted, true
 }
 
-// emptyBody answers a declared body at once, so the server never waits for bytes a signed request must not have.
+// emptyBodyWait bounds the read of a body of unknown length, which a proxy sends for a request without one, such as
+// Caddy for an HTTP/3 request without Content-Length, and which ends at once unless the client holds it open.
+const emptyBodyWait = time.Second
+
+// emptyBody refuses a declared body without reading it and gives a body of unknown length one second to end, so a
+// signed request never waits longer for bytes it must not have.
 func emptyBody(w http.ResponseWriter, r *http.Request) bool {
-	if r.ContentLength > 0 {
-		writeError(w, http.StatusBadRequest, errBadRequest)
-		return false
-	}
-	var one [1]byte
-	if extraBytes, err := io.ReadFull(r.Body, one[:]); extraBytes != 0 || !errors.Is(err, io.EOF) {
+	if r.ContentLength > 0 || (r.ContentLength < 0 && !endsWithin(w, r, emptyBodyWait)) {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return false
 	}
 	return true
+}
+
+func endsWithin(w http.ResponseWriter, r *http.Request, wait time.Duration) bool {
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(wait))
+	var one [1]byte
+	read, err := io.ReadFull(r.Body, one[:])
+	return read == 0 && errors.Is(err, io.EOF)
 }
 
 func validPathID(w http.ResponseWriter, r *http.Request) bool {

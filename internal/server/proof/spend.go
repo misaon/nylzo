@@ -17,6 +17,10 @@ const (
 
 var errSpendAborted = errors.New("server: the challenge spend write stopped before it finished")
 
+type BatchReserver interface {
+	RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error)
+}
+
 type seenNonces struct {
 	mutex      sync.Mutex
 	maxEntries int
@@ -52,14 +56,14 @@ type spendBatch struct {
 
 // spendBatcher writes one batch at a time; spends that arrive meanwhile wait and share the next transaction.
 type spendBatcher struct {
-	counters store.Counters
+	counters BatchReserver
 	maxSize  int
 	mutex    sync.Mutex
 	writing  bool
 	queue    []*spendBatch
 }
 
-func newSpendBatcher(counters store.Counters) *spendBatcher {
+func newSpendBatcher(counters BatchReserver) *spendBatcher {
 	return &spendBatcher{counters: counters, maxSize: maxSpendBatch}
 }
 

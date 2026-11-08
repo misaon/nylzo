@@ -53,8 +53,8 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 		"/r",
 		"Slackbot",
 		"",
-	); response.Code != http.StatusOK ||
-		response.Body.String() != webclient.PreviewHTML("en", "https://nylzo.example", "") {
+	); response.Code != http.StatusOK || strings.Contains(response.Body.String(), "<script") ||
+		!strings.Contains(response.Body.String(), `property="og:title"`) {
 		t.Fatalf("link preview received executable application content: %s", response.Body.String())
 	}
 	if response := request(

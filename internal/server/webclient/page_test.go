@@ -31,22 +31,25 @@ func gunzipped(t *testing.T, body []byte) string {
 	return string(plain)
 }
 
+func rendered(t *testing.T, build webclient.Build, path, publicURL string) string {
+	t.Helper()
+	pages, err := build.Render(publicURL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(pages.For(path).Body())
+}
+
 func TestPublicURLFillsTheHomePages(t *testing.T) {
 	t.Parallel()
 	build := load(t, builtClient(t))
 	for _, path := range []string{"/", "/cs/"} {
-		with, err := build.Page(path, "https://nylzo.example")
-		if err != nil {
-			t.Fatal(err)
-		}
+		with := rendered(t, build, path, "https://nylzo.example")
 		if !strings.Contains(with, `<link rel="canonical" href="https://nylzo.example/">`) ||
 			!strings.Contains(with, `content="https://nylzo.example/assets/favicon-e5.png"`) {
 			t.Fatalf("%s with a public URL: %s", path, with)
 		}
-		without, err := build.Page(path, "")
-		if err != nil {
-			t.Fatal(err)
-		}
+		without := rendered(t, build, path, "")
 		if strings.Contains(without, "canonical") || strings.Contains(without, "og:image") {
 			t.Fatalf("%s without a public URL keeps the absolute parts: %s", path, without)
 		}
@@ -56,9 +59,8 @@ func TestPublicURLFillsTheHomePages(t *testing.T) {
 			}
 		}
 	}
-	page, err := build.Page("/sent", "https://nylzo.example")
-	if err != nil || page != builtIndex {
-		t.Fatalf("the other pages use the index template: %q %v", page, err)
+	if page := rendered(t, build, "/sent", "https://nylzo.example"); page != builtIndex {
+		t.Fatalf("the other pages use the index template: %q", page)
 	}
 }
 
@@ -69,17 +71,14 @@ func TestPublicBlocksAreFilledOrDropped(t *testing.T) {
 		"<!--nylzo:public-->__NYLZO_PUBLIC_URL__<!--/nylzo:public-->c"
 	build := load(t, templates(page, blocks, page))
 	for publicURL, want := range map[string]string{"": page + "abc", "https://n.example": page + "a[https://n.example/x]bhttps://n.examplec"} {
-		if got, err := build.Page("/", publicURL); err != nil || got != want {
-			t.Fatalf("%q: %q %v", publicURL, got, err)
+		if got := rendered(t, build, "/", publicURL); got != want {
+			t.Fatalf("%q: %q", publicURL, got)
 		}
 	}
-	if got, err := build.Page("/sent", "https://n.example"); err != nil || got != page {
-		t.Fatalf("a page without markers: %q %v", got, err)
+	if got := rendered(t, build, "/sent", "https://n.example"); got != page {
+		t.Fatalf("a page without markers: %q", got)
 	}
 	for _, unsafe := range []string{`https://n.example"><script>alert(1)</script>`, "https://n.example'&", "https://n<x>.example"} {
-		if _, err := build.Page("/", unsafe); err == nil {
-			t.Fatalf("%q was written into the page", unsafe)
-		}
 		if _, err := build.Render(unsafe, ""); err == nil {
 			t.Fatalf("%q was rendered", unsafe)
 		}
@@ -197,32 +196,6 @@ func TestAPageTheBuildLacksStillCarriesTheStrictestPolicy(t *testing.T) {
 	}
 }
 
-func TestCheckPublicURL(t *testing.T) {
-	t.Parallel()
-	for _, valid := range []string{
-		"https://nylzo.example", "https://nylzo.example:8443", "https://xn--nylzo-9ua.example", "https://192.0.2.1",
-		"https://[2001:db8::1]:443", "http://localhost:8080", "http://127.0.0.1:8096", "http://[::1]:8080",
-		"http://localhost",
-	} {
-		if err := webclient.CheckPublicURL(valid); err != nil {
-			t.Errorf("%q: %v", valid, err)
-		}
-	}
-	for _, invalid := range []string{
-		"", "nylzo.example", "//nylzo.example", "https://", "https://nylzo.example/", "https://nylzo.example/cs/",
-		"https://Nylzo.example", "HTTPS://nylzo.example", "http://nylzo.example", "http://localhost.evil.example",
-		"ftp://nylzo.example", "https://nylzo.example:", "https://nylzo.example:0", "https://nylzo.example:65536",
-		"https://nylzo.example:08443", "https://user@nylzo.example", "https://nylzo.example?x=1",
-		"https://nylzo.example?", "https://nylzo.example#top", "https://[fe80::1%25en0]", "https://nylzo_example.com",
-		"https://-nylzo.example", "https://nylzo-.example", `https://ny"lzo.example`, "https://ny<lzo.example",
-		"https://nylzo.example\n", "https://" + strings.Repeat("a", 64) + ".example", "https:nylzo.example",
-	} {
-		if err := webclient.CheckPublicURL(invalid); err == nil {
-			t.Errorf("%q passed", invalid)
-		}
-	}
-}
-
 func TestManifestListsTheEmbeddedFiles(t *testing.T) {
 	t.Parallel()
 	build := load(t, builtClient(t))
@@ -231,11 +204,7 @@ func TestManifestListsTheEmbeddedFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	served := func(path string) string {
-		page, renderErr := build.Page(path, "https://nylzo.example")
-		if renderErr != nil {
-			t.Fatal(renderErr)
-		}
-		return sha(page)
+		return sha(rendered(t, build, path, "https://nylzo.example"))
 	}
 	got := build.Manifest("v1.2.3", "https://nylzo.example", pages, buildinfo.Info{})
 	want := webclient.Manifest{

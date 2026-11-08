@@ -7,17 +7,19 @@ import (
 	"io"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core/api"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 )
 
 type State string
 
 const (
-	StateAvailable State = "available"
-	StateOpened    State = "opened"
-	StateExpired   State = "expired"
-	StateCancelled State = "cancelled"
-	StateDeleted   State = "deleted"
+	StateAvailable State = api.StateAvailable
+	StateOpened    State = api.StateOpened
+	StateExpired   State = api.StateExpired
+	StateCancelled State = api.StateCancelled
+	StateDeleted   State = api.StateDeleted
 )
 
 const (
@@ -29,6 +31,7 @@ const (
 	FreeAttempts      = 5
 	MaxBackoff        = time.Hour
 	SweepBatch        = 100
+	CounterPurgeBatch = 1000
 	BlobGrace         = 15 * time.Minute
 	MinTransferRate   = 16000
 	BlobPurgeStep     = 15 * time.Minute
@@ -41,8 +44,14 @@ func CeilMinute(moment time.Time) time.Time {
 	return ceil(moment, time.Minute)
 }
 
-func CeilQuarterHour(moment time.Time) time.Time {
-	return ceil(moment, BlobPurgeStep)
+// ExpiresAt is when a message whose upload was stored at uploaded expires: ttl later, rounded up to the minute.
+func ExpiresAt(uploaded time.Time, ttl time.Duration) time.Time {
+	return CeilMinute(uploaded.UTC().Add(ttl))
+}
+
+// BlobPurgeAt is when the sweep deletes the blob of a message that expires at expiresAt.
+func BlobPurgeAt(expiresAt time.Time) time.Time {
+	return ceil(expiresAt, BlobPurgeStep)
 }
 
 func ceil(moment time.Time, step time.Duration) time.Time {
@@ -67,6 +76,9 @@ var (
 	ErrLeaseLimit   = errors.New("store: lease download limit reached")
 	ErrBlobMissing  = errors.New("store: message has no blob")
 	ErrCorrupt      = errors.New("store: a record holds a value it cannot have")
+	ErrPoolEmpty    = errors.New(
+		"store: no prepared blob file was free, so the upload was refused and the pool refilled",
+	)
 )
 
 type GoneError struct {
@@ -118,10 +130,8 @@ type Message struct {
 	Reports          int
 	// Epoch and RatchetID name the expiry share of the message (spec section 5.6).
 	Epoch     uint32
-	RatchetID [RatchetIDLen]byte
+	RatchetID epoch.RatchetID
 }
-
-const RatchetIDLen = 16
 
 func (m *Message) PassphraseRequired() bool {
 	return len(m.VerifierMAC) > 0
@@ -140,19 +150,19 @@ func (l *Lease) Active(now time.Time) bool {
 
 // Row is what the store keeps; only the locator, the blob reference and the two cleanup times are in the clear.
 type Row struct {
-	Locator     seal.Locator
-	ReadWrap    []byte
-	ManageWrap  []byte
-	Record      []byte
-	BlobRef     string
-	BlobWrap    []byte
-	BlobPurgeAt time.Time
-	PurgeAt     time.Time
+	Locator       seal.Locator
+	ReadWrap      []byte
+	ManageWrap    []byte
+	Record        []byte
+	BlobReference string
+	BlobWrap      []byte
+	BlobPurgeAt   time.Time
+	PurgeAt       time.Time
 }
 
 type DueBlob struct {
-	Locator seal.Locator
-	Ref     string
+	Locator   seal.Locator
+	Reference string
 }
 
 type ClaimParameters struct {
@@ -188,7 +198,7 @@ type Messages interface {
 	ShredBlobs(ctx context.Context, due []DueBlob) error
 	ForgetBlobs(ctx context.Context, due []DueBlob) error
 	PurgeRows(ctx context.Context, now time.Time, limit int) (int, error)
-	KnownBlobRefs(ctx context.Context) (map[string]struct{}, error)
+	KnownBlobReferences(ctx context.Context) (map[string]struct{}, error)
 }
 
 type Counters interface {
@@ -197,6 +207,7 @@ type Counters interface {
 	RateReserve(ctx context.Context, hit RateHit) (int64, error)
 	RateReserveBatch(ctx context.Context, hits []RateHit) ([]bool, error)
 	RateRelease(ctx context.Context, key string, windowStart time.Time) error
+	RateCopy(ctx context.Context, sourceKey, targetKey string, windowStart time.Time) error
 	RatePurge(ctx context.Context, now time.Time, limit int) (int, error)
 }
 
@@ -206,17 +217,27 @@ type Store interface {
 	Checkpoint(ctx context.Context) error
 }
 
+// BlobInfo names a stored blob and the blob_purge_at its file carries.
 type BlobInfo struct {
-	Ref      string
-	Modified time.Time
+	Reference string
+	PurgeAt   time.Time
 }
 
 type Blobs interface {
-	Put(ctx context.Context, ref string, content io.Reader, size int64) error
-	Open(ctx context.Context, ref string) (io.ReadCloser, int64, error)
-	Delete(ctx context.Context, ref string) error
-	DeleteBatch(ctx context.Context, refs []string) []error
+	// PutExpiring stores the content and reports when it was stored; the blob carries the BlobPurgeAt of a message
+	// stored then with ttl.
+	PutExpiring(
+		ctx context.Context,
+		reference string,
+		content io.Reader,
+		size int64,
+		ttl time.Duration,
+	) (time.Time, error)
+	Open(ctx context.Context, reference string) (io.ReadCloser, int64, error)
+	Delete(ctx context.Context, reference string) error
+	DeleteBatch(ctx context.Context, references []string) []error
 	List(ctx context.Context) ([]BlobInfo, error)
-	PurgeTemp(ctx context.Context, olderThan time.Time) (int, error)
+	PurgeTemporary(ctx context.Context, olderThan time.Time) (int, error)
+	Replenish(ctx context.Context) error
 	Restamp(ctx context.Context, now time.Time) error
 }

@@ -8,8 +8,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/misaon/nylzo/internal/core/vectors"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/vectors"
 )
 
 func secret(fill byte) []byte {

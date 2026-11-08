@@ -253,7 +253,7 @@ export const czech = {
   'busy.decrypting': 'Dešifrujeme…',
 
   'revealed.title': 'Obsah zprávy',
-  'revealed.note': 'Za pár minut se smaže, uložte si, co potřebujete',
+  'revealed.note': 'Server ji do pár minut smaže, uložte si, co potřebujete',
   'revealed.sender': 'Odesílatel není ověřený',
   'revealed.sender.title': 'Nylzo neověřuje odesílatele',
   'revealed.sender.text': 'Žádost o\u{A0}peníze, přihlášení nebo instalaci si ověřte u\u{A0}odesílatele jinou cestou.',
@@ -308,10 +308,10 @@ export const czech = {
     'Denní počty vytvořených zpráv uchovává ještě {days} po konci dne, použité jednorázové výzvy jen několik minut.',
   'transparency.stores.addresses.title': 'IP adresy',
   'transparency.stores.addresses':
-    'Neukládá je. Limity na adresu uchovává jen v\u{A0}paměti a\u{A0}po restartu je zapomene.',
+    'Neukládá je. Limity na adresu uchovává jen v\u{A0}paměti, která se nikdy neodkládá na disk, a\u{A0}po restartu je zapomene.',
   'transparency.stores.enforced.title': 'Platnost a\u{A0}počet otevření hlídá server',
   'transparency.stores.enforced':
-    'Platnost a\u{A0}počet otevření jsou pravidla, která vynucuje tento server, ne šifrování. Server v\u{A0}cizích rukou by mohl šifrovanou zprávu ponechat, a\u{A0}pak ji chrání jen utajení odkazu a\u{A0}hesla.',
+    'Platnost a\u{A0}počet otevření hlídá tento server. Zhruba do dvou hodin po skončení platnosti smaže část klíče, kterou zpráva potřebuje, takže kopie pořízená později už zprávu neotevře. Do té doby by si server v\u{A0}cizích rukou mohl zprávu i\u{A0}tuto část klíče nechat a\u{A0}chránilo by ji jen utajení odkazu a\u{A0}hesla.',
   'transparency.logs.title': 'Co server loguje',
   'transparency.logs.written': 'Zapisuje',
   'transparency.logs.written.time': 'Čas zkrácený na minutu',
@@ -320,7 +320,7 @@ export const czech = {
   'transparency.logs.written.status': 'Stav odpovědi',
   'transparency.logs.written.count': 'Počet požadavků',
   'transparency.logs.written.note':
-    'Nepíše řádek za každý požadavek. Jednou za minutu zapíše jen počty požadavků podle metody, typu cesty a\u{A0}stavu.',
+    'Nepíše řádek za každý požadavek, jen jednou za jednu až dvě hodiny počty požadavků a\u{A0}chyb. Požadavky na zprávy počítá dohromady, jen podle třídy stavu (2xx, 4xx, 5xx).',
   'transparency.logs.never': 'Nikdy nezapisuje',
   'transparency.logs.never.id': 'ID zprávy',
   'transparency.logs.never.address': 'IP adresa',
@@ -368,7 +368,8 @@ export const czech = {
   'transparency.limits.read': 'Čtení z\u{A0}jedné adresy',
   'transparency.limits.read.value': '{hour} požadavků za hodinu',
   'transparency.limits.global': 'Nové zprávy celkem za den',
-  'transparency.limits.global.value': '{max}, od poloviny s\u{A0}výpočtem proti zahlcení služby',
+  'transparency.limits.global.value':
+    '{max}, od poloviny s\u{A0}výpočtem proti zahlcení služby, který se prodlužuje, jak se limit plní',
   'transparency.limits.none': 'bez limitu',
   'transparency.verify.title': 'Ověření webového klienta',
   'transparency.verify.short': 'Ověření klienta',
@@ -502,7 +503,8 @@ export const czech = {
   'open.title.ended': 'Zprávu už nejde otevřít',
   'open.intro': 'Zpráva se dešifruje až v\u{A0}tomto prohlížeči.',
   'open.ready.title': 'Zpráva čeká na otevření',
-  'open.ready.sub': 'Zobrazí se až po kliknutí. Uvidíte ji jen jednou, pak ji server smaže.',
+  'open.ready.sub':
+    'Zobrazí se až po kliknutí, které spotřebuje jedno otevření. Po posledním otevření ji server smaže.',
   'open.loading.text': 'Ověřujeme odkaz u\u{A0}serveru.',
   'open.passphrase.placeholder': 'Heslo od odesílatele',
   'open.passphrase.hint': 'Heslo vám odesílatel poslal zvlášť, třeba SMS nebo telefonem.',
@@ -732,10 +734,10 @@ export const czech = {
   'extra.signed.proof': 'Bez klíče: zamítnuto',
   'extra.padding.title': 'Heslo i\u{A0}odstavec vypadají stejně',
   'extra.padding.text': 'Zprávy doplníme na celé bloky, takže server nepozná krátké heslo od dlouhého textu.',
-  'extra.padding.proof': 'Bloky po 4\u{A0}KiB a\u{A0}64\u{A0}KiB',
+  'extra.padding.proof': 'Bloky po 64\u{A0}KiB',
   'extra.forget.title': 'Server zapomíná',
   'extra.forget.text':
-    'Smazané záznamy v\u{A0}databázi přepíše nulami. Časy zprávy uchovává zašifrované a\u{A0}zaokrouhlené na minutu.',
+    'Smazané záznamy i\u{A0}jejich starší kopie přepíše nulami a\u{A0}u\u{A0}smazaných souborů smaže klíč. Časy zprávy uchovává zašifrované a\u{A0}zaokrouhlené na minutu.',
   'extra.forget.proof': 'IP adresy neukládá',
   'extra.twice.title': 'Dvě nezávislé implementace',
   'extra.twice.text':
@@ -743,7 +745,7 @@ export const czech = {
   'extra.twice.proof': 'Go a\u{A0}TypeScript',
   'extra.standards.title': 'Žádná vlastní kryptografie',
   'extra.standards.text': 'Jen prověřené standardy s\u{A0}veřejnou specifikací.',
-  'extra.standards.proof': 'AES-256-GCM a\u{A0}dalších 5\u{A0}standardů',
+  'extra.standards.proof': 'AES-256-GCM a\u{A0}dalších 6\u{A0}standardů',
 
   'host.eyebrow': 'Vlastní server',
   'host.title': 'Provozujte Nylzo u\u{A0}sebe',

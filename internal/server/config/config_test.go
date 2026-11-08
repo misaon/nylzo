@@ -63,7 +63,7 @@ func environment(variables map[string]string) func(string) string {
 func TestServeNeedsAValidReportKey(t *testing.T) {
 	t.Parallel()
 	for name, value := range map[string]string{"missing": "", "not a key": "AAAA", "an Ed25519 key": core.Encode(make([]byte, 32))} {
-		_, err := config.FromEnv(
+		_, err := config.FromEnvironment(
 			environment(map[string]string{"NYLZO_PEPPER_FILE": currentPepperFile, "NYLZO_REPORT_KEY": value}),
 			true,
 		)
@@ -71,7 +71,7 @@ func TestServeNeedsAValidReportKey(t *testing.T) {
 			t.Errorf("%s report key: %v", name, err)
 		}
 	}
-	if _, err := config.FromEnv(environment(map[string]string{"NYLZO_REPORT_KEY": ""}), false); err != nil {
+	if _, err := config.FromEnvironment(environment(map[string]string{"NYLZO_REPORT_KEY": ""}), false); err != nil {
 		t.Fatalf("sweep-once and takedown need no report key: %v", err)
 	}
 }
@@ -80,9 +80,9 @@ func withPepper(name, value string) func(string) string {
 	return environment(map[string]string{"NYLZO_PEPPER_FILE": currentPepperFile, name: value})
 }
 
-func TestFromEnvReadsEveryVariable(t *testing.T) {
+func TestFromEnvironmentReadsEveryVariable(t *testing.T) {
 	t.Parallel()
-	settings, err := config.FromEnv(environment(map[string]string{
+	settings, err := config.FromEnvironment(environment(map[string]string{
 		"NYLZO_PEPPER_FILE":          currentPepperFile,
 		"NYLZO_PEPPER_PREVIOUS_FILE": previousPepperFile,
 		"NYLZO_TRUSTED_PROXIES":      "10.0.0.0/8, 192.0.2.1, ::ffff:172.17.0.1, ::ffff:10.0.0.0/104",
@@ -118,12 +118,12 @@ func TestFromEnvReadsEveryVariable(t *testing.T) {
 	if got := config.Defaults().Limits.MaxObjectBytes; got != 5373952 {
 		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373952", got)
 	}
-	if _, withoutPepper := config.FromEnv(environment(nil), false); withoutPepper != nil {
+	if _, withoutPepper := config.FromEnvironment(environment(nil), false); withoutPepper != nil {
 		t.Fatalf("sweep-once without pepper: %v", withoutPepper)
 	}
 }
 
-func TestFromEnvRefusesInvalidValues(t *testing.T) {
+func TestFromEnvironmentRefusesInvalidValues(t *testing.T) {
 	t.Parallel()
 	for _, testCase := range []struct {
 		name, value string
@@ -155,12 +155,12 @@ func TestFromEnvRefusesInvalidValues(t *testing.T) {
 		{"NYLZO_MIN_FREE_BYTES", "-1"},
 		{"NYLZO_PUBLIC_URL", "https://nylzo.example/"},
 	} {
-		_, err := config.FromEnv(withPepper(testCase.name, testCase.value), true)
+		_, err := config.FromEnvironment(withPepper(testCase.name, testCase.value), true)
 		if !errors.Is(err, config.ErrInvalid) || !strings.Contains(err.Error(), testCase.name) {
 			t.Errorf("%s=%s: want an error naming the variable, got %v", testCase.name, testCase.value, err)
 		}
 	}
-	if _, err := config.FromEnv(
+	if _, err := config.FromEnvironment(
 		environment(nil),
 		true,
 	); err == nil ||
@@ -200,7 +200,7 @@ func TestPepperFromFile(t *testing.T) {
 		}
 		return path
 	}
-	fromFile, err := config.FromEnv(environment(map[string]string{
+	fromFile, err := config.FromEnvironment(environment(map[string]string{
 		"NYLZO_PEPPER_FILE":          write("pepper", currentPepper+"\n"),
 		"NYLZO_PEPPER_PREVIOUS_FILE": write("previous", "  "+previousPepper+"\r\n"),
 	}), true)
@@ -221,7 +221,7 @@ func TestPepperFromFile(t *testing.T) {
 		"bad previous":   {"NYLZO_PEPPER_FILE": currentPepperFile, "NYLZO_PEPPER_PREVIOUS_FILE": write("bad-previous", "short")},
 		"previous twice": {"NYLZO_PEPPER_FILE": currentPepperFile, "NYLZO_PEPPER_PREVIOUS": previousPepper, "NYLZO_PEPPER_PREVIOUS_FILE": write("twice", previousPepper)},
 	} {
-		_, refused := config.FromEnv(environment(variables), true)
+		_, refused := config.FromEnvironment(environment(variables), true)
 		if !errors.Is(refused, config.ErrInvalid) || !strings.Contains(refused.Error(), "_FILE") {
 			t.Fatalf("%s: want an error naming the _FILE variable, got %v", name, refused)
 		}
@@ -236,7 +236,7 @@ func TestPepperFromFile(t *testing.T) {
 	if err = os.Chmod(shared, 0o640); err != nil {
 		t.Fatal(err)
 	}
-	_, refused := config.FromEnv(environment(map[string]string{"NYLZO_PEPPER_FILE": shared}), true)
+	_, refused := config.FromEnvironment(environment(map[string]string{"NYLZO_PEPPER_FILE": shared}), true)
 	if !errors.Is(refused, config.ErrInvalid) || !strings.Contains(refused.Error(), "chmod") {
 		t.Fatalf("a pepper file that the group can read: %v", refused)
 	}
@@ -274,7 +274,7 @@ func TestOperatorConfiguration(t *testing.T) {
 		{"address with a leading dot", map[string]string{"NYLZO_CONTACT": ".a@example.org"}, false},
 		{"address without a dot in the domain", map[string]string{"NYLZO_CONTACT": "abuse@localhost"}, false},
 	} {
-		if _, err := config.FromEnv(environment(testCase.variables), false); (err == nil) != testCase.valid {
+		if _, err := config.FromEnvironment(environment(testCase.variables), false); (err == nil) != testCase.valid {
 			t.Errorf("%s: %v, want valid %v", testCase.name, err, testCase.valid)
 		}
 	}

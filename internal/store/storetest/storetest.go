@@ -91,18 +91,19 @@ type message struct {
 	manageKey []byte
 }
 
-func (m *message) ref() string {
-	return m.Row.BlobRef
+func (m *message) reference() string {
+	return m.Row.BlobReference
 }
 
 func (f *fixture) create(opens uint16, ttlSeconds uint32, passphrase bool) *message {
 	f.t.Helper()
 	created := f.createRow(opens, ttlSeconds, passphrase)
-	if err := f.blobs.Put(
+	if _, err := f.blobs.PutExpiring(
 		f.t.Context(),
-		created.ref(),
+		created.reference(),
 		bytes.NewReader(bytes.Repeat([]byte{0xAB}, blobSize)),
 		blobSize,
+		time.Duration(ttlSeconds)*time.Second,
 	); err != nil {
 		f.t.Fatal(err)
 	}
@@ -113,13 +114,13 @@ func (f *fixture) createRow(opens uint16, ttlSeconds uint32, passphrase bool) *m
 	f.t.Helper()
 	id := core.NewID()
 	readKey, manageKey := core.NewSecret()[:], core.NewSecret()[:]
-	blobRef := core.NewID()
+	blobReference := core.NewID()
 	record := store.NewRecord(
 		seal.LocatorOf(id[:]),
 		newMessage(opens, ttlSeconds, passphrase),
 		readKey,
 		manageKey,
-		core.Encode(blobRef[:]),
+		core.Encode(blobReference[:]),
 		seal.NewKey(),
 	)
 	if err := f.store.Create(f.t.Context(), &record.Row); err != nil {
@@ -144,7 +145,7 @@ func (f *fixture) get(created *message) *store.Record {
 
 func (f *fixture) claim(created *message, now time.Time, seed int) (store.ClaimResult, error) {
 	record := f.get(created)
-	return store.Claim(f.t.Context(), f.store, record, claimParams(record, now, seed))
+	return store.Claim(f.t.Context(), f.store, record, claimParameters(record, now, seed))
 }
 
 func (f *fixture) claimWithVerifier(
@@ -154,7 +155,7 @@ func (f *fixture) claimWithVerifier(
 	correct bool,
 ) (store.ClaimResult, error) {
 	record := f.get(created)
-	parameters := claimParams(record, now, seed)
+	parameters := claimParameters(record, now, seed)
 	parameters.VerifierSent = true
 	parameters.VerifyMAC = func(_ byte, stored []byte) bool {
 		return correct && bytes.Equal(stored, created.Message.VerifierMAC)
@@ -193,9 +194,9 @@ func (f *fixture) finish(created *message, now time.Time, blobs store.Blobs) (bo
 	return store.Finish(f.t.Context(), f.store, blobs, record, now)
 }
 
-func (f *fixture) blobExists(ref string) bool {
+func (f *fixture) blobExists(reference string) bool {
 	f.t.Helper()
-	content, _, err := f.blobs.Open(f.t.Context(), ref)
+	content, _, err := f.blobs.Open(f.t.Context(), reference)
 	if errors.Is(err, store.ErrBlobMissing) {
 		return false
 	}
@@ -228,7 +229,7 @@ func newMessage(opens uint16, ttlSeconds uint32, passphrase bool) *store.Message
 	return created
 }
 
-func claimParams(record *store.Record, now time.Time, seed int) store.ClaimParameters {
+func claimParameters(record *store.Record, now time.Time, seed int) store.ClaimParameters {
 	return store.ClaimParameters{
 		Clock:         func() time.Time { return now },
 		LeaseMAC:      mac(fmt.Sprintf("lease/%x/%d/%d", record.Row.Locator, now.UnixNano(), seed)),

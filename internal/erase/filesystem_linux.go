@@ -52,30 +52,42 @@ var fileSystemNames = map[int64]string{
 func RequireInPlace(paths ...string) error {
 	checked := map[uint64]mount{}
 	for _, path := range paths {
-		var stat unix.Stat_t
-		if err := unix.Stat(path, &stat); err != nil {
-			return fmt.Errorf("erase: %s: %w", path, err)
-		}
-		found, seen := checked[stat.Dev]
-		if !seen {
-			var err error
-			if found, err = describeMount(path, stat.Dev); err != nil {
-				return fmt.Errorf("erase: %s: %w", path, err)
-			}
-			checked[stat.Dev] = found
-		}
-		if found.fileSystem == ext4Name {
-			journaled, err := journalsData(path)
-			if err != nil {
-				return fmt.Errorf("erase: read the attributes of %s: %w", path, err)
-			}
-			found.journaledData = journaled
-		}
-		if err := checkInPlace(path, found); err != nil {
+		if err := requirePathInPlace(path, checked); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// requirePathInPlace skips a path that vanished meanwhile, since a running server renames and removes files.
+func requirePathInPlace(path string, checked map[uint64]mount) error {
+	var stat unix.Stat_t
+	statErr := unix.Stat(path, &stat)
+	if errors.Is(statErr, unix.ENOENT) {
+		return nil
+	}
+	if statErr != nil {
+		return fmt.Errorf("erase: %s: %w", path, statErr)
+	}
+	found, seen := checked[stat.Dev]
+	if !seen {
+		var err error
+		if found, err = describeMount(path, stat.Dev); err != nil {
+			return fmt.Errorf("erase: %s: %w", path, err)
+		}
+		checked[stat.Dev] = found
+	}
+	if found.fileSystem == ext4Name {
+		journaled, err := journalsData(path)
+		if errors.Is(err, unix.ENOENT) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("erase: read the attributes of %s: %w", path, err)
+		}
+		found.journaledData = journaled
+	}
+	return checkInPlace(path, found)
 }
 
 func describeMount(path string, device uint64) (mount, error) {

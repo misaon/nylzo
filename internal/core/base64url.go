@@ -24,8 +24,19 @@ func DecodeExact(text string, length int) ([]byte, error) {
 	return decoded, nil
 }
 
+// DecodeInto wipes the decoded copy, so a secret stays only in destination.
+func DecodeInto(destination []byte, text string) bool {
+	decoded, err := DecodeExact(text, len(destination))
+	if err != nil {
+		return false
+	}
+	copy(destination, decoded)
+	clear(decoded)
+	return true
+}
+
 func Decode32(text string) (*[32]byte, error) {
-	decoded, err := DecodeExact(text, 32)
+	decoded, err := DecodeExact(text, len([32]byte{}))
 	if err != nil {
 		return nil, err
 	}

@@ -8,50 +8,24 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
-	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/store"
 )
 
-const (
-	leaseHeaderName    = "X-Nylzo-Lease"
-	policyHeaderName   = "X-Nylzo-Policy"
-	verifierHeaderName = "X-Nylzo-Verifier"
-	shareKeyHeaderName = "X-Nylzo-Share-Key"
-	ttlHeaderName      = "X-Nylzo-Ttl"
-	shareHeaderName    = "X-Nylzo-Share"
-	octetStream        = "application/octet-stream"
-)
+const octetStream = "application/octet-stream"
 
 var errBlobSize = errors.New("server: blob size differs from the stored message size")
-
-type metadataResponse struct {
-	State          string `json:"state"`
-	CreatedAt      string `json:"created_at,omitempty"`
-	ExpiresAt      string `json:"expires_at,omitempty"`
-	OpensMax       int    `json:"opens_max"`
-	OpensRemaining int    `json:"opens_remaining"`
-	TTLSeconds     int    `json:"ttl_s"`
-	KDFID          int    `json:"kdf_id"`
-	Size           int64  `json:"size"`
-	FirstOpenedAt  string `json:"first_opened_at,omitempty"`
-	EndedAt        string `json:"ended_at,omitempty"`
-}
-
-type policyHeader struct {
-	OpensMax   int `json:"opens_max"`
-	TTLSeconds int `json:"ttl_s"`
-	KDFID      int `json:"kdf_id"`
-	Flags      int `json:"flags"`
-}
 
 func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	if !validPathID(w, r) || !s.allowRead(w, r) {
@@ -66,20 +40,20 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	record := &granted.record
 	message := record.Message
 	if !record.HasBlob() {
-		writeJSON(w, http.StatusOK, metadataResponse{
+		writeJSON(w, http.StatusOK, api.Metadata{
 			State:         string(record.State(now)),
 			FirstOpenedAt: formatOptionalTime(message.FirstOpenedAt),
 			EndedAt:       formatEnd(record.EndedAt(now)),
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, metadataResponse{
+	writeJSON(w, http.StatusOK, api.Metadata{
 		State:          string(record.State(now)),
 		CreatedAt:      formatTime(message.CreatedAt),
 		ExpiresAt:      formatTime(message.ExpiresAt),
 		OpensMax:       int(message.OpensMax),
 		OpensRemaining: int(message.OpensRemaining),
-		TTLSeconds:     int(message.TTLSeconds),
+		TTLSeconds:     int64(message.TTLSeconds),
 		KDFID:          int(message.KDF),
 		Size:           message.Size,
 		FirstOpenedAt:  formatOptionalTime(message.FirstOpenedAt),
@@ -93,27 +67,28 @@ func formatEnd(end time.Time) string {
 	return formatTime(end)
 }
 
-// startStream admits a claim or a download; the stream slot is taken before the signature is checked (D24).
-func (s *Server) startStream(w http.ResponseWriter, r *http.Request) (func(), bool) {
-	if !validPathID(w, r) || !s.allowRead(w, r) {
-		return nil, false
-	}
-	return s.takeStream(w, r)
+// admitStream checks what costs no lookup before a claim or a download takes a stream slot, which it does before the
+// signature is checked (D24), so a malformed request never holds one.
+func (s *Server) admitStream(w http.ResponseWriter, r *http.Request) bool {
+	return validPathID(w, r) && s.allowRead(w, r) && emptyBody(w, r)
 }
 
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
-	release, ok := s.startStream(w, r)
-	if !ok {
+	if !s.admitStream(w, r) {
 		return
 	}
-	defer release()
 	verifier, verifierSent, ok := parseVerifier(w, r)
 	if !ok {
 		return
 	}
+	release, ok := s.takeStream(w, r)
+	if !ok {
+		return
+	}
+	defer release()
 	granted, ok := s.authorizedLive(w, r, seal.Read)
 	defer granted.forget()
-	if !ok {
+	if !ok || !s.allowReadBytes(w, r, granted.record.Message.Size) {
 		return
 	}
 	verifier.Challenge = granted.signature.Challenge
@@ -158,13 +133,13 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 // wrappedShare recomputes E for a message and wraps it to the client's one-time key (spec section 5.6).
 func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *store.Record) (string, bool) {
 	message := record.Message
-	clientKey, err := share.ParseKey(r.Header.Get(shareKeyHeaderName))
+	clientKey, err := share.ParseKey(r.Header.Get(api.ShareKeyHeaderName))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return "", false
 	}
 	now := time.Now()
-	expiryShare, err := s.epochs.Share(epoch.RatchetID(message.RatchetID), message.Epoch, record.Row.Locator, now)
+	expiryShare, err := s.epochs.Share(message.RatchetID, message.Epoch, record.Row.Locator, now)
 	if errors.Is(err, epoch.ErrShareGone) {
 		s.endLostShare(w, r, record, now)
 		return "", false
@@ -186,14 +161,14 @@ func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *st
 func (s *Server) endLostShare(w http.ResponseWriter, r *http.Request, record *store.Record, now time.Time) {
 	final, err := store.End(r.Context(), s.store, s.blobs, record, store.StateDeleted, now)
 	if err != nil {
-		s.logger.ErrorContext(r.Context(), "share-lost", "err", logging.ErrorText(err))
+		s.events.ErrorContext(r.Context(), "share-lost", "err", logging.ErrorText(err))
 		final = store.StateDeleted
 	}
 	writeGone(w, string(final))
 }
 
 func parseVerifier(w http.ResponseWriter, r *http.Request) (signing.Signature, bool, bool) {
-	header := r.Header.Get(verifierHeaderName)
+	header := r.Header.Get(api.VerifierHeaderName)
 	if header == "" {
 		return signing.Signature{PublicKey: dummyPublicKey}, false, true
 	}
@@ -211,8 +186,8 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 		return
 	}
 	if passphraseErr, isPassphrase := errors.AsType[*store.PassphraseError](err); isPassphrase {
-		writeJSON(w, http.StatusForbidden, passphraseRejected{
-			Error:        "passphrase",
+		writeJSON(w, http.StatusForbidden, api.PassphraseResponse{
+			Error:        api.ErrorPassphrase,
 			RetryAfter:   ceilSeconds(passphraseErr.RetryAfter),
 			AttemptsLeft: passphraseErr.AttemptsLeft,
 		})
@@ -231,10 +206,11 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 }
 
 // releaseAtLeaseEnd keeps the record key in memory until the last lease ends, so the blob goes at once.
+// releaseAtLeaseEnd runs after the request has ended and needs none of its values, so it starts from Background.
 func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time) {
 	locator := record.Row.Locator
 	delay := time.Until(leaseExpires.Add(store.LeaseTimerSlack))
-	s.leaseTimers.schedule(locator, record.Key, delay, func(key seal.Key) {
+	s.leaseTimers.Schedule(locator, record.Key, delay, func(key seal.Key) {
 		ctx := context.Background()
 		kept := store.Record{Row: store.Row{Locator: locator}, Key: key}
 		defer clear(kept.Key[:])
@@ -243,20 +219,23 @@ func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time)
 			_, err = store.Finish(ctx, s.store, s.blobs, &kept, time.Now())
 		}
 		if err != nil && !errors.Is(err, store.ErrNotFound) {
-			s.logger.Error("lease-timer", "err", logging.ErrorText(err))
+			s.events.ErrorContext(ctx, "lease-timer", "err", logging.ErrorText(err))
 		}
 	})
 }
 
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
-	release, ok := s.startStream(w, r)
+	if !s.admitStream(w, r) {
+		return
+	}
+	release, ok := s.takeStream(w, r)
 	if !ok {
 		return
 	}
 	defer release()
 	leased, ok := s.activeLease(w, r)
 	defer clear(leased.record.Key[:])
-	if !ok {
+	if !ok || !s.allowReadBytes(w, r, leased.record.Message.Size) {
 		return
 	}
 	wrapped, ok := s.wrappedShare(w, r, &leased.record)
@@ -292,7 +271,7 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !leased.record.HasBlob() {
-		s.leaseTimers.cancel(leased.record.Row.Locator)
+		s.leaseTimers.Cancel(leased.record.Row.Locator)
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -349,7 +328,7 @@ func (s *Server) findLease(r *http.Request, record *store.Record, now time.Time)
 }
 
 func leaseToken(r *http.Request) ([]byte, bool) {
-	raw, err := core.DecodeExact(r.Header.Get(leaseHeaderName), core.SeedLen)
+	raw, err := core.DecodeExact(r.Header.Get(api.LeaseHeaderName), core.SeedLen)
 	return raw, err == nil
 }
 
@@ -366,27 +345,12 @@ type openedBlob struct {
 // openBlob decrypts the stored blob and drops its padding, so the reader gets exactly the object.
 func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.Record) (openedBlob, bool) {
 	var key seal.Key
-	var err error
-	secretmode.Do(func() { key, err = record.BlobKey() })
 	defer clear(key[:])
-	if errors.Is(err, store.ErrBlobMissing) {
-		writeGone(w, string(record.State(time.Now())))
+	if !s.readBlobKey(w, r, record, &key) {
 		return openedBlob{}, false
 	}
-	var file io.ReadCloser
-	var salt seal.EraseSalt
-	if err == nil {
-		file, salt, err = s.openStoredBlob(r.Context(), record)
-	}
-	if errors.Is(err, store.ErrBlobMissing) {
-		var state store.State
-		if state, err = s.finishMissingBlob(r.Context(), record); err == nil {
-			writeGone(w, string(state))
-			return openedBlob{}, false
-		}
-	}
-	if err != nil {
-		s.writeInternal(w, r, err)
+	file, salt, ok := s.openOrFinishBlob(w, r, record)
+	if !ok {
 		return openedBlob{}, false
 	}
 	var stream cipher.Stream
@@ -396,9 +360,46 @@ func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.
 	return openedBlob{content: content, salt: salt}, true
 }
 
+// readBlobKey fills the caller's key, so the only copy is the one the caller clears.
+func (s *Server) readBlobKey(w http.ResponseWriter, r *http.Request, record *store.Record, key *seal.Key) bool {
+	var err error
+	secretmode.Do(func() { *key, err = record.BlobKey() })
+	switch {
+	case errors.Is(err, store.ErrBlobMissing):
+		writeGone(w, string(record.State(time.Now())))
+		return false
+	case err != nil:
+		s.writeInternal(w, r, err)
+		return false
+	default:
+		return true
+	}
+}
+
+// openOrFinishBlob ends a message whose blob a concurrent deletion already removed and answers it as gone.
+func (s *Server) openOrFinishBlob(
+	w http.ResponseWriter,
+	r *http.Request,
+	record *store.Record,
+) (io.ReadCloser, seal.EraseSalt, bool) {
+	file, salt, err := s.openStoredBlob(r.Context(), record)
+	if errors.Is(err, store.ErrBlobMissing) {
+		var state store.State
+		if state, err = s.finishMissingBlob(r.Context(), record); err == nil {
+			writeGone(w, string(state))
+			return nil, salt, false
+		}
+	}
+	if err != nil {
+		s.writeInternal(w, r, err)
+		return nil, salt, false
+	}
+	return file, salt, true
+}
+
 // openStoredBlob reads the erase block; a block that a concurrent deletion has overwritten counts as a missing blob.
 func (s *Server) openStoredBlob(ctx context.Context, record *store.Record) (io.ReadCloser, seal.EraseSalt, error) {
-	file, size, err := s.blobs.Open(ctx, record.Row.BlobRef)
+	file, size, err := s.blobs.Open(ctx, record.Row.BlobReference)
 	if err != nil {
 		return nil, seal.EraseSalt{}, err
 	}
@@ -437,27 +438,43 @@ func (s *Server) serveBlob(
 	s.setWriteDeadline(w, overall)
 	header := w.Header()
 	if served.lease != "" {
-		header.Set(leaseHeaderName, served.lease)
+		header.Set(api.LeaseHeaderName, served.lease)
 	}
 	if served.share != "" {
-		header.Set(shareHeaderName, served.share)
+		header.Set(api.ShareHeaderName, served.share)
 	}
-	header.Set(policyHeaderName, encodePolicy(message))
+	header.Set(api.PolicyHeaderName, encodePolicy(message))
 	header.Set("Content-Type", octetStream)
 	header.Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
-	paced := &pacedWriter{writer: w, controller: http.NewResponseController(w), pace: s.pace, overall: overall}
-	if copied, err := io.Copy(paced, blob); (err != nil || copied != size) && r.Context().Err() == nil {
-		s.logger.WarnContext(r.Context(), "blob-stream")
+	paced := s.pace.Writer(w, http.NewResponseController(w), overall)
+	buffer, _ := streamBuffers.Get().(*[streamBufferLength]byte)
+	defer func() {
+		clear(buffer[:])
+		streamBuffers.Put(buffer)
+	}()
+	if copied, err := io.CopyBuffer(
+		paced,
+		blob,
+		buffer[:],
+	); (err != nil || copied != size) &&
+		r.Context().Err() == nil {
+		s.events.WarnContext(r.Context(), "blob-stream")
 	}
 }
 
+const streamBufferLength = 32 << 10
+
+// streamBuffers spares each download a buffer of its own, since neither the decrypting reader nor the paced writer
+// lets io.Copy skip one.
+var streamBuffers = sync.Pool{New: func() any { return new([streamBufferLength]byte) }}
+
 func encodePolicy(message *store.Message) string {
-	data, _ := json.Marshal(policyHeader{
-		OpensMax:   int(message.OpensMax),
-		TTLSeconds: int(message.TTLSeconds),
-		KDFID:      int(message.KDF),
-		Flags:      int(message.Flags),
+	data, _ := json.Marshal(api.PolicyHeader{
+		OpensMax:   new(int(message.OpensMax)),
+		TTLSeconds: new(int(message.TTLSeconds)),
+		KDFID:      new(int(message.KDF)),
+		Flags:      new(int(message.Flags)),
 	})
 	return core.Encode(data)
 }
@@ -475,7 +492,7 @@ func (s *Server) finishMissingBlob(ctx context.Context, record *store.Record) (s
 		return "", store.ErrBlobMissing
 	}
 	if _, err := store.Finish(ctx, s.store, s.blobs, record, now); err != nil {
-		s.logger.ErrorContext(ctx, "finish-ending", "err", logging.ErrorText(err))
+		s.events.ErrorContext(ctx, "finish-ending", "err", logging.ErrorText(err))
 	}
 	return record.State(now), nil
 }
@@ -496,7 +513,7 @@ func (s *Server) finishGone(w http.ResponseWriter, r *http.Request, record *stor
 	if err := s.reload(r.Context(), record); err == nil {
 		_, err = store.Finish(r.Context(), s.store, s.blobs, record, time.Now())
 		if err != nil {
-			s.logger.ErrorContext(r.Context(), "finish-ending", "err", logging.ErrorText(err))
+			s.events.ErrorContext(r.Context(), "finish-ending", "err", logging.ErrorText(err))
 		}
 	}
 	writeGone(w, string(state))

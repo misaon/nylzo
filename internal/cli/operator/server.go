@@ -1,11 +1,9 @@
 package operator
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -13,23 +11,20 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
-	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/erase"
-	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
-	"github.com/misaon/nylzo/internal/server/epoch"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/sweep"
-	"github.com/misaon/nylzo/internal/store"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
@@ -41,8 +36,6 @@ const (
 	databaseFile       = "nylzo.db"
 	shutdownTimeout    = 30 * time.Second
 	defaultMemoryLimit = 192 << 20
-	maxTakedownInput   = 1 << 20
-	maxTakedownIDs     = 10000
 	failureMessage     = command.Program
 )
 
@@ -52,30 +45,34 @@ var (
 			"(systemd LimitMEMLOCK=infinity, docker run --ulimit memlock=-1:-1, Compose ulimits memlock -1) " +
 			"or grant CAP_IPC_LOCK; NYLZO_ALLOW_SWAP=1 serves without the lock",
 	)
+	errSecretMode = errors.New(
+		"this build leaves request keys in memory after use: build with GOEXPERIMENT=runtimesecret for " +
+			"linux/amd64 or linux/arm64; NYLZO_ALLOW_UNERASED_MEMORY=1 serves without erasing them",
+	)
 	errSweepFailed       = errors.New("sweep failed; see the sweep-once log line")
 	errNoStore           = errors.New("found no store in NYLZO_DATA_DIR")
 	errServerUnsupported = errors.New("the server runs on Linux and macOS only; on Windows use WSL or Docker")
 )
 
 func RunServe(ctx context.Context, environment *command.Environment, arguments []string) int {
-	return runServer(
-		environment,
-		arguments,
-		"serve",
-		func(logger *slog.Logger) error { return serve(ctx, environment, logger) },
-	)
+	return runServer(ctx, environment, arguments, "serve", func(ctx context.Context, logger *slog.Logger) error {
+		return serve(ctx, environment, logger)
+	})
 }
 
-func RunSweepOnce(_ context.Context, environment *command.Environment, arguments []string) int {
-	return runServer(
-		environment,
-		arguments,
-		"sweep-once",
-		func(logger *slog.Logger) error { return sweepOnce(environment.Getenv, logger) },
-	)
+func RunSweepOnce(ctx context.Context, environment *command.Environment, arguments []string) int {
+	return runServer(ctx, environment, arguments, "sweep-once", func(ctx context.Context, logger *slog.Logger) error {
+		return sweepOnce(ctx, environment.Getenv, logger)
+	})
 }
 
-func runServer(environment *command.Environment, arguments []string, name string, run func(*slog.Logger) error) int {
+func runServer(
+	ctx context.Context,
+	environment *command.Environment,
+	arguments []string,
+	name string,
+	run func(context.Context, *slog.Logger) error,
+) int {
 	flags := command.NewFlags(environment, name)
 	flags.Usage = func() {
 		fmt.Fprintf(
@@ -91,17 +88,18 @@ func runServer(environment *command.Environment, arguments []string, name string
 	logger := logging.New(environment.Stderr)
 	err := hardenProcess()
 	if err == nil {
-		err = run(logger)
+		err = run(ctx, logger)
 	}
 	switch {
 	case err == nil:
 		return command.ExitOK
 	case errors.Is(err, errSweepFailed):
 	case errors.Is(err, config.ErrInvalid), errors.Is(err, errServerUnsupported), errors.Is(err, errMemoryLock),
+		errors.Is(err, errSecretMode),
 		errors.Is(err, erase.ErrNotInPlace):
-		logger.Error(failureMessage, "err", err.Error())
+		logger.ErrorContext(ctx, failureMessage, "err", err.Error())
 	default:
-		logger.Error(failureMessage, "err", logging.ErrorText(err))
+		logger.ErrorContext(ctx, failureMessage, "err", logging.ErrorText(err))
 	}
 	return command.ExitError
 }
@@ -116,6 +114,19 @@ func requireMemoryLock(development config.Development, logger *slog.Logger) erro
 		return fmt.Errorf("%w: %w", errMemoryLock, err)
 	}
 	return nil
+}
+
+// requireSecretMode refuses a build whose secret mode erases nothing, unless that is explicitly allowed.
+func requireSecretMode(development config.Development, logger *slog.Logger) error {
+	switch {
+	case secretmode.Supported():
+		return nil
+	case development.AllowUnerasedMemory:
+		logger.Warn("memory-not-erased", "reason", "NYLZO_ALLOW_UNERASED_MEMORY")
+		return nil
+	default:
+		return errSecretMode
+	}
 }
 
 // requireErasable refuses storage that keeps old blocks, which would undo every deletion: a file system, a mount
@@ -137,11 +148,11 @@ func requireErasable(paths []string, development config.Development, logger *slo
 
 // erasablePaths lists the directories and files whose overwrites must land in place: the data directory, the
 // database files and every blob and temporary upload.
-func erasablePaths(dataDir string) ([]string, error) {
-	databasePath := filepath.Join(dataDir, databaseFile)
-	blobDirectory := filepath.Join(dataDir, disk.Directory)
+func erasablePaths(dataDirectory string) ([]string, error) {
+	databasePath := filepath.Join(dataDirectory, databaseFile)
+	blobDirectory := filepath.Join(dataDirectory, disk.Directory)
 	temporaryDirectory := filepath.Join(blobDirectory, "tmp")
-	paths := append([]string{dataDir, blobDirectory, temporaryDirectory}, databaseFiles(databasePath)...)
+	paths := append([]string{dataDirectory, blobDirectory, temporaryDirectory}, databaseFiles(databasePath)...)
 	for _, directory := range []string{blobDirectory, temporaryDirectory} {
 		entries, err := os.ReadDir(directory)
 		if err != nil {
@@ -168,33 +179,35 @@ func databaseFiles(databasePath string) []string {
 }
 
 func openStore(
-	dataDir string,
+	ctx context.Context,
+	dataDirectory string,
 	development config.Development,
+	pool disk.Pool,
 	open func(context.Context, string) (*sqlite.Store, error),
 	logger *slog.Logger,
 ) (*sqlite.Store, *disk.Blobs, error) {
-	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+	if err := os.MkdirAll(dataDirectory, 0o700); err != nil {
 		return nil, nil, err
 	}
-	if err := requireErasable([]string{dataDir}, development, logger); err != nil {
+	if err := requireErasable([]string{dataDirectory}, development, logger); err != nil {
 		return nil, nil, err
 	}
-	databasePath := filepath.Join(dataDir, databaseFile)
+	databasePath := filepath.Join(dataDirectory, databaseFile)
 	narrowed, err := datadir.Secure(datadir.Layout{
-		Directory: dataDir,
+		Directory: dataDirectory,
 		Files:     []string{databasePath, databasePath + "-wal", databasePath + "-shm"},
-		Trees:     []string{filepath.Join(dataDir, disk.Directory), abuse.Directory(dataDir)},
+		Trees:     []string{filepath.Join(dataDirectory, disk.Directory), abuse.Directory(dataDirectory)},
 	})
 	if narrowed > 0 {
-		logger.Warn("permissions-narrowed", "entries", narrowed)
+		logger.WarnContext(ctx, "permissions-narrowed", "entries", narrowed)
 	}
 	if err != nil {
 		return nil, nil, err
 	}
-	blobs, err := disk.New(dataDir)
+	blobs, err := disk.New(dataDirectory, disk.WithPool(pool))
 	var paths []string
 	if err == nil {
-		paths, err = erasablePaths(dataDir)
+		paths, err = erasablePaths(dataDirectory)
 	}
 	if err == nil {
 		err = requireErasable(paths, development, logger)
@@ -202,7 +215,7 @@ func openStore(
 	if err != nil {
 		return nil, nil, err
 	}
-	database, err := open(context.Background(), databasePath)
+	database, err := open(ctx, databasePath)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -227,9 +240,9 @@ func prepareEpoch(settings *config.Server, logger *slog.Logger) error {
 
 // upgradingOpen erases a data directory of nylzo 0.1 or 0.2 before it opens it, because protocol version 2 reads
 // none of its messages; an interrupted upgrade finishes on the next start.
-func upgradingOpen(dataDir string, logger *slog.Logger) func(context.Context, string) (*sqlite.Store, error) {
+func upgradingOpen(dataDirectory string, logger *slog.Logger) func(context.Context, string) (*sqlite.Store, error) {
 	return func(ctx context.Context, path string) (*sqlite.Store, error) {
-		upgraded, err := sqlite.UpgradeFromReleased(ctx, path, func() error { return disk.EraseAll(dataDir) })
+		upgraded, err := sqlite.UpgradeFromReleased(ctx, path, func() error { return disk.EraseAll(dataDirectory) })
 		if err != nil {
 			return nil, err
 		}
@@ -244,9 +257,14 @@ func upgradingOpen(dataDir string, logger *slog.Logger) func(context.Context, st
 	}
 }
 
+// blobPool sizes the pool of upload files the same way in serve, sweep-once and takedown.
+func blobPool(settings *config.Server) disk.Pool {
+	return disk.PoolFor(settings.Rates.GlobalDailyCreates, settings.SweepInterval, settings.Limits.MaxTTL)
+}
+
 // requireStore keeps sweep-once and takedown from creating an empty store where none was expected.
-func requireStore(dataDir string) error {
-	directory, err := filepath.Abs(dataDir)
+func requireStore(dataDirectory string) error {
+	directory, err := filepath.Abs(dataDirectory)
 	if err != nil {
 		return err
 	}
@@ -259,7 +277,7 @@ func requireStore(dataDir string) error {
 }
 
 func serveSettings(environment *command.Environment) (config.Server, error) {
-	settings, err := config.FromEnv(environment.Getenv, true)
+	settings, err := config.FromEnvironment(environment.Getenv, true)
 	if err != nil {
 		return settings, err
 	}
@@ -279,28 +297,46 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	if err != nil {
 		return err
 	}
-	if lockErr := requireMemoryLock(settings.Development, logger); lockErr != nil {
-		return lockErr
-	}
-	if epochErr := prepareEpoch(&settings, logger); epochErr != nil {
-		return epochErr
+	if prepareErr := prepareProcess(&settings, logger); prepareErr != nil {
+		return prepareErr
 	}
 	database, blobs, err := openStore(
-		settings.DataDir,
+		ctx,
+		settings.DataDirectory,
 		settings.Development,
-		upgradingOpen(settings.DataDir, logger),
+		blobPool(&settings),
+		upgradingOpen(settings.DataDirectory, logger),
 		logger,
 	)
 	if err != nil {
 		return err
 	}
 	defer database.Close()
-	database.OnScrubFailure(func(err error) { logger.ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err)) })
+	if database.LogResetSkipped() {
+		logger.WarnContext(
+			ctx,
+			"wal-reset-skipped",
+			"notice", "another process had the database open, so the log headers still count earlier writes",
+		)
+	}
 	instance, err := server.New(&settings, database, blobs, server.WithLogger(logger))
+	clear(settings.Pepper)
+	clear(settings.PepperPrevious)
 	if err != nil {
 		return err
 	}
-	listener, err := new(net.ListenConfig).Listen(context.Background(), "tcp", settings.Listen)
+	database.OnScrubFailure(func(err error) {
+		instance.Events().ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err))
+	})
+	blobs.OnPoolFailure(func(err error) {
+		instance.Events().ErrorContext(ctx, "upload-pool", "err", logging.ErrorText(err))
+	})
+	if !database.LogResetSkipped() {
+		if returnErr := instance.ReturnUnstoredCreates(ctx); returnErr != nil {
+			return returnErr
+		}
+	}
+	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", settings.Listen)
 	if err != nil {
 		return err
 	}
@@ -313,21 +349,8 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	sweeper.Go(func() { instance.RunRatchet(ctx) })
 	httpServer := instance.HTTPServer()
 	served := make(chan error, 1)
-	go func() { served <- httpServer.Serve(server.SecureEarlyErrors(listener)) }()
-	logger.InfoContext(
-		ctx,
-		"listening",
-		"addr",
-		listener.Addr().String(),
-		"version",
-		settings.Version,
-		"commit",
-		settings.Build.Commit,
-		"build_date",
-		settings.Build.Date,
-		"dirty",
-		settings.Build.Dirty,
-	)
+	go func() { served <- httpServer.Serve(transport.SecureEarlyErrors(listener)) }()
+	logListening(ctx, logger, listener.Addr(), &settings)
 	select {
 	case err = <-served:
 		stop()
@@ -337,14 +360,50 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	case <-ctx.Done():
 		stop()
 		logger.InfoContext(ctx, "shutdown", "drain", shutdownTimeout.String())
-		err = shutdown(httpServer, shutdownTimeout, logger)
+		err = shutdown(ctx, httpServer, shutdownTimeout, logger)
 	}
-	waitFor(&sweeper, shutdownTimeout, logger)
+	waitFor(ctx, &sweeper, shutdownTimeout, logger)
 	instance.Close()
 	return err
 }
 
-func waitFor(group *sync.WaitGroup, timeout time.Duration, logger *slog.Logger) {
+func logListening(ctx context.Context, logger *slog.Logger, address net.Addr, settings *config.Server) {
+	logger.InfoContext(
+		ctx,
+		"listening",
+		"addr", address.String(),
+		"version", settings.Version,
+		"commit", settings.Build.Commit,
+		"build_date", settings.Build.Date,
+		"dirty", settings.Build.Dirty,
+	)
+}
+
+// prepareProcess refuses a process that would leave keys in swap or in memory and prepares the epoch directory, all
+// before any store is opened.
+func prepareProcess(settings *config.Server, logger *slog.Logger) error {
+	if err := requireMemoryLock(settings.Development, logger); err != nil {
+		return err
+	}
+	if err := requireSecretMode(settings.Development, logger); err != nil {
+		return err
+	}
+	return prepareEpoch(settings, logger)
+}
+
+// Behind a declared reverse proxy a plain HTTP listener is the intended setup, not a misconfiguration.
+func logPlainListener(ctx context.Context, logger *slog.Logger, address net.Addr, trustedProxies int) {
+	if tcp, ok := address.(*net.TCPAddr); ok && tcp.IP.IsLoopback() {
+		return
+	}
+	level := slog.LevelWarn
+	if trustedProxies > 0 {
+		level = slog.LevelInfo
+	}
+	logger.Log(ctx, level, "plain-http-listener", "addr", address.String(), "trusted_proxies", trustedProxies)
+}
+
+func waitFor(ctx context.Context, group *sync.WaitGroup, timeout time.Duration, logger *slog.Logger) {
 	done := make(chan struct{})
 	go func() {
 		group.Wait()
@@ -353,45 +412,52 @@ func waitFor(group *sync.WaitGroup, timeout time.Duration, logger *slog.Logger) 
 	select {
 	case <-done:
 	case <-time.After(timeout):
-		logger.Warn("sweep-still-running", "after", timeout.String())
+		logger.WarnContext(ctx, "sweep-still-running", "after", timeout.String())
 	}
 }
 
-func shutdown(httpServer *http.Server, timeout time.Duration, logger *slog.Logger) error {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+// shutdown drains open requests after the serving context ended, so it keeps the values but not the cancellation.
+func shutdown(ctx context.Context, httpServer *http.Server, timeout time.Duration, logger *slog.Logger) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 	defer cancel()
 	err := httpServer.Shutdown(ctx)
 	if errors.Is(err, context.DeadlineExceeded) {
-		logger.Warn("shutdown-timeout", "after", timeout.String())
+		logger.WarnContext(ctx, "shutdown-timeout", "after", timeout.String())
 		return httpServer.Close()
 	}
 	return err
 }
 
-func sweepOnce(getenv func(string) string, logger *slog.Logger) error {
+func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Logger) error {
 	if !serverSupported {
 		return errServerUnsupported
 	}
-	settings, err := config.FromEnv(getenv, false)
+	settings, err := config.FromEnvironment(getenv, false)
 	if err != nil {
 		return err
 	}
-	if storeErr := requireStore(settings.DataDir); storeErr != nil {
+	if storeErr := requireStore(settings.DataDirectory); storeErr != nil {
 		return storeErr
 	}
-	database, blobs, err := openStore(settings.DataDir, settings.Development, sqlite.OpenCurrent, logger)
+	database, blobs, err := openStore(
+		ctx,
+		settings.DataDirectory,
+		settings.Development,
+		blobPool(&settings),
+		sqlite.OpenCurrent,
+		logger,
+	)
 	if err != nil {
 		return err
 	}
 	defer database.Close()
 	now := time.Now()
-	report, err := sweep.Run(context.Background(), database, blobs, settings.DataDir, now)
+	_, err = sweep.Run(ctx, database, blobs, settings.DataDirectory, now)
 	err = errors.Join(err, advanceRatchet(&settings, now, logger))
 	if err != nil {
-		logger.Error("sweep-once", sweep.LogAttributes(report, err)...)
+		logger.ErrorContext(ctx, "sweep-once", "err", sweep.FirstError(err))
 		return errSweepFailed
 	}
-	logger.Info("sweep-once", report.LogAttrs()...)
 	return nil
 }
 
@@ -407,143 +473,8 @@ func advanceRatchet(settings *config.Server, now time.Time, logger *slog.Logger)
 	if ratchet != nil {
 		ratchet.Close()
 	}
-	if errors.Is(err, epoch.ErrNoDirectory) && settings.EpochDir == "" {
+	if errors.Is(err, epoch.ErrNoDirectory) && settings.EpochDirectoryOverride == "" {
 		return nil
 	}
 	return err
-}
-
-func RunTakedown(ctx context.Context, environment *command.Environment, arguments []string) int {
-	flags := command.NewFlags(environment, "takedown")
-	flags.Usage = func() {
-		fmt.Fprintf(
-			flags.Output(),
-			"usage: %s takedown < ids\n\nRemoves every message whose id stands on its own line of stdin; readers then see deleted. Run it on the server host; it reads NYLZO_DATA_DIR like sweep-once.\n",
-			command.Program,
-		)
-	}
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
-		return code
-	}
-	if !serverSupported {
-		return command.Failf(environment, "%s", errServerUnsupported)
-	}
-	if err := hardenProcess(); err != nil {
-		return command.Failf(environment, "%s", err)
-	}
-	if environment.Terminal.StdinIsTerminal() {
-		fmt.Fprintln(
-			environment.Stderr,
-			command.Program+" takedown reads the ids from a pipe or a file on stdin, one per line",
-		)
-		return command.ExitUsage
-	}
-	ids, err := readIDs(environment.Stdin)
-	if err != nil {
-		fmt.Fprintln(environment.Stderr, command.Program+" takedown: "+err.Error())
-		return command.ExitUsage
-	}
-	settings, err := config.FromEnv(environment.Getenv, false)
-	if err != nil {
-		return command.Failf(environment, "%s", err)
-	}
-	if err = requireStore(settings.DataDir); err != nil {
-		return command.Failf(environment, "%s", err)
-	}
-	database, blobs, err := openStore(
-		settings.DataDir,
-		settings.Development,
-		sqlite.OpenCurrent,
-		slog.New(slog.NewTextHandler(environment.Stderr, nil)),
-	)
-	if err != nil {
-		return command.Failf(environment, "%s", logging.ErrorText(err))
-	}
-	defer database.Close()
-	return takeDown(ctx, environment, database, blobs, ids)
-}
-
-// takeDown removes each message without opening its record; readers then see deleted (D63, D101).
-func takeDown(
-	ctx context.Context,
-	environment *command.Environment,
-	database store.Store,
-	blobs store.Blobs,
-	ids []core.ID,
-) int {
-	failed := 0
-	for _, id := range ids {
-		if ctx.Err() != nil {
-			fmt.Fprintln(environment.Stderr, command.Program+": takedown stopped before every id was handled")
-			return command.ExitInterrupted
-		}
-		removal, err := store.TakeDown(ctx, database, blobs, seal.LocatorOf(id[:]), time.Now())
-		switch {
-		case errors.Is(err, store.ErrNotFound):
-			fmt.Fprintf(environment.Stdout, "%s no message\n", id)
-		case err != nil:
-			failed++
-			fmt.Fprintf(environment.Stdout, "%s failed: %s\n", id, logging.ErrorText(err))
-		case removal == store.AlreadyEnded:
-			fmt.Fprintf(environment.Stdout, "%s already ended\n", id)
-		default:
-			fmt.Fprintf(environment.Stdout, "%s deleted\n", id)
-		}
-	}
-	if failed > 0 {
-		return command.Failf(
-			environment,
-			"%d of %d messages could not be removed; run takedown again for them",
-			failed,
-			len(ids),
-		)
-	}
-	return command.ExitOK
-}
-
-// readIDs refuses the whole input when one line is not an id, so a pasted link never ends anything.
-func readIDs(reader io.Reader) ([]core.ID, error) {
-	data, err := command.ReadLimited(reader, maxTakedownInput)
-	if err != nil {
-		return nil, errors.New("give at most 1 MiB of ids on stdin")
-	}
-	seen := map[string]bool{}
-	var ids []core.ID
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	for line := 1; scanner.Scan(); line++ {
-		text := strings.TrimSpace(scanner.Text())
-		if text == "" {
-			continue
-		}
-		id, parseErr := core.ParseID(text)
-		if parseErr != nil {
-			return nil, fmt.Errorf("line %d is not a message id; give one id per line, never a link", line)
-		}
-		if !seen[id.String()] {
-			seen[id.String()] = true
-			ids = append(ids, id)
-		}
-	}
-	if scanner.Err() != nil {
-		return nil, errors.New("a line on stdin is too long to be a message id")
-	}
-	if len(ids) == 0 {
-		return nil, errors.New("give the ids to end on stdin, one per line")
-	}
-	if len(ids) > maxTakedownIDs {
-		return nil, fmt.Errorf("give at most %d ids at once", maxTakedownIDs)
-	}
-	return ids, nil
-}
-
-// Behind a declared reverse proxy a plain HTTP listener is the intended setup, not a misconfiguration.
-func logPlainListener(ctx context.Context, logger *slog.Logger, address net.Addr, trustedProxies int) {
-	if tcp, ok := address.(*net.TCPAddr); ok && tcp.IP.IsLoopback() {
-		return
-	}
-	level := slog.LevelWarn
-	if trustedProxies > 0 {
-		level = slog.LevelInfo
-	}
-	logger.Log(ctx, level, "plain-http-listener", "addr", address.String(), "trusted_proxies", trustedProxies)
 }

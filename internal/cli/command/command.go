@@ -1,6 +1,7 @@
 package command
 
 import (
+	"cmp"
 	"encoding/base64"
 	"errors"
 	"flag"
@@ -16,7 +17,15 @@ import (
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
+)
+
+const (
+	EnvironmentServer      = "NYLZO_SERVER"
+	EnvironmentLink        = "NYLZO_LINK"
+	EnvironmentPassphrase  = "NYLZO_PASSPHRASE_FILE"   //nolint:gosec // the name of a variable that names a file, not a credential
+	EnvironmentManageToken = "NYLZO_MANAGE_TOKEN_FILE" //nolint:gosec // the name of a variable that names a file, not a credential
 )
 
 const (
@@ -49,11 +58,37 @@ func (e *Environment) BuildInformation() buildinfo.Info {
 	return buildinfo.Read(e.Version, e.Commit, e.Date, e.Dirty)
 }
 
+func (e *Environment) LocalWebClient() (webclient.Build, error) {
+	load := e.WebClient
+	if load == nil {
+		load = func() (webclient.Build, error) { return webclient.Load(web.Files()) }
+	}
+	build, err := load()
+	if err != nil || !build.Built {
+		return webclient.Build{}, ErrNoLocalClient
+	}
+	return build, nil
+}
+
+func ServerAddress(environment *Environment, name, flagValue string) (string, bool) {
+	address := cmp.Or(flagValue, environment.Getenv(EnvironmentServer))
+	if address == "" {
+		fmt.Fprintln(environment.Stderr, Program+" "+name+" needs --server or "+EnvironmentServer)
+		return "", false
+	}
+	return address, true
+}
+
+var ErrNoLocalClient = errors.New("this nylzo carries no web client to compare with; use a release build")
+
 var (
-	errUsage   = errors.New("usage")
-	errHelp    = errors.New("help")
-	errTooLong = errors.New("the input is longer than nylzo accepts")
-	keyLike    = regexp.MustCompile(
+	errUsage          = errors.New("usage")
+	errHelp           = errors.New("help")
+	errTooLong        = errors.New("the input is longer than nylzo accepts")
+	errFileMissing    = errors.New("the file does not exist")
+	errFileDenied     = errors.New("the file is not readable")
+	errFileUnreadable = errors.New("the file cannot be read")
+	keyLike           = regexp.MustCompile(
 		fmt.Sprintf(`[A-Za-z0-9_-]{%d,}`, base64.RawURLEncoding.EncodedLen(core.SecretLen)),
 	)
 	badFlagValue = regexp.MustCompile(`invalid (?:boolean )?value .* for flag -([a-z-]+)`)
@@ -126,9 +161,15 @@ func FailWith(environment *Environment, code int, format string, arguments ...an
 }
 
 func printable(text string) string {
+	return EscapeRunes(text, func(character rune) bool {
+		return unicode.IsControl(character) || unicode.Is(unicode.Cf, character) || character == utf8.RuneError
+	})
+}
+
+func EscapeRunes(text string, escaped func(rune) bool) string {
 	var out strings.Builder
 	for _, character := range text {
-		if unicode.IsControl(character) || unicode.Is(unicode.Cf, character) || character == utf8.RuneError {
+		if escaped(character) {
 			fmt.Fprintf(&out, "\\u%04x", character)
 			continue
 		}
@@ -161,14 +202,26 @@ func ReadFileLimited(path string, limit int64) ([]byte, error) {
 	return data, err
 }
 
+func CreatePrivateFile(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, PrivateFileMode)
+}
+
+func WritePrivateFile(file *os.File, content string) error {
+	_, err := file.WriteString(content)
+	if err = errors.Join(err, file.Sync(), file.Close()); err != nil {
+		os.Remove(file.Name())
+	}
+	return err
+}
+
 // Unreadable drops the path from a file error, so no message repeats a flag value.
 func Unreadable(err error) error {
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return errors.New("the file does not exist")
+		return errFileMissing
 	case errors.Is(err, fs.ErrPermission):
-		return errors.New("the file is not readable")
+		return errFileDenied
 	default:
-		return errors.New("the file cannot be read")
+		return errFileUnreadable
 	}
 }

@@ -30,4 +30,6 @@ if [[ ! -f "$directory/90-nylzo-bandwidth.conf" ]] || [[ "$(cat "$directory/90-n
   networkctl reload
 fi
 tc qdisc replace dev "$interface" root handle 1: tbf rate 40mbit burst 65536 latency 100ms mpu 128
+# Flow queueing under the ceiling keeps one bulk download from delaying every other connection's packets.
+tc qdisc replace dev "$interface" parent 1:1 handle 10: fq_codel
 tc qdisc show dev "$interface" | grep --extended-regexp --quiet '^qdisc tbf 1: root .*rate 40Mbit '

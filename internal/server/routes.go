@@ -11,43 +11,50 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/crossorigin"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 const (
 	prefetchRetry = time.Minute
 	throttleRetry = time.Second
+	messageRoutes = "message"
 )
 
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/v1/instance", s.handleInstance)
-	mux.HandleFunc("HEAD /api/v1/instance", handleAPINotFound)
-	mux.HandleFunc("GET /api/v1/challenge", s.handleChallenge)
-	mux.HandleFunc("HEAD /api/v1/challenge", handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages", s.handleCreate)
-	mux.HandleFunc("GET /api/v1/messages/{id}", s.handleMetadata)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}", handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages/{id}/claim", s.handleClaim)
-	mux.HandleFunc("GET /api/v1/messages/{id}/blob", s.handleBlob)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}/blob", handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/messages/{id}/ack", s.handleAck)
-	mux.HandleFunc("POST /api/v1/messages/{id}/burn", s.handleBurn)
-	mux.HandleFunc("POST /api/v1/messages/{id}/cancel", s.handleCancel)
-	mux.HandleFunc("GET /api/v1/messages/{id}/status", s.handleStatus)
-	mux.HandleFunc("HEAD /api/v1/messages/{id}/status", handleAPINotFound)
-	mux.HandleFunc("POST /api/v1/abuse", s.handleAbuse)
-	mux.HandleFunc("/api/", handleAPINotFound)
-	mux.HandleFunc("GET "+TransparencyPath, s.handleTransparency)
-	mux.HandleFunc("GET /healthz", handleHealth)
+	onMessage := func(pattern string, handler http.HandlerFunc) {
+		mux.Handle(pattern, logging.InGroup(messageRoutes, handler))
+	}
+	message := api.MessagePath("{id}")
+	mux.HandleFunc("GET "+api.InstancePath, s.handleInstance)
+	mux.HandleFunc("HEAD "+api.InstancePath, handleAPINotFound)
+	mux.HandleFunc("GET "+api.ChallengePath, s.handleChallenge)
+	mux.HandleFunc("HEAD "+api.ChallengePath, handleAPINotFound)
+	mux.HandleFunc("POST "+api.MessagesPath, s.handleCreate)
+	onMessage("GET "+message, s.handleMetadata)
+	onMessage("HEAD "+message, handleAPINotFound)
+	onMessage("POST "+message+api.ClaimAction, s.handleClaim)
+	onMessage("GET "+message+api.BlobAction, s.handleBlob)
+	onMessage("HEAD "+message+api.BlobAction, handleAPINotFound)
+	onMessage("POST "+message+api.AckAction, s.handleAck)
+	onMessage("POST "+message+api.BurnAction, s.handleBurn)
+	onMessage("POST "+message+api.CancelAction, s.handleCancel)
+	onMessage("GET "+message+api.StatusAction, s.handleStatus)
+	onMessage("HEAD "+message+api.StatusAction, handleAPINotFound)
+	onMessage("POST "+api.AbusePath, s.handleAbuse)
+	mux.HandleFunc(api.Prefix, handleAPINotFound)
+	mux.HandleFunc("GET "+api.TransparencyPath, s.handleTransparency)
+	mux.HandleFunc("GET "+api.HealthPath, handleHealth)
 	mux.Handle("/", s.frontend)
 	routed := logging.Route(mux)
-	return s.requestCounts.Requests(inSecretMode(closeUnreadBodies(
+	return s.requestCounts.Requests(inSecretMode(transport.CloseUnreadBodies(
 		s.noticeForwarded(securityHeaders(crossorigin.Guard(
 			s.settings.PublicURL,
 			http.HandlerFunc(refuseCrossOrigin),
@@ -57,16 +64,29 @@ func (s *Server) routes() http.Handler {
 	)
 }
 
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write([]byte("ok"))
+}
+
+func handleAPINotFound(w http.ResponseWriter, _ *http.Request) {
+	writeNotFound(w)
+}
+
 // inSecretMode runs every API request, which may carry public keys and open record keys, blob keys and erase salts,
 // in secret mode: its registers and stack are erased when it returns, its heap allocations once unreachable (A4-2).
 func inSecretMode(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
+		if !isAPI(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
 		secretmode.Do(func() { next.ServeHTTP(w, r) })
 	})
+}
+
+func isAPI(r *http.Request) bool {
+	return strings.HasPrefix(r.URL.Path, api.Prefix)
 }
 
 func refuseCrossOrigin(w http.ResponseWriter, _ *http.Request) {
@@ -81,27 +101,15 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-// noticeForwarded warns at most once per hour that a forwarding header did not set the client address.
+// noticeForwarded counts the requests whose forwarding header did not set the client address, by header name.
 func (s *Server) noticeForwarded(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		header := ratelimit.ForwardingHeader(r)
-		if header != "" && s.clientAddress(r) == ratelimit.PeerAddress(r.RemoteAddr) &&
-			s.firstNoticeThisHour(time.Now()) {
-			s.logger.WarnContext(r.Context(), "forwarded-header-ignored", "header", header)
+		if header != "" && s.clientAddress(r) == ratelimit.PeerAddress(r.RemoteAddr) {
+			s.events.WarnContext(r.Context(), "forwarded-header-ignored", "category", header)
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-func (s *Server) firstNoticeThisHour(now time.Time) bool {
-	hour := now.UTC().Truncate(time.Hour).Unix()
-	hourSeconds := int64(time.Hour / time.Second)
-	for last := s.forwardedHour.Load(); hour > last || hour < last-hourSeconds; last = s.forwardedHour.Load() {
-		if s.forwardedHour.CompareAndSwap(last, hour) {
-			return true
-		}
-	}
-	return false
 }
 
 type spentKey struct{}
@@ -110,7 +118,7 @@ type spentKey struct{}
 func (s *Server) spendChallenges(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
-		if !strings.HasPrefix(r.URL.Path, "/api/") || err != nil {
+		if !isAPI(r) || err != nil {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -133,8 +141,7 @@ func spentBy(r *http.Request, challenge [signing.ChallengeLen]byte) bool {
 
 func prefetchGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		guarded := r.URL.Path == core.LinkPath || strings.HasPrefix(r.URL.Path, "/m/") ||
-			strings.HasPrefix(r.URL.Path, "/api/")
+		guarded := r.URL.Path == core.LinkPath || strings.HasPrefix(r.URL.Path, "/m/") || isAPI(r)
 		if guarded && r.Header.Get("Sec-Purpose") != "" {
 			setRetryAfter(w, prefetchRetry)
 			writeError(w, http.StatusServiceUnavailable, errUnavailable)
@@ -146,50 +153,35 @@ func prefetchGuard(next http.Handler) http.Handler {
 
 func (s *Server) throttle(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") && !s.allowAPI(r) {
+		if !isAPI(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		buckets := s.newClientBuckets(r)
+		if !s.allowAPI(buckets) {
 			writeRateLimited(w, throttleRetry)
 			return
 		}
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, withClientBuckets(r, buckets))
 	})
 }
 
 const timeFormat = time.RFC3339
 
-type apiError struct {
-	Error string `json:"error"`
-}
-
-type rateLimited struct {
-	Error      string `json:"error"`
-	RetryAfter int64  `json:"retry_after"`
-}
-
-type passphraseRejected struct {
-	Error        string `json:"error"`
-	RetryAfter   int64  `json:"retry_after"`
-	AttemptsLeft int    `json:"attempts_left"`
-}
-
-type gone struct {
-	Error string `json:"error"`
-	State string `json:"state"`
-}
-
 var (
-	errBadRequest     = apiError{Error: "bad_request"}
-	errClientOutdated = apiError{Error: "client_outdated"}
-	errContact        = apiError{Error: "contact"}
-	errNotFound       = apiError{Error: "not_found"}
-	errConflict       = apiError{Error: "conflict"}
-	errShareLost      = apiError{Error: "share_lost"}
-	errLengthRequired = apiError{Error: "length_required"}
-	errTooLarge       = apiError{Error: "too_large"}
-	errUnavailable    = apiError{Error: "unavailable"}
-	errWorkRequired   = apiError{Error: "pow"}
-	errIDToken        = apiError{Error: "id_token"}
-	errCrossOrigin    = apiError{Error: "cross_origin"}
-	errInternal       = apiError{Error: "internal"}
+	errBadRequest     = api.ErrorResponse{Error: api.ErrorBadRequest}
+	errClientOutdated = api.ErrorResponse{Error: api.ErrorClientOutdated}
+	errContact        = api.ErrorResponse{Error: api.ErrorContact}
+	errNotFound       = api.ErrorResponse{Error: api.ErrorNotFound}
+	errConflict       = api.ErrorResponse{Error: api.ErrorConflict}
+	errShareLost      = api.ErrorResponse{Error: api.ErrorShareLost}
+	errLengthRequired = api.ErrorResponse{Error: api.ErrorLengthRequired}
+	errTooLarge       = api.ErrorResponse{Error: api.ErrorTooLarge}
+	errUnavailable    = api.ErrorResponse{Error: api.ErrorUnavailable}
+	errWorkRequired   = api.ErrorResponse{Error: api.ErrorWork}
+	errIDToken        = api.ErrorResponse{Error: api.ErrorIDToken}
+	errCrossOrigin    = api.ErrorResponse{Error: api.ErrorCrossOrigin}
+	errInternal       = api.ErrorResponse{Error: api.ErrorInternal}
 )
 
 func writeJSON(w http.ResponseWriter, status int, value any) {
@@ -204,8 +196,8 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Write(body)
 }
 
-func writeError(w http.ResponseWriter, status int, apiErr apiError) {
-	writeJSON(w, status, apiErr)
+func writeError(w http.ResponseWriter, status int, body api.ErrorResponse) {
+	writeJSON(w, status, body)
 }
 
 func writeNotFound(w http.ResponseWriter) {
@@ -213,12 +205,16 @@ func writeNotFound(w http.ResponseWriter) {
 }
 
 func writeGone(w http.ResponseWriter, state string) {
-	writeJSON(w, http.StatusGone, gone{Error: "gone", State: state})
+	writeJSON(w, http.StatusGone, api.GoneResponse{Error: api.ErrorGone, State: state})
 }
 
 func writeRateLimited(w http.ResponseWriter, wait time.Duration) {
 	setRetryAfter(w, wait)
-	writeJSON(w, http.StatusTooManyRequests, rateLimited{Error: "rate_limited", RetryAfter: retrySeconds(wait)})
+	writeJSON(
+		w,
+		http.StatusTooManyRequests,
+		api.RateLimitedResponse{Error: api.ErrorRateLimited, RetryAfter: retrySeconds(wait)},
+	)
 }
 
 func setRetryAfter(w http.ResponseWriter, wait time.Duration) {
@@ -238,7 +234,7 @@ func ceilSeconds(wait time.Duration) int64 {
 
 func (s *Server) writeInternal(w http.ResponseWriter, r *http.Request, err error) {
 	entry := failure(r.Context(), err)
-	s.logger.Log(r.Context(), entry.level, "handler", "route", r.Pattern, "err", entry.text)
+	s.events.Log(r.Context(), entry.level, "handler", "err", entry.text)
 	if entry.clientGone {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return

@@ -10,12 +10,11 @@ import (
 	"net/http"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 )
-
-const shareKeyHeader = "X-Nylzo-Share-Key"
 
 // Envelope is a served object with the expiry share, still wrapped to the client's one-time key.
 type Envelope struct {
@@ -45,7 +44,7 @@ func (c *Client) Claim(
 	sent := &sentShareKey{}
 	request := signedRequest{
 		method:         http.MethodPost,
-		path:           messagePath(id) + "/claim",
+		path:           api.MessagePath(id.String()) + api.ClaimAction,
 		purpose:        signing.PurposeRead,
 		seed:           read,
 		verifier:       verifier,
@@ -56,7 +55,7 @@ func (c *Client) Claim(
 		return Claimed{}, err
 	}
 	defer response.Body.Close()
-	lease := response.Header.Get("X-Nylzo-Lease")
+	lease := response.Header.Get(api.LeaseHeaderName)
 	if lease == "" {
 		return Claimed{}, ErrResponse
 	}
@@ -81,10 +80,10 @@ func (c *Client) Blob(
 	sent := &sentShareKey{}
 	request := signedRequest{
 		method:         http.MethodGet,
-		path:           messagePath(id) + "/blob",
+		path:           api.MessagePath(id.String()) + api.BlobAction,
 		purpose:        signing.PurposeRead,
 		seed:           read,
-		headers:        map[string]string{"X-Nylzo-Lease": lease},
+		headers:        map[string]string{api.LeaseHeaderName: lease},
 		attemptHeaders: sent.headers,
 	}
 	response, err := c.signed(ctx, &request, transferTime(size))
@@ -103,16 +102,16 @@ type sentShareKey struct {
 
 func (s *sentShareKey) headers() map[string]string {
 	s.key = share.NewKey()
-	return map[string]string{shareKeyHeader: core.Encode(s.key.PublicKey().Bytes())}
+	return map[string]string{api.ShareKeyHeaderName: core.Encode(s.key.PublicKey().Bytes())}
 }
 
 func (c *Client) Ack(ctx context.Context, id core.ID, read *[core.SeedLen]byte, lease string) error {
 	request := signedRequest{
 		method:  http.MethodPost,
-		path:    messagePath(id) + "/ack",
+		path:    api.MessagePath(id.String()) + api.AckAction,
 		purpose: signing.PurposeRead,
 		seed:    read,
-		headers: map[string]string{"X-Nylzo-Lease": lease},
+		headers: map[string]string{api.LeaseHeaderName: lease},
 	}
 	response, err := c.signed(ctx, &request, shortTimeout)
 	if err != nil {
@@ -122,11 +121,11 @@ func (c *Client) Ack(ctx context.Context, id core.ID, read *[core.SeedLen]byte, 
 }
 
 func readEnvelope(response *http.Response) (Envelope, error) {
-	received, err := decodePolicy(response.Header.Get("X-Nylzo-Policy"))
+	received, err := decodePolicy(response.Header.Get(api.PolicyHeaderName))
 	if err != nil {
 		return Envelope{}, err
 	}
-	if wrapped := response.Header.Get("X-Nylzo-Share"); wrapped != "" {
+	if wrapped := response.Header.Get(api.ShareHeaderName); wrapped != "" {
 		decoded, shareErr := core.DecodeExact(wrapped, share.WrappedLen)
 		if shareErr != nil {
 			return Envelope{}, ErrResponse
@@ -137,7 +136,7 @@ func readEnvelope(response *http.Response) (Envelope, error) {
 	if response.ContentLength > limit {
 		return Envelope{}, ErrResponse
 	}
-	object, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
+	object, err := readObject(response, limit)
 	if err != nil {
 		return Envelope{}, err
 	}
@@ -149,22 +148,29 @@ func readEnvelope(response *http.Response) (Envelope, error) {
 	return received, nil
 }
 
+// readObject reads a body of known length into one allocation and falls back to a bounded read for a chunked one.
+func readObject(response *http.Response, limit int64) ([]byte, error) {
+	if response.ContentLength < 0 {
+		return io.ReadAll(io.LimitReader(response.Body, limit+1))
+	}
+	object := make([]byte, response.ContentLength)
+	if _, err := io.ReadFull(response.Body, object); err != nil {
+		return nil, err
+	}
+	return object, nil
+}
+
 func decodePolicy(header string) (Envelope, error) {
 	data, err := base64.RawURLEncoding.Strict().DecodeString(header)
 	if err != nil || header == "" {
 		return Envelope{}, ErrResponse
 	}
-	var policy struct {
-		OpensMax *int `json:"opens_max"`
-		TTL      *int `json:"ttl_s"`
-		KDF      *int `json:"kdf_id"`
-		Flags    *int `json:"flags"`
-	}
+	var policy api.PolicyHeader
 	err = json.Unmarshal(data, &policy)
-	if err != nil || policy.OpensMax == nil || policy.TTL == nil || policy.KDF == nil || policy.Flags == nil {
+	if err != nil || policy.OpensMax == nil || policy.TTLSeconds == nil || policy.KDFID == nil || policy.Flags == nil {
 		return Envelope{}, ErrResponse
 	}
-	opensMax, ttl, kdf := *policy.OpensMax, *policy.TTL, *policy.KDF
+	opensMax, ttl, kdf := *policy.OpensMax, *policy.TTLSeconds, *policy.KDFID
 	if opensMax < 1 || opensMax > math.MaxUint16 || ttl < 1 || ttl > math.MaxUint32 || kdf < 0 ||
 		kdf > math.MaxUint8 || !core.KDF(kdf).Valid() {
 		return Envelope{}, ErrResponse

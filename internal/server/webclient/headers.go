@@ -53,7 +53,7 @@ func SetSecurityHeaders(header http.Header, indexable bool) {
 	header.Set("Content-Security-Policy", NonHTMLCSP)
 }
 
-func IsPreviewAgent(userAgent string) bool {
+func isPreviewAgent(userAgent string) bool {
 	userAgent = strings.ToLower(userAgent)
 	return slices.ContainsFunc(previewAgents, func(agent string) bool { return strings.Contains(userAgent, agent) })
 }

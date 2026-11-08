@@ -10,8 +10,14 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig/httpcaddyfile"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
+)
+
+var (
+	errNoReplacer          = errors.New("nylzo_error requires a request replacer")
+	errOutsideHandleErrors = errors.New("nylzo_error runs only inside handle_errors")
 )
 
 func init() {
@@ -36,7 +42,7 @@ func (*ErrorPage) CaddyModule() caddy.ModuleInfo {
 }
 
 func (e *ErrorPage) Provision(_ caddy.Context) error {
-	if err := webclient.CheckContact(e.Contact); err != nil {
+	if err := operatoraddress.CheckContact(e.Contact); err != nil {
 		return fmt.Errorf("the contact %q: %w", e.Contact, err)
 	}
 	build, err := webclient.Load(web.Files())
@@ -69,12 +75,12 @@ func (e *ErrorPage) UnmarshalCaddyfile(dispenser *caddyfile.Dispenser) error {
 func (e *ErrorPage) ServeHTTP(w http.ResponseWriter, r *http.Request, _ caddyhttp.Handler) error {
 	replacer, ok := r.Context().Value(caddy.ReplacerCtxKey).(*caddy.Replacer)
 	if !ok {
-		return errors.New("nylzo_error requires a request replacer")
+		return errNoReplacer
 	}
 	value, _ := replacer.Get("http.error.status_code")
 	status, ok := value.(int)
 	if !ok {
-		return errors.New("nylzo_error runs only inside handle_errors")
+		return errOutsideHandleErrors
 	}
 	if status >= http.StatusInternalServerError {
 		e.pages.ServeServerError(w, r, status)
