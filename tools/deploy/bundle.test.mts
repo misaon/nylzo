@@ -33,7 +33,7 @@ test("the host bundle is reproducible and every file has one place and one role 
   for (const name of [...sources.keys()].filter(name => /\.(service|timer)$/u.test(name))) {
     assert.match(sources.get(name)!, /^\[(Unit|Service|Timer)\]$/mu, name);
   }
-  for (const name of ["proxy/caddy.service", "application/nylzo.service", "monitoring/nylzo-clock.service", "monitoring/nylzo-heartbeat.service"]) {
+  for (const name of ["proxy/caddy.service", "application/nylzo.service", "monitoring/nylzo-clock.service", "monitoring/nylzo-heartbeat.service", "system/nylzo-ipv6.service"]) {
     const unit = sources.get(name)!;
     for (const setting of ["NoNewPrivileges=true", "ProtectSystem=strict", "RestrictNamespaces=true", "SystemCallFilter=@system-service", "LimitCORE=0"]) assert(unit.includes(`${setting}\n`), `${name} lacks ${setting}`);
   }

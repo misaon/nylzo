@@ -304,9 +304,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	if err != nil {
 		return err
 	}
-	if address, ok := listener.Addr().(*net.TCPAddr); !ok || !address.IP.IsLoopback() {
-		logger.WarnContext(ctx, "plain-http-listener", "addr", listener.Addr().String())
-	}
+	logPlainListener(ctx, logger, listener.Addr(), len(settings.TrustedProxies))
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 	var sweeper sync.WaitGroup
@@ -536,4 +534,16 @@ func readIDs(reader io.Reader) ([]core.ID, error) {
 		return nil, fmt.Errorf("give at most %d ids at once", maxTakedownIDs)
 	}
 	return ids, nil
+}
+
+// Behind a declared reverse proxy a plain HTTP listener is the intended setup, not a misconfiguration.
+func logPlainListener(ctx context.Context, logger *slog.Logger, address net.Addr, trustedProxies int) {
+	if tcp, ok := address.(*net.TCPAddr); ok && tcp.IP.IsLoopback() {
+		return
+	}
+	level := slog.LevelWarn
+	if trustedProxies > 0 {
+		level = slog.LevelInfo
+	}
+	logger.Log(ctx, level, "plain-http-listener", "addr", address.String(), "trusted_proxies", trustedProxies)
 }

@@ -9,7 +9,7 @@ while read -r digest; do
   if [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ && "$digest" != "$current" && "$digest" != "$previous" ]]; then
     docker image rm "ghcr.io/misaon/nylzo@$digest" >/dev/null 2>&1 || true
   fi
-done < <(docker image ls --digests --format '{{.Digest}}' ghcr.io/misaon/nylzo | sort --unique)
+done < <(docker image ls --all --digests --format '{{.Digest}}' ghcr.io/misaon/nylzo | sort --unique)
 current_caddy=$(cat "$state/caddy.tag")
 previous_caddy=$(cat "$state/caddy.previous.tag" 2>/dev/null || true)
 for directory in /opt/nylzo/caddy/*; do
