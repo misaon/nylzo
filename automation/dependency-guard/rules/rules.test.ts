@@ -125,6 +125,18 @@ const miseLockUpdate = miseLock
   .replace('a'.repeat(64), 'c'.repeat(64))
   .replace('384924896', '400000000');
 
+const actionlintPlatform = '[tools.actionlint."platforms.linux-x64"]';
+const nodeSection = '\n\n[[tools.node]]';
+const actionlintAsset = miseLockUpdate.slice(
+  miseLockUpdate.indexOf(actionlintPlatform) + actionlintPlatform.length,
+  miseLockUpdate.indexOf(nodeSection),
+);
+
+function withActionlintVariants(...variants: readonly (readonly [platform: string, asset: string])[]): string {
+  const sections = variants.map(([platform, asset]) => `\n\n[tools.actionlint."platforms.${platform}"]${asset}`);
+  return miseLockUpdate.replace(nodeSection, `${sections.join('')}${nodeSection}`);
+}
+
 const checkoutPin = `actions/checkout@${'1'.repeat(40)} # v7.0.1`;
 const workflow = `name: ci
 
@@ -487,6 +499,20 @@ const cases: readonly Case[] = [
     before: miseLock,
     expected: 'safe',
     name: 'mise lock update that records where its checksum came from',
+    path: 'mise.lock',
+  },
+  {
+    after: withActionlintVariants(['linux-x64-musl', actionlintAsset], ['linux-x64-musl-baseline', actionlintAsset]),
+    before: miseLock,
+    expected: 'safe',
+    name: 'mise lock platform variants that repeat the base asset',
+    path: 'mise.lock',
+  },
+  {
+    after: withActionlintVariants(['linux-x64-musl', actionlintAsset.replace('c'.repeat(64), 'd'.repeat(64))]),
+    before: miseLock,
+    expected: 'rejected',
+    name: 'mise lock platform variant with an asset of its own',
     path: 'mise.lock',
   },
   {
