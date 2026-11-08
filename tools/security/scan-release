@@ -21,6 +21,7 @@ scan() {
   local filename="$1" code=0
   shift
   local report="$report_directory/$filename"
+  rm -f "$report"
   grype "$@" --fail-on high --output json --file "$report" || code=$?
   if [[ "$code" != 0 && "$code" != 2 ]] || ! is_grype_report "$report"; then
     status=$broken
@@ -68,9 +69,6 @@ done
 
 reports=("$report_directory"/*.grype.json)
 [[ "${#reports[@]}" = "$report_count" ]] || status=$broken
-for report in "${reports[@]}"; do
-  is_grype_report "$report" || status=$broken
-done
 jq -s --argjson expected "$report_count" '{format:1,complete:(length == $expected),scans:.}' "$statuses" \
   > "$report_directory/scan-status.json"
 exit "$status"
