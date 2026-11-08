@@ -263,7 +263,7 @@ func TestABlockedCheckpointFailsTheSweepQuickly(t *testing.T) {
 	if _, err = store.SweepAll(t.Context(), storage, blobs, time.Now()); err != nil {
 		t.Fatalf("a sweep after the reader left: %v", err)
 	}
-	locking, err := openRaw(t, path+"?_txlock=immediate").Begin()
+	locking, err := openRaw(t, path, "_txlock=immediate").Begin()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -671,7 +671,7 @@ func TestOpenCheckpointsTheLogBeforeItsReset(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
 	openStore(t, path).Close()
-	writer := openRaw(t, path+"?_pragma=wal_autocheckpoint(0)")
+	writer := openRaw(t, path, "_pragma=wal_autocheckpoint(0)")
 	if _, err := writer.Exec(`INSERT INTO rate_counters VALUES ('crash', 0, 7, 0, 0)`); err != nil {
 		t.Fatal(err)
 	}
