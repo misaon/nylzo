@@ -54,20 +54,35 @@ func walkLayout(layout Layout, narrowed *int) error {
 	return nil
 }
 
+// secureTree skips an entry that vanished while it walked, since uploads and sweeps of a running server rename and
+// remove files in the tree.
 func secureTree(tree string, narrowed *int) error {
 	return filepath.WalkDir(tree, func(path string, entry fs.DirEntry, walkErr error) error {
-		if errors.Is(walkErr, fs.ErrNotExist) && path == tree {
-			return fs.SkipDir
+		if errors.Is(walkErr, fs.ErrNotExist) {
+			return skipVanished(path == tree, entry)
 		}
 		if walkErr != nil {
 			return walkErr
 		}
 		info, err := entry.Info()
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
 		if err != nil {
 			return err
 		}
-		return secureEntry(path, info, narrowed)
+		if err = secureEntry(path, info, narrowed); errors.Is(err, fs.ErrNotExist) {
+			return nil
+		}
+		return err
 	})
+}
+
+func skipVanished(root bool, entry fs.DirEntry) error {
+	if root || (entry != nil && entry.IsDir()) {
+		return fs.SkipDir
+	}
+	return nil
 }
 
 func secureEntry(path string, info fs.FileInfo, narrowed *int) error {

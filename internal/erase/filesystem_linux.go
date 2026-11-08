@@ -53,8 +53,12 @@ func RequireInPlace(paths ...string) error {
 	checked := map[uint64]mount{}
 	for _, path := range paths {
 		var stat unix.Stat_t
-		if err := unix.Stat(path, &stat); err != nil {
-			return fmt.Errorf("erase: %s: %w", path, err)
+		statErr := unix.Stat(path, &stat)
+		if errors.Is(statErr, unix.ENOENT) {
+			continue
+		}
+		if statErr != nil {
+			return fmt.Errorf("erase: %s: %w", path, statErr)
 		}
 		found, seen := checked[stat.Dev]
 		if !seen {
@@ -66,6 +70,9 @@ func RequireInPlace(paths ...string) error {
 		}
 		if found.fileSystem == ext4Name {
 			journaled, err := journalsData(path)
+			if errors.Is(err, unix.ENOENT) {
+				continue
+			}
 			if err != nil {
 				return fmt.Errorf("erase: read the attributes of %s: %w", path, err)
 			}
