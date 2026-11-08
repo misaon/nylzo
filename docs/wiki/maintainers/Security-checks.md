@@ -7,7 +7,7 @@ Nylzo publishes evidence about its development process and releases. These check
 | CodeQL            | Go, JavaScript/TypeScript, and GitHub Actions security analysis                                | Every PR; affected languages on main; full weekly and manual runs                                  |
 | OpenSSF Scorecard | Repository protections, workflow permissions, dependency practices, and other project controls | Relevant main changes and weekly                                                                   |
 | Codecov           | Go race-test coverage and TypeScript unit coverage                                             | Existing relevant test jobs; reports uploaded after successful tests                               |
-| Grype             | Known vulnerabilities in the release archive SBOMs and both container platforms                | Before stable release promotion; daily for the latest published release; Compose integration tests |
+| Grype             | Known vulnerabilities in the release archives and both container platforms                     | Before stable release promotion; daily for the latest published release; Compose integration tests |
 | Harden-Runner     | Network, process, and file activity on CI runners                                              | Jobs that execute source code or automation tools                                                  |
 | OpenSSF Baseline  | Maintainer assertions against the published baseline requirements                              | Maintainer review when the project or its controls change                                          |
 
@@ -59,7 +59,7 @@ Test jobs have no Codecov credentials. A separate job uploads reports using OIDC
 
 ## Release vulnerability gate
 
-The pinned Grype binary checks all six archive SBOMs and the container by digest for both `linux/amd64` and `linux/arm64`. High and critical findings stop publication. Lower-severity findings remain in the reports. Scanner errors and missing SBOMs also fail the gate. The vulnerability database must be no more than 48 hours old.
+The pinned Grype binary checks all eight release archives, six of `nylzo` and two of `nylzo-caddy`, and both container images by digest for `linux/amd64` and `linux/arm64`. In the archives Grype reads the Go function symbols of the Linux and macOS binaries, so it matches a vulnerability only when the affected code is linked, as it already does for the images. Syft reads no symbols from Windows PE files, so the Windows binaries are matched by module, which reports more. High and critical findings stop publication. Lower-severity findings remain in the reports. Scanner errors and missing archives also fail the gate. The vulnerability database must be no more than 48 hours old.
 
 GoReleaser first uploads a draft release and a `staging-VERSION` container tag. The release workflow signs and attests the candidate, then scans it. Only a passing candidate is promoted to the stable version tag. Its digest must remain identical during promotion. The GitHub release is published next; `latest` is updated last. A failed candidate cannot replace `latest`.
 
