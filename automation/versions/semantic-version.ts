@@ -4,7 +4,7 @@ export interface SemanticVersion {
   readonly patch: number;
 }
 
-const releasePattern = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
+const releasePattern = /^v?(0|[1-9]\d{0,14})\.(0|[1-9]\d{0,14})\.(0|[1-9]\d{0,14})$/u;
 
 export function stableVersion(value: string): SemanticVersion | undefined {
   const match = releasePattern.exec(value);
