@@ -63,6 +63,11 @@ func Hour(moment time.Time) uint32 {
 	return uint32(hours) //nolint:gosec // G115: 32 bits of hours since 1970 last until the year 491970
 }
 
+// End is the first instant after the epoch.
+func End(hour uint32) time.Time {
+	return time.Unix((int64(hour)+1)*hourSeconds, 0).UTC()
+}
+
 func Next(seed *Seed) Seed {
 	return Seed(expand(seed, infoNext))
 }

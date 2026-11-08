@@ -74,7 +74,7 @@ func TestF3ShareOfAPassedHourIsGone(t *testing.T) {
 	if err != nil || again != live {
 		t.Fatalf("a share must stay the same while its hour lasts: %v", err)
 	}
-	if _, err = ratchet.Share(ratchet.ID(), hour+2, locator, time.Unix((int64(hour)+3)*3600, 0)); !errors.Is(err, epoch.ErrShareGone) {
+	if _, err = ratchet.Share(ratchet.ID(), hour+2, locator, epoch.End(hour+2)); !errors.Is(err, epoch.ErrShareGone) {
 		t.Fatalf("the share outlived its hour: %v", err)
 	}
 	if _, err = ratchet.Share(epoch.RatchetID{1}, hour+5, locator, start); !errors.Is(err, epoch.ErrShareGone) {
