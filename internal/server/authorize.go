@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"time"
 
@@ -181,13 +182,25 @@ func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose 
 	return granted, true
 }
 
-// emptyBody refuses any body without reading it, a chunked one included, so a signed request never waits for bytes.
+// emptyBodyWait bounds the read of a body of unknown length, which a proxy sends for a request without one, such as
+// Caddy for an HTTP/3 request without Content-Length, and which ends at once unless the client holds it open.
+const emptyBodyWait = time.Second
+
+// emptyBody refuses a declared body without reading it and gives a body of unknown length one second to end, so a
+// signed request never waits longer for bytes it must not have.
 func emptyBody(w http.ResponseWriter, r *http.Request) bool {
-	if r.ContentLength != 0 {
+	if r.ContentLength > 0 || (r.ContentLength < 0 && !endsWithin(w, r, emptyBodyWait)) {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return false
 	}
 	return true
+}
+
+func endsWithin(w http.ResponseWriter, r *http.Request, wait time.Duration) bool {
+	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(wait))
+	var one [1]byte
+	read, err := io.ReadFull(r.Body, one[:])
+	return read == 0 && errors.Is(err, io.EOF)
 }
 
 func validPathID(w http.ResponseWriter, r *http.Request) bool {

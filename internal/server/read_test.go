@@ -1579,3 +1579,30 @@ func TestReadBytesPerHourStopsAClaimBeforeItSpendsAnOpen(t *testing.T) {
 		}
 	})
 }
+
+func TestASignedRequestWithAnEmptyChunkedBodyIsServed(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		harness.mustCreate(message)
+		path := "/api/v1/messages/" + message.id.String()
+		r, _ := http.NewRequest(http.MethodGet, harness.httpServer.URL+path, strings.NewReader(""))
+		r.ContentLength = -1
+		r.TransferEncoding = []string{"chunked"}
+		r.Header.Set(
+			"Authorization",
+			signing.SignRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil).
+				Authorization(),
+		)
+		r.Header.Set("X-Forwarded-For", message.address)
+		response, err := harness.client.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("a proxy's empty chunked body on a signed request: %d", response.StatusCode)
+		}
+	})
+}
