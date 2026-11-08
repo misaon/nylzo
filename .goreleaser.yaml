@@ -150,6 +150,9 @@ changelog:
   sort: asc
   abbrev: 7
   format: "{{ .Message }} ([{{ .SHA }}](https://github.com/misaon/nylzo/commit/{{ .SHA }}))"
+  filters:
+    exclude:
+      - '^chore\(main\): release '
   groups:
     - title: "⚠️ Breaking changes"
       regexp: '^[a-z]+(\([^)]*\))?!: '
