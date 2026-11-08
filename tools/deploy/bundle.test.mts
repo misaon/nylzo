@@ -24,7 +24,7 @@ test("the host bundle is reproducible and every file has one place and one role 
   for (const name of sources.keys()) assert(["manifest", "units", ...composed].includes(name) || entries.some(entry => entry.source === name), `${name} is never installed`);
   for (const line of sources.get("units")!.trimEnd().split("\n")) {
     const [action, , unit] = line.split(" ");
-    if (action === "enable") assert(targets.includes(`/etc/systemd/system/${unit}`), `${unit} is enabled but not installed`);
+    if (action === "enable" || action === "start") assert(targets.includes(`/etc/systemd/system/${unit}`), `${unit} is enabled but not installed`);
   }
   const sandbox = /^ReadWritePaths=(.+)$/mu.exec(sources.get("update/sandbox.conf")!)![1]!.split(" ");
   for (const target of targets.filter(target => target.startsWith("/etc/"))) {
@@ -110,6 +110,8 @@ grep -qx 'mask --quiet systemd-sysupdate-reboot.timer' /tmp/systemctl
 grep -qx 'stop systemd-sysupdate-reboot.timer' /tmp/systemctl
 grep -qx 'try-restart caddy.service containerd.service docker.service nylzo-clock.timer' /tmp/systemctl
 grep -qx 'start nylzo.service' /tmp/systemctl
+grep -qx 'start --no-block nylzo-ipv6.service' /tmp/systemctl
+if grep -qx 'start --no-block nylzo-initialize.service' /tmp/systemctl; then exit 1; fi
 for refused in foreign.tar format.tar; do
   stage "$refused" release-v9.9.9
   if bash /opt/nylzo/host/release-v9.9.9/update/activate /opt/nylzo/host/release-v9.9.9 2>/dev/null; then exit 1; fi

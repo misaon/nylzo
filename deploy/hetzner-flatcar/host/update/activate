@@ -113,12 +113,13 @@ while read -r action condition unit; do
     *) fail "unknown condition $condition" ;;
   esac
   case "$action:$wanted" in
-    enable:true)
+    enable:true | start:true)
       systemctl enable --quiet "$unit"
       enabled+=("$unit")
       if [[ "$first_boot" = false && "$unit" = *.timer ]]; then systemctl start "$unit"; fi
+      if [[ "$first_boot" = false && "$action" = start ]]; then systemctl start --no-block "$unit"; fi
       ;;
-    enable:false) systemctl disable --quiet --now "$unit" ;;
+    enable:false | start:false) systemctl disable --quiet --now "$unit" ;;
     mask:true)
       # Masking reloads unit definitions; stop a live timer before its trigger disappears.
       if [[ "$unit" = *.timer ]]; then systemctl stop "$unit"; fi

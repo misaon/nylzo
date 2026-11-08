@@ -1,6 +1,6 @@
 enable always nylzo-firewall.service
 enable always nylzo-bandwidth.service
-enable always nylzo-ipv6.service
+start always nylzo-ipv6.service
 enable always nylzo-initialize.service
 enable always nylzo-ssh-identity.service
 enable always nylzo-host-status.timer
