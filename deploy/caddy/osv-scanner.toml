@@ -1,0 +1,5 @@
+# Scorecard reads this file; the dependency gate passes security/osv-scanner.toml instead and checks security/sca-policy.json.
+[[IgnoredVulns]]
+id = "GO-2026-5932"
+ignoreUntil = 2027-01-25T00:00:00Z
+reason = "Not affected: neither released Caddy build imports golang.org/x/crypto/openpgp. Assessed in security/sca-policy.json."
