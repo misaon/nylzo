@@ -85,8 +85,8 @@ func TestAdapterOpensX25519OnlyToCrawlersOfTheNamedSites(t *testing.T) {
 			curves := stringList(policy["curves"])
 			match, _ := policy["match"].(map[string]any)
 			if _, crawler := match[crawlerMatcher]; !crawler {
-				if len(curves) > 0 && !slices.Equal(curves, []string{postQuantumCurve}) {
-					t.Errorf("%s: a policy for everyone allows %v", name, curves)
+				if !slices.Equal(curves, []string{postQuantumCurve}) || policy["protocol_min"] != "tls1.3" {
+					t.Errorf("%s: a policy for everyone allows %v from %v", name, curves, policy["protocol_min"])
 				}
 				continue
 			}

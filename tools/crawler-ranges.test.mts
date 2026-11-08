@@ -31,6 +31,11 @@ test("a refresh never widens the list beyond published public crawler ranges", (
   );
 });
 
+test("a refresh stops when the sources together list far more addresses than today", () => {
+  const wide = Array.from({ length: 17 }, (_, index) => ({ ipv4Prefix: `66.${200 + Math.floor(index / 16)}.${(index % 16) * 16}.0/20` }));
+  assert.throws(() => crawlerList([list(...wide), list(...wide), list(...wide), list(...wide)]), /more than the ceiling/u);
+});
+
 test("Bing contributes only IPv4 and the list is sorted without duplicates", () => {
   const result = crawlerList([
     list({ ipv6Prefix: "2001:4860:4801:10::/64" }, { ipv4Prefix: "66.249.64.0/27" }),

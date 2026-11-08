@@ -16,6 +16,10 @@ export const listPath = fileURLToPath(new URL("../deploy/caddy/crawlers.json", i
 
 const shortestPrefix: Record<Family, number> = { ipv4Prefix: 20, ipv6Prefix: 48 };
 
+// A source that suddenly lists far more than the crawlers use today stops the refresh for a person to look at.
+const mostPrefixes = 4000;
+const mostIPv4Addresses = 65_536n;
+
 const nonGlobalIPv4 = [
   "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24",
   "192.0.2.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24", "224.0.0.0/3",
@@ -134,6 +138,12 @@ export function crawlerList(documents: readonly unknown[]): { sources: string[];
       left.family.localeCompare(right.family) ||
       (left.address < right.address ? -1 : left.address > right.address ? 1 : left.length - right.length),
   );
+  const ipv4Addresses = ordered
+    .filter((network) => network.family === "ipv4Prefix")
+    .reduce((sum, network) => sum + (1n << BigInt(32 - network.length)), 0n);
+  if (ordered.length > mostPrefixes || ipv4Addresses > mostIPv4Addresses) {
+    throw new Error(`the sources list ${ordered.length} prefixes and ${ipv4Addresses} IPv4 addresses, more than the ceiling`);
+  }
   return { sources: sources.map((source) => source.url), prefixes: ordered.map((network) => network.text) };
 }
 

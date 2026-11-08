@@ -146,7 +146,8 @@ grep -q '^attestation verify .*nylzo-caddy_0.2.1_linux_amd64.tar.gz .*--source-r
   const untouched = (previous: string) => `[[ "$status" != 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/${previous}/caddy && ! -s /tmp/restarts ]]
 [[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = ${previous} && ! -e /var/lib/nylzo-deploy/caddy.previous.tag && ! -s /tmp/starts ]]`;
   const installed = (candidate: string, previous: string) => `[[ "$status" = 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/${candidate}/caddy && "$(cat /tmp/restarts)" = /opt/nylzo/caddy/${candidate}/caddy ]]
-[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = ${candidate} && "$(cat /var/lib/nylzo-deploy/caddy.previous.tag)" = ${previous} ]]`;
+[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = ${candidate} && "$(cat /var/lib/nylzo-deploy/caddy.previous.tag)" = ${previous} ]]
+grep -q -- ' validate --config /etc/caddy/Caddyfile --adapter nylzo$' /tmp/verified`;
   const scenarios: Record<string, { previous: string; listed?: boolean; identical?: boolean; approved?: string; built?: string; current?: string; fail?: string; release?: string; expectation: string }> = {
     "fresh host": { previous: "", expectation: `${releaseSigned}
 ${archiveVerified}
