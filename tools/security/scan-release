@@ -21,7 +21,7 @@ scan() {
   local filename="$1" code=0
   shift
   local report="$report_directory/$filename"
-  rm -f "$report"
+  rm -f -- "$report" || abort "Cannot remove the earlier report $filename."
   grype "$@" --fail-on high --output json --file "$report" || code=$?
   if [[ "$code" != 0 && "$code" != 2 ]] || ! is_grype_report "$report"; then
     status=$broken

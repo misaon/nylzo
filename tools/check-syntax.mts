@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
-const files = execFileSync('git', ['ls-files', '-z', 'tools/*.mts'], { encoding: 'utf8' })
+const files = execFileSync('git', ['ls-files', '-z', 'tools/*.mts', 'tools/**/*.mts'], { encoding: 'utf8' })
   .split('\0').filter(Boolean);
 const output = await mkdtemp(path.join(tmpdir(), 'nylzo-syntax-'));
 try {
