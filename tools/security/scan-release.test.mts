@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -46,6 +46,7 @@ test("release scanning covers every archive and image architecture and fails clo
     assert.equal(scan(image, "1").status, 2, "Operational failures cannot be mistaken for detected vulnerabilities, even with valid JSON reports");
     const invalid = scan("ghcr.io/other/project:latest");
     assert.notEqual(invalid.status, 0, invalid.stderr);
+    assert.ok(!existsSync(join(directory, "reports", "scan-status.json")), "An aborted run cannot leave the previous scan status behind");
     assert.notEqual(scan("ghcr.io/misaon/nylzo:latest").status, 0);
     assert.notEqual(scan(image, "0", `caddy@sha256:${"b".repeat(64)}`).status, 0);
     assert.notEqual(scan(image, "0", image).status, 0);
