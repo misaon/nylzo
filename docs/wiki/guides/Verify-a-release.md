@@ -29,6 +29,17 @@ gh attestation verify "$archive" --repo misaon/nylzo \
 
 Verify the signature **before** trusting the checksums, and require all checks to succeed before extracting or running the binary. Releases that ship Caddy list its Linux archives, `nylzo-caddy_<version>_linux_amd64.tar.gz` and `_arm64`, in the same signed `checksums.txt`; verify them the same way. So is `nylzo-host_<version>.tar`, the Hetzner Flatcar host configuration. On macOS without `sha256sum`, calculate `shasum -a 256 "$archive"` and compare its full value with that archive's entry in the signature-verified manifest. On Windows, use `Get-FileHash -Algorithm SHA256` for the same comparison.
 
+A release that lists `nylzo_<version>.intoto.jsonl` also carries its build provenance as a file, one Sigstore bundle per line: the first covers every file in `checksums.txt`, the second the [dependency evidence](#verify-dependency-evidence). `gh` checks it without the attestations API:
+
+```sh
+gh release download "$tag" --repo misaon/nylzo --pattern "nylzo_${tag#v}.intoto.jsonl"
+gh attestation verify "$archive" --repo misaon/nylzo --bundle "nylzo_${tag#v}.intoto.jsonl" \
+  --signer-workflow misaon/nylzo/.github/workflows/release.yml \
+  --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
+```
+
+With `--bundle`, `gh` compares `--repo` only with the repository name recorded in the signing certificate, so it cannot detect a later rename or transfer. The API-backed command above can, and it is the only option for releases without the file.
+
 Each release includes per-archive SPDX SBOMs. [Versioning and releases](../maintainers/Releasing.md) explains the version, source commit, source date, and modified-source flag embedded in the CLI, server, and web client.
 
 ## Map the web client to the signed manifest
@@ -117,7 +128,7 @@ mise run release:verify
 mise run release:verify-image
 ```
 
-Review repository tasks before trusting them. `release:verify` verifies the published manifest signature, rebuilds all six archives, the Caddy archives and the embedded client, and compares their hashes. `release:verify-image` compares the binaries in both images with that rebuild. It skips SBOM generation; verify downloaded SBOMs against the signed manifest separately.
+Review repository tasks before trusting them. `release:verify` verifies the published manifest signature, rebuilds all six archives, the Caddy archives and the embedded client, and compares their hashes. From the first release that ships `nylzo_<version>.intoto.jsonl`, it also verifies every rebuilt archive and the host bundle against that provenance. `release:verify-image` compares the binaries in both images with that rebuild. It skips SBOM generation; verify downloaded SBOMs against the signed manifest separately.
 
 `release:verify-image` requires Docker. It verifies the image signature and provenance, then compares both Linux image binaries with the local rebuild.
 

@@ -18,6 +18,16 @@ test("publication rebuilds source without promoting cached CI artifacts", () => 
   assert(!release.includes("pnpm/action-setup@"));
 });
 
+test("the in-toto provenance Scorecard reads is verified and attached before the immutable release is published", () => {
+  const release = readFileSync(".github/workflows/release.yml", "utf8");
+  const verified = release.indexOf('gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY" --bundle "$provenance"');
+  const attached = release.indexOf('gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "$provenance"');
+  const published = release.indexOf("--draft=false");
+  assert.ok(0 < verified && verified < attached && attached < published);
+  assert.match(release, /^\s+provenance="\$RUNNER_TEMP\/nylzo_\$\{version\}\.intoto\.jsonl"$/mu);
+  assert.match(readFileSync(".goreleaser.yaml", "utf8"), /^ {2}draft: true$/mu);
+});
+
 test("a release requires full verification and successful security checks from the same run", () => {
   const directory = mkdtempSync(join(tmpdir(), "nylzo-release-checks-"));
   try {

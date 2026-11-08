@@ -216,6 +216,7 @@ jobs:
             if [ "$id" = nylzo ]; then echo "digest=${digest}"; else echo "caddy_digest=${digest}"; fi >> "${GITHUB_OUTPUT}"
           done
       - name: Provenance of the archives, checksums and web client files
+        id: files-provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
@@ -273,9 +274,25 @@ jobs:
           cosign sign-blob "$manifest" --bundle "${manifest}.sigstore.json" --yes
           gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "$RUNNER_TEMP/web-client/evidence/"*.json "$manifest" "${manifest}.sigstore.json"
       - name: Provenance of the source SBOM and vulnerability evidence
+        id: evidence-provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-checksums: ${{ runner.temp }}/web-client/evidence.sha256
+      - name: Attach the verified provenance as the in-toto asset Scorecard reads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FILES_PROVENANCE: ${{ steps.files-provenance.outputs.bundle-path }}
+          EVIDENCE_PROVENANCE: ${{ steps.evidence-provenance.outputs.bundle-path }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          provenance="$RUNNER_TEMP/nylzo_${version}.intoto.jsonl"
+          cat "$FILES_PROVENANCE" "$EVIDENCE_PROVENANCE" > "$provenance"
+          for artifact in "dist/nylzo_${version}_linux_amd64.tar.gz" "$RUNNER_TEMP/web-client/evidence/nylzo_${version}.source.spdx.json"; do
+            gh attestation verify "$artifact" --repo "$GITHUB_REPOSITORY" --bundle "$provenance" \
+              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+              --source-ref "refs/tags/${GITHUB_REF_NAME}" --deny-self-hosted-runners
+          done
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "$provenance"
       - name: Promote the verified candidates to their stable image tags
         env:
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
