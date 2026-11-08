@@ -59,10 +59,9 @@ var schema = messagesTable.definition + ";\n" + messagesTable.index + ";\n" +
 	countersTable.definition + ";\n" + countersTable.index + ";\n" +
 	scrubTable + ";\n"
 
-const schemaVersion = 8
-
-// previousSchema is the schema of nylzo 0.3 to 0.8, which lacks only the index on rate_counters(purge_at).
-const previousSchema = 7
+// schemaVersion stays 7 with the index on rate_counters(purge_at), which nylzo 0.3 to 0.8 ignore, so they still open
+// the database after this build added it.
+const schemaVersion = 7
 
 var (
 	ErrNewerSchema    = errors.New("sqlite: the database was written by a newer nylzo")
@@ -82,14 +81,13 @@ type queryRower interface {
 
 func requireCurrent(ctx context.Context, database *sql.DB) error {
 	version, err := userVersion(ctx, database)
-	switch {
-	case err != nil:
+	if err != nil {
 		return err
-	case version == previousSchema:
-		return prepareSchema(ctx, database, false)
-	default:
-		return checkVersion(version)
 	}
+	if versionErr := checkVersion(version); versionErr != nil {
+		return versionErr
+	}
+	return prepareSchema(ctx, database, false)
 }
 
 func createSchema(ctx context.Context, database *sql.DB) error {
@@ -97,7 +95,7 @@ func createSchema(ctx context.Context, database *sql.DB) error {
 }
 
 // prepareSchema reads the version in the write transaction that changes the schema, so concurrent opens change it
-// once; a database of nylzo 0.3 to 0.8 only gains the index of version 8 and keeps every row.
+// once; a database without the counter purge index gains it and keeps every row.
 func prepareSchema(ctx context.Context, database *sql.DB, create bool) error {
 	tx, err := database.BeginTx(ctx, nil)
 	if err != nil {
@@ -115,13 +113,13 @@ func prepareSchema(ctx context.Context, database *sql.DB, create bool) error {
 	var statements string
 	switch {
 	case create && version == 0 && objects == 0:
-		statements = schema
-	case version == previousSchema:
-		statements = countersTable.index + ";\n"
+		statements = schema + fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)
+	case version == schemaVersion:
+		statements = countersTable.index
 	default:
 		return checkVersion(version)
 	}
-	if _, err = tx.ExecContext(ctx, statements+fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion)); err != nil {
+	if _, err = tx.ExecContext(ctx, statements); err != nil {
 		return err
 	}
 	return tx.Commit()

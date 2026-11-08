@@ -117,8 +117,9 @@ func TestUpgradeFromAReleaseFinishesAfterAnInterruptionAtEveryStep(t *testing.T)
 	}
 }
 
-// TestOpenAddsTheCounterPurgeIndexAndKeepsEveryRow covers schema 8: the counter purge reads an index on purge_at, so
-// a flood of challenge rows costs no scan of the table per batch, and a database of nylzo 0.3 to 0.8 keeps its rows.
+// TestOpenAddsTheCounterPurgeIndexAndKeepsEveryRow covers the counter purge index: the purge reads an index on
+// purge_at, so a flood of challenge rows costs no scan of the table per batch, a database of nylzo 0.3 to 0.8 keeps its
+// rows, and its schema version stays 7, so that release still opens it.
 func TestOpenAddsTheCounterPurgeIndexAndKeepsEveryRow(t *testing.T) {
 	t.Parallel()
 	for name, open := range map[string]func(context.Context, string) (*Store, error){
@@ -134,16 +135,16 @@ func TestOpenAddsTheCounterPurgeIndexAndKeepsEveryRow(t *testing.T) {
 		if _, err = storage.RateHit(t.Context(), []store.RateHit{hit}); err != nil {
 			t.Fatal(err)
 		}
-		_, err = storage.writer.Exec(`DROP INDEX IF EXISTS rate_counters_purge_at; PRAGMA user_version = 7`)
+		_, err = storage.writer.Exec(`DROP INDEX IF EXISTS rate_counters_purge_at`)
 		if err = errors.Join(err, storage.Close()); err != nil {
 			t.Fatal(err)
 		}
 		if readiness, inspectErr := Inspect(t.Context(), path); inspectErr != nil || readiness != ReadinessOpen {
-			t.Fatalf("%s: store-check of version 7: %v %v", name, readiness, inspectErr)
+			t.Fatalf("%s: store-check without the index: %v %v", name, readiness, inspectErr)
 		}
 		opened, err := open(t.Context(), path)
 		if err != nil {
-			t.Fatalf("%s: open version 7: %v", name, err)
+			t.Fatalf("%s: open without the index: %v", name, err)
 		}
 		version, err := userVersion(t.Context(), opened.reader)
 		count, countErr := opened.RateGet(t.Context(), hit.Key, hit.WindowStart)
