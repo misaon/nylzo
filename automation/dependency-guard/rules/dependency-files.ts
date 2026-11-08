@@ -3,6 +3,7 @@ import { bunLock, goChecksums, miseLock, openTofuLock, pnpmLock } from './lockfi
 import { binaryAssetManifest, hostToolchain, packageManifest } from './manifests.ts';
 import {
   composeFile,
+  deployTask,
   goModule,
   miseToolVersions,
   nodeVersion,
@@ -33,6 +34,7 @@ const rules: readonly (readonly [RegExp, FileRule])[] = [
   [/^deploy\/hetzner-flatcar\/toolchain\.json$/u, hostToolchain],
   [/^deploy\/hetzner-flatcar\/infrastructure\/(?:dns|image|server)\/main\.tf$/u, openTofuVersions],
   [/^deploy\/hetzner-flatcar\/infrastructure\/(?:dns|image|server)\/\.terraform\.lock\.hcl$/u, openTofuLock],
+  [/^mise-tasks\/deploy$/u, deployTask],
   [/^\.goreleaser\.yaml$/u, releaseBaseImage],
   [/^deploy\/compose\/compose\.yaml$/u, composeFile],
   [/^tools\/deploy\/runtime\.test\.mts$/u, runtimeTest],

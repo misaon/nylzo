@@ -86,7 +86,8 @@
       "bun": {}
     },
     "fileFilters": [
-      "deploy/hetzner-flatcar/toolchain.json"
+      "deploy/hetzner-flatcar/toolchain.json",
+      "mise-tasks/deploy"
     ],
     "executionMode": "branch"
   },

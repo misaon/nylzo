@@ -198,6 +198,7 @@ require (
 
 const runtimeTest = `spawn("docker", ["run", "ubuntu:24.04@sha256:${'a'.repeat(64)}", "bash", "-s"]);\n`;
 const goreleaser = `dockers_v2:\n  - base_image: gcr.io/distroless/static-debian13:nonroot@sha256:${'a'.repeat(64)}\n`;
+const deployTask = 'set -euo pipefail\nexec mise exec opentofu@1.13.2 -- bun tools/deploy/hetzner.mts "$@"\n';
 
 const openTofuModule = `language {
   compatible_with {
@@ -762,6 +763,20 @@ const cases: readonly Case[] = [
     expected: 'safe',
     name: 'OpenTofu required_version on a maintenance branch',
     path: 'deploy/hetzner-flatcar/infrastructure/server/main.tf',
+  },
+  {
+    after: deployTask.replace('1.13.2', '1.13.3'),
+    before: deployTask,
+    expected: 'safe',
+    name: 'OpenTofu in the deploy task on a maintenance branch',
+    path: 'mise-tasks/deploy',
+  },
+  {
+    after: deployTask.replace('1.13.2', '1.13.3').replace('hetzner.mts', 'hetzner.mts --auto-approve'),
+    before: deployTask,
+    expected: 'rejected',
+    name: 'deploy task command',
+    path: 'mise-tasks/deploy',
   },
   {
     after: openTofuModule.replace('1.70.2', '1.70.3'),

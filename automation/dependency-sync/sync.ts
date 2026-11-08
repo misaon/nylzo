@@ -58,6 +58,19 @@ if (!isAssetMap(assets) || !isObject(toolchain)) {
 for (const tool of hostTools) {
   toolchain[tool] = hostToolPin(assets, tool);
 }
+if ('opentofu' in toolchain) {
+  const opentofu = captured(
+    readFileSync('mise.toml', 'utf8'),
+    /^opentofu = "([^"]+)"$/mu,
+    'the OpenTofu pin in mise.toml',
+  );
+  toolchain['opentofu'] = opentofu;
+  const deployTask = readFileSync('mise-tasks/deploy', 'utf8');
+  writeFileSync(
+    'mise-tasks/deploy',
+    deployTask.replace(/opentofu@\d+\.\d+\.\d+/u, () => `opentofu@${opentofu}`),
+  );
+}
 toolchain['caddy'] = existsSync('deploy/caddy/go.mod')
   ? captured(
       readFileSync('deploy/caddy/go.mod', 'utf8'),

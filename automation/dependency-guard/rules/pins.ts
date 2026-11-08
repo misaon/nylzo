@@ -18,6 +18,10 @@ export const nodeVersion = pinRule([
   { name: 'node', pattern: /^(?<version>\d+\.\d+\.\d+)$/dgmu, values: { version: 'version' } },
 ]);
 
+export const deployTask = pinRule([
+  { name: 'opentofu', pattern: /mise exec opentofu@(?<version>\d+\.\d+\.\d+) /dgu, values: { version: 'version' } },
+]);
+
 export const openTofuVersions = pinRule([
   {
     name: 'setting',
