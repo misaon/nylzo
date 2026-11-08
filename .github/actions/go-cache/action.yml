@@ -9,12 +9,15 @@ inputs:
   save:
     description: >-
       `false` only restores, for a job that shares its key with another job or saves at a point of its own with
-      actions/cache/save and the `key` and `paths` outputs.
+      actions/cache/save and the `main-push`, `key` and `paths` outputs.
     default: "true"
 outputs:
   hit:
     description: Whether the restore found the exact key.
     value: ${{ steps.cache.outputs.cache-hit || steps.restore.outputs.cache-hit }}
+  main-push:
+    description: Whether this run is a push to main, the only kind of run that saves the cache.
+    value: ${{ steps.key.outputs.main-push }}
   key:
     description: The cache key of this job and week.
     value: ${{ steps.key.outputs.key }}
@@ -30,7 +33,8 @@ runs:
       env:
         SCOPE: ${{ inputs.scope }}
         SUMS: ${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}
-        SAVE: ${{ inputs.save == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        MAIN_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        SAVE: ${{ inputs.save }}
         PATHS: |
           ~/go/pkg/mod
           ~/.cache/go-build
@@ -39,7 +43,8 @@ runs:
       run: |
         {
           echo "key=go-${SCOPE}-${RUNNER_OS}-${RUNNER_ARCH}-$(go env GOVERSION)-${SUMS}-$(date -u +%G-W%V)"
-          echo "save=${SAVE}"
+          echo "main-push=${MAIN_PUSH}"
+          echo "save=$([[ "${SAVE}" = true && "${MAIN_PUSH}" = true ]] && echo true || echo false)"
           printf 'paths<<PATHS\n%sPATHS\n' "${PATHS}"
         } >> "${GITHUB_OUTPUT}"
     - id: cache

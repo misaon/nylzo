@@ -1,7 +1,7 @@
 name: Checkout and pinned tools
 description: >-
   Checks out the repository without persisting credentials and installs the named tools at the versions that mise.toml
-  pins. When Go is among them, it checks that the Go on PATH is the one mise.lock pins.
+  pins. When mise installed Go, it checks that the Go on PATH is the one mise.lock pins.
 inputs:
   tools:
     description: Space-separated tools to install; empty installs every tool in mise.toml.
@@ -18,13 +18,22 @@ inputs:
 runs:
   using: composite
   steps:
-    - if: >-
-        inputs.ref != '' && (github.event_name == 'pull_request_target' ||
-        (github.event_name == 'workflow_run' && inputs.ref != github.event.repository.default_branch))
-      shell: bash
+    # Only events that run this repository's own code may name a ref; workflow_run may name the default branch.
+    - shell: bash
+      env:
+        EVENT: ${{ github.event_name }}
+        REF: ${{ inputs.ref }}
+        DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       run: |
-        echo 'pull_request_target and workflow_run jobs check out their own commit or the default branch, never another ref.' >&2
-        exit 1
+        case "${EVENT}" in
+          push | pull_request | schedule | workflow_dispatch) ;;
+          *)
+            if [[ -n "${REF}" && ! ( "${EVENT}" = workflow_run && "${REF}" = "${DEFAULT_BRANCH}" ) ]]; then
+              echo "A ${EVENT} job checks out the commit that started it, not ${REF}." >&2
+              exit 1
+            fi
+            ;;
+        esac
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ inputs.ref }}
@@ -38,10 +47,4 @@ runs:
         cache: ${{ inputs.cache != 'none' }}
         cache_save: ${{ inputs.cache == 'auto' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     - shell: bash
-      env:
-        TOOLS: ${{ inputs.tools }}
-      run: |
-        read -r -d '' -a tools <<< "${TOOLS}" || true
-        if [[ ${#tools[@]} -eq 0 || " ${tools[*]} " =~ [[:space:]](core:)?go(@[^[:space:]]*)?[[:space:]] ]]; then
-          tools/verify-go-toolchain
-        fi
+      run: if mise where go > /dev/null 2>&1; then tools/verify-go-toolchain; fi

@@ -484,7 +484,7 @@ jobs:
           printf 'FROM %s\nCOPY nylzo /ko-app/nylzo\nENTRYPOINT ["/ko-app/nylzo"]\n' "$base" | docker build -q -t nylzo:ci -f - dist
           printf 'FROM %s\nCOPY caddy /ko-app/caddy\nUSER 65533:65533\nENTRYPOINT ["/ko-app/caddy"]\n' "$base" | docker build -q -t caddy:ci -f - dist
       # The image scans and probes below can fail on news unrelated to the build, so the cache is saved right after it.
-      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.hit != 'true'
+      - if: steps.go-cache.outputs.main-push == 'true' && steps.go-cache.outputs.hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ steps.go-cache.outputs.paths }}
