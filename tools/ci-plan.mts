@@ -37,7 +37,7 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
       groups.deployment = true;
       groups.repository = true;
     } else if (
-      /^(docs\/wiki\/.*\.md|README\.md|SECURITY\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|LICENSE)$/u.test(file) ||
+      /^(docs\/wiki\/.*\.md|README\.md|SECURITY\.md|SUPPORT\.md|CONTRIBUTING\.md|CODE_OF_CONDUCT\.md|LICENSE)$/u.test(file) ||
       /^(assets\/readme\/|skills\/.*\.md$|\.github\/(ISSUE_TEMPLATE\/|PULL_REQUEST_TEMPLATE\.md$))/u.test(file)
     ) {
       continue;
