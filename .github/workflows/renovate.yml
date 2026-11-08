@@ -146,8 +146,13 @@ jobs:
           private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
           owner: misaon
           repositories: nylzo
+          # The permissions Renovate documents for a GitHub App; without checks, statuses and issues it aborts each run.
+          permission-administration: read
+          permission-checks: write
           permission-contents: write
+          permission-issues: write
           permission-pull-requests: write
+          permission-statuses: write
           permission-workflows: write # update pinned actions and annotated tool versions
           permission-actions: read
           permission-vulnerability-alerts: read
