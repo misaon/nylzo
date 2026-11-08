@@ -206,8 +206,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
-          # Grype matches Go vulnerabilities by function symbol when the SBOM carries them.
-          SYFT_GOLANG_CAPTURE_SYMBOLS: all
       - name: Digests of the published images
         id: image
         run: |
