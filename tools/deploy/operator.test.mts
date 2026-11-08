@@ -4,7 +4,8 @@ import { mkdtemp, writeFile, chmod, symlink, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { privateFile, inputs, client, initialize, prepare, releaseEvidence } from "./operator.mts";
+import { inputs, client, initialize, prepare, releaseEvidence } from "./operator.mts";
+import { privateFile } from "../security/private-file.mts";
 
 test("credential loading refuses readable or redirected secrets", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "nylzo-credentials-"));

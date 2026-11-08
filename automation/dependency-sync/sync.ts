@@ -58,12 +58,6 @@ if (!isAssetMap(assets) || !isObject(toolchain)) {
 for (const tool of hostTools) {
   toolchain[tool] = hostToolPin(assets, tool);
 }
-const opentofu = captured(
-  readFileSync('mise.toml', 'utf8'),
-  /^opentofu = "([^"]+)"$/mu,
-  'the OpenTofu pin in mise.toml',
-);
-toolchain['opentofu'] = opentofu;
 toolchain['caddy'] = existsSync('deploy/caddy/go.mod')
   ? captured(
       readFileSync('deploy/caddy/go.mod', 'utf8'),
@@ -77,9 +71,4 @@ toolchain['caddy'] = existsSync('deploy/caddy/go.mod')
     );
 writeFileSync('deploy/hetzner-flatcar/toolchain.json', `${JSON.stringify(toolchain, undefined, 2)}\n`);
 
-const deployTask = readFileSync('mise-tasks/deploy', 'utf8');
-writeFileSync(
-  'mise-tasks/deploy',
-  deployTask.replace(/opentofu@\d+\.\d+\.\d+/u, () => `opentofu@${opentofu}`),
-);
 console.log('Synchronized the host toolchain pins with the reviewed dependency pins.');

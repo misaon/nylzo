@@ -12,12 +12,7 @@ const pinnedImage = (version: string) => `services:\n  caddy:\n    image: caddy:
 async function synchronizedCaddy(files: Readonly<Record<string, string>>): Promise<unknown> {
   const directory = await mkdtemp(path.join(tmpdir(), 'nylzo-dependency-sync-'));
   try {
-    for (const file of [
-      'tools/dependencies/assets.json',
-      'deploy/hetzner-flatcar/toolchain.json',
-      'mise.toml',
-      'mise-tasks/deploy',
-    ]) {
+    for (const file of ['tools/dependencies/assets.json', 'deploy/hetzner-flatcar/toolchain.json']) {
       await mkdir(path.join(directory, path.dirname(file)), { recursive: true });
       await copyFile(path.join(repositoryRoot, file), path.join(directory, file));
     }
