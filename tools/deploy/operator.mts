@@ -74,7 +74,7 @@ export async function releaseEvidence(release: string, architecture: string, ver
 
 export function execute(directory: string, environment: NodeJS.ProcessEnv, arguments_: string[], capture = false) {
   const result = execFileSync("tofu", [`-chdir=${directory}`, ...arguments_], {
-    env: environment, encoding: "utf8", stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit", maxBuffer: 8 * 1024 * 1024,
+    env: environment, encoding: "utf8", stdio: capture ? ["ignore", "pipe", "inherit"] : "inherit", maxBuffer: 8 * 1024 * 1024,
   });
   return capture ? result.toString() : "";
 }

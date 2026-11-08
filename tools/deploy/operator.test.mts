@@ -1,11 +1,20 @@
 import assert from "node:assert/strict";
 import { test, mock } from "node:test";
-import { mkdtemp, writeFile, chmod, symlink, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile, chmod, symlink, rm } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { inputs, client, initialize, prepare, releaseEvidence } from "./operator.mts";
 import { privateFile } from "../security/private-file.mts";
+
+const testSite = {
+  name: "nylzo-test", domain: "nylzo.test-instance.dev", location: "nbg1", serverType: "cx23", architecture: "amd64",
+  administratorNetworks: ["10.1.2.3/32"],
+  administratorPublicKey: "ssh-ed25519 " + Buffer.concat([Buffer.from("0000000b7373682d6564323535313900000020", "hex"), Buffer.alloc(32, 1)]).toString("base64"),
+  reportPublicKey: Buffer.alloc(1216, 1).toString("base64url"),
+  operator: "Test operator", contact: "security@nylzo.test-instance.dev", hosting: "Test provider",
+  dailyCreates: 250, initialRelease: "v0.1.5", automaticUpdates: true,
+};
 
 test("credential loading refuses readable or redirected secrets", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "nylzo-credentials-"));
@@ -78,19 +87,42 @@ test("planning stops before any cloud call without a Caddy build, or without a h
   try {
     await chmod(directory, 0o700);
     const siteFile = path.join(directory, "site.json");
-    await writeFile(siteFile, JSON.stringify({
-      name: "nylzo-test", domain: "nylzo.test-instance.dev", location: "nbg1", serverType: "cx23", architecture: "amd64",
-      administratorNetworks: ["10.1.2.3/32"],
-      administratorPublicKey: "ssh-ed25519 " + Buffer.concat([Buffer.from("0000000b7373682d6564323535313900000020", "hex"), Buffer.alloc(32, 1)]).toString("base64"),
-      reportPublicKey: Buffer.alloc(1216, 1).toString("base64url"),
-      operator: "Test operator", contact: "security@nylzo.test-instance.dev", hosting: "Test provider",
-      dailyCreates: 250, initialRelease: "v0.1.5", automaticUpdates: true,
-    }));
+    await writeFile(siteFile, JSON.stringify(testSite));
     await assert.rejects(prepare(siteFile, "image"), /ships no Caddy build/u);
     await assert.rejects(prepare(siteFile, "server"), /hardware-backed sk-ssh-ed25519@openssh\.com/u);
     assert.deepEqual(seen, ["https://github.com/misaon/nylzo/releases/download/v0.1.5/checksums.txt"]);
   } finally {
     fetch.mock.restore();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the dns plan reads the server outputs with the current server configuration and without API tokens", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "nylzo-dns-"));
+  const names = ["PATH", "TF_ENCRYPTION", "TF_LOG", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN", "NYLZO_STATE_BUCKET"];
+  const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  try {
+    await chmod(directory, 0o700);
+    const bin = path.join(directory, "bin");
+    await mkdir(bin);
+    await writeFile(path.join(bin, "tofu"), `#!/bin/sh\nenv > "${directory}/tofu-environment"\ncp "\${1#-chdir=}/main.tf" "${directory}/tofu-main.tf"\necho '{"ipv4_address":{"value":"192.0.2.10"},"ipv6_address":{"value":"2001:db8::10"}}'\n`, { mode: 0o700 });
+    await mkdir(path.join(directory, "server"));
+    await writeFile(path.join(directory, "server", "main.tf"), "stale configuration");
+    await writeFile(path.join(directory, "server", ".terraform.lock.hcl"), "installed lock");
+    const siteFile = path.join(directory, "site.json");
+    await writeFile(siteFile, JSON.stringify({ ...testSite, cloudflareAccountId: "a".repeat(32) }));
+    delete process.env.NYLZO_STATE_BUCKET;
+    Object.assign(process.env, { PATH: `${bin}:${saved.PATH}`, TF_ENCRYPTION: "encryption", TF_LOG: "trace", HCLOUD_TOKEN: "h".repeat(40), CLOUDFLARE_API_TOKEN: "c".repeat(40) });
+    await prepare(siteFile, "dns");
+    const environment = await readFile(path.join(directory, "tofu-environment"), "utf8");
+    for (const name of ["TF_LOG", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN"]) assert.doesNotMatch(environment, new RegExp(`^${name}=`, "mu"));
+    assert.equal(await readFile(path.join(directory, "tofu-main.tf"), "utf8"), readFileSync(new URL("../../deploy/hetzner-flatcar/infrastructure/server/main.tf", import.meta.url), "utf8"));
+    assert.equal(await readFile(path.join(directory, "server", ".terraform.lock.hcl"), "utf8"), "installed lock");
+  } finally {
+    for (const name of names) {
+      if (saved[name] === undefined) delete process.env[name];
+      else process.env[name] = saved[name];
+    }
     await rm(directory, { recursive: true, force: true });
   }
 });
