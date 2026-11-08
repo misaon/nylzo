@@ -4,7 +4,7 @@ The same `nylzo` binary creates and reads messages, serves a verified web client
 
 ## Keep secrets out of arguments
 
-Pass message links, passphrases, and management tokens through stdin, files, supported `NYLZO_*` variables, or hidden terminal prompts. Keep them out of command arguments, which can appear in process listings and shell history. Arguments resembling a secret-bearing link are rejected before any network request. Prefer private files over environment variables when other processes can inspect your environment.
+Pass message links, passphrases, and manage tokens through stdin, files, supported `NYLZO_*` variables, or hidden terminal prompts. Keep them out of command arguments, which can appear in process listings and shell history. Arguments resembling a secret-bearing link are rejected before any network request. Prefer private files over environment variables when other processes can inspect your environment.
 
 The CLI requires HTTPS, except for exact localhost and loopback addresses, which bypass proxies and are checked to resolve to loopback. It does not follow redirects. Error messages do not repeat flag values, file paths, server text, or certificate text that could contain secrets. Control characters in errors are escaped.
 
@@ -17,7 +17,7 @@ nylzo create --server https://nylzo.example --ttl 1h \
   --manage-token-file management.txt < message.txt > link.txt
 ```
 
-Create input/output files inside a directory accessible only to you, and use a restrictive umask such as `umask 077`. `create` prints only the link. It reads text from stdin (one hidden line when stdin is a terminal) and takes an attachment through `--from-file`. `NYLZO_SERVER` can select the instance instead of `--server`.
+Create input/output files inside a directory accessible only to you, and use a restrictive umask such as `umask 077`. `--ttl` sets how long the link stays valid, up to 7 days, and `--opens` how many times it can be opened, 1 by default up to the instance's limit. `create` prints only the link. It reads text from stdin (one hidden line when stdin is a terminal) and takes an attachment through `--from-file`. `NYLZO_SERVER` can select the instance instead of `--server`.
 
 `--compress` gzips the attachment on your device before encryption. The CLI keeps the compressed form only when it at least halves the padded size, and sends the file unchanged otherwise. The padded size of a compressed file still says something about its content, so do not compress a file that mixes a secret with bytes someone else can choose. See the [protocol](../reference/Protocol.md#32-compressed-attachments).
 
@@ -27,7 +27,7 @@ Passphrase options:
 - `--passphrase-file FILE` or `NYLZO_PASSPHRASE_FILE` reads the first line of an existing file.
 - `--ask-passphrase` prompts twice without echo.
 
-A passphrase you choose needs at least 15 characters and must pass the checks of [protocol section 2](../reference/Protocol.md#2-key-derivation-client); a generated one always does. Passphrase key derivation uses scrypt with `N = 2^18`. The management token is written only when requested with `--manage-token-file` (a new mode-0600 file) or `--print-manage-token`. It has two lines: the link, then the management token. Keep both private.
+A passphrase you choose needs at least 15 characters and must pass the checks of [protocol section 2](../reference/Protocol.md#2-key-derivation-client); a generated one always does. Passphrase key derivation uses scrypt with `N = 2^18`. The manage token is written only when requested with `--manage-token-file` (a new mode-0600 file) or `--print-manage-token`. It has two lines: the link, then the manage token. Keep both private.
 
 ## Read, inspect, cancel, or delete
 
@@ -49,7 +49,7 @@ A CLI from Nylzo 0.1 or 0.2 can neither create nor read messages on an instance 
 
 For passphrase-protected messages, `read` prompts without echo or uses `--passphrase-file`. Ctrl-C restores terminal echo before exiting. Interrupted downloads are retried within the same invocation using the lease, without consuming another open.
 
-`status` supports `--json`. It and `cancel` accept the management token via stdin, `--manage-token-file`, or `NYLZO_MANAGE_TOKEN_FILE`.
+`status` supports `--json`. It and `cancel` accept the manage token via stdin, `--manage-token-file`, or `NYLZO_MANAGE_TOKEN_FILE`.
 
 Downloaded files contain plaintext. Delete them when no longer needed, while recognizing that SSDs and backups may retain copies. On Windows, POSIX modes 0700 and 0600 do not restrict access: files inherit directory permissions, so choose a private destination. The CLI makes a best effort to clear keys from its own memory, but Go strings, libraries, garbage collection, terminals, and pipes may retain copies.
 
@@ -95,4 +95,4 @@ Reports about ended messages are accepted but not stored. When the per-message d
 
 The [Nylzo agent skill](../../../skills/nylzo/SKILL.md) describes using private files outside the repository, keeping secrets and links out of conversations, and delivering decrypted content directly to a program rather than a language model. The skill gives instructions. The CLI, filesystem permissions, and sandbox enforce access rules.
 
-Exit codes: `0` for success, `1` for an operational error, and `2` for invalid usage, including a secret in an argument. For `serve`, `sweep-once`, `takedown`, `report-key`, and `reports`, see the [operations guide](Operations.md).
+Exit codes: `0` for success, `1` for an operational error, and `2` for invalid usage, including a secret in an argument. For `serve`, `sweep-once`, `store-check`, `takedown`, `report-key`, and `reports`, see the [operations guide](Operations.md).

@@ -29,31 +29,45 @@
   <a href="https://www.bestpractices.dev/projects/15969"><img src="https://www.bestpractices.dev/projects/15969/baseline" alt="OpenSSF Baseline self-assessment"></a>
 </p>
 
-## Share on your terms
+## Features
 
-- Text and files up to **5 MiB**, encrypted before upload. The decryption key stays in the link's URL fragment.
-- Set an expiry and an open limit. Add a passphrase, cancel a message, or let the recipient delete it.
-- Use the browser or CLI. Self-host the server and web client in **one Go binary** with SQLite and file storage.
-- Check what you run: signed releases, build provenance, reproducible archives, and an instance transparency page.
+- Text up to 100 KiB and files up to 5 MiB, encrypted on your device before upload.
+- Links expire after at most 7 days and after the number of opens you set. Add a passphrase, cancel a link you sent, or let the recipient delete the message.
+- One Go binary holds the `nylzo` CLI and the web client, and runs the server on Linux and macOS with SQLite and file storage.
+- Signed releases with build provenance and reproducible archives. `nylzo verify-client` compares the web client an instance serves with the signed release.
 
-## Pick your way in
+## How it works
 
-| Use Nylzo              | Start here                                                                                                                         |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| **In your browser**    | [Create a link at nylzo.com](https://nylzo.com). No account required.                                                              |
-| **From your terminal** | [Download the CLI](https://github.com/misaon/nylzo/releases/latest) for Windows, Linux, or macOS. x64 and ARM64 on every platform. |
-| **On your own server** | [Deploy with Docker Compose and Caddy](https://github.com/misaon/nylzo/wiki/Self-hosting), or run the binary behind a TLS proxy.   |
+1. Your browser or the CLI generates a random secret and encrypts the message with AES-256-GCM.
+2. Only the ciphertext goes to the server. The secret travels in the link after `#`, the part of a URL that browsers do not send to servers.
+3. The server counts opens and enforces the expiry. When the hour in which a link expires ends, the server erases the key it needs to produce the link's decryption share, so a copy of the stored data stops opening too.
+4. The recipient's browser or CLI decrypts the message locally.
 
-<a id="verify-a-release"></a>
+The [protocol](https://github.com/misaon/nylzo/wiki/Protocol) defines the cryptography. The [security model](https://github.com/misaon/nylzo/wiki/Security-model) explains what Nylzo does not protect against, such as a server that sends you a modified web client.
 
-[Verify your download](https://github.com/misaon/nylzo/wiki/Verify-a-release) before running it. The [Wiki](https://github.com/misaon/nylzo/wiki) covers setup, CLI examples, operations, and the protocol's security boundaries.
+## Get started
 
-## Build with us
+| Use Nylzo          | Start here                                                                                                                                                     |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| In your browser    | [Create a link at nylzo.com](https://nylzo.com). No account required. Its limits and operator are on its [transparency page](https://nylzo.com/transparency). |
+| From your terminal | [Download the CLI](https://github.com/misaon/nylzo/releases/latest) for Windows, Linux, or macOS, on x64 or ARM64.                                            |
+| On your own server | [Deploy with Docker Compose and Caddy](https://github.com/misaon/nylzo/wiki/Self-hosting), or run the binary behind a TLS proxy.                               |
 
-Bug reports, documentation, accessibility work, and code are welcome. Read the [contributing guide](CONTRIBUTING.md), pick an [issue](https://github.com/misaon/nylzo/issues), or bring an idea to [Discussions](https://github.com/misaon/nylzo/discussions).
+[Verify your download](https://github.com/misaon/nylzo/wiki/Verify-a-release) before you run it. Then create a link from a file and read it back:
 
-<a id="security-boundaries"></a>
+```sh
+nylzo create --server https://nylzo.com --ttl 1h --opens 1 < message.txt > link.txt
+nylzo read --link-file link.txt --out received
+```
 
-Nylzo is early software and has not had an independent security audit. Read the [security model](https://github.com/misaon/nylzo/wiki/Security-model) before sharing sensitive data. Report vulnerabilities [privately](https://github.com/misaon/nylzo/security/advisories/new).
+The [CLI guide](https://github.com/misaon/nylzo/wiki/CLI) covers passphrases, attachments, and `nylzo web`, which runs the web client from the binary so the instance sends no code to your browser.
+
+## Security
+
+Nylzo is pre-1.0 software and has not had an independent security audit. Only the latest release receives security fixes. Read the [security model](https://github.com/misaon/nylzo/wiki/Security-model) before you share sensitive data, and report vulnerabilities [privately](https://github.com/misaon/nylzo/security/advisories/new) as [SECURITY.md](SECURITY.md) describes.
+
+## Contributing
+
+Read the [contributing guide](CONTRIBUTING.md), pick an [issue](https://github.com/misaon/nylzo/issues), or start a [discussion](https://github.com/misaon/nylzo/discussions). [SUPPORT.md](SUPPORT.md) says where to ask for help.
 
 [MIT license](LICENSE) · [Name and logo](https://github.com/misaon/nylzo/wiki/Name-and-logo) · [Changelog](https://github.com/misaon/nylzo/releases)
