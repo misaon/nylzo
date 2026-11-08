@@ -125,8 +125,12 @@ func TestAnEmptyPoolRefusesTheUploadAndRefills(t *testing.T) {
 		t.Fatalf("the refused upload stored a blob: %v", statErr)
 	}
 	refilled := poolFiles(t, directory)
+	for deadline := time.Now().Add(5 * time.Second); len(refilled) != 2 && time.Now().Before(deadline); {
+		time.Sleep(10 * time.Millisecond)
+		refilled = poolFiles(t, directory)
+	}
 	if len(refilled) != 2 {
-		t.Fatalf("the refusal must refill the whole pool: %d files", len(refilled))
+		t.Fatalf("the refusal must start a refill of the whole pool: %d files", len(refilled))
 	}
 	if _, err = blobs.PutExpiring(t.Context(), "third", strings.NewReader("x"), 1, time.Hour); err != nil ||
 		!among(blobFile(t, directory, "third"), refilled) {
@@ -257,5 +261,44 @@ func TestPutWaitsForAFreeFileSlotNoLongerThanItsRequest(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(directory, disk.Directory, hexName("waiting"))); !os.IsNotExist(statErr) {
 		t.Fatalf("the abandoned upload stored a blob: %v", statErr)
+	}
+}
+
+type cancelAfterLink struct {
+	context.Context
+
+	final string
+}
+
+func (c cancelAfterLink) Err() error {
+	if _, err := os.Stat(c.final); err == nil {
+		return context.Canceled
+	}
+	return nil
+}
+
+func TestABlobWhoseDirectorySyncFailsIsShredded(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	blobs := newBlobs(t, directory)
+	final := filepath.Join(directory, disk.Directory, hexName("unsynced"))
+	ctx := cancelAfterLink{Context: context.Background(), final: final}
+	if _, err := blobs.PutExpiring(ctx, "unsynced", strings.NewReader("x"), 1, time.Hour); !errors.Is(
+		err,
+		context.Canceled,
+	) {
+		t.Fatalf("a publish whose directory sync failed must fail: %v", err)
+	}
+	if _, err := os.Stat(final); !os.IsNotExist(err) {
+		t.Fatalf("the blob survived its failed directory sync: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(directory, disk.Directory, "tmp"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "blob-") {
+			t.Fatalf("the upload name %s stayed", entry.Name())
+		}
 	}
 }

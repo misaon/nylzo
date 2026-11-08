@@ -605,6 +605,24 @@ func TestStartupReturnsTheCapSlotsOfUnstoredCreates(t *testing.T) {
 	}
 }
 
+func TestAnEmptyUploadPoolAnswers503AndReturnsTheCapSlot(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.GlobalDailyCreates = 10
+		harness := newHarness(t, settings)
+		harness.withFaultyBlobs().FailPut(store.ErrPoolEmpty)
+		response, _ := harness.create(newMessage(t, core.KDFNone, "", 1, 3600, "x"))
+		if response.StatusCode != http.StatusServiceUnavailable || response.Header.Get("Retry-After") != "5" {
+			t.Fatalf("an empty upload pool: %d %q", response.StatusCode, response.Header.Get("Retry-After"))
+		}
+		count, err := harness.store.RateGet(t.Context(), globalCreatesKey, ratelimit.Day(time.Now()).Start)
+		if err != nil || count.Count != 0 {
+			t.Fatalf("the refused create kept its cap slot: %+v %v", count, err)
+		}
+	})
+}
+
 func TestDisconnectedCreateReturnsItsCapSlot(t *testing.T) {
 	t.Parallel()
 	settings := baseSettings(pepperA, nil)

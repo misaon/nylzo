@@ -328,6 +328,9 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	database.OnScrubFailure(func(err error) {
 		instance.Events().ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err))
 	})
+	blobs.OnFillFailure(func(err error) {
+		instance.Events().ErrorContext(ctx, "pool-fill", "err", logging.ErrorText(err))
+	})
 	if returnErr := instance.ReturnUnstoredCreates(ctx); returnErr != nil {
 		return returnErr
 	}

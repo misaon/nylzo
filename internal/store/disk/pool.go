@@ -69,20 +69,40 @@ type upload struct {
 }
 
 // claim renames a randomly chosen pool file to an upload name before anything writes to it, so no other upload and no
-// sweep in any process can take the same file. An upload that finds the pool empty refills it and is refused, so no
-// stored blob ever lives in a file created for it.
+// sweep in any process can take the same file. An upload that finds the pool empty is refused and starts a refill, so
+// no stored blob ever lives in a file created for it.
 func (b *Blobs) claim(ctx context.Context) (upload, error) {
 	if err := iolimit.Acquire(ctx); err != nil {
 		return upload{}, err
 	}
 	taken, err := b.takeRandom()
 	iolimit.Release()
-	if !errors.Is(err, store.ErrPoolEmpty) {
-		return taken, err
+	if errors.Is(err, store.ErrPoolEmpty) {
+		b.refillInBackground()
 	}
-	b.filling.Lock()
-	defer b.filling.Unlock()
-	return upload{}, errors.Join(err, b.fillEmptyPool())
+	return taken, err
+}
+
+// OnFillFailure sets what receives the error of a refill that an empty pool started; the refused upload answered
+// before the refill ran.
+func (b *Blobs) OnFillFailure(report func(error)) {
+	b.onFillFailure = report
+}
+
+// refillInBackground fills an empty pool in one goroutine, so the refused upload answers at once and no later upload
+// waits behind the refill.
+func (b *Blobs) refillInBackground() {
+	if !b.refilling.CompareAndSwap(false, true) {
+		return
+	}
+	go func() {
+		defer b.refilling.Store(false)
+		b.filling.Lock()
+		defer b.filling.Unlock()
+		if err := b.fillEmptyPool(); err != nil {
+			b.onFillFailure(err)
+		}
+	}()
 }
 
 // takeRandom draws from the pool files this process knows and lists the directory again once per claim when it runs
@@ -152,14 +172,11 @@ func (b *Blobs) take(name string) (upload, error) {
 	temporary := filepath.Join(b.root, temporaryDirectory)
 	pooledPath := filepath.Join(temporary, name)
 	file, err := os.OpenFile(pooledPath, os.O_WRONLY|poolOpenFlags, 0)
-	if errors.Is(err, os.ErrNotExist) {
+	if err != nil {
 		return upload{}, errTaken
 	}
-	if err != nil {
-		return upload{}, err
-	}
 	info, err := file.Stat()
-	if err == nil && (!info.Mode().IsRegular() || info.Size() != 0 || linkCount(info) != 1) {
+	if err != nil || !info.Mode().IsRegular() || info.Size() != 0 || linkCount(info) != 1 {
 		err = errTaken
 	}
 	var pooledModified time.Time
@@ -202,13 +219,30 @@ func (b *Blobs) giveBack(taken *upload) {
 	}
 	b.known.Lock()
 	b.poolNames = append(b.poolNames, name)
+	b.givenBack[name] = struct{}{}
 	b.known.Unlock()
 }
 
-// Replenish adds one batch to the pool and removes random files above its size.
+// takeGivenBack hands the names of the pool files given back since the last call to the restamp.
+func (b *Blobs) takeGivenBack() map[string]struct{} {
+	b.known.Lock()
+	defer b.known.Unlock()
+	givenBack := b.givenBack
+	b.givenBack = map[string]struct{}{}
+	return givenBack
+}
+
+func (b *Blobs) knowPool(names []string) {
+	b.known.Lock()
+	b.poolNames = names
+	b.known.Unlock()
+}
+
+// Replenish adds one batch to the pool and removes random files above its size; it keeps the listing it made, so the
+// next upload need not list the directory again.
 func (b *Blobs) Replenish(_ context.Context) error {
-	defer b.forgetPool()
-	if err := b.createPoolFiles(b.pool.Batch); err != nil {
+	if _, err := b.createPoolFiles(b.pool.Batch); err != nil {
+		b.forgetPool()
 		return err
 	}
 	names, err := b.poolFiles()
@@ -225,39 +259,49 @@ func (b *Blobs) Replenish(_ context.Context) error {
 		errs = append(errs, b.discard(names[index]))
 		names = slices.Delete(names, index, index+1)
 	}
+	b.knowPool(names)
 	errs = append(errs, erase.SyncDirectory(filepath.Join(b.root, temporaryDirectory)))
 	return errors.Join(errs...)
 }
 
 // fillEmptyPool creates a whole pool when none is left, at startup or when an upload found it empty.
 func (b *Blobs) fillEmptyPool() error {
-	defer b.forgetPool()
 	names, err := b.poolFiles()
-	if err != nil || len(names) > 0 {
+	if err != nil {
+		b.forgetPool()
 		return err
 	}
-	if createErr := b.createPoolFiles(b.pool.Size); createErr != nil {
-		return createErr
+	if len(names) > 0 {
+		b.knowPool(names)
+		return nil
+	}
+	created, err := b.createPoolFiles(b.pool.Size)
+	b.knowPool(created)
+	if err != nil {
+		return err
 	}
 	return erase.SyncDirectory(filepath.Join(b.root, temporaryDirectory))
 }
 
-func (b *Blobs) createPoolFiles(count int) error {
+func (b *Blobs) createPoolFiles(count int) ([]string, error) {
 	temporary := filepath.Join(b.root, temporaryDirectory)
+	created := make([]string, 0, count)
 	for range count {
+		name := poolPrefix + rand.Text()
 		file, err := os.OpenFile(
-			filepath.Join(temporary, poolPrefix+rand.Text()),
+			filepath.Join(temporary, name),
 			os.O_WRONLY|os.O_CREATE|os.O_EXCL|poolOpenFlags,
 			0o600,
 		)
 		if err != nil {
-			return err
+			return created, err
 		}
 		if closeErr := file.Close(); closeErr != nil {
-			return closeErr
+			return created, closeErr
 		}
+		created = append(created, name)
 	}
-	return nil
+	return created, nil
 }
 
 func (b *Blobs) poolFiles() ([]string, error) {

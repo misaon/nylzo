@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/misaon/nylzo/internal/erase"
@@ -30,11 +31,14 @@ var copyBuffers = sync.Pool{New: func() any { return new([copyBufferLen]byte) }}
 var ErrReference = errors.New("disk: invalid blob reference")
 
 type Blobs struct {
-	root      string
-	pool      Pool
-	filling   sync.Mutex
-	known     sync.Mutex
-	poolNames []string
+	root          string
+	pool          Pool
+	filling       sync.Mutex
+	refilling     atomic.Bool
+	onFillFailure func(error)
+	known         sync.Mutex
+	poolNames     []string
+	givenBack     map[string]struct{}
 }
 
 var _ store.Blobs = (*Blobs)(nil)
@@ -51,7 +55,7 @@ func New(dataDirectory string, options ...Option) (*Blobs, error) {
 	if err := os.MkdirAll(filepath.Join(root, temporaryDirectory), 0o700); err != nil {
 		return nil, err
 	}
-	blobs := &Blobs{root: root, pool: defaultPool}
+	blobs := &Blobs{root: root, pool: defaultPool, onFillFailure: func(error) {}, givenBack: map[string]struct{}{}}
 	for _, option := range options {
 		option(blobs)
 	}
@@ -225,8 +229,9 @@ func (b *Blobs) PurgeTemporary(_ context.Context, olderThan time.Time) (int, err
 }
 
 // Restamp sets the times of every blob file and directory again, so each ctime shows the restamp, not the upload; a
-// pool file keeps the ctime of the sweep that created it.
+// pool file keeps the ctime of the sweep that created it, unless an upload gave it back since the last restamp.
 func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
+	givenBack := b.takeGivenBack()
 	var errs []error
 	for _, directory := range []string{b.root, filepath.Join(b.root, temporaryDirectory)} {
 		entries, err := os.ReadDir(directory)
@@ -235,7 +240,8 @@ func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
 			continue
 		}
 		for _, entry := range entries {
-			if !entry.IsDir() {
+			_, returned := givenBack[entry.Name()]
+			if !entry.IsDir() && (!pooled(entry.Name()) || returned) {
 				errs = append(errs, restampFile(filepath.Join(directory, entry.Name()), entry))
 			}
 		}
