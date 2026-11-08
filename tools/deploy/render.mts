@@ -51,7 +51,7 @@ export async function render(input: unknown, bundle: HostBundle) {
     NYLZO_LISTEN: ":8080", NYLZO_DATA_DIR: "/home/nonroot", NYLZO_PEPPER_FILE: "/run/nylzo-pepper",
     NYLZO_REPORT_KEY: site.reportPublicKey, NYLZO_TRUSTED_PROXIES: "172.30.81.1/32",
     NYLZO_GLOBAL_DAILY_CREATES: site.dailyCreates, NYLZO_OPERATOR: site.operator,
-    NYLZO_MIN_FREE_BYTES: 4 * 1024 ** 3, NYLZO_POW_CONCURRENCY: 1,
+    NYLZO_MIN_FREE_BYTES: 4 * 1024 ** 3,
     NYLZO_CONTACT: site.contact, NYLZO_HOSTING: site.hosting, NYLZO_PUBLIC_URL: `https://${site.domain}`,
   }).map(([name, value]) => `${name}=${value}`).join("\n") + "\n";
   const settings = Object.entries({

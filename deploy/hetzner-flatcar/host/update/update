@@ -207,7 +207,7 @@ nylzo() {
   docker run --detach --name nylzo-probe --user 65532:65532 --network none \
     --read-only --cap-drop ALL --security-opt no-new-privileges:true \
     --memory 1g --cpus 1.5 --pids-limit 1024 --ulimit memlock=-1:-1 --ulimit core=0:0 --env-file /etc/nylzo/service.env \
-    --env NYLZO_EPOCH_DIR=/run/nylzo-epoch --env GOMEMLIMIT=768MiB \
+    --env NYLZO_EPOCH_DIR=/run/nylzo-epoch --env GOMEMLIMIT=512MiB --env NYLZO_POW_CONCURRENCY=1 \
     --volume "$temporary/data:/home/nonroot:Z" \
     --volume "$temporary/epoch:/run/nylzo-epoch:Z" \
     --volume "$temporary/pepper:/run/nylzo-pepper:ro,Z" "$image@$digest" serve >/dev/null
