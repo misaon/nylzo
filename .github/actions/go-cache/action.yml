@@ -42,7 +42,9 @@ runs:
           ~/Library/Caches/go-build
       run: |
         {
-          echo "key=go-${SCOPE}-${RUNNER_OS}-${RUNNER_ARCH}-$(go env GOVERSION)-${SUMS}-$(date -u +%G-W%V)"
+          prefix="go-${SCOPE}-${RUNNER_OS}-${RUNNER_ARCH}-"
+          echo "prefix=${prefix}"
+          echo "key=${prefix}$(go env GOVERSION)-${SUMS}-$(date -u +%G-W%V)"
           echo "main-push=${MAIN_PUSH}"
           echo "save=$([[ "${SAVE}" = true && "${MAIN_PUSH}" = true ]] && echo true || echo false)"
           printf 'paths<<PATHS\n%sPATHS\n' "${PATHS}"
@@ -53,11 +55,11 @@ runs:
       with:
         path: ${{ steps.key.outputs.paths }}
         key: ${{ steps.key.outputs.key }}
-        restore-keys: go-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-
+        restore-keys: ${{ steps.key.outputs.prefix }}
     - id: restore
       if: steps.key.outputs.save != 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ steps.key.outputs.paths }}
         key: ${{ steps.key.outputs.key }}
-        restore-keys: go-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-
+        restore-keys: ${{ steps.key.outputs.prefix }}

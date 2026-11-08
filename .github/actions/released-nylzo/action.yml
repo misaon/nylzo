@@ -1,7 +1,7 @@
 name: The signed nylzo release a server runs
 description: >-
   Reads the release a server claims, checks that it is the latest or the one it replaced less than a day ago, downloads its
-  linux amd64 archive and signed checksums, verifies the signature with the cosign on PATH and extracts ./nylzo.
+  linux amd64 archive and signed checksums, verifies the signature and extracts ./nylzo.
 inputs:
   url:
     description: The instance address, such as https://nylzo.com.
@@ -13,6 +13,10 @@ outputs:
 runs:
   using: composite
   steps:
+    - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+      with:
+        # renovate: datasource=github-releases depName=sigstore/cosign
+        cosign-release: v3.1.4
     # The instance accepts only X25519MLKEM768, which needs OpenSSL 3.5 or newer in curl.
     - name: Find the release the server runs
       id: release

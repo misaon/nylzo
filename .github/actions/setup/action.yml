@@ -47,4 +47,9 @@ runs:
         cache: ${{ inputs.cache != 'none' }}
         cache_save: ${{ inputs.cache == 'auto' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     - shell: bash
-      run: if mise where go > /dev/null 2>&1; then tools/verify-go-toolchain; fi
+      run: |
+        if mise where go > /dev/null 2>&1; then
+          tools/verify-go-toolchain
+        else
+          echo 'mise installed no Go here, so there is no Go toolchain to check.'
+        fi
