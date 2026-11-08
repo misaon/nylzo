@@ -78,6 +78,8 @@ jobs:
       always() && github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
       (inputs.stack == 'image' || needs.image-check.outputs.missing == 'true')
     uses: $/.github/workflows/infrastructure-stack.yml
+    # Environment secrets reach the called stack only through inherit, and the repository holds no secret of its own.
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     with:
       stack: image
       apply: true
@@ -90,6 +92,8 @@ jobs:
       always() && github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
       needs.image.result != 'failure' && (github.event_name != 'workflow_dispatch' || inputs.stack == 'server')
     uses: $/.github/workflows/infrastructure-stack.yml
+    # Environment secrets reach the called stack only through inherit, and the repository holds no secret of its own.
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     with:
       stack: server
       apply: ${{ github.event_name != 'schedule' }}
@@ -103,6 +107,8 @@ jobs:
       always() && github.repository == 'misaon/nylzo' && vars.NYLZO_INFRASTRUCTURE_ENABLED == 'true' &&
       needs.server.result != 'failure' && (github.event_name != 'workflow_dispatch' || inputs.stack == 'dns')
     uses: $/.github/workflows/infrastructure-stack.yml
+    # Environment secrets reach the called stack only through inherit, and the repository holds no secret of its own.
+    secrets: inherit # zizmor: ignore[secrets-inherit]
     with:
       stack: dns
       apply: ${{ github.event_name != 'schedule' }}
