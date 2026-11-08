@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { hash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -54,7 +54,7 @@ export function isSamePatch(first: PatchAssessment, second: PatchAssessment): bo
 }
 
 export function checkPatchBinding(patch: Buffer, workspaceManifest: string, lockfile: string): void {
-  assert.equal(sha256(patch), deepmergePatch.sha256, 'Unreviewed deepmerge patch');
+  assert.equal(hash('sha256', patch), deepmergePatch.sha256, 'Unreviewed deepmerge patch');
   const manifest: unknown = JSON.parse(workspaceManifest);
   const lock: unknown = Bun.JSON5.parse(lockfile);
   assert.ok(typeof manifest === 'object' && manifest !== null, 'Invalid web/package.json');
@@ -107,9 +107,9 @@ export function verifyDeepmergePatch(root = repositoryRoot): PatchEvidence {
   const packageDirectory = path.dirname(path.dirname(entry));
   assert.equal(entry, path.join(packageDirectory, 'dist/cjs.js'), 'Unexpected deepmerge entry point');
   assert.equal(installedVersion(packageDirectory), deepmergePatch.version, 'Unexpected installed deepmerge version');
-  for (const [file, hash] of Object.entries(patchedFileHashes)) {
+  for (const [file, expected] of Object.entries(patchedFileHashes)) {
     const content = readFileSync(path.join(packageDirectory, file));
-    assert.equal(sha256(content), hash, `Unpatched or changed deepmerge ${file}`);
+    assert.equal(hash('sha256', content), expected, `Unpatched or changed deepmerge ${file}`);
   }
   const universalBuild = path.join(packageDirectory, 'dist/umd.js');
   const common: unknown = pluginRequire('deepmerge');
@@ -170,10 +170,6 @@ function checkSvelteOptionMerging(merge: Deepmerge): void {
 
 function identity<Value>(value: Value): Value {
   return value;
-}
-
-function sha256(content: Buffer): string {
-  return createHash('sha256').update(content).digest('hex');
 }
 
 function objectValue(value: unknown): object {

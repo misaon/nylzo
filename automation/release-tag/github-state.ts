@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { repository } from '../github/client.ts';
+import { repository, unlessMissing } from '../github/client.ts';
 import type { GitHubClient } from '../github/client.ts';
 import { peelTag } from '../github/tags.ts';
 
@@ -34,27 +34,12 @@ export async function taggedCommit(client: GitHubClient, tag: string): Promise<s
 }
 
 export async function tagExists(client: GitHubClient, tag: string): Promise<boolean> {
-  try {
-    await client.rest.git.getRef({ ...repository, ref: `tags/${tag}` });
-    return true;
-  } catch (error) {
-    if (error instanceof Error && 'status' in error && error.status === 404) {
-      return false;
-    }
-    throw error;
-  }
+  return (await unlessMissing(client.rest.git.getRef({ ...repository, ref: `tags/${tag}` }))) !== undefined;
 }
 
 export async function branchTip(client: GitHubClient, branch: string): Promise<string | null> {
-  try {
-    const response = await client.rest.git.getRef({ ...repository, ref: `heads/${branch}` });
-    return response.data.object.sha;
-  } catch (error) {
-    if (error instanceof Error && 'status' in error && error.status === 404) {
-      return null;
-    }
-    throw error;
-  }
+  const response = await unlessMissing(client.rest.git.getRef({ ...repository, ref: `heads/${branch}` }));
+  return response?.data.object.sha ?? null;
 }
 
 export async function mergedPullRequest(

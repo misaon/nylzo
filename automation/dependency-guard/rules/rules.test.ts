@@ -283,6 +283,13 @@ const cases: readonly Case[] = [
     path: 'go.mod',
   },
   {
+    after: goModule.replace('libc v1.79.0', 'libc v9007199254740993.1.0'),
+    before: goModule.replace('libc v1.79.0', 'libc v9007199254740992.0.0'),
+    expected: 'unsafe',
+    name: 'go.mod major version beyond a safe integer',
+    path: 'go.mod',
+  },
+  {
     after: goModule.replace('crypto v0.58.0', 'crypto v0.59.0'),
     before: goModule,
     expected: 'unsafe',
