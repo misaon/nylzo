@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -112,6 +112,26 @@ test("fork PRs keep tests and reports while the OIDC publishing job stays skippe
   assert.equal(plan.jobs.coverage, false);
   assert.equal(plan.coverage, false);
   assert.equal(planChecks(["web/app/src/App.svelte"], "pull_request", true).jobs.coverage, true);
+});
+
+test("the plan step tells release verification whether the run was forced, and untrusted runs get no coverage", () => {
+  const directory = mkdtempSync(join(tmpdir(), "nylzo-ci-plan-output-"));
+  const plan = (environment: Record<string, string>) => {
+    const output = join(directory, "output");
+    writeFileSync(output, "");
+    execFileSync(process.execPath, ["tools/ci-plan.mts"], {
+      env: { ...process.env, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: join(directory, "summary"), ...environment },
+    });
+    return Object.fromEntries(readFileSync(output, "utf8").trim().split("\n").map((line) => line.split(/=(.*)/su, 2)));
+  };
+  try {
+    const forced = plan({ EVENT: "pull_request", FORCE_FULL_VERIFICATION: "true", TRUSTED_COVERAGE: "false" });
+    assert.deepEqual([forced.forced, forced.full, forced.coverage], ["true", "true", "false"]);
+    const scheduled = plan({ EVENT: "schedule", FORCE_FULL_VERIFICATION: "false", TRUSTED_COVERAGE: "true" });
+    assert.deepEqual([scheduled.forced, scheduled.full, scheduled.coverage], ["false", "true", "true"]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("the release PR runs only the documentation checks, while its merge to main runs full verification", () => {

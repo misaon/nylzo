@@ -1,14 +1,26 @@
 name: Go module and build cache
 description: >-
   Restores the Go module and build cache of one job, keyed by the Go version, both go.sum files and the week. On pushes
-  to main a job that missed the exact key saves it after it succeeds, so every key is written once.
+  to main a job that missed the exact key saves it once it succeeds, so every key is written once.
 inputs:
   scope:
     description: The job the cache belongs to; jobs that build different packages keep separate caches.
     required: true
   save:
-    description: "`false` only restores, for a job that shares its key with another job that saves it."
+    description: >-
+      `false` only restores, for a job that shares its key with another job or saves at a point of its own with
+      actions/cache/save and the `key` and `paths` outputs.
     default: "true"
+outputs:
+  hit:
+    description: Whether the restore found the exact key.
+    value: ${{ steps.cache.outputs.cache-hit || steps.restore.outputs.cache-hit }}
+  key:
+    description: The cache key of this job and week.
+    value: ${{ steps.key.outputs.key }}
+  paths:
+    description: The cached directories, one per line.
+    value: ${{ steps.key.outputs.paths }}
 runs:
   using: composite
   steps:
@@ -18,24 +30,29 @@ runs:
       env:
         SCOPE: ${{ inputs.scope }}
         SUMS: ${{ hashFiles('go.sum', 'deploy/caddy/go.sum') }}
-      run: echo "key=go-${SCOPE}-${RUNNER_OS}-${RUNNER_ARCH}-$(go env GOVERSION)-${SUMS}-$(date -u +%G-W%V)" >> "${GITHUB_OUTPUT}"
-    - if: inputs.save == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        SAVE: ${{ inputs.save == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        PATHS: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+          ~/.cache/golangci-lint
+          ~/Library/Caches/go-build
+      run: |
+        {
+          echo "key=go-${SCOPE}-${RUNNER_OS}-${RUNNER_ARCH}-$(go env GOVERSION)-${SUMS}-$(date -u +%G-W%V)"
+          echo "save=${SAVE}"
+          printf 'paths<<PATHS\n%sPATHS\n' "${PATHS}"
+        } >> "${GITHUB_OUTPUT}"
+    - id: cache
+      if: steps.key.outputs.save == 'true'
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: |
-          ~/go/pkg/mod
-          ~/.cache/go-build
-          ~/.cache/golangci-lint
-          ~/Library/Caches/go-build
+        path: ${{ steps.key.outputs.paths }}
         key: ${{ steps.key.outputs.key }}
         restore-keys: go-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-
-    - if: inputs.save != 'true' || github.event_name != 'push' || github.ref != 'refs/heads/main'
+    - id: restore
+      if: steps.key.outputs.save != 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: |
-          ~/go/pkg/mod
-          ~/.cache/go-build
-          ~/.cache/golangci-lint
-          ~/Library/Caches/go-build
+        path: ${{ steps.key.outputs.paths }}
         key: ${{ steps.key.outputs.key }}
         restore-keys: go-${{ inputs.scope }}-${{ runner.os }}-${{ runner.arch }}-

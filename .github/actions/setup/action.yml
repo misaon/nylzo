@@ -18,6 +18,13 @@ inputs:
 runs:
   using: composite
   steps:
+    - if: >-
+        inputs.ref != '' && (github.event_name == 'pull_request_target' ||
+        (github.event_name == 'workflow_run' && inputs.ref != github.event.repository.default_branch))
+      shell: bash
+      run: |
+        echo 'pull_request_target and workflow_run jobs check out their own commit or the default branch, never another ref.' >&2
+        exit 1
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ inputs.ref }}
@@ -30,6 +37,11 @@ runs:
         install_args: ${{ inputs.tools }}
         cache: ${{ inputs.cache != 'none' }}
         cache_save: ${{ inputs.cache == 'auto' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    - if: inputs.tools == '' || contains(format(' {0} ', inputs.tools), ' go ')
-      shell: bash
-      run: tools/verify-go-toolchain
+    - shell: bash
+      env:
+        TOOLS: ${{ inputs.tools }}
+      run: |
+        read -r -d '' -a tools <<< "${TOOLS}" || true
+        if [[ ${#tools[@]} -eq 0 || " ${tools[*]} " =~ [[:space:]](core:)?go(@[^[:space:]]*)?[[:space:]] ]]; then
+          tools/verify-go-toolchain
+        fi

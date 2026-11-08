@@ -468,9 +468,11 @@ jobs:
       - uses: $/.github/actions/setup
         with:
           tools: go bun grype
-      - uses: $/.github/actions/go-cache
+      - id: go-cache
+        uses: $/.github/actions/go-cache
         with:
           scope: compose
+          save: "false"
       - name: Build the web client that nylzo embeds
         run: mise run build:web
       - name: Build nylzo, Caddy and images laid out like the release images
@@ -481,6 +483,12 @@ jobs:
           base=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
           printf 'FROM %s\nCOPY nylzo /ko-app/nylzo\nENTRYPOINT ["/ko-app/nylzo"]\n' "$base" | docker build -q -t nylzo:ci -f - dist
           printf 'FROM %s\nCOPY caddy /ko-app/caddy\nUSER 65533:65533\nENTRYPOINT ["/ko-app/caddy"]\n' "$base" | docker build -q -t caddy:ci -f - dist
+      # The image scans and probes below can fail on news unrelated to the build, so the cache is saved right after it.
+      - if: github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.go-cache.outputs.hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.go-cache.outputs.paths }}
+          key: ${{ steps.go-cache.outputs.key }}
       - name: The production images have no high or critical known vulnerabilities
         env:
           GRYPE_CHECK_FOR_APP_UPDATE: "false"
