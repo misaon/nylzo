@@ -93,7 +93,22 @@ async function layoutChanges(page: Page): Promise<LayoutChanges | undefined> {
   return page.evaluate(() => globalThis.nylzoLayoutChanges?.());
 }
 
+// Bounding boxes include transforms, so a position read during the entrance animation is offset.
+async function motionFinished(page: Page): Promise<void> {
+  await page.waitForFunction(() =>
+    document
+      .getAnimations()
+      .every(
+        (animation) =>
+          animation.playState !== 'running' ||
+          animation.timeline !== document.timeline ||
+          animation.effect?.getComputedTiming().endTime === Infinity,
+      ),
+  );
+}
+
 async function pagePosition(locator: Locator): Promise<string> {
+  await motionFinished(locator.page());
   return locator.evaluate((element) => {
     const box = element.getBoundingClientRect();
     return `${Math.round(box.x + scrollX)},${Math.round(box.y + scrollY)} ${Math.round(box.width)}x${Math.round(box.height)}`;
