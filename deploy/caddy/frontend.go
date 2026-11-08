@@ -75,7 +75,12 @@ func (f *Frontend) Provision(_ caddy.Context) error {
 			return errBuildWithoutVersion
 		}
 	}
-	f.classicalPolicy = "connect-src " + f.PublicURL + api.TransparencyPath + " " + f.PublicURL + webclient.ManifestPath
+	f.classicalPolicy = "connect-src " + strings.Join([]string{
+		f.PublicURL + "/assets/",
+		f.PublicURL + api.InstancePath,
+		f.PublicURL + api.TransparencyPath,
+		f.PublicURL + webclient.ManifestPath,
+	}, " ")
 	if f.pages, err = build.Render(f.PublicURL, f.Contact); err != nil {
 		return err
 	}
@@ -109,7 +114,8 @@ func contactArgument(dispenser *caddyfile.Dispenser) (string, error) {
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	if r.TLS == nil || r.TLS.CurveID != tls.X25519MLKEM768 {
 		if !publicOverClassicalTLS(r) {
-			f.pages.ServeUnsupported(w, r)
+			webclient.SetSecurityHeaders(w.Header(), false)
+			w.WriteHeader(http.StatusForbidden)
 			return nil
 		}
 		w = &classicalResponse{ResponseWriter: w, policy: f.classicalPolicy}
@@ -134,9 +140,28 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyh
 	}
 }
 
+// publicOverClassicalTLS admits what the public pages load; the instance limits only without message headers.
 func publicOverClassicalTLS(r *http.Request) bool {
-	return (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
-		(webclient.IsPublicDocument(r.URL.Path) || r.URL.Path == api.TransparencyPath)
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	switch r.URL.Path {
+	case api.TransparencyPath:
+		return true
+	case api.InstancePath:
+		return r.URL.RawQuery == "" && !carriesProtocolHeader(r.Header)
+	default:
+		return webclient.IsPublicDocument(r.URL.Path)
+	}
+}
+
+func carriesProtocolHeader(header http.Header) bool {
+	for name := range header {
+		if strings.HasPrefix(name, "X-Nylzo-") {
+			return true
+		}
+	}
+	return false
 }
 
 // classicalResponse adds a second policy, which the browser enforces too, so the page reaches no message route.

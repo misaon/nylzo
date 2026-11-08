@@ -38,7 +38,7 @@ services:
 
   caddy:
     image: ${NYLZO_CADDY_IMAGE:?set NYLZO_CADDY_IMAGE to the verified Caddy image of the same release with its digest}
-    command: [run, --config, /etc/caddy/Caddyfile, --adapter, caddyfile]
+    command: [run, --config, /etc/caddy/Caddyfile, --adapter, nylzo]
     user: "65533:65533"
     restart: unless-stopped
     read_only: true

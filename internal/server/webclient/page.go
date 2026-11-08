@@ -21,6 +21,12 @@ const (
 	englishHome          = "/"
 	czechHome            = "/cs/"
 	sentPath             = "/sent"
+	transparencyPath     = "/transparency"
+	termsPath            = "/terms"
+	agentsPath           = "/agents"
+	czechRedirectPath    = "/cs"
+	robotsPath           = "/robots.txt"
+	sitemapPath          = "/sitemap.xml"
 	messagePagePath      = "/m/{id}"
 	htmlContentType      = "text/html; charset=utf-8"
 )
@@ -34,8 +40,8 @@ var (
 
 // publicDocuments carry no message and no message metadata, so a crawler may load them over classical TLS.
 var publicDocuments = []string{
-	englishHome, czechHome, "/cs", "/terms", "/transparency", "/agents", "/" + agentsGuideFile, "/robots.txt",
-	"/sitemap.xml", ManifestPath,
+	englishHome, czechHome, czechRedirectPath, termsPath, transparencyPath, agentsPath, "/" + agentsGuideFile,
+	robotsPath, sitemapPath, ManifestPath,
 }
 
 func IsPublicDocument(path string) bool {

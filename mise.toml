@@ -76,7 +76,7 @@ description = "Tests of the automation workspace and the repository tools"
 depends = ["install:automation"]
 run = [
   "bun run --cwd automation test",
-  "bun test --parallel --timeout 300000 tools/build-info.test.mts tools/ci-plan.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/deploy/*.test.mts",
+  "bun test --parallel --timeout 300000 tools/build-info.test.mts tools/ci-plan.test.mts tools/crawler-ranges.test.mts tools/release-checks.test.mts tools/coverage/*.test.mts tools/security/*.test.mts tools/deploy/*.test.mts",
 ]
 
 [tasks.test]

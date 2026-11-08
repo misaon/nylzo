@@ -188,6 +188,7 @@ test("host monitoring is opt-in and embeds only its pinned public client identit
     assert(![...files.values()].some(value => value.includes(key)));
     assert(!decode((await render(site, bundle)).ignition).has("/etc/nylzo/monitor-client.pem"));
     const monitor = (await hostSources()).get("proxy/monitor.Caddyfile")!;
-    for (const expected of [":8443", "mode require_and_verify", "verifier leaf file", "protocols tls1.3", "curves x25519mlkem768"]) assert(monitor.includes(expected), expected);
+    for (const expected of [":8443", "mode require_and_verify", "verifier leaf file", "protocols tls1.3"]) assert(monitor.includes(expected), expected);
+    assert.match(monitor, /^\s*curves x25519mlkem768$/mu);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

@@ -135,12 +135,23 @@ func rewrite(value any, apply func(key string, value any) any) any {
 	return value
 }
 
+const (
+	otherAddresses   = "192.0.2.0/24"
+	crawlerAddresses = "127.0.0.0/8"
+)
+
 func startCaddy(t *testing.T, caddyfile, backend string) (string, *x509.CertPool) {
 	t.Helper()
-	return startCaddyWithMaintenance(t, caddyfile, backend, "")
+	return startCaddyWith(t, caddyfile, backend, "", otherAddresses)
 }
 
 func startCaddyWithMaintenance(t *testing.T, caddyfile, backend, maintenance string) (string, *x509.CertPool) {
+	t.Helper()
+	return startCaddyWith(t, caddyfile, backend, maintenance, otherAddresses)
+}
+
+// startCaddyWith serves the Caddyfile on loopback; crawlers stands in for the embedded crawler list.
+func startCaddyWith(t *testing.T, caddyfile, backend, maintenance, crawlers string) (string, *x509.CertPool) {
 	t.Helper()
 	t.Setenv("NYLZO_DOMAIN", "localhost")
 	t.Setenv("NYLZO_CONTACT", operatorContact)
@@ -148,7 +159,7 @@ func startCaddyWithMaintenance(t *testing.T, caddyfile, backend, maintenance str
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapted, _, err := caddyconfig.GetAdapter("caddyfile").Adapt(source, map[string]any{"filename": caddyfile})
+	adapted, _, err := caddyconfig.GetAdapter("nylzo").Adapt(source, map[string]any{"filename": caddyfile})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,6 +193,12 @@ func startCaddyWithMaintenance(t *testing.T, caddyfile, backend, maintenance str
 			return maintenance
 		case "issuers":
 			return []any{map[string]any{"module": "internal"}}
+		case "match":
+			matchers, _ := value.(map[string]any)
+			if _, ok := matchers[crawlerMatcher]; ok {
+				delete(matchers, crawlerMatcher)
+				matchers["remote_ip"] = map[string]any{"ranges": []string{crawlers}}
+			}
 		default:
 		}
 		return value
@@ -226,8 +243,9 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 			base := &tls.Config{RootCAs: roots, ServerName: "localhost"}
 
 			for refused, config := range map[string]*tls.Config{
-				"TLS 1.2":     {MaxVersion: tls.VersionTLS12},
-				"P-256 alone": {MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.CurveP256}},
+				"TLS 1.2":      {MaxVersion: tls.VersionTLS12},
+				"X25519 alone": {MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.X25519}},
+				"P-256 alone":  {MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.CurveP256}},
 			} {
 				config.RootCAs, config.ServerName = roots, "localhost"
 				if connection, err := tls.Dial("tcp", address, config); err == nil {
@@ -296,6 +314,9 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 			}
 			_, _ = io.Copy(io.Discard, response.Body)
 			_ = response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("HTTP/3 API request: %d", response.StatusCode)
+			}
 			time.Sleep(300 * time.Millisecond)
 			_ = first.Close()
 			var early *quic.Conn
@@ -314,6 +335,9 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 				t.Fatalf("HTTP/3 resumption: %v", err)
 			}
 			_ = response.Body.Close()
+			if response.StatusCode != http.StatusOK {
+				t.Fatalf("a resumed post-quantum session got %d from the API", response.StatusCode)
+			}
 			if early == nil || !early.ConnectionState().TLS.DidResume {
 				t.Fatal("the second HTTP/3 connection did not resume its session, so it tested nothing")
 			}
@@ -369,7 +393,7 @@ func TestCaddyfilesBoundSlowAndLargeRequests(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			adapted, _, err := caddyconfig.GetAdapter("caddyfile").Adapt(source, map[string]any{"filename": caddyfile})
+			adapted, _, err := caddyconfig.GetAdapter("nylzo").Adapt(source, map[string]any{"filename": caddyfile})
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -41,7 +41,7 @@ var (
 )
 
 func init() {
-	caddy.RegisterModule(Crawler{})
+	caddy.RegisterModule(new(Crawler))
 	caddy.RegisterModule(CrawlerSites{})
 	httpcaddyfile.RegisterGlobalOption(crawlerOption, parseCrawlerSites)
 	caddyconfig.RegisterAdapter(crawlerAdapterKey, crawlerAdapter{})
@@ -79,7 +79,7 @@ type Crawler struct {
 	prefixes []netip.Prefix
 }
 
-func (Crawler) CaddyModule() caddy.ModuleInfo {
+func (*Crawler) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{
 		ID:  "tls.handshake_match." + crawlerMatcher,
 		New: func() caddy.Module { return new(Crawler) },
@@ -131,30 +131,40 @@ func parseCrawlerSites(dispenser *caddyfile.Dispenser, _ any) (any, error) {
 type crawlerAdapter struct{}
 
 // Adapt lets the named sites also accept X25519, only from crawler addresses, by a policy ahead of their own.
+//
+//nolint:gocritic // caddyconfig.Adapter fixes these three unnamed results.
 func (crawlerAdapter) Adapt(body []byte, options map[string]any) ([]byte, []caddyconfig.Warning, error) {
 	adapted, warnings, err := caddyfile.Adapter{ServerType: httpcaddyfile.ServerType{}}.Adapt(body, options)
 	if err != nil {
 		return nil, warnings, err
 	}
-	var config map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(adapted))
-	decoder.UseNumber()
-	if err = decoder.Decode(&config); err != nil {
+	config, err := decodeConfig(adapted)
+	if err != nil {
 		return nil, warnings, err
 	}
 	applications, _ := config["apps"].(map[string]any)
-	raw, ok := applications[crawlerOption]
+	sites, ok := applications[crawlerOption].(map[string]any)
 	if !ok {
 		return adapted, warnings, nil
 	}
 	delete(applications, crawlerOption)
-	hosts := stringList(raw.(map[string]any)["hosts"])
 	web, _ := applications["http"].(map[string]any)
-	if err = addCrawlerPolicies(web, hosts); err != nil {
+	err = addCrawlerPolicies(web, stringList(sites["hosts"]))
+	if err != nil {
 		return nil, warnings, err
 	}
 	result, err := json.Marshal(config)
 	return result, warnings, err
+}
+
+func decodeConfig(encoded []byte) (map[string]any, error) {
+	var config map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(encoded))
+	decoder.UseNumber()
+	if err := decoder.Decode(&config); err != nil {
+		return nil, err
+	}
+	return config, nil
 }
 
 func addCrawlerPolicies(web map[string]any, hosts []string) error {
@@ -173,11 +183,11 @@ func addCrawlerPolicies(web map[string]any, hosts []string) error {
 		combined := make([]any, 0, len(policies)+1)
 		for _, item := range policies {
 			policy, _ := item.(map[string]any)
-			crawler, err := crawlerPolicy(policy, hosts)
-			if err != nil {
-				return err
-			}
-			if crawler != nil {
+			if servesNamedSite(policy, hosts) {
+				crawler, err := crawlerPolicy(policy, hosts)
+				if err != nil {
+					return err
+				}
 				combined, found = append(combined, crawler), true
 			}
 			combined = append(combined, policy)
@@ -190,12 +200,14 @@ func addCrawlerPolicies(web map[string]any, hosts []string) error {
 	return nil
 }
 
+func servesNamedSite(policy map[string]any, hosts []string) bool {
+	match, _ := policy["match"].(map[string]any)
+	return slices.ContainsFunc(stringList(match["sni"]), func(name string) bool { return slices.Contains(hosts, name) })
+}
+
 func crawlerPolicy(policy map[string]any, hosts []string) (map[string]any, error) {
 	match, _ := policy["match"].(map[string]any)
 	names := stringList(match["sni"])
-	if !slices.ContainsFunc(names, func(name string) bool { return slices.Contains(hosts, name) }) {
-		return nil, nil
-	}
 	for _, name := range names {
 		if !slices.Contains(hosts, name) {
 			return nil, fmt.Errorf("the TLS policy for %s %w", name, errPolicyWiderThan)
@@ -208,13 +220,12 @@ func crawlerPolicy(policy map[string]any, hosts []string) (map[string]any, error
 	if err != nil {
 		return nil, err
 	}
-	var crawler map[string]any
-	decoder := json.NewDecoder(bytes.NewReader(encoded))
-	decoder.UseNumber()
-	if err = decoder.Decode(&crawler); err != nil {
+	crawler, err := decodeConfig(encoded)
+	if err != nil {
 		return nil, err
 	}
-	crawler["match"].(map[string]any)[crawlerMatcher] = map[string]any{}
+	crawlerMatch, _ := crawler["match"].(map[string]any)
+	crawlerMatch[crawlerMatcher] = map[string]any{}
 	crawler["curves"] = []string{postQuantumCurve, classicalCurve}
 	return crawler, nil
 }
@@ -238,9 +249,9 @@ func stringList(value any) []string {
 }
 
 var (
-	_ caddy.App                   = (*CrawlerSites)(nil)
-	_ caddy.Provisioner           = (*CrawlerSites)(nil)
-	_ caddy.Provisioner           = (*Crawler)(nil)
-	_ caddytls.ConnectionMatcher  = (*Crawler)(nil)
-	_ caddyconfig.Adapter         = crawlerAdapter{}
+	_ caddy.App                  = (*CrawlerSites)(nil)
+	_ caddy.Provisioner          = (*CrawlerSites)(nil)
+	_ caddy.Provisioner          = (*Crawler)(nil)
+	_ caddytls.ConnectionMatcher = (*Crawler)(nil)
+	_ caddyconfig.Adapter        = crawlerAdapter{}
 )

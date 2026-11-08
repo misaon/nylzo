@@ -8,7 +8,7 @@ Group=caddy
 EnvironmentFile=/etc/nylzo/caddy.env
 Environment=XDG_DATA_HOME=/var/lib/caddy
 Environment=XDG_CONFIG_HOME=/var/lib/caddy/config
-ExecStart=/opt/nylzo/bin/caddy run --config /etc/caddy/Caddyfile
+ExecStart=/opt/nylzo/bin/caddy run --config /etc/caddy/Caddyfile --adapter nylzo
 Restart=on-failure
 RestartSec=5
 StateDirectory=caddy
