@@ -35,10 +35,9 @@ type Blobs struct {
 	pool          Pool
 	filling       sync.Mutex
 	refilling     atomic.Bool
-	onFillFailure func(error)
+	onPoolFailure func(error)
 	known         sync.Mutex
 	poolNames     []string
-	givenBack     map[string]struct{}
 }
 
 var _ store.Blobs = (*Blobs)(nil)
@@ -55,7 +54,7 @@ func New(dataDirectory string, options ...Option) (*Blobs, error) {
 	if err := os.MkdirAll(filepath.Join(root, temporaryDirectory), 0o700); err != nil {
 		return nil, err
 	}
-	blobs := &Blobs{root: root, pool: defaultPool, onFillFailure: func(error) {}, givenBack: map[string]struct{}{}}
+	blobs := &Blobs{root: root, pool: defaultPool, onPoolFailure: func(error) {}}
 	for _, option := range options {
 		option(blobs)
 	}
@@ -228,10 +227,10 @@ func (b *Blobs) PurgeTemporary(_ context.Context, olderThan time.Time) (int, err
 	return purged, errors.Join(errs...)
 }
 
-// Restamp sets the times of every blob file and directory again, so each ctime shows the restamp, not the upload; a
-// pool file keeps the ctime of the sweep that created it, unless an upload gave it back since the last restamp.
+// Restamp sets the times of every blob file, pool file and directory again, so each ctime shows the restamp and a pool
+// file that an upload gave back looks like one nobody took. It leaves files of uploads in progress alone, since it
+// would write their claim time back over the time the upload stamps.
 func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
-	givenBack := b.takeGivenBack()
 	var errs []error
 	for _, directory := range []string{b.root, filepath.Join(b.root, temporaryDirectory)} {
 		entries, err := os.ReadDir(directory)
@@ -240,8 +239,7 @@ func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
 			continue
 		}
 		for _, entry := range entries {
-			_, returned := givenBack[entry.Name()]
-			if !entry.IsDir() && (!pooled(entry.Name()) || returned) {
+			if !entry.IsDir() && !strings.HasPrefix(entry.Name(), uploadPrefix) {
 				errs = append(errs, restampFile(filepath.Join(directory, entry.Name()), entry))
 			}
 		}

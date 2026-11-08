@@ -83,10 +83,10 @@ func (b *Blobs) claim(ctx context.Context) (upload, error) {
 	return taken, err
 }
 
-// OnFillFailure sets what receives the error of a refill that an empty pool started; the refused upload answered
-// before the refill ran.
-func (b *Blobs) OnFillFailure(report func(error)) {
-	b.onFillFailure = report
+// OnPoolFailure sets what receives the error of a refill that an empty pool started, which ran after the refused
+// upload answered, and of a pool file that an upload skipped because it could not open it.
+func (b *Blobs) OnPoolFailure(report func(error)) {
+	b.onPoolFailure = report
 }
 
 // refillInBackground fills an empty pool in one goroutine, so the refused upload answers at once and no later upload
@@ -100,7 +100,7 @@ func (b *Blobs) refillInBackground() {
 		b.filling.Lock()
 		defer b.filling.Unlock()
 		if err := b.fillEmptyPool(); err != nil {
-			b.onFillFailure(err)
+			b.onPoolFailure(err)
 		}
 	}()
 }
@@ -173,9 +173,15 @@ func (b *Blobs) take(name string) (upload, error) {
 	pooledPath := filepath.Join(temporary, name)
 	file, err := os.OpenFile(pooledPath, os.O_WRONLY|poolOpenFlags, 0)
 	if err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			b.onPoolFailure(err)
+		}
 		return upload{}, errTaken
 	}
 	info, err := file.Stat()
+	if err != nil {
+		b.onPoolFailure(err)
+	}
 	if err != nil || !info.Mode().IsRegular() || info.Size() != 0 || linkCount(info) != 1 {
 		err = errTaken
 	}
@@ -219,17 +225,7 @@ func (b *Blobs) giveBack(taken *upload) {
 	}
 	b.known.Lock()
 	b.poolNames = append(b.poolNames, name)
-	b.givenBack[name] = struct{}{}
 	b.known.Unlock()
-}
-
-// takeGivenBack hands the names of the pool files given back since the last call to the restamp.
-func (b *Blobs) takeGivenBack() map[string]struct{} {
-	b.known.Lock()
-	defer b.known.Unlock()
-	givenBack := b.givenBack
-	b.givenBack = map[string]struct{}{}
-	return givenBack
 }
 
 func (b *Blobs) knowPool(names []string) {
