@@ -11,6 +11,7 @@ const workflowRun = z.object({
   status: z.string().nullable(),
 });
 const runs = z.object({ workflow_runs: z.array(workflowRun) });
+const dispatchedRun = z.object({ html_url: z.url() });
 
 type WorkflowRun = z.infer<typeof workflowRun>;
 
@@ -34,13 +35,18 @@ async function dispatch(
   workflow: string,
   inputs: Readonly<Record<string, string>> = {},
 ): Promise<void> {
-  await client.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
+  const response = await client.request('POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches', {
     ...repository,
     workflow_id: workflow,
     ref: 'main',
     inputs,
+    // API version 2022-11-28 of this endpoint is deprecated; 2026-03-10 answers with the started run.
+    headers: { 'x-github-api-version': '2026-03-10' },
   });
-  console.log(`Started ${workflow}${Object.keys(inputs).length === 0 ? '' : ` with ${JSON.stringify(inputs)}`}.`);
+  const run = dispatchedRun.parse(response.data);
+  console.log(
+    `Started ${workflow}${Object.keys(inputs).length === 0 ? '' : ` with ${JSON.stringify(inputs)}`}: ${run.html_url}`,
+  );
 }
 
 const client = createGitHubClient(z.string().min(1).parse(process.env['GITHUB_TOKEN']));
