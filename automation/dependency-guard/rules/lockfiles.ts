@@ -171,13 +171,66 @@ function downloadProblem(key: string, value: string, backend: string): string | 
   return official ? undefined : `${value} is not an official download of ${backend || 'an unknown backend'}`;
 }
 
+const misePlatformSection = /^\[tools\.(?<tool>[\w-]+)\."platforms\.(?<platform>[\w-]+)"\]$/u;
+const misePlatformVariant = /-(?:musl(?:-baseline)?|baseline)$/u;
+
+function miseSections(text: string): string[][] {
+  const sections: string[][] = [[]];
+  for (const line of text.split('\n')) {
+    if (line.startsWith('[')) {
+      sections.push([line]);
+    } else {
+      sections.at(-1)?.push(line);
+    }
+  }
+  return sections;
+}
+
+function misePlatform(header: string): { readonly base: string; readonly key: string } | undefined {
+  const { platform, tool } = misePlatformSection.exec(header)?.groups ?? {};
+  if (platform === undefined || tool === undefined) {
+    return undefined;
+  }
+  return { base: `${tool}/${platform.replace(misePlatformVariant, '')}`, key: `${tool}/${platform}` };
+}
+
+function misePlatformAsset(section: readonly string[]): string {
+  return section
+    .slice(1)
+    .filter((line) => line !== '' && !miseChecksumSource.test(line))
+    .join('\n');
+}
+
+// mise adds musl and baseline variants that reuse the base platform's asset; such a copy brings nothing new to review.
+function withoutRepeatedPlatformVariants(text: string): string {
+  const sections = miseSections(text);
+  const assets = new Map<string, string>();
+  for (const section of sections) {
+    const platform = misePlatform(section[0] ?? '');
+    if (platform !== undefined) {
+      assets.set(platform.key, misePlatformAsset(section));
+    }
+  }
+  return sections
+    .filter((section) => {
+      const platform = misePlatform(section[0] ?? '');
+      return (
+        platform === undefined ||
+        platform.base === platform.key ||
+        assets.get(platform.base) !== misePlatformAsset(section)
+      );
+    })
+    .flat()
+    .join('\n');
+}
+
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- Findings are the caller-owned output accumulator.
 function miseLockSnapshot(text: string, findings: string[]): Snapshot {
   const values: DependencyValue[] = [];
   let tool = '';
   let backend = '';
   let version = '';
-  const lines = text
+  const lines = withoutRepeatedPlatformVariants(text)
     .split('\n')
     .filter((line) => !miseChecksumSource.test(line))
     .map((line) => {
