@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.9.0](https://github.com/misaon/nylzo/compare/v0.8.0...v0.9.0) (2026-11-08)
+
+
+### Fixes
+
+* **ci:** pass the environment secrets to the infrastructure stack workflow ([#263](https://github.com/misaon/nylzo/issues/263)) ([c7b8cd8](https://github.com/misaon/nylzo/commit/c7b8cd8209c943118ff0ca294cfcd4b2fcb53349))
+* **deploy:** configure IPv6, prune old images and quiet the host logs ([#256](https://github.com/misaon/nylzo/issues/256)) ([9bda0e2](https://github.com/misaon/nylzo/commit/9bda0e299ef59bc67ed98641397fb3b00c631962))
+* **deps:** give Renovate its documented App permissions and fail aborted runs ([#255](https://github.com/misaon/nylzo/issues/255)) ([e722cb1](https://github.com/misaon/nylzo/commit/e722cb122f2444d6c733766ce44dd90dc8d2909d))
+
+
+### Refactoring
+
+* **server:** review the Go server for security, flooding and structure ([#260](https://github.com/misaon/nylzo/issues/260)) ([ae401b3](https://github.com/misaon/nylzo/commit/ae401b3c0d490dbe92719b25448d23c279780288))
+
+
+### CI
+
+* drop the acceptance criterion ids from job names ([#261](https://github.com/misaon/nylzo/issues/261)) ([1ff855e](https://github.com/misaon/nylzo/commit/1ff855ea8d681a5d588bf04e7e877748262982c9))
+* **infrastructure:** keep the state endpoint secret and store state in R2 ([#254](https://github.com/misaon/nylzo/issues/254)) ([ec38869](https://github.com/misaon/nylzo/commit/ec3886937aa87929a02efa73ba9432487a14003a))
+
+
+### Tests
+
+* **e2e:** measure sent list positions after the entrance animation ([#262](https://github.com/misaon/nylzo/issues/262)) ([d32237a](https://github.com/misaon/nylzo/commit/d32237a919549b86843694abe27220bb4c429a05))
+
 ## [0.8.0](https://github.com/misaon/nylzo/compare/v0.7.0...v0.8.0) (2026-11-07)
 
 
