@@ -58,12 +58,19 @@ if (!isAssetMap(assets) || !isObject(toolchain)) {
 for (const tool of hostTools) {
   toolchain[tool] = hostToolPin(assets, tool);
 }
-const opentofu = captured(
-  readFileSync('mise.toml', 'utf8'),
-  /^opentofu = "([^"]+)"$/mu,
-  'the OpenTofu pin in mise.toml',
-);
-toolchain['opentofu'] = opentofu;
+let deployTask: string | undefined;
+if ('opentofu' in toolchain) {
+  const opentofu = captured(
+    readFileSync('mise.toml', 'utf8'),
+    /^opentofu = "([^"]+)"$/mu,
+    'the OpenTofu pin in mise.toml',
+  );
+  toolchain['opentofu'] = opentofu;
+  deployTask = readFileSync('mise-tasks/deploy', 'utf8').replace(
+    /opentofu@\d+\.\d+\.\d+/u,
+    () => `opentofu@${opentofu}`,
+  );
+}
 toolchain['caddy'] = existsSync('deploy/caddy/go.mod')
   ? captured(
       readFileSync('deploy/caddy/go.mod', 'utf8'),
@@ -76,10 +83,8 @@ toolchain['caddy'] = existsSync('deploy/caddy/go.mod')
       'the Caddy image in deploy/compose/compose.yaml',
     );
 writeFileSync('deploy/hetzner-flatcar/toolchain.json', `${JSON.stringify(toolchain, undefined, 2)}\n`);
+if (deployTask !== undefined) {
+  writeFileSync('mise-tasks/deploy', deployTask);
+}
 
-const deployTask = readFileSync('mise-tasks/deploy', 'utf8');
-writeFileSync(
-  'mise-tasks/deploy',
-  deployTask.replace(/opentofu@\d+\.\d+\.\d+/u, () => `opentofu@${opentofu}`),
-);
 console.log('Synchronized the host toolchain pins with the reviewed dependency pins.');

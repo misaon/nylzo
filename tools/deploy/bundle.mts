@@ -3,7 +3,7 @@ import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const hostDirectory = fileURLToPath(new URL("../../deploy/hetzner-flatcar/host/", import.meta.url));
+const hostDirectory = fileURLToPath(new URL("../../deploy/hetzner-flatcar/host/", import.meta.url));
 const modificationTime = 1767225600;
 const blockSize = 512;
 

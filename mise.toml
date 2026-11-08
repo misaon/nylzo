@@ -69,7 +69,7 @@ run = [
 description = "TypeScript core and web client tests with coverage, including the heavy cryptographic cases"
 depends = ["install:web"]
 env = { NYLZO_HEAVY_TESTS = "1" }
-run = ["bun run --cwd web/core --bun playwright install chromium", "bun run --cwd web --parallel --filter @nylzo/core --filter @nylzo/web test:coverage"]
+run = ["bun run --cwd web/core --bun playwright install chromium", "bun run --cwd web test:coverage"]
 
 [tasks."test:repository"]
 description = "Tests of the automation workspace and the repository tools"
@@ -111,7 +111,7 @@ run = [
   "bun automation/web-install/policy.ts",
   "bun audit --cwd web --audit-level=moderate",
   "bun run --cwd web lint",
-  "bun run --cwd web --parallel --filter '*' typecheck",
+  "bun run --cwd web typecheck",
   "bun run --cwd web --filter @nylzo/web check",
 ]
 

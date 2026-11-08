@@ -26,15 +26,14 @@ jobs:
     concurrency:
       group: vulnerability-inventory
       cancel-in-progress: false
-    env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: $/.github/actions/setup
         with:
-          persist-credentials: false
+          tools: bun cosign grype osv-scanner
+          cache: none
       - name: Find the latest immutable release and the latest of every maintained line
         id: release
         env:
@@ -58,10 +57,6 @@ jobs:
             git fetch --no-tags --depth 1 origin "+refs/tags/${tag}:refs/tags/${tag}"
             git worktree add --detach "published/${tag}" "refs/tags/${tag}"
           done
-      - uses: $/.github/actions/mise
-        with:
-          tools: bun cosign grype osv-scanner
-          cache: none
       - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - name: Scan those releases, every source tree and every pinned tool
         env:
@@ -99,20 +94,15 @@ jobs:
     concurrency:
       group: renovate
       cancel-in-progress: false
-    env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: bun
           cache: none
+          ref: main
       - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -144,8 +134,6 @@ jobs:
         with:
           client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID }}
           private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
-          owner: misaon
-          repositories: nylzo
           # The permissions Renovate documents for a GitHub App; without checks, statuses and issues it aborts each run.
           permission-administration: read
           permission-checks: write

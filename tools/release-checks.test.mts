@@ -7,12 +7,13 @@ import test from "node:test";
 
 test("publication rebuilds source without promoting cached CI artifacts", () => {
   const release = readFileSync(".github/workflows/release.yml", "utf8");
-  assert(!release.includes("actions/cache/"));
+  assert(!release.includes("actions/cache"));
+  assert(!release.includes("actions/go-cache"));
   assert(!release.includes("pattern: hashes-"));
   assert(!release.includes("name: web-dist"));
   assert(release.includes("bun run --cwd web --filter @nylzo/web build"));
   assert(!/^\s+cache: (?:pnpm|true|auto)$/mu.test(release));
-  const toolSetups = release.match(/uses: \$\/\.github\/actions\/mise\n(?:\s+with:\n(?:\s{10}.*\n)*)?/gu) ?? [];
+  const toolSetups = release.match(/uses: \$\/\.github\/actions\/setup\n(?:\s+with:\n(?:\s{10}.*\n)*)?/gu) ?? [];
   assert(toolSetups.length > 0 && toolSetups.every(setup => setup.includes("cache: none")));
   assert(!release.includes("actions/setup-node@"));
   assert(!release.includes("pnpm/action-setup@"));

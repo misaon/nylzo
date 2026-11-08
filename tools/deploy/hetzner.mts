@@ -17,8 +17,9 @@ try {
     const { directory, environment } = prepared;
     const plan = path.join(directory, "deployment.tfplan");
     const planHash = async () => createHash("sha256").update(await readFile(plan)).digest("hex");
+    const initializeStack = (...options: string[]) => execute(directory, environment, ["init", "-input=false", "-lockfile=readonly", ...options]);
     if (command === "plan") {
-      execute(directory, environment, ["init", "-input=false", "-lockfile=readonly"]);
+      initializeStack();
       if (kind === "dns") await importDns(prepared);
       execute(directory, environment, ["plan", "-input=false", `-out=${plan}`]);
       await writeFile(path.join(directory, "review.json"), JSON.stringify({ inputs: await inputs(directory), plan: await planHash(), created: Date.now() }), { mode: 0o600 });
@@ -33,14 +34,14 @@ try {
       assert.equal(reviewed.inputs, await inputs(directory), "Configuration changed; create and review a new plan");
       assert.equal(reviewed.plan, await planHash(), "Saved plan changed");
       assert(Date.now() - reviewed.created >= 0 && Date.now() - reviewed.created <= 3600000, "Plan expired; create a fresh plan");
-      execute(directory, environment, ["init", "-input=false", "-lockfile=readonly"]);
+      initializeStack();
       execute(directory, environment, ["apply", "-input=false", plan]);
       if (kind === "image") await createImage(prepared);
       else execute(directory, environment, ["output"]);
     } else if (command === "migrate") {
-      execute(directory, environment, ["init", "-input=false", "-lockfile=readonly", "-migrate-state", "-force-copy"]);
+      initializeStack("-migrate-state", "-force-copy");
     } else {
-      execute(directory, environment, ["init", "-input=false", "-lockfile=readonly"]);
+      initializeStack();
       execute(directory, environment, ["output"]);
     }
   }

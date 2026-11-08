@@ -2,9 +2,7 @@
   "extends": "../tsconfig.base.json",
   "compilerOptions": {
     "module": "preserve",
-    "moduleResolution": "bundler",
     "lib": ["es2025", "esnext.typedarrays", "dom"],
-    "allowJs": true,
     "checkJs": true,
     "types": ["vite/client", "svelte"]
   },

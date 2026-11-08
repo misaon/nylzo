@@ -18,7 +18,6 @@ concurrency:
 
 env:
   GOTOOLCHAIN: local
-  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
   MISE_TASK_RUN_AUTO_INSTALL: "false"
 
 jobs:
@@ -35,6 +34,7 @@ jobs:
       dependencies: ${{ steps.plan.outputs.dependencies }}
       actions: ${{ steps.plan.outputs.actions }}
       full: ${{ steps.plan.outputs.full }}
+      forced: ${{ steps.plan.outputs.forced }}
       sca: ${{ steps.plan.outputs.sca }}
       coverage: ${{ steps.plan.outputs.coverage }}
       jobs: ${{ steps.plan.outputs.jobs }}
@@ -42,13 +42,10 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: bun
+          fetch-depth: 0
       - id: plan
         name: Select checks from the complete changed-file list
         env:
@@ -73,15 +70,10 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: go golangci-lint
-      - run: tools/verify-go-toolchain
-      - id: go-cache
-        uses: $/.github/actions/go-cache
+      - uses: $/.github/actions/go-cache
         with:
           scope: checks
       - name: Modules, build, vet, go fix, golangci-lint and govulncheck
@@ -100,11 +92,6 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 14
-      - if: steps.go-cache.outputs.hit != 'true'
-        uses: $/.github/actions/go-cache
-        with:
-          scope: checks
-          save: "true"
 
   sca:
     name: Dependency vulnerabilities, malware, and licenses
@@ -112,8 +99,6 @@ jobs:
     if: needs.changes.outputs.sca == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
-    permissions:
-      contents: read
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
@@ -124,13 +109,9 @@ jobs:
         with:
           fail-on-severity: moderate
           comment-summary-in-pr: never
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: go bun osv-scanner
-      - run: tools/verify-go-toolchain
       - name: Known vulnerabilities, malware and licenses of the locked dependencies, with the source SBOM
         run: mise run lint:dependencies
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -152,13 +133,9 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: aqua:rhysd/actionlint zizmor shellcheck bun go
-      - run: tools/verify-go-toolchain
       - name: Audit and lint the automation, check tool syntax, Wiki links, workflows and shell scripts
         run: mise run lint:repository
       - name: Test the automation and the repository tools
@@ -177,13 +154,9 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: go bun opentofu
-      - run: tools/verify-go-toolchain
       - run: tools/deploy/validate
       - name: Install the virtual-machine test runtime
         run: |
@@ -236,15 +209,10 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: go
-      - run: tools/verify-go-toolchain
-      - id: go-cache
-        uses: $/.github/actions/go-cache
+      - uses: $/.github/actions/go-cache
         with:
           scope: fuzz
       - name: Fuzz each target for 15 s
@@ -254,11 +222,6 @@ jobs:
           done
           go test -run='^$' -fuzz='^FuzzParseLink$' -fuzztime=15s ./internal/core
           go test -run='^$' -fuzz='^FuzzCreateHeader$' -fuzztime=15s ./internal/server
-      - if: steps.go-cache.outputs.hit != 'true'
-        uses: $/.github/actions/go-cache
-        with:
-          scope: fuzz
-          save: "true"
 
   web:
     name: TypeScript core and web client
@@ -266,16 +229,11 @@ jobs:
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 10
-    permissions:
-      contents: read
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: bun
       - name: Supply-chain policy, audit, Oxfmt, Oxlint, knip, type checks and svelte-autofixer
@@ -310,10 +268,7 @@ jobs:
     name: Coverage reports
     needs: [changes, go, web]
     if: >-
-      always() && !cancelled() && needs.changes.result == 'success' &&
-      needs.changes.outputs.coverage == 'true' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      (needs.changes.outputs.go == 'true' || needs.changes.outputs.web == 'true') &&
+      always() && !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.coverage == 'true' &&
       (needs.changes.outputs.go != 'true' || needs.go.result == 'success') &&
       (needs.changes.outputs.web != 'true' || needs.web.result == 'success')
     runs-on: ubuntu-26.04
@@ -379,8 +334,6 @@ jobs:
     if: needs.changes.outputs.integration == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
-    permissions:
-      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -395,17 +348,14 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: go bun
-      - run: tools/verify-go-toolchain
-      - id: go-cache
-        uses: $/.github/actions/go-cache
+      - uses: $/.github/actions/go-cache
         with:
           scope: e2e
+          # Chromium and Firefox build the same server on the same runner image, so one of them saves.
+          save: ${{ matrix.browser != 'firefox' }}
       - name: Build the client that nylzo embeds
         run: mise run build:web
       - name: Use the upstream Ubuntu mirror for browser dependencies
@@ -440,12 +390,6 @@ jobs:
         env:
           BROWSER: ${{ matrix.browser }}
         run: bun run e2e --project="$BROWSER"
-      # Chromium and Firefox build the same server on the same runner image.
-      - if: steps.go-cache.outputs.hit != 'true' && matrix.browser != 'firefox'
-        uses: $/.github/actions/go-cache
-        with:
-          scope: e2e
-          save: "true"
       - name: Keep the Playwright results of a failed run
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -462,18 +406,13 @@ jobs:
     if: needs.changes.outputs.integration == 'true'
     runs-on: ubuntu-26.04
     timeout-minutes: 15
-    permissions:
-      contents: read
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: $/.github/actions/setup
         with:
-          persist-credentials: false
           fetch-depth: 0
-      - uses: $/.github/actions/mise
-      - run: tools/verify-go-toolchain
       - name: Block updates that add high or critical vulnerabilities; pushes also inventory unchanged tools
         env:
           DEPENDENCY_BASE_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
@@ -522,23 +461,18 @@ jobs:
     # Caddy accepts only X25519MLKEM768, so the probes need OpenSSL 3.5 or newer.
     runs-on: ubuntu-26.04
     timeout-minutes: 20
-    permissions:
-      contents: read
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: go bun grype
-      - run: tools/verify-go-toolchain
       - id: go-cache
         uses: $/.github/actions/go-cache
         with:
           scope: compose
+          save: "false"
       - name: Build the web client that nylzo embeds
         run: mise run build:web
       - name: Build nylzo, Caddy and images laid out like the release images
@@ -549,11 +483,12 @@ jobs:
           base=$(yq -e -r '.kos[0].base_image' .goreleaser.yaml)
           printf 'FROM %s\nCOPY nylzo /ko-app/nylzo\nENTRYPOINT ["/ko-app/nylzo"]\n' "$base" | docker build -q -t nylzo:ci -f - dist
           printf 'FROM %s\nCOPY caddy /ko-app/caddy\nUSER 65533:65533\nENTRYPOINT ["/ko-app/caddy"]\n' "$base" | docker build -q -t caddy:ci -f - dist
-      - if: steps.go-cache.outputs.hit != 'true'
-        uses: $/.github/actions/go-cache
+      # The image scans and probes below can fail on news unrelated to the build, so the cache is saved right after it.
+      - if: steps.go-cache.outputs.main-push == 'true' && steps.go-cache.outputs.hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          scope: compose
-          save: "true"
+          path: ${{ steps.go-cache.outputs.paths }}
+          key: ${{ steps.go-cache.outputs.key }}
       - name: The production images have no high or critical known vulnerabilities
         env:
           GRYPE_CHECK_FOR_APP_UPDATE: "false"
@@ -643,8 +578,6 @@ jobs:
     if: needs.changes.outputs.integration == 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
-    permissions:
-      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -653,15 +586,11 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: go bun cosign
           cache: none
-      - run: tools/verify-go-toolchain
+          fetch-depth: 0
       - name: Release configuration and a snapshot build
         timeout-minutes: 8
         uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
@@ -730,15 +659,10 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: go
-      - run: tools/verify-go-toolchain
-      - id: go-cache
-        uses: $/.github/actions/go-cache
+      - uses: $/.github/actions/go-cache
         with:
           scope: codeql
       - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
@@ -752,11 +676,6 @@ jobs:
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:go
-      - if: steps.go-cache.outputs.hit != 'true'
-        uses: $/.github/actions/go-cache
-        with:
-          scope: codeql
-          save: "true"
 
   codeql-web:
     name: Analyze (javascript-typescript)
@@ -844,10 +763,7 @@ jobs:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: bun
       - name: Every planned job completed successfully
@@ -881,11 +797,10 @@ jobs:
   release-verification:
     name: Release verification
     needs: [changes, required]
+    # A forced run is a maintenance branch or a Renovate pull request (FORCE_FULL_VERIFICATION in the plan step).
     if: >-
       always() && needs.changes.outputs.full == 'true' && needs.required.result == 'success' &&
-      (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/v') ||
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.id == vars.DEPENDENCY_BOT_ID && startsWith(github.event.pull_request.head.ref, 'renovate/')))
+      (github.ref == 'refs/heads/main' || needs.changes.outputs.forced == 'true')
     runs-on: ubuntu-26.04
     timeout-minutes: 1
     steps:

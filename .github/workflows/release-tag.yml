@@ -38,21 +38,16 @@ jobs:
       contents: read
       checks: read # the release commit passed full CI and every CodeQL analysis
       id-token: write # keyless tag signature bound to this workflow on main
-    env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: bun gitsign
           cache: none
+          ref: main
+          fetch-depth: 0
       - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - name: Decide the release for the commit whose CI completed
         id: plan
@@ -73,8 +68,6 @@ jobs:
         with:
           client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID }}
           private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
-          owner: misaon
-          repositories: nylzo
           permission-contents: write
           permission-workflows: write # tag a commit whose tree contains workflows
       - name: Sign, verify and push the release tag
@@ -115,28 +108,21 @@ jobs:
     environment: dependency-updates
     permissions:
       contents: read
-    env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: main
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: bun
           cache: none
+          ref: main
       - run: bun install --cwd automation --frozen-lockfile --ignore-scripts
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app
         with:
           client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID }}
           private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
-          owner: misaon
-          repositories: nylzo
           permission-contents: write # create the maintenance branch of a planned release
           permission-pull-requests: write # label the merged release PR as tagged
           permission-workflows: write # create a ref at a commit containing workflows
@@ -169,8 +155,6 @@ jobs:
         with:
           client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID }}
           private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
-          owner: misaon
-          repositories: nylzo
           permission-actions: write # run the full CI on the maintenance branch
           permission-contents: read
       - name: Run CI on the maintenance branch when it holds unreleased changes
@@ -199,16 +183,11 @@ jobs:
     permissions:
       contents: read
       id-token: write # test the exact release signing identity without a persistent signing key
-    env:
-      MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: $/.github/actions/mise
+      - uses: $/.github/actions/setup
         with:
           tools: gitsign
           cache: none
