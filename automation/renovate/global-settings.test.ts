@@ -11,6 +11,7 @@ test('the maintenance branch joins main and the fast path follows its limits, so
     miseVersion: '2026.10.19',
   });
   assert.deepEqual(settings['force'], { baseBranchPatterns: ['main', 'release/v0.2'] });
+  assert.equal(settings['exitCodeForErrors'], true);
   const rules = settings['packageRules'] as { enabled: boolean; matchBaseBranches?: string[] }[];
   assert.deepEqual(
     rules.map((rule) => rule.enabled),
