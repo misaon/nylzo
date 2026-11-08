@@ -1,6 +1,6 @@
 import { IntegrityError } from '../errors.ts';
 import { SHARE_LENGTH } from '../limits.ts';
-import { decodeBase64urlExact, encodeBase64url } from '../primitives/base64url.ts';
+import { decodeBase64urlExact } from '../primitives/base64url.ts';
 import { arrayBufferBacked, assertLength, concatenate, utf8 } from '../primitives/bytes.ts';
 
 const SHARE_KEY_LENGTH = 32;
@@ -19,10 +19,6 @@ export async function newShareKey(): Promise<ShareKey> {
     privateKey: pair.privateKey,
     publicKey: new Uint8Array(await crypto.subtle.exportKey('raw', pair.publicKey)),
   };
-}
-
-export function shareKeyText(key: ShareKey): string {
-  return encodeBase64url(key.publicKey);
 }
 
 export function parseWrappedShare(text: string): Uint8Array<ArrayBuffer> {

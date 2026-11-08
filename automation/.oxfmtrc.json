@@ -3,5 +3,5 @@
   "singleQuote": true,
   "sortImports": {},
   "sortPackageJson": true,
-  "ignorePatterns": ["bun.lock", "**/coverage/**", "**/node_modules/**", "**/.svelte-check/**"]
+  "ignorePatterns": ["bun.lock", "**/coverage/**", "**/node_modules/**"]
 }
