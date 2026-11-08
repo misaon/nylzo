@@ -11,12 +11,14 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+	"github.com/quic-go/quic-go/http3"
 
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -333,5 +335,134 @@ func TestFrontendTakesTheOperatorContactForItsAllowlist(t *testing.T) {
 	var page ErrorPage
 	if err := page.UnmarshalCaddyfile(caddyfile.NewTestDispenser("nylzo_error {\n status 500\n}")); err == nil {
 		t.Fatal("an unknown subdirective was accepted")
+	}
+}
+
+func TestClassicalTLSReachesOnlyPublicDocuments(t *testing.T) {
+	for _, configuration := range []string{
+		filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),
+		filepath.Join("..", "compose", "Caddyfile"),
+	} {
+		t.Run(configuration, func(t *testing.T) {
+			var requests atomic.Int64
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{}`)
+			}))
+			defer backend.Close()
+			address, roots := startCaddy(t, configuration, backend.Listener.Addr().String())
+			classical := &tls.Config{RootCAs: roots, CurvePreferences: []tls.CurveID{tls.X25519}}
+			clients := map[string]*http.Client{
+				"TCP": {
+					Transport: &http.Transport{TLSClientConfig: classical, ForceAttemptHTTP2: true},
+					Timeout:   10 * time.Second,
+				},
+				"HTTP/3": {Transport: &http3.Transport{TLSClientConfig: classical}, Timeout: 10 * time.Second},
+			}
+			const policy = "connect-src https://localhost/.well-known/nylzo/transparency.json https://localhost/.well-known/nylzo/client.json"
+			build, err := webclient.Load(web.Files())
+			if err != nil {
+				t.Fatal(err)
+			}
+			pages := embeddedPages(t, "https://localhost")
+			for transport, client := range clients {
+				do := func(method, path, destination string) *http.Response {
+					t.Helper()
+					request, _ := http.NewRequest(method, "https://"+address+path, http.NoBody)
+					request.Header.Set("Sec-Fetch-Dest", destination)
+					response, doErr := client.Do(request)
+					if doErr != nil {
+						t.Fatalf("%s %s %s: %v", transport, method, path, doErr)
+					}
+					if response.TLS == nil || response.TLS.CurveID != tls.X25519 {
+						t.Fatalf("%s: the connection did not use X25519 alone", transport)
+					}
+					return response
+				}
+				public := []string{
+					"/",
+					"/cs/",
+					"/terms",
+					"/agents",
+					"/agents.md",
+					"/robots.txt",
+					"/sitemap.xml",
+					webclient.ManifestPath,
+				}
+				for name := range build.Assets {
+					public = append(public, "/assets/"+name)
+				}
+				for _, path := range public {
+					response := do(http.MethodGet, path, "document")
+					_ = response.Body.Close()
+					if response.StatusCode != http.StatusOK ||
+						!slices.Contains(response.Header.Values("Content-Security-Policy"), policy) {
+						t.Errorf("%s %s: status %d, policies %q", transport, path, response.StatusCode,
+							response.Header.Values("Content-Security-Policy"))
+					}
+				}
+				if requests.Load() != 0 {
+					t.Fatalf("%s: a public document reached the backend", transport)
+				}
+				declaration := do(http.MethodGet, "/.well-known/nylzo/transparency.json", "empty")
+				_ = declaration.Body.Close()
+				if declaration.StatusCode != http.StatusOK || requests.Swap(0) != 1 {
+					t.Errorf("%s: the transparency declaration did not come from the backend: %d", transport,
+						declaration.StatusCode)
+				}
+				for _, test := range []struct{ method, path string }{
+					{http.MethodGet, "/api/v1/instance"},
+					{http.MethodPost, "/api/v1/messages"},
+					{http.MethodGet, "/api/v1/messages/AAAAAAAAAAAAAAAAAAAAAA/blob"},
+					{http.MethodGet, "/healthz"},
+					{http.MethodPost, "/"},
+				} {
+					refused := do(test.method, test.path, "empty")
+					body, _ := io.ReadAll(refused.Body)
+					_ = refused.Body.Close()
+					if refused.StatusCode != http.StatusForbidden || len(body) != 0 ||
+						refused.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP ||
+						refused.Header.Get("X-Content-Type-Options") != "nosniff" {
+						t.Errorf("%s %s %s: %d with %d bytes, %v", transport, test.method, test.path,
+							refused.StatusCode, len(body), refused.Header)
+					}
+				}
+				for _, path := range []string{"/r", "/sent", "/m/AAAAAAAAAAAAAAAAAAAAAA", "/missing"} {
+					request, _ := http.NewRequest(http.MethodGet, "https://localhost"+path, http.NoBody)
+					request.Header.Set("Sec-Fetch-Dest", "document")
+					//nolint:bodyclose // expectSameResponse closes it.
+					navigation := do(http.MethodGet, path, "document")
+					expectSameResponse(t, navigation, http.StatusForbidden, func(w http.ResponseWriter) {
+						pages.ServeUnsupported(w, request)
+					})
+				}
+				if requests.Load() != 0 {
+					t.Fatalf("%s: a refused request reached the backend", transport)
+				}
+			}
+			postQuantum := &http.Client{
+				Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}},
+				Timeout:   10 * time.Second,
+			}
+			response, err := postQuantum.Get("https://" + address + "/")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.TLS.CurveID != tls.X25519MLKEM768 ||
+				len(response.Header.Values("Content-Security-Policy")) != 1 {
+				t.Fatalf("a post-quantum page got %s and policies %q", response.TLS.CurveID,
+					response.Header.Values("Content-Security-Policy"))
+			}
+			response, err = postQuantum.Get("https://" + address + "/api/v1/instance")
+			if err != nil {
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			if response.StatusCode != http.StatusOK || requests.Load() != 1 {
+				t.Fatalf("the API refused a post-quantum connection: %d", response.StatusCode)
+			}
+		})
 	}
 }

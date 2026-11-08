@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,9 +42,10 @@ type Frontend struct {
 	PublicURL   string `json:"public_url"`
 	Maintenance string `json:"maintenance,omitempty"`
 	// The operator's contact, the same as NYLZO_CONTACT of the server, so its link is the one the pages may reach.
-	Contact string `json:"contact,omitempty"`
-	handler http.Handler
-	pages   webclient.Pages
+	Contact         string `json:"contact,omitempty"`
+	handler         http.Handler
+	pages           webclient.Pages
+	classicalPolicy string
 }
 
 func (*Frontend) CaddyModule() caddy.ModuleInfo {
@@ -73,6 +75,7 @@ func (f *Frontend) Provision(_ caddy.Context) error {
 			return errBuildWithoutVersion
 		}
 	}
+	f.classicalPolicy = "connect-src " + f.PublicURL + api.TransparencyPath + " " + f.PublicURL + webclient.ManifestPath
 	if f.pages, err = build.Render(f.PublicURL, f.Contact); err != nil {
 		return err
 	}
@@ -104,6 +107,13 @@ func contactArgument(dispenser *caddyfile.Dispenser) (string, error) {
 }
 
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+	if r.TLS == nil || r.TLS.CurveID != tls.X25519MLKEM768 {
+		if !publicOverClassicalTLS(r) {
+			f.pages.ServeUnsupported(w, r)
+			return nil
+		}
+		w = &classicalResponse{ResponseWriter: w, policy: f.classicalPolicy}
+	}
 	maintenance := f.underMaintenance()
 	switch {
 	case r.URL.Path == api.HealthPath:
@@ -122,6 +132,38 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyh
 		f.handler.ServeHTTP(w, r)
 		return nil
 	}
+}
+
+func publicOverClassicalTLS(r *http.Request) bool {
+	return (r.Method == http.MethodGet || r.Method == http.MethodHead) &&
+		(webclient.IsPublicDocument(r.URL.Path) || r.URL.Path == api.TransparencyPath)
+}
+
+// classicalResponse adds a second policy, which the browser enforces too, so the page reaches no message route.
+type classicalResponse struct {
+	http.ResponseWriter
+
+	policy  string
+	written bool
+}
+
+func (c *classicalResponse) WriteHeader(status int) {
+	if !c.written {
+		c.written = true
+		c.Header().Add("Content-Security-Policy", c.policy)
+	}
+	c.ResponseWriter.WriteHeader(status)
+}
+
+func (c *classicalResponse) Write(body []byte) (int, error) {
+	if !c.written {
+		c.WriteHeader(http.StatusOK)
+	}
+	return c.ResponseWriter.Write(body)
+}
+
+func (c *classicalResponse) Unwrap() http.ResponseWriter {
+	return c.ResponseWriter
 }
 
 func (f *Frontend) unmarshalSubdirective(dispenser *caddyfile.Dispenser) error {

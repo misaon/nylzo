@@ -226,9 +226,8 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 			base := &tls.Config{RootCAs: roots, ServerName: "localhost"}
 
 			for refused, config := range map[string]*tls.Config{
-				"TLS 1.2":      {MaxVersion: tls.VersionTLS12},
-				"X25519 alone": {MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.X25519}},
-				"P-256 alone":  {MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.CurveP256}},
+				"TLS 1.2":     {MaxVersion: tls.VersionTLS12},
+				"P-256 alone": {MinVersion: tls.VersionTLS13, CurvePreferences: []tls.CurveID{tls.CurveP256}},
 			} {
 				config.RootCAs, config.ServerName = roots, "localhost"
 				if connection, err := tls.Dial("tcp", address, config); err == nil {
@@ -236,17 +235,16 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 					t.Errorf("Caddy accepted a handshake with %s", refused)
 				}
 			}
-			connection, err := tls.Dial(
-				"tcp",
-				address,
-				&tls.Config{
-					RootCAs:          roots,
-					ServerName:       "localhost",
-					CurvePreferences: []tls.CurveID{tls.X25519MLKEM768},
-				},
-			)
+			connection, err := tls.Dial("tcp", address, &tls.Config{
+				RootCAs:          roots,
+				ServerName:       "localhost",
+				CurvePreferences: []tls.CurveID{tls.X25519, tls.X25519MLKEM768},
+			})
 			if err != nil {
-				t.Fatalf("X25519MLKEM768 handshake: %v", err)
+				t.Fatalf("handshake offering X25519 first: %v", err)
+			}
+			if curve := connection.ConnectionState().CurveID; curve != tls.X25519MLKEM768 {
+				t.Errorf("a client that offers X25519MLKEM768 negotiated %s", curve)
 			}
 			_ = connection.Close()
 

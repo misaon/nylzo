@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/misaon/nylzo/internal/server/operatoraddress"
@@ -30,6 +31,19 @@ var (
 	errPublicMarkersUnpaired    = errors.New("the public markers do not pair up")
 	errPlaceholderOutsidePublic = errors.New("the public URL placeholder appears outside a public block")
 )
+
+// publicDocuments carry no message and no message metadata, so a crawler may load them over classical TLS.
+var publicDocuments = []string{
+	englishHome, czechHome, "/cs", "/terms", "/transparency", "/agents", "/" + agentsGuideFile, "/robots.txt",
+	"/sitemap.xml", ManifestPath,
+}
+
+func IsPublicDocument(path string) bool {
+	if name, ok := strings.CutPrefix(path, "/assets/"); ok {
+		return name != "" && !strings.Contains(name, "/")
+	}
+	return slices.Contains(publicDocuments, path)
+}
 
 func IsHomePath(path string) bool {
 	_, ok := homeTemplates[path]

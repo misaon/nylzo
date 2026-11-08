@@ -1,7 +1,7 @@
 www.{$NYLZO_DOMAIN} {
 	tls {
 		protocols tls1.3
-		curves x25519mlkem768
+		curves x25519mlkem768 x25519
 		issuer acme {
 			profile shortlived
 			disable_tlsalpn_challenge
