@@ -4,12 +4,16 @@ export const messages: Catalog = {
   'action.retry': 'Skúsiť znova',
   'app.crashed': 'Na stránke nastala chyba. Načítajte ju znova.',
 
-  'limits.terms': 'podmienkach používania',
   'hero.eyebrow': 'Jednorazové šifrované odkazy',
   'hero.steps': 'Ako to funguje',
   'hero.step.write': 'Napíšte správu',
   'hero.step.send': 'Pošlite odkaz',
   'hero.step.vanish': 'Po otvorení zmizne',
+  'hero.proof.label': 'Hlavné prednosti',
+  'hero.proof.encrypted': 'Šifrované vo vašom prehliadači',
+  'hero.proof.cipher': 'AES-256-GCM',
+  'hero.proof.tls': 'Postkvantové TLS',
+  'hero.proof.open': 'Open source',
   'terms.eyebrow': 'Právne informácie',
   'terms.title': 'Podmienky používania',
   'terms.effective': 'Platné od 11.\u{A0}11.\u{A0}2026. Záväzná je česká verzia, toto znenie je jej preklad.',
@@ -251,7 +255,7 @@ export const messages: Catalog = {
   'read.delete.rest.short': 'Vymazať',
   'read.delete.rest.confirm': 'Vymazať zostávajúce otvorenia?',
   'read.delete.confirm.title': 'Vymazať správu bez otvorenia?',
-  'read.note': 'Zadarmo a\u{A0}bez registrácie. Stránka nepoužíva cookies ani analytické nástroje.',
+  'read.note': 'Zadarmo a\u{A0}bez registrácie. Stránka so správou nepoužíva cookies ani meranie návštevnosti.',
   'read.delete.confirm': 'Správu potom už nikto neotvorí, ani vy.',
   'read.delete.yes': 'Áno, vymazať',
   'read.delete.no': 'Nevymazať',
@@ -270,7 +274,8 @@ export const messages: Catalog = {
   'revealed.sender.text':
     'Žiadosť o\u{A0}peniaze, prihlásenie alebo inštaláciu si overte u\u{A0}odosielateľa inou cestou.',
   'revealed.file': 'Príloha',
-  'revealed.file.unchecked': 'Nikto ju nekontroloval na vírusy. Otvárajte len súbory od ľudí, ktorých poznáte.',
+  'revealed.file.unchecked':
+    'Príloha je šifrovaná, takže ju Nylzo nemôže preveriť antivírusom. Otvárajte len súbory od ľudí, ktorých poznáte.',
   'revealed.confirm.title': 'Tento typ súboru môže spustiť kód. Otvorte ho, len ak odosielateľovi dôverujete.',
   'revealed.confirm.extension': 'Prípona súboru:',
   'revealed.confirm.none': 'Súbor nemá príponu.',
@@ -319,12 +324,15 @@ export const messages: Catalog = {
   'transparency.stores.counters.title': 'Počítadlá bez adries',
   'transparency.stores.counters':
     'Denné počty vytvorených správ uchováva ešte {days} po skončení dňa, použité jednorazové výzvy len niekoľko minút.',
+  'transparency.stores.visits.title': 'Návštevnosť úvodnej stránky',
+  'transparency.stores.visits':
+    'Súhrnné počty zobrazení úvodnej stránky po hodinách, bez cookies a\u{A0}bez IP adries. Pomáhajú nám zlepšovať službu a\u{A0}včas posilniť server. Stránky so správami sa do merania nezapočítavajú.',
   'transparency.stores.addresses.title': 'IP adresy',
   'transparency.stores.addresses':
     'Neukladá ich. Limity na adresu uchováva len v\u{A0}pamäti, ktorá sa nikdy neodkladá na disk, a\u{A0}po reštarte ich zabudne.',
-  'transparency.stores.enforced.title': 'Platnosť a\u{A0}počet otvorení stráži server',
+  'transparency.stores.enforced.title': 'Platnosť stráži aj kryptografia',
   'transparency.stores.enforced':
-    'Platnosť a\u{A0}počet otvorení stráži tento server. Približne do dvoch hodín po skončení platnosti vymaže časť kľúča, ktorú správa potrebuje, takže kópia vytvorená neskôr už správu neotvorí. Dovtedy by si server v\u{A0}cudzích rukách mohol správu aj túto časť kľúča ponechať a\u{A0}chránilo by ju len utajenie odkazu a\u{A0}hesla.',
+    'Platnosť a\u{A0}počet otvorení stráži server. Najneskôr dve hodiny po skončení platnosti navyše vymaže časť kľúča, ktorú správa potrebuje, takže ju potom neotvorí ani kópia dát. Kópia vytvorená skôr správu bez odkazu neprečíta.',
   'transparency.logs.title': 'Čo server loguje',
   'transparency.logs.written': 'Zapisuje',
   'transparency.logs.written.time': 'Čas skrátený na minútu',
@@ -343,32 +351,35 @@ export const messages: Catalog = {
   'transparency.logs.never.size': 'Veľkosť správy',
   'transparency.logs.never.duration': 'Čas spracovania',
   'transparency.checks.title': 'Bezpečnostné kontroly',
-  'transparency.checks.note': 'Kto a\u{A0}ako Nylzo kontroluje. Platí pre softvér, nielen pre túto inštanciu.',
+  'transparency.checks.note': 'Kto a\u{A0}ako Nylzo kontroluje.',
   'transparency.checks.audit.title': 'Nezávislý audit',
   'transparency.checks.audit': 'Zatiaľ neprebehol.',
   'transparency.checks.changes.title': 'Pri každej zmene kódu',
   'transparency.checks.changes':
-    'Testy protokolu a\u{A0}toho, čo sľubujeme, statická analýza, kontrola závislostí a\u{A0}test dát z\u{A0}ukradnutého servera.',
-  'transparency.checks.ai.title': 'Kontroly s\u{A0}nástrojmi AI',
+    'CodeQL, govulncheck, OSV-Scanner, Grype a\u{A0}golangci-lint, testy protokolu a\u{A0}toho, čo sľubujeme, a\u{A0}test dát z\u{A0}ukradnutého servera. Každý commit v\u{A0}hlavnej vetve je podpísaný.',
+  'transparency.checks.ai.title': 'Kontroly s\u{A0}agentmi AI',
   'transparency.checks.ai':
-    'Nástroje AI pravidelne preverujú bezpečnosť kódu, naposledy 25.\u{A0}10. a\u{A0}1.\u{A0}11.\u{A0}2026. Nálezy sú opravené a\u{A0}opísané na GitHube.',
+    'Agenti AI preverili kód v\u{A0}piatich hĺbkových bezpečnostných kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web aj server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitár). Nálezy sú opravené a\u{A0}opísané na GitHube.',
+  'transparency.checks.watch.title': 'Dohľad nad nylzo.com',
+  'transparency.checks.watch':
+    'Každých 30\u{A0}minút porovnanie kódu webu s\u{A0}podpísaným vydaním. Pri odchýlke automatická údržba, odpojenie cloudovým firewallom a\u{A0}hlásenie incidentu. Každú hodinu skúšobná správa, ktorú automat vytvorí, prečíta a\u{A0}nechá vymazať.',
   'transparency.checks.ratings.title': 'Hodnotenie projektu',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (automatické hodnotenie) a\u{A0}OpenSSF Best Practices (vlastné hodnotenie), odkazy v\u{A0}README.',
+    'OpenSSF Scorecard (automatické hodnotenie), OpenSSF Best Practices (vlastné hodnotenie) a\u{A0}A+ na securityheaders.com aj v\u{A0}Mozilla Observatory. Odkazy sú v\u{A0}README.',
   'transparency.others.title': 'Čo vidia ostatní',
   'transparency.others.hosting.title': 'Hosting a\u{A0}proxy',
   'transparency.others.hosting':
     'Poskytovateľ hostingu a\u{A0}proxy, ktorá ukončuje HTTPS, vidia IP adresy, časy a\u{A0}veľkosti požiadaviek a\u{A0}logujú podľa svojich pravidiel. Obsah správy nevidia.',
-  'transparency.others.client.title': 'Kto ovláda server alebo hosting',
+  'transparency.others.client.title': 'Kód webovej stránky',
   'transparency.others.client':
-    'Kto ovláda bežiaci server alebo hosting, vidí záznamy správ, ktoré niekto práve otvára alebo spravuje, a\u{A0}môže poslať upraveného webového klienta a\u{A0}prečítať správy, ktoré v\u{A0}ňom vytvoríte alebo otvoríte. Overené aplikácie, teda lokálny klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pre príkazový riadok, spúšťajú kód z\u{A0}podpísaného vydania, takže ho server zmeniť nemôže. Kontrola nižšie takú zámenu odhalí, len ak server kontrolu neobchádza.',
+    'Kto by ovládol bežiaci server, videl by len záznamy správ, ktoré sa práve otvárajú, nikdy ich obsah. Na nylzo.com preto kód webu každých 30\u{A0}minút porovnávame s\u{A0}podpísaným vydaním a\u{A0}pri odchýlke sa služba sama odpojí. Stránku podvrhnutú cielene jednému človeku by kontrola rozpoznať nemusela, a\u{A0}preto pre najcitlivejšie dáta ponúkame overené aplikácie (nylzo web, nylzo open a\u{A0}nástroj nylzo pre príkazový riadok), ktoré spúšťajú kód z\u{A0}podpísaného vydania.',
   'transparency.personal.title': 'Osobné údaje',
   'transparency.personal.controller.title': 'Prevádzkovateľ',
   'transparency.personal.controller':
     'Prevádzkovateľom osobných údajov je prevádzkovateľ služby uvedený hore na tejto stránke.',
   'transparency.personal.basis.title': 'Prečo a\u{A0}na akom základe',
   'transparency.personal.basis':
-    'Správu uložíme, odovzdáme príjemcovi a\u{A0}vymažeme, pretože o\u{A0}to odosielateľ požiadal. Limity a\u{A0}logy potrebujeme na zaistenie bezpečnosti služby. Právnym základom je čl.\u{A0}6 ods.\u{A0}1 písm.\u{A0}b) a\u{A0}f) GDPR.',
+    'Správu uložíme, odovzdáme príjemcovi a\u{A0}vymažeme, pretože o\u{A0}to odosielateľ požiadal. Limity, logy a\u{A0}súhrnnú návštevnosť potrebujeme kvôli bezpečnosti a\u{A0}rozvoju služby. Právnym základom je čl.\u{A0}6 ods.\u{A0}1 písm.\u{A0}b) a\u{A0}f) GDPR.',
   'transparency.personal.browser.title': 'Vo vašom prehliadači',
   'transparency.personal.browser':
     'Zvolený jazyk, dočasný údaj počas otvárania správy a\u{A0}zoznam Odoslaných, ak správu sledujete. Je to nevyhnutné pre funkcie, o\u{A0}ktoré žiadate, a\u{A0}preto to nevyžaduje súhlas.',
@@ -397,10 +408,10 @@ export const messages: Catalog = {
     'Príkaz z\u{A0}vydania nylzo rovnakej verzie overí, že server posiela práve tieto súbory s\u{A0}rovnakými hlavičkami:',
   'transparency.verify.limit.title': 'Čo kontrola neodhalí',
   'transparency.verify.limit':
-    'Overí len to, čo server poslal tomuto príkazu. Server ho môže rozpoznať a\u{A0}prehliadačom posielať iný kód, takže kontrola odhalí chybné zostavenie alebo nasadenie, nie zámenu, ktorú server úmyselne skrýva.',
+    'Overí, čo server poslal tomuto príkazu. Zámenu cielenú len na vybrané prehliadače odhaliť nemusí.',
   'transparency.verify.apps.title': 'Overená aplikácia',
   'transparency.verify.apps':
-    'Kto používa webového klienta, musí tomuto serveru dôverovať: webový klient prichádza z\u{A0}neho, takže server v\u{A0}cudzích rukách by ho mohol zmeniť. Overené aplikácie, teda lokálny klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pre príkazový riadok, spúšťajú kód z\u{A0}podpísaného vydania a\u{A0}spoliehajú sa len na šifrovanie.',
+    'Overené aplikácie, teda lokálny klient (nylzo web, nylzo open) a\u{A0}nástroj nylzo pre príkazový riadok, spúšťajú kód z\u{A0}podpísaného vydania. Server im dodá len šifru a\u{A0}kód podstrčiť nemôže.',
   'transparency.source': 'Zdrojový kód, špecifikácia protokolu a\u{A0}model hrozieb',
 
   'nav.home': 'Nylzo, úvodná stránka',
@@ -434,7 +445,7 @@ export const messages: Catalog = {
   'footer.agents': 'Pre AI agentov',
   'footer.about': 'Kto stojí za Nylzo',
   'footer.terms': 'Podmienky používania',
-  'footer.note': 'Bez cookies a\u{A0}analytiky.',
+  'footer.note': 'Bez cookies, reklám a\u{A0}cudzích skriptov.',
   'footer.version': 'Verzia webového klienta {version}',
 
   'hero.title': 'Tajomstvo na {accent}',
@@ -467,8 +478,7 @@ export const messages: Catalog = {
   'compose.attach': 'Príloha do {size}',
   'compose.submit': 'Vytvoriť odkaz',
   'compose.encrypting': 'Šifrujeme',
-  'compose.note':
-    'Prehliadač správu zašifruje ešte pred odoslaním. Zadarmo a\u{A0}bez registrácie. Stránka nepoužíva cookies ani analytické nástroje.',
+  'compose.note': 'Prehliadač správu zašifruje ešte pred odoslaním. Zadarmo, bez registrácie a\u{A0}bez cookies.',
 
   'step.counter': 'Krok {step} z\u{A0}{total}',
   'step.key.label': 'Kľúč',
@@ -700,7 +710,7 @@ export const messages: Catalog = {
   'brute.fact.pass': 'Heslo cez sieť neuhádne',
   'brute.fact.pass.note': 'Po 100\u{A0}chybných heslách sa správa zamkne',
   'brute.fact.quantum': 'Kvantový počítač správu neprečíta',
-  'brute.fact.quantum.note': 'Mohol by obísť počítanie otvorení, obsah chráni 256-bitový kľúč',
+  'brute.fact.quantum.note': 'Obsah chráni 256-bitový kľúč a\u{A0}spojenie postkvantové TLS',
 
   'promise.eyebrow': 'Čo sľubujeme',
   'promise.title': 'Sľuby, ktoré si môžete overiť',
@@ -755,16 +765,54 @@ export const messages: Catalog = {
   'extra.standards.title': 'Žiadna vlastná kryptografia',
   'extra.standards.text': 'Len overené štandardy s\u{A0}verejnou špecifikáciou.',
   'extra.standards.proof': 'AES-256-GCM a\u{A0}ďalších 6\u{A0}štandardov',
+  'tech.eyebrow': 'Technológie',
+  'tech.title': 'Moderné a\u{A0}preverené technológie v\u{A0}každej vrstve',
+  'tech.sub':
+    'Od šifrovania v\u{A0}prehliadači po vydanie novej verzie. Každý údaj si môžete overiť v\u{A0}kóde na GitHube.',
+  'tech.crypto.title': 'Šifrovanie',
+  'tech.crypto.1': 'AES-256-GCM s\u{A0}kľúčom z\u{A0}kryptografického generátora prehliadača',
+  'tech.crypto.2': 'Heslo chráni scrypt, ktorý na každý pokus spotrebuje 256\u{A0}MiB pamäte',
+  'tech.crypto.3': 'Kľúče odvodzuje HKDF-SHA-256, otvorenie podpisuje Ed25519',
+  'tech.crypto.4': 'Spojenie len cez TLS\u{A0}1.3 s\u{A0}postkvantovou výmenou X25519MLKEM768',
+  'tech.crypto.5': 'Žiadna vlastná kryptografia, len verejné štandardy',
+  'tech.server.title': 'Server',
+  'tech.server.1': 'Napísaný v\u{A0}Go a\u{A0}jeho štandardnej knižnici, iba so šiestimi priamymi závislosťami',
+  'tech.server.2': 'SQLite so zapečatenými záznamami, ID správ ukladá len ako hash',
+  'tech.server.3':
+    'Vymazané záznamy prepíše nulami a\u{A0}pri súboroch zničí kľúč, takže ich z\u{A0}disku nikto neprečíta',
+  'tech.server.4': 'Limity na adresu, denný strop správ a\u{A0}výpočtová ochrana proti zahlteniu',
+  'tech.server.5': 'Pamäť servera sa nikdy neodkladá na disk',
+  'tech.web.title': 'Web',
+  'tech.web.1': 'Svelte\u{A0}5 kompiluje komponenty do čistého JavaScriptu bez virtuálneho DOM',
+  'tech.web.2': 'TypeScript a\u{A0}moderný JavaScript, zostavenie a\u{A0}testy v\u{A0}Bune',
+  'tech.web.3': 'Každý skript a\u{A0}štýl nesie odtlačok SHA-384, zmenený súbor prehliadač odmietne',
+  'tech.web.4': 'Kľúče drží Web Crypto tak, aby sa nedali exportovať, k\u{A0}tomu Trusted Types a\u{A0}prísna CSP',
+  'tech.web.5': 'Bez cookies, reklám a\u{A0}skriptov z\u{A0}cudzích serverov',
+  'tech.release.title': 'Vývoj a\u{A0}vydania',
+  'tech.release.1': 'Každý commit v\u{A0}hlavnej vetve je podpísaný',
+  'tech.release.2': 'Každú zmenu preverí CodeQL, govulncheck, OSV-Scanner, Grype a\u{A0}golangci-lint',
+  'tech.release.3': 'Kód prešiel piatimi hĺbkovými bezpečnostnými kontrolami s\u{A0}agentmi AI',
+  'tech.release.4':
+    'Renovate každých 6\u{A0}hodín hľadá aktualizácie a\u{A0}bezpečnostné opravy sám nasadí na nylzo.com',
+  'tech.release.5': 'Vydania sú podpísané cez Sigstore, reprodukovateľné a\u{A0}majú overiteľný pôvod (SLSA)',
+  'tech.release.6': 'Každá verzia má prehľadný changelog',
+  'tech.tests.title': 'Testy tretích strán',
+  'tech.test.headers': 'Hodnotenie A+ na securityheaders.com',
+  'tech.test.observatory': 'Hodnotenie A+ v\u{A0}Mozilla Observatory',
+  'tech.test.pagespeed': '100 v\u{A0}prístupnosti, odporúčaných postupoch a\u{A0}SEO (PageSpeed Insights)',
+  'tech.test.scorecard': 'Hodnotenie OpenSSF Scorecard',
 
-  'host.eyebrow': 'Vlastný server',
-  'host.title': 'Prevádzkujte Nylzo u\u{A0}seba',
+  'host.eyebrow': 'Terminál a\u{A0}vlastný server',
+  'host.title': 'Nylzo v\u{A0}termináli aj na vlastnom serveri',
   'host.sub':
-    'Celé Nylzo je jeden spustiteľný súbor. Dáta ukladá do SQLite a\u{A0}do súborov na disku, bez ďalšej databázy a\u{A0}bez služieb tretích strán. Platnosť, limity aj kontakt na stránke Transparentnosť si nastavíte sami.',
+    'Oficiálny nástroj nylzo pre macOS, Linux a\u{A0}Windows šifruje priamo vo vašom počítači a\u{A0}kód zo servera nepotrebuje. Celé Nylzo je zároveň jeden spustiteľný súbor so SQLite, ktorý bez služieb tretích strán rozbehnete aj na vlastnom serveri.',
+  'host.point.cli': 'Inštalácia cez Homebrew alebo Scoop na macOS, Linuxe aj Windows',
   'host.point.compose': 'Docker Compose s\u{A0}Caddy, ktorý na vašom stroji zabezpečí certifikát a\u{A0}HTTPS',
   'host.point.signed': 'Podpísané image a\u{A0}binárky s\u{A0}overiteľným pôvodom',
   'host.point.mit': 'Licencia MIT, takže aj pre firmy',
   'host.guide': 'Postup nasadenia na GitHube',
   'host.tabs': 'Spôsob inštalácie',
+  'host.cli': 'CLI',
   'host.compose': 'Compose',
   'host.binary': 'Binárka',
   'host.verify': 'Overenie',
@@ -782,57 +830,61 @@ export const messages: Catalog = {
   'compare.row.preview': 'Náhľad odkazu nič nespotrebuje',
   'compare.row.passphrase': 'Heslo je súčasťou šifrovania',
   'compare.row.secret': 'Tajomstvo v\u{A0}odkaze',
-  'compare.row.verify': 'Porovnanie kódu zo servera s\u{A0}vydaním',
+  'compare.row.verify': 'Stráži, či web zodpovedá vydaniu',
   'compare.row.length': 'Zaokrúhli dĺžku na celé bloky',
   'compare.row.id': 'Samotné ID správu neotvorí',
   'compare.row.stolen': 'Automatický test dát z\u{A0}ukradnutého servera',
   'compare.row.ip': 'Server nezapisuje IP adresy',
-  'compare.row.audit': 'Nezávislý audit',
   'compare.note.nojs': 'len náhľad bez JS',
   'compare.note.server_side': 'na serveri',
   'compare.note.bits256': '256\u{A0}bitov',
   'compare.note.bits131': '≈ 131\u{A0}bitov',
   'compare.note.bits128': '128\u{A0}bitov',
   'compare.note.none': '—',
-  'compare.note.verify_client': 'len to, čo server pošle príkazu verify‑client',
+  'compare.note.every30': 'raz za 30\u{A0}min',
+  'operations.eyebrow': 'Prevádzka',
+  'operations.title': 'Strážime aj server nylzo.com',
+  'operations.sub':
+    'Šifrovanie chráni obsah správy. Server, spojenie aj kód webu strážime zvlášť, a\u{A0}keď niečo nesedí, služba sa sama odpojí.',
+  'operations.diagram':
+    'Každých 30\u{A0}minút porovnávame kód na nylzo.com s\u{A0}podpísaným vydaním. Keď sa líši, služba prejde do údržby.',
+  'operations.release': 'Vydanie na GitHube',
+  'operations.instance': 'nylzo.com',
+  'operations.check': 'Overenie',
+  'operations.signed': 'podpísané',
+  'operations.compared': 'porovnané',
+  'operations.every': 'raz za 30\u{A0}min',
+  'operations.watch.title': 'Kontrola kódu každých 30\u{A0}minút',
+  'operations.watch.text':
+    'Automat na GitHube porovná web, ktorý nylzo.com posiela, s\u{A0}podpísaným vydaním. Pri odchýlke zapne údržbu a\u{A0}cloudový firewall službu odpojí.',
+  'operations.tls.title': 'Postkvantové spojenie',
+  'operations.tls.text':
+    'Správy putujú len cez TLS\u{A0}1.3 s\u{A0}výmenou kľúčov X25519MLKEM768. Chráni to aj pred tým, že by niekto komunikáciu zaznamenal a\u{A0}neskôr ju rozšifroval kvantovým počítačom.',
+  'operations.host.title': 'Server v\u{A0}EÚ',
+  'operations.host.text':
+    'Beží v\u{A0}dátovom centre spoločnosti Hetzner vo Fínsku na Flatcar Linuxe so systémovým oddielom len na čítanie. Firewall pustí z\u{A0}internetu len web.',
+  'operations.access.title': 'Prístup len s\u{A0}odtlačkom prsta',
+  'operations.access.text':
+    'Na server sa prihlási len hardvérový kľúč s\u{A0}Touch ID, z\u{A0}jedinej siete a\u{A0}cez postkvantovú výmenu kľúčov.',
+  'operations.updates.title': 'Bezpečnostné opravy automaticky',
+  'operations.updates.text':
+    'Renovate každých 6\u{A0}hodín hľadá opravy závislostí a\u{A0}bezpečnostnú opravu po úspešných testoch sám zlúči. Vznikne z\u{A0}nej podpísaná verzia, ktorú nylzo.com do 10\u{A0}minút nainštaluje.',
+  'operations.apps':
+    'Pre najcitlivejšie dáta je tu overená aplikácia nylzo. Spúšťa kód z\u{A0}podpísaného vydania a\u{A0}zo servera si berie len šifru.',
+  'operations.apps.link': 'Overené aplikácie',
   'compare.note.hmac': 'HMAC na 10\u{A0}s',
   'compare.note.truncated': 'skrátené IP',
-  'compare.note.send_audits': 'Audity Send to neuvádzajú',
-
-  'limits.eyebrow': 'Kde sa naše záruky končia',
-  'limits.title': 'Napadnuté zariadenie žiadne šifrovanie neochráni',
-  'limits.sub':
-    'Malvér alebo cudzí prístup prečíta správu skôr, ako ju prehliadač zašifruje, alebo hneď potom, ako ju príjemca otvorí.',
-  'limits.diagram':
-    'Nylzo chráni správu na ceste a\u{A0}na serveri. Zariadenia odosielateľa a\u{A0}príjemcu chrániť nedokáže.',
-  'limits.you': 'Vy',
-  'limits.server': 'Na ceste a\u{A0}na serveri',
-  'limits.recipient': 'Príjemca',
-  'limits.outside': 'mimo nás',
-  'limits.ours': 'chránime',
-  'limits.save.title': 'Príjemca si správu môže uložiť',
-  'limits.save.note': 'Skopírovať ju alebo odfotiť. Posielajte len tomu, komu dôverujete.',
-  'limits.link.title': 'Odkaz otvorí ten, kto ho má prvý',
-  'limits.link.note': 'Citlivé správy preto chráňte heslom a\u{A0}pošlite ho inou cestou.',
-  'limits.server.title': 'Kto ovláda server, môže tento web zmeniť',
-  'limits.server.note':
-    'Vybranému človeku môže poslať stránku, ktorá správu vyzradí, a\u{A0}prehliadač to zatiaľ nerozpozná. Správu, ktorá musí zostať v\u{A0}bezpečí aj vtedy, pošlite a\u{A0}prečítajte cez overenú aplikáciu.',
-  'limits.server.link': 'Overené aplikácie',
-  'limits.abuse.title': 'Nie na podvody ani malvér',
-  'limits.abuse.note': 'Ani na iný nezákonný obsah.',
-  'limits.liability':
-    'Nylzo je zadarmo a\u{A0}bez záruky. Používate ho dobrovoľne a\u{A0}nesľubujeme, že bude vždy dostupné, bez chýb alebo odolné voči každému útoku. Za obsah správy zodpovedá ten, kto ju posiela. Viac v\u{A0}{link}.',
 
   'about.eyebrow': 'Kto stojí za Nylzo',
-  'about.title': 'Otvorený projekt jedného vývojára',
+  'about.title': 'Nezávislý český open-source projekt',
   'about.text':
-    'Nylzo vo voľnom čase vyvíja a\u{A0}prevádzkuje jeden vývojár z\u{A0}Česka. Vzniklo, aby heslá a\u{A0}kľúče nezostávali v\u{A0}chatoch a\u{A0}e-mailoch. Je zadarmo, bez reklám a\u{A0}bez investorov.',
+    'Nylzo vyvíja a\u{A0}prevádzkuje vývojár z\u{A0}Česka. Vzniklo, aby heslá a\u{A0}kľúče nezostávali v\u{A0}chatoch a\u{A0}e-mailoch. Je zadarmo, bez reklám a\u{A0}bez investorov.',
   'about.tools':
-    'Nástroje AI pri vývoji hlavne kontrolujú bezpečnosť kódu. Každú zmenu navyše preveria automatické testy a\u{A0}bezpečnostné nástroje.',
+    'Každú zmenu preveria automatické testy, statická analýza a\u{A0}bezpečnostné nástroje. Kód navyše pravidelne prechádza bezpečnostnými kontrolami s\u{A0}agentmi AI.',
   'about.running.title': 'Prevádzka',
   'about.running.text': 'Zadarmo. Náklady platí autor, žiadna reklama ani predaj dát.',
   'about.server.title': 'Server',
-  'about.server.text': 'nylzo.com beží v\u{A0}EÚ, vo Fínsku u\u{A0}spoločnosti Hetzner.',
+  'about.server.text': 'nylzo.com beží v\u{A0}EÚ, v\u{A0}dátovom centre spoločnosti Hetzner vo Fínsku.',
   'about.contact.title': 'Kontakt',
   'about.contact.text': 'Chyby a\u{A0}nápady píšte do Issues, zraniteľnosti hláste súkromne cez Security Advisories.',
   'about.contact.link': 'Issues na GitHube',
@@ -852,7 +904,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'Áno, skopírovať ju alebo odfotiť. Posielajte ju len tomu, komu dôverujete.',
   'faq.operator.question': 'Môže prevádzkovateľ správu prečítať?',
   'faq.operator.answer':
-    'Z\u{A0}dát na serveri nie, kľúč k\u{A0}nim nemá. Kto však ovláda server, môže zmeniť tento web. Správu, ktorá musí zostať v\u{A0}bezpečí aj v\u{A0}takom prípade, pošlite cez overenú aplikáciu.',
+    'Z\u{A0}dát na serveri nie: server dostane len šifru a\u{A0}kľúč z\u{A0}odkazu nikdy neuvidí. Kód webu navyše každých 30\u{A0}minút porovnávame s\u{A0}podpísaným vydaním a\u{A0}pri odchýlke sa služba sama vypne. Najcitlivejšie dáta môžete poslať cez overenú aplikáciu, ktorá kód zo servera vôbec nenačítava.',
   'faq.opened.question': 'Dozviem sa, či správu niekto otvoril?',
   'faq.opened.answer':
     'Áno, ak ju budete sledovať v\u{A0}Odoslaných. Uvidíte tam, kedy ju niekto prvýkrát otvoril, a\u{A0}môžete ju zrušiť.',
@@ -861,10 +913,10 @@ export const messages: Catalog = {
     'Pri správe na jedno otvorenie ju uvidí on a\u{A0}príjemca už nie. Príjemca to zistí, pretože namiesto správy uvidí, že už bola otvorená. Citlivé veci preto chráňte heslom.',
   'faq.free.question': 'Prečo je Nylzo zadarmo?',
   'faq.free.answer':
-    'Je to otvorený projekt bez reklám a\u{A0}bez platených funkcií. Prevádzku platí autor. O\u{A0}vás nič nezbierame, a\u{A0}preto nemáme čo predať.',
-  'faq.audit.question': 'Prešlo Nylzo bezpečnostným auditom?',
-  'faq.audit.answer':
-    'Nezávislým zatiaľ nie. Kód je otvorený, jeho bezpečnosť pravidelne kontrolujú nástroje AI a\u{A0}každú zmenu automatické testy. Výsledky kontrol sú na stránke Transparentnosť.',
+    'Je to otvorený projekt bez reklám a\u{A0}bez platených funkcií. Prevádzku platí autor. Dáta o\u{A0}návštevníkoch nepredávame. Návštevnosť úvodnej stránky meriame len v\u{A0}súhrnných číslach, aby sme vedeli, kedy posilniť server.',
+  'faq.verify.question': 'Ako si overím, že Nylzo robí, čo sľubuje?',
+  'faq.verify.answer':
+    'Kód, špecifikácia protokolu aj testovacie vektory sú verejné. Každú zmenu preveria testy protokolu, statická analýza, kontrola závislostí a\u{A0}test dát z\u{A0}ukradnutého servera. Vydania sú podpísané a\u{A0}reprodukovateľné. Výsledky kontrol ukazuje stránka Transparentnosť.',
   'cta.title': 'Máte niečo, čo nepatrí do chatu?',
   'cta.text':
     'Heslo v\u{A0}chate zostane v\u{A0}histórii, kým ho niekto nevymaže. Správa poslaná cez Nylzo sa po otvorení vymaže.',

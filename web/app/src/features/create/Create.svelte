@@ -7,10 +7,11 @@
   import Faq from './sections/Faq.svelte';
   import FinalCall from './sections/FinalCall.svelte';
   import HowItWorks from './sections/how/HowItWorks.svelte';
-  import Limits from './sections/Limits.svelte';
+  import Operations from './sections/Operations.svelte';
   import Promises from './sections/Promises.svelte';
   import Resilience from './sections/resilience/Resilience.svelte';
   import SelfHost from './sections/self-host/SelfHost.svelte';
+  import Technology from './sections/Technology.svelte';
   import TrustStrip from './sections/TrustStrip.svelte';
   import WhoSees from './sections/WhoSees.svelte';
 
@@ -29,9 +30,10 @@
 <WhoSees />
 <Resilience />
 <Extras />
+<Technology />
 <SelfHost />
 <Compare />
-<Limits />
+<Operations />
 <About />
 <Faq />
 <FinalCall />

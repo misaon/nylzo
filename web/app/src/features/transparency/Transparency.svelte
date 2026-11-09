@@ -18,7 +18,7 @@
   import { INLINE_TARGET, TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
   import StateCard from '../../shared/ui/notice/StateCard.svelte';
   import IconTile from '../../shared/ui/tile/IconTile.svelte';
-  import { contactHref, contactLabel } from './transparency.ts';
+  import { contactHref, contactLabel, OFFICIAL_ORIGIN } from './transparency.ts';
 
   type View =
     | { readonly view: 'loading' }
@@ -71,7 +71,10 @@
     'transparency.summary.addresses',
     'transparency.summary.ended',
   ] as const;
-  const CHECKS = ['audit', 'changes', 'ai', 'ratings'] as const;
+  const official = instanceOrigin() === OFFICIAL_ORIGIN;
+  const CHECKS = official
+    ? (['changes', 'ai', 'watch', 'ratings', 'audit'] as const)
+    : (['changes', 'ai', 'ratings', 'audit'] as const);
   const PERSONAL = ['controller', 'basis', 'browser'] as const;
 
   const translator = getTranslator();
@@ -89,7 +92,7 @@
 
   function stored({ retention }: Transparency): readonly Entry[] {
     const entry = (
-      name: 'content' | 'metadata' | 'keys' | 'ended' | 'reports' | 'counters' | 'addresses',
+      name: 'content' | 'metadata' | 'keys' | 'ended' | 'enforced' | 'reports' | 'counters' | 'visits' | 'addresses',
       text: string,
     ) => ({ title: translate(`transparency.stores.${name}.title`), text });
     return [
@@ -97,10 +100,12 @@
       entry('metadata', translate('transparency.stores.metadata')),
       entry('keys', translate('transparency.stores.keys')),
       entry('ended', translate('transparency.stores.ended', { days: days(retention.tombstoneSeconds) })),
+      entry('enforced', translate('transparency.stores.enforced')),
       ...(retention.abuseReportSeconds === undefined
         ? []
         : [entry('reports', translate('transparency.stores.reports', { days: days(retention.abuseReportSeconds) }))]),
       entry('counters', translate('transparency.stores.counters', { days: days(retention.dailyCounterSeconds) })),
+      ...(official ? [entry('visits', translate('transparency.stores.visits'))] : []),
       entry('addresses', translate('transparency.stores.addresses')),
     ];
   }
@@ -293,7 +298,6 @@
     <section aria-labelledby="transparency-stores" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-stores', 'storage', translate('transparency.stores.title'))}
       {@render entries(stored(data))}
-      {@render caution(translate('transparency.stores.enforced.title'), translate('transparency.stores.enforced'))}
     </section>
 
     <section aria-labelledby="transparency-logs" class="animate-appear border-t border-white/8 pt-8">
@@ -331,8 +335,11 @@
           title: translate('transparency.others.hosting.title'),
           text: translate('transparency.others.hosting'),
         },
+        {
+          title: translate('transparency.others.client.title'),
+          text: translate('transparency.others.client'),
+        },
       ])}
-      {@render caution(translate('transparency.others.client.title'), translate('transparency.others.client'))}
     </section>
 
     <section aria-labelledby="transparency-personal" class="animate-appear border-t border-white/8 pt-8">
@@ -420,7 +427,7 @@
         <h3 class="text-title-sm text-ink">{translate('transparency.verify.apps.title')}</h3>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{translate('transparency.verify.apps')}</p>
         <Button variant="tint" size="compact" href={VERIFIED_CLIENTS_URL} rel="noreferrer" class="mt-3">
-          {translate('limits.server.link')}
+          {translate('operations.apps.link')}
           <Icon name="external" class="size-4 shrink-0 text-aegis-300" animated />
         </Button>
       </div>

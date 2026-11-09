@@ -14,15 +14,16 @@
 
   const { translate } = getTranslator();
 
-  const tabs: readonly InstallTab[] = ['compose', 'binary', 'verify'];
-  const indicator = ['translate-x-0', 'translate-x-full', 'translate-x-[200%]'] as const;
+  const tabs: readonly InstallTab[] = ['cli', 'compose', 'binary', 'verify'];
+  const indicator = ['translate-x-0', 'translate-x-full', 'translate-x-[200%]', 'translate-x-[300%]'] as const;
   const points = [
-    { key: 'host.point.compose', revealIndex: '[--reveal-index:3]' },
-    { key: 'host.point.signed', revealIndex: '[--reveal-index:4]' },
-    { key: 'host.point.mit', revealIndex: '[--reveal-index:5]' },
+    { key: 'host.point.cli', revealIndex: '[--reveal-index:3]' },
+    { key: 'host.point.compose', revealIndex: '[--reveal-index:4]' },
+    { key: 'host.point.signed', revealIndex: '[--reveal-index:5]' },
+    { key: 'host.point.mit', revealIndex: '[--reveal-index:6]' },
   ] as const;
 
-  let tab = $state<InstallTab>('compose');
+  let tab = $state<InstallTab>('cli');
   const focus = new FocusTargets<InstallTab>();
   const index = $derived(tabs.indexOf(tab));
   const domain = $derived(translate('host.domain'));
@@ -58,7 +59,7 @@
           </li>
         {/each}
       </ul>
-      <Button variant="ghost" href={`${REPOSITORY_URL}/wiki/Self-hosting`} class="mt-8 reveal-focus [--reveal-index:6]">
+      <Button variant="ghost" href={`${REPOSITORY_URL}/wiki/Self-hosting`} class="mt-8 reveal-focus [--reveal-index:7]">
         {translate('host.guide')}
         <Icon name="external" animated />
       </Button>
@@ -71,13 +72,13 @@
         class="flex reveal-focus flex-col gap-2 [--reveal-blur:4px] [--reveal-delay:420ms] sm:flex-row sm:items-center sm:justify-between"
       >
         <div
-          class="relative grid grid-cols-3 rounded-pane bg-white/4 p-1 shadow-rim ring-1 ring-white/8"
+          class="relative grid grid-cols-4 rounded-pane bg-white/4 p-1 shadow-rim ring-1 ring-white/8"
           role="tablist"
           aria-label={translate('host.tabs')}
         >
           <span
             class={[
-              'absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/3)] rounded-control bg-white/10 shadow-rim ring-1 ring-white/12 transition-transform duration-500',
+              'absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-control bg-white/10 shadow-rim ring-1 ring-white/12 transition-transform duration-500',
               indicator[index],
             ]}
             aria-hidden="true"

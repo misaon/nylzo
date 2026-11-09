@@ -2,7 +2,18 @@
 
 Nylzo encrypts message content on the sender's device. Its URL fragment carries the decryption secret; browsers do not send that fragment in HTTP requests. The [protocol](../reference/Protocol.md) defines the cryptography and request rules. The [security policy](../community/Security-policy.md) explains disclosure and supported versions.
 
-Nylzo is early software and has not had an independent security audit. Automated checks, a verified Git signature, and build provenance do not certify the product's security.
+## Layers of protection
+
+- The sender's browser or CLI encrypts the message with AES-256-GCM under a 256-bit key that stays in the link after `#`. The server stores only ciphertext.
+- A passphrase goes through scrypt with 256 MiB of memory per guess, and the server locks a message after 100 wrong guesses.
+- Every change runs a stolen-server test that searches a copy of the database, files and logs for keys, content, file names, message IDs and IP addresses.
+- The deployment profiles accept only TLS 1.3 with the post-quantum key exchange X25519MLKEM768 for message traffic.
+- Every script and stylesheet carries SHA-384 integrity metadata, under a nonce-free CSP and Trusted Types.
+- On nylzo.com a workflow compares the served web client with the signed release every 30 minutes and takes the instance offline on a mismatch.
+- The Hetzner host runs Flatcar Container Linux and accepts SSH only from hardware keys over post-quantum key exchange.
+- Releases are signed and reproducible, with build provenance.
+
+The sections below describe each layer and where it stops.
 
 ## The client is part of the trust boundary
 
@@ -11,6 +22,8 @@ Your browser does not send the key after `#` to the server. The page that handle
 The Compose and Hetzner/Flatcar profiles isolate web delivery from the API process on the same host. Their Caddy build embeds the static frontend and client manifest, and never requests these from the backend. An API response cannot set browser policies, cookies or redirects; a data-only response boundary rejects HTML, scripts and encoded bodies. The backend has no write access to Caddy's executable, configuration, certificate state or release authority. This restricts a compromise of the backend process; it does not protect against a compromised host, TLS endpoint, publishing workflow or a vulnerability in the trusted frontend. A standalone `nylzo serve` still serves both the API and embedded frontend from one process.
 
 `nylzo verify-client` compares an instance's client bytes, build identity, and security headers with the client embedded in the binary. It establishes what the server sent to that check. A hostile server can recognize the CLI and send different code to a browser. The [CLI guide](CLI.md#verify-an-instances-web-client) describes this limit.
+
+On nylzo.com the [production watch](Host-monitoring.md#production-watch) runs this check from GitHub Actions every 30 minutes. A mismatch confirmed two minutes later publishes a signed maintenance directive that the host applies, closes the Hetzner Cloud Firewall to everything but administrator SSH, and opens an incident. A server that recognizes the watch can still send other code to a chosen browser, so the watch catches a broken deployment or a compromise that does not hide from it; a verified client covers the rest.
 
 ## Browser resource integrity
 
@@ -96,10 +109,14 @@ Over such a connection Caddy serves only the public documents: the home pages, t
 
 Older clients cannot connect at all, so they get no page that tells them why. That includes Safari and iOS before 26, and with it every iPhone that cannot install iOS 26 (the XS, XR and older). It also includes Firefox ESR 128, programs built on OpenSSL older than 3.5 such as curl on Ubuntu 24.04 and Debian 12, and many link-preview bots and third-party uptime monitors. Test a monitor before you rely on it. HTTP/3 0-RTT is off, because early data can be replayed and is protected only by the resumption secret. Caddy sets the client address itself and drops client-sent forwarding headers.
 
-TLS protects the connection, not the server: whoever holds the instance's certificate key or controls the server sees what that server sees. Certificates live 160 hours on the Hetzner profile, CAA restricts issuance to the instance's own Let's Encrypt account, and a monitor watches Certificate Transparency for any other certificate. See [Hetzner Flatcar](Hetzner-Flatcar.md#runtime).
+TLS protects the connection, not the server: whoever holds the instance's certificate key or controls the server sees what that server sees. Certificates live 160 hours on the Hetzner profile, CAA restricts issuance to the instance's own Let's Encrypt account, and the domain monitor in `monitor.yml` watches Certificate Transparency for any other certificate once `NYLZO_MONITOR_DOMAIN` is set. See [Hetzner Flatcar](Hetzner-Flatcar.md#runtime).
 
 ## Verify the software you run
 
 [Verify a release](Verify-a-release.md) against the canonical repository, exact tag, and release workflow. Version strings and server JSON identify a build; they are not cryptographic proof. A signed checksum manifest binds the downloaded files to the publishing workflow. Provenance identifies their source and build workflow. An independent rebuild checks whether the same source produces the published bytes.
 
 Report vulnerabilities through [private reporting](https://github.com/misaon/nylzo/security/advisories/new). Report abusive content to the operator contact on the affected instance's `/transparency` page, if it lists one.
+
+## Audits
+
+No independent firm has audited Nylzo yet. AI agents reviewed the code in five in-depth security reviews between 25 October and 8 November 2026, and the findings are fixed. Automated checks, verified Git signatures and build provenance do not certify the product's security.

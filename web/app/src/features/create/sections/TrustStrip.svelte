@@ -7,9 +7,21 @@
 
   const { translate } = getTranslator();
 
-  const glyphs: readonly { readonly icon: IconName; readonly name: string }[] = [
+  const standards: readonly { readonly icon: IconName; readonly name: string }[] = [
     { icon: 'lock', name: 'AES-256-GCM' },
+    { icon: 'atom', name: 'X25519MLKEM768' },
+    { icon: 'shieldCheck', name: 'TLS 1.3' },
+    { icon: 'hash', name: 'scrypt' },
     { icon: 'key', name: 'HKDF-SHA-256' },
+    { icon: 'pen', name: 'Ed25519' },
+  ];
+  const tools: readonly { readonly icon: IconName; readonly name: string }[] = [
+    { icon: 'server', name: 'Flatcar' },
+    { icon: 'lock', name: "Let's Encrypt" },
+    { icon: 'shieldCheck', name: 'Sigstore' },
+    { icon: 'gauge', name: 'OpenSSF' },
+    { icon: 'download', name: 'Scoop' },
+    { icon: 'terminal', name: 'mise' },
   ];
   const license: { readonly icon: IconName; readonly name: string } = $derived({
     icon: 'document',
@@ -50,7 +62,7 @@
           class="flex items-center gap-14 px-7 md:gap-20 md:px-10"
           aria-hidden={copy ? 'true' : undefined}
         >
-          {#each glyphs as item (item.name)}
+          {#each standards as item (item.name)}
             {@render glyph(item)}
           {/each}
           {#each TRUST_LOGOS as logo (logo.name)}
@@ -68,6 +80,9 @@
               </svg>
               {#if !logo.labelOnly}{logo.name}{/if}
             </li>
+          {/each}
+          {#each tools as item (item.name)}
+            {@render glyph(item)}
           {/each}
           {@render glyph(license)}
         </ul>

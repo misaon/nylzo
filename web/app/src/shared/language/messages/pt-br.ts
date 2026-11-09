@@ -4,12 +4,16 @@ export const messages: Catalog = {
   'action.retry': 'Tentar novamente',
   'app.crashed': 'A página encontrou um erro. Recarregue-a.',
 
-  'limits.terms': 'termos de uso',
   'hero.eyebrow': 'Links criptografados de uso único',
   'hero.steps': 'Como funciona',
   'hero.step.write': 'Escreva a mensagem',
   'hero.step.send': 'Envie o link',
   'hero.step.vanish': 'Some depois de aberta',
+  'hero.proof.label': 'Pontos fortes',
+  'hero.proof.encrypted': 'Criptografado no seu navegador',
+  'hero.proof.cipher': 'AES-256-GCM',
+  'hero.proof.tls': 'TLS pós-quântico',
+  'hero.proof.open': 'Código aberto',
   'terms.eyebrow': 'Informações legais',
   'terms.title': 'Termos de uso',
   'terms.effective': 'Em vigor a partir de 11/11/2026. A versão vinculante é a tcheca; esta versão é uma tradução.',
@@ -257,7 +261,7 @@ export const messages: Catalog = {
   'read.delete.rest.short': 'Apagar',
   'read.delete.rest.confirm': 'Apagar as aberturas restantes?',
   'read.delete.confirm.title': 'Apagar a mensagem sem abri-la?',
-  'read.note': 'Gratuito e sem cadastro. A página não usa cookies nem ferramentas de análise.',
+  'read.note': 'Gratuito e sem cadastro. A página da mensagem não usa cookies nem mede visitas.',
   'read.delete.confirm': 'Depois disso, ninguém mais poderá abri-la, nem você.',
   'read.delete.yes': 'Sim, apagar',
   'read.delete.no': 'Não apagar',
@@ -276,7 +280,8 @@ export const messages: Catalog = {
   'revealed.sender.text':
     'Se houver um pedido de dinheiro, login ou instalação, confirme com o remetente por outro canal.',
   'revealed.file': 'Anexo',
-  'revealed.file.unchecked': 'Ninguém verificou se ele tem vírus. Abra apenas arquivos de pessoas que você conhece.',
+  'revealed.file.unchecked':
+    'O anexo é criptografado, então o Nylzo não consegue verificá-lo com um antivírus. Abra apenas arquivos de pessoas que você conhece.',
   'revealed.confirm.title': 'Este tipo de arquivo pode executar código. Abra-o apenas se você confiar no remetente.',
   'revealed.confirm.extension': 'Extensão do arquivo:',
   'revealed.confirm.none': 'O arquivo não tem extensão.',
@@ -325,12 +330,15 @@ export const messages: Catalog = {
   'transparency.stores.counters.title': 'Contadores sem endereços',
   'transparency.stores.counters':
     'Guarda os totais diários de mensagens criadas por mais {days} após o fim do dia, e os desafios de uso único já utilizados, só por alguns minutos.',
+  'transparency.stores.visits.title': 'Tráfego da página inicial',
+  'transparency.stores.visits':
+    'Totais por hora de visualizações da página inicial, sem cookies e sem endereços IP. Eles nos ajudam a melhorar o serviço e a reforçar o servidor a tempo. As páginas de mensagens ficam fora da medição.',
   'transparency.stores.addresses.title': 'Endereços IP',
   'transparency.stores.addresses':
     'Não os armazena. Mantém os limites por endereço apenas em uma memória que nunca é gravada no disco, e os esquece ao reiniciar.',
-  'transparency.stores.enforced.title': 'O servidor controla a validade e o número de aberturas',
+  'transparency.stores.enforced.title': 'A criptografia também controla a validade',
   'transparency.stores.enforced':
-    'Este servidor controla a validade e o número de aberturas. Em até cerca de duas horas após o fim da validade, ele apaga a parte da chave de que a mensagem precisa, de modo que uma cópia feita depois disso já não abre a mensagem. Até lá, um servidor em mãos alheias poderia guardar a mensagem e essa parte da chave, e ela ficaria protegida apenas pelo sigilo do link e da senha.',
+    'O servidor controla a validade e o número de aberturas. Além disso, no máximo duas horas depois que a mensagem expira, ele apaga a parte da chave de que ela precisa, então nem uma cópia dos dados consegue mais abri-la. Uma cópia feita antes não lê a mensagem sem o link.',
   'transparency.logs.title': 'O que o servidor registra nos logs',
   'transparency.logs.written': 'Registra',
   'transparency.logs.written.time': 'Horário com precisão de minuto',
@@ -349,31 +357,34 @@ export const messages: Catalog = {
   'transparency.logs.never.size': 'Tamanho da mensagem',
   'transparency.logs.never.duration': 'Tempo de resposta',
   'transparency.checks.title': 'Verificações de segurança',
-  'transparency.checks.note': 'Quem verifica o Nylzo e como. Vale para o software, não só para esta instância.',
+  'transparency.checks.note': 'Quem verifica o Nylzo e como.',
   'transparency.checks.audit.title': 'Auditoria independente',
   'transparency.checks.audit': 'Ainda não foi feita.',
   'transparency.checks.changes.title': 'A cada mudança no código',
   'transparency.checks.changes':
-    'Testes do protocolo e do que prometemos, análise estática, verificação de dependências e um teste dos dados de um servidor roubado.',
-  'transparency.checks.ai.title': 'Verificações com ferramentas de IA',
+    'CodeQL, govulncheck, OSV-Scanner, Grype e golangci-lint, testes do protocolo e do que prometemos, e um teste dos dados de um servidor roubado. Todo commit na branch principal é assinado.',
+  'transparency.checks.ai.title': 'Revisões com agentes de IA',
   'transparency.checks.ai':
-    'Ferramentas de IA revisam regularmente a segurança do código, mais recentemente em 25/10 e 01/11/2026. Os problemas encontrados foram corrigidos e estão descritos no GitHub.',
+    'Agentes de IA examinaram o código em cinco revisões de segurança aprofundadas: 25/10, 01/11, 07/11 (web e servidor) e 08/11/2026 (repositório). Os problemas encontrados foram corrigidos e estão descritos no GitHub.',
+  'transparency.checks.watch.title': 'Monitoramento do nylzo.com',
+  'transparency.checks.watch':
+    'A cada 30\u{A0}minutos, o código do site é comparado com a versão assinada. Se houver diferença: manutenção automática, desconexão pelo firewall na nuvem e relatório de incidente. A cada hora, uma rotina automática cria uma mensagem de teste, a lê e deixa que ela seja apagada.',
   'transparency.checks.ratings.title': 'Avaliações do projeto',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (avaliação automática) e OpenSSF Best Practices (autoavaliação), com links no README.',
+    'OpenSSF Scorecard (avaliação automática), OpenSSF Best Practices (autoavaliação) e A+ no securityheaders.com e no Mozilla Observatory. Os links estão no README.',
   'transparency.others.title': 'O que os outros veem',
   'transparency.others.hosting.title': 'Hospedagem e proxy',
   'transparency.others.hosting':
     'O provedor de hospedagem e o proxy que faz a terminação do HTTPS veem os endereços IP, os horários e os tamanhos das requisições, e mantêm logs conforme as próprias regras. Eles não veem o conteúdo da mensagem.',
-  'transparency.others.client.title': 'Quem controla o servidor ou a hospedagem',
+  'transparency.others.client.title': 'Código do site',
   'transparency.others.client':
-    'Quem controla o servidor em execução ou a hospedagem vê os registros das mensagens que alguém está abrindo ou gerenciando naquele momento e pode enviar um cliente web modificado para ler as mensagens que você criar ou abrir nele. Os aplicativos verificados, ou seja, o cliente local (nylzo web, nylzo open) e a ferramenta de linha de comando nylzo, executam código de uma versão assinada, então o servidor não pode alterá-lo. A verificação abaixo só detecta essa troca se o servidor não a burlar.',
+    'Quem tomasse o controle do servidor em execução veria só os registros das mensagens que estão sendo abertas naquele momento, nunca o conteúdo delas. Por isso, no nylzo.com, comparamos o código do site com a versão assinada a cada 30\u{A0}minutos e, se houver diferença, o serviço sai do ar sozinho. A verificação pode não perceber uma página trocada de propósito para uma pessoa específica; então, para os dados mais sensíveis, oferecemos aplicativos verificados (nylzo web, nylzo open e a ferramenta de linha de comando nylzo), que executam código da versão assinada.',
   'transparency.personal.title': 'Dados pessoais',
   'transparency.personal.controller.title': 'Controlador',
   'transparency.personal.controller': 'O controlador dos dados é o operador indicado no topo desta página.',
   'transparency.personal.basis.title': 'Por que e com qual base legal',
   'transparency.personal.basis':
-    'Armazenamos a mensagem, a entregamos ao destinatário e a apagamos porque o remetente pediu isso. Precisamos dos limites e dos logs para a segurança do serviço (art. 6º, item 1, alíneas b e f, do GDPR).',
+    'Armazenamos a mensagem, a entregamos ao destinatário e a apagamos porque o remetente pediu isso. Precisamos dos limites, dos logs e dos totais de tráfego para a segurança e o desenvolvimento do serviço (art. 6º, item 1, alíneas b e f, do GDPR).',
   'transparency.personal.browser.title': 'No seu navegador',
   'transparency.personal.browser':
     'O idioma escolhido, um dado temporário durante a abertura da mensagem e a lista Enviadas, se você acompanhar alguma mensagem. Isso é necessário para as funções que você solicita e, por isso, não exige consentimento.',
@@ -401,10 +412,10 @@ export const messages: Catalog = {
     'Um comando do nylzo da mesma versão verifica se o servidor envia exatamente estes arquivos, com os mesmos cabeçalhos:',
   'transparency.verify.limit.title': 'O que a verificação não detecta',
   'transparency.verify.limit':
-    'Ela verifica apenas o que o servidor enviou a este comando. O servidor pode reconhecê-lo e enviar outro código aos navegadores; por isso, a verificação detecta um build ou deploy com defeito, mas não uma troca que o servidor esconde de propósito.',
+    'Verifica o que o servidor enviou a este comando. Pode não detectar uma troca direcionada só a determinados navegadores.',
   'transparency.verify.apps.title': 'Aplicativo verificado',
   'transparency.verify.apps':
-    'Quem usa o cliente web precisa confiar neste servidor: o cliente web vem dele, então um servidor em mãos alheias poderia alterá-lo. Os aplicativos verificados, ou seja, o cliente local (nylzo web, nylzo open) e a ferramenta de linha de comando nylzo, executam código de uma versão assinada e dependem apenas da criptografia.',
+    'Os aplicativos verificados, ou seja, o cliente local (nylzo web, nylzo open) e a ferramenta de linha de comando nylzo, executam código da versão assinada. O servidor só lhes entrega o texto cifrado e não consegue injetar outro código neles.',
   'transparency.source': 'Código-fonte, especificação do protocolo e modelo de ameaças',
 
   'nav.home': 'Nylzo, página inicial',
@@ -438,7 +449,7 @@ export const messages: Catalog = {
   'footer.agents': 'Para agentes de IA',
   'footer.about': 'Quem está por trás do Nylzo',
   'footer.terms': 'Termos de uso',
-  'footer.note': 'Sem cookies e sem ferramentas de análise.',
+  'footer.note': 'Sem cookies, anúncios ou scripts de terceiros.',
   'footer.version': 'Versão do cliente web {version}',
 
   'hero.title': 'Um segredo que {accent}',
@@ -471,8 +482,7 @@ export const messages: Catalog = {
   'compose.attach': 'Anexo até {size}',
   'compose.submit': 'Criar link',
   'compose.encrypting': 'Criptografando',
-  'compose.note':
-    'O navegador criptografa a mensagem antes de enviá-la. Gratuito e sem cadastro. A página não usa cookies nem ferramentas de análise.',
+  'compose.note': 'O navegador criptografa a mensagem antes de enviá-la. Gratuito, sem cadastro e sem cookies.',
 
   'step.counter': 'Etapa {step} de {total}',
   'step.key.label': 'Chave',
@@ -702,7 +712,7 @@ export const messages: Catalog = {
   'brute.fact.pass': 'A senha não pode ser adivinhada pela rede',
   'brute.fact.pass.note': 'Após 100\u{A0}senhas erradas, a mensagem é bloqueada',
   'brute.fact.quantum': 'Um computador quântico não lê a mensagem',
-  'brute.fact.quantum.note': 'Poderia burlar a contagem de aberturas; o conteúdo é protegido por uma chave de 256 bits',
+  'brute.fact.quantum.note': 'Uma chave de 256\u{A0}bits protege o conteúdo, e o TLS pós-quântico, a conexão',
 
   'promise.eyebrow': 'O que prometemos',
   'promise.title': 'Promessas que você pode verificar',
@@ -758,16 +768,55 @@ export const messages: Catalog = {
   'extra.standards.title': 'Nenhuma criptografia caseira',
   'extra.standards.text': 'Só padrões comprovados com especificação pública.',
   'extra.standards.proof': 'AES-256-GCM e mais 6\u{A0}padrões',
+  'tech.eyebrow': 'Tecnologia',
+  'tech.title': 'Tecnologia moderna e comprovada em cada camada',
+  'tech.sub':
+    'Da criptografia no navegador à publicação de uma nova versão. Você pode conferir cada afirmação no código, no GitHub.',
+  'tech.crypto.title': 'Criptografia',
+  'tech.crypto.1': 'AES-256-GCM com uma chave do gerador criptográfico do navegador',
+  'tech.crypto.2': 'A senha é protegida pelo scrypt, que gasta 256\u{A0}MiB de memória a cada tentativa',
+  'tech.crypto.3': 'O HKDF-SHA-256 deriva as chaves, e o Ed25519 assina cada abertura',
+  'tech.crypto.4': 'Conexões só por TLS 1.3 com a troca pós-quântica X25519MLKEM768',
+  'tech.crypto.5': 'Nenhuma criptografia caseira, só padrões públicos',
+  'tech.server.title': 'Servidor',
+  'tech.server.1': 'Escrito em Go, com a biblioteca padrão e só seis dependências diretas',
+  'tech.server.2': 'SQLite com registros selados; os IDs das mensagens ficam salvos só como hash',
+  'tech.server.3':
+    'Sobrescreve com zeros os registros apagados e destrói a chave dos arquivos, então ninguém consegue lê-los no disco',
+  'tech.server.4': 'Limites por endereço, teto diário de mensagens e proteção computacional contra sobrecarga',
+  'tech.server.5': 'A memória do servidor nunca é gravada no disco',
+  'tech.web.title': 'Web',
+  'tech.web.1': 'O Svelte 5 compila os componentes para JavaScript puro, sem DOM virtual',
+  'tech.web.2': 'TypeScript e JavaScript moderno, com build e testes no Bun',
+  'tech.web.3':
+    'Cada script e folha de estilo leva uma impressão digital SHA-384, e o navegador recusa o arquivo se ele for alterado',
+  'tech.web.4': 'As chaves ficam no Web Crypto sem poder ser exportadas, com Trusted Types e uma CSP rigorosa',
+  'tech.web.5': 'Sem cookies, anúncios ou scripts de outros servidores',
+  'tech.release.title': 'Desenvolvimento e publicação',
+  'tech.release.1': 'Todo commit na branch principal é assinado',
+  'tech.release.2': 'CodeQL, govulncheck, OSV-Scanner, Grype e golangci-lint verificam cada mudança',
+  'tech.release.3': 'O código passou por cinco revisões de segurança aprofundadas com agentes de IA',
+  'tech.release.4':
+    'A cada 6\u{A0}horas, o Renovate procura atualizações e implanta sozinho as correções de segurança no nylzo.com',
+  'tech.release.5': 'As versões são assinadas com Sigstore, reproduzíveis e têm origem verificável (SLSA)',
+  'tech.release.6': 'Cada versão tem um changelog claro',
+  'tech.tests.title': 'Testes independentes',
+  'tech.test.headers': 'A+ no securityheaders.com',
+  'tech.test.observatory': 'A+ no Mozilla Observatory',
+  'tech.test.pagespeed': '100 em acessibilidade, práticas recomendadas e SEO (PageSpeed Insights)',
+  'tech.test.scorecard': 'Avaliação do OpenSSF Scorecard',
 
-  'host.eyebrow': 'Servidor próprio',
-  'host.title': 'Hospede o Nylzo você mesmo',
+  'host.eyebrow': 'Terminal e servidor próprio',
+  'host.title': 'Nylzo no terminal e no seu próprio servidor',
   'host.sub':
-    'O Nylzo inteiro é um único arquivo executável. Ele armazena os dados no SQLite e em arquivos no disco, sem outro banco de dados e sem serviços de terceiros. Você mesmo define a validade, os limites e o contato na página Transparência.',
+    'A ferramenta oficial nylzo para macOS, Linux e Windows criptografa direto no seu computador e não precisa de código do servidor. Além disso, o Nylzo inteiro é um único arquivo executável com SQLite, que você roda no seu próprio servidor sem serviços de terceiros.',
+  'host.point.cli': 'Instalação pelo Homebrew ou Scoop no macOS, Linux e Windows',
   'host.point.compose': 'Docker Compose com Caddy, que obtém o certificado e configura o HTTPS na sua máquina',
   'host.point.signed': 'Imagens e binários assinados, com origem verificável',
   'host.point.mit': 'Licença MIT, então também serve para empresas',
   'host.guide': 'Guia de implantação no GitHub',
   'host.tabs': 'Forma de instalação',
+  'host.cli': 'CLI',
   'host.compose': 'Compose',
   'host.binary': 'Binário',
   'host.verify': 'Verificação',
@@ -785,57 +834,61 @@ export const messages: Catalog = {
   'compare.row.preview': 'A prévia do link não consome nada',
   'compare.row.passphrase': 'A senha faz parte da criptografia',
   'compare.row.secret': 'Segredo no link',
-  'compare.row.verify': 'Comparação do código do servidor com a versão publicada',
+  'compare.row.verify': 'Monitora se o site corresponde à versão publicada',
   'compare.row.length': 'Arredonda o tamanho para blocos inteiros',
   'compare.row.id': 'O ID sozinho não abre a mensagem',
   'compare.row.stolen': 'Teste automático dos dados de um servidor roubado',
   'compare.row.ip': 'O servidor não grava endereços IP',
-  'compare.row.audit': 'Auditoria independente',
   'compare.note.nojs': 'só a prévia sem JS',
   'compare.note.server_side': 'no servidor',
   'compare.note.bits256': '256\u{A0}bits',
   'compare.note.bits131': '≈ 131\u{A0}bits',
   'compare.note.bits128': '128\u{A0}bits',
   'compare.note.none': '—',
-  'compare.note.verify_client': 'só o que o servidor envia ao comando verify\u{2011}client',
+  'compare.note.every30': 'a cada 30\u{A0}min',
+  'operations.eyebrow': 'Operação',
+  'operations.title': 'Também monitoramos o servidor do nylzo.com',
+  'operations.sub':
+    'A criptografia protege o conteúdo da mensagem. Monitoramos à parte o servidor, a conexão e o código do site e, se algo não bater, o serviço sai do ar sozinho.',
+  'operations.diagram':
+    'A cada 30\u{A0}minutos, comparamos o código no nylzo.com com a versão assinada. Se houver diferença, o serviço entra em manutenção.',
+  'operations.release': 'Versão no GitHub',
+  'operations.instance': 'nylzo.com',
+  'operations.check': 'Verificação',
+  'operations.signed': 'assinada',
+  'operations.compared': 'comparado',
+  'operations.every': 'a cada 30\u{A0}min',
+  'operations.watch.title': 'Verificação do código a cada 30\u{A0}minutos',
+  'operations.watch.text':
+    'Uma rotina automática no GitHub compara o site que o nylzo.com entrega com a versão assinada. Se houver qualquer diferença, ela ativa a manutenção, e o firewall na nuvem tira o serviço do ar.',
+  'operations.tls.title': 'Conexão pós-quântica',
+  'operations.tls.text':
+    'As mensagens trafegam só por TLS 1.3 com a troca de chaves X25519MLKEM768. Isso também protege contra quem grave o tráfego hoje para descriptografá-lo depois com um computador quântico.',
+  'operations.host.title': 'Servidor na UE',
+  'operations.host.text':
+    'Roda em um data center da Hetzner na Finlândia, com Flatcar Linux e partição do sistema somente leitura. Da internet, o firewall só deixa passar o tráfego web.',
+  'operations.access.title': 'Acesso só com impressão digital',
+  'operations.access.text':
+    'Só uma chave de hardware com Touch ID consegue entrar no servidor, a partir de uma única rede e por uma troca de chaves pós-quântica.',
+  'operations.updates.title': 'Correções de segurança automáticas',
+  'operations.updates.text':
+    'A cada 6\u{A0}horas, o Renovate procura correções para as dependências e, com os testes passando, faz sozinho o merge de cada correção de segurança. Dela sai uma versão assinada que o nylzo.com instala em até 10\u{A0}minutos.',
+  'operations.apps':
+    'Para os dados mais sensíveis, existe o aplicativo verificado nylzo. Ele executa código da versão assinada e só recebe do servidor o texto cifrado.',
+  'operations.apps.link': 'Aplicativos verificados',
   'compare.note.hmac': 'HMAC por 10\u{A0}s',
   'compare.note.truncated': 'IP truncado',
-  'compare.note.send_audits': 'As auditorias do Send não mencionam isso',
-
-  'limits.eyebrow': 'Onde nossas garantias terminam',
-  'limits.title': 'Nenhuma criptografia protege um dispositivo comprometido',
-  'limits.sub':
-    'Um malware ou alguém com acesso indevido lê a mensagem antes que o navegador a criptografe ou logo depois que o destinatário a abre.',
-  'limits.diagram':
-    'O Nylzo protege a mensagem no caminho e no servidor. Ele não consegue proteger os dispositivos do remetente e do destinatário.',
-  'limits.you': 'Você',
-  'limits.server': 'No caminho e no servidor',
-  'limits.recipient': 'Destinatário',
-  'limits.outside': 'fora do nosso alcance',
-  'limits.ours': 'protegemos',
-  'limits.save.title': 'O destinatário pode guardar a mensagem',
-  'limits.save.note': 'Pode copiá-la ou fotografá-la. Envie só para pessoas em quem você confia.',
-  'limits.link.title': 'Quem tiver o link primeiro o abre',
-  'limits.link.note': 'Por isso, proteja mensagens sensíveis com senha e envie a senha por outro canal.',
-  'limits.server.title': 'Quem controla o servidor pode alterar este site',
-  'limits.server.note':
-    'Pode enviar a uma pessoa escolhida uma página que vaza a mensagem, e o navegador ainda não tem como perceber isso. Envie e leia por um aplicativo verificado a mensagem que precisa continuar segura mesmo nesse caso.',
-  'limits.server.link': 'Aplicativos verificados',
-  'limits.abuse.title': 'Não serve para fraudes nem malware',
-  'limits.abuse.note': 'Nem para nenhum outro conteúdo ilegal.',
-  'limits.liability':
-    'O Nylzo é gratuito e não tem garantia. Você o usa por vontade própria, e não prometemos que ele estará sempre disponível, livre de erros ou resistente a qualquer ataque. Quem envia a mensagem é responsável pelo conteúdo dela. Saiba mais nos {link}.',
 
   'about.eyebrow': 'Quem está por trás do Nylzo',
-  'about.title': 'Um projeto aberto de um único desenvolvedor',
+  'about.title': 'Um projeto independente e de código aberto da República Tcheca',
   'about.text':
-    'Um desenvolvedor da República Tcheca desenvolve e opera o Nylzo no tempo livre. O projeto nasceu para que senhas e chaves não fiquem em chats e e-mails. É gratuito, sem anúncios e sem investidores.',
+    'O Nylzo é criado e operado por um desenvolvedor da República Tcheca. Ele nasceu para que senhas e chaves não fiquem em chats e e-mails. É gratuito, sem anúncios e sem investidores.',
   'about.tools':
-    'No desenvolvimento, as ferramentas de IA servem principalmente para verificar a segurança do código. Além disso, testes automáticos e ferramentas de segurança verificam cada mudança.',
+    'Testes automáticos, análise estática e ferramentas de segurança verificam cada mudança. Além disso, o código passa regularmente por revisões de segurança com agentes de IA.',
   'about.running.title': 'Custos de operação',
   'about.running.text': 'Gratuito. O autor paga os custos; sem anúncios e sem venda de dados.',
   'about.server.title': 'Servidor',
-  'about.server.text': 'O nylzo.com roda na UE, na Finlândia, na Hetzner.',
+  'about.server.text': 'O nylzo.com roda na UE, em um data center da Hetzner na Finlândia.',
   'about.contact.title': 'Contato',
   'about.contact.text':
     'Registre bugs e ideias em Issues e relate vulnerabilidades de forma privada via Security Advisories.',
@@ -857,7 +910,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'Sim, pode copiá-la ou fotografá-la. Envie-a só para pessoas em quem você confia.',
   'faq.operator.question': 'O operador pode ler a mensagem?',
   'faq.operator.answer':
-    'Com os dados do servidor, não: ele não tem a chave. Mas quem controla o servidor pode alterar este site. Envie por um aplicativo verificado a mensagem que precisa continuar segura mesmo nesse caso.',
+    'Com os dados do servidor, não: ele recebe só o texto cifrado e nunca vê a chave do link. Além disso, a cada 30\u{A0}minutos comparamos o código do site com a versão assinada e, se houver diferença, o serviço se desliga sozinho. Os dados mais sensíveis você pode enviar pelo aplicativo verificado, que não carrega nenhum código do servidor.',
   'faq.opened.question': 'Vou saber se alguém abriu a mensagem?',
   'faq.opened.answer':
     'Sim, se você a acompanhar em Enviadas. Lá você verá quando ela foi aberta pela primeira vez e poderá cancelá-la.',
@@ -866,10 +919,10 @@ export const messages: Catalog = {
     'Numa mensagem de uma só abertura, essa pessoa a verá, e o destinatário não. O destinatário vai perceber, porque, em vez da mensagem, verá que ela já foi aberta. Por isso, proteja assuntos sensíveis com senha.',
   'faq.free.question': 'Por que o Nylzo é gratuito?',
   'faq.free.answer':
-    'É um projeto aberto, sem anúncios e sem funções pagas. O autor paga os custos de operação. Não coletamos nada sobre você, então não temos nada para vender.',
-  'faq.audit.question': 'O Nylzo passou por uma auditoria de segurança?',
-  'faq.audit.answer':
-    'Por uma independente, ainda não. O código é aberto, ferramentas de IA verificam regularmente a segurança dele, e testes automáticos verificam cada mudança. Os resultados das verificações estão na página Transparência.',
+    'É um projeto aberto, sem anúncios e sem funções pagas. O autor paga os custos de operação. Não vendemos dados sobre os visitantes. Medimos o tráfego da página inicial só em números totais, para saber quando reforçar o servidor.',
+  'faq.verify.question': 'Como posso conferir se o Nylzo faz o que promete?',
+  'faq.verify.answer':
+    'O código, a especificação do protocolo e os vetores de teste são públicos. Cada mudança passa por testes do protocolo, análise estática, verificação de dependências e um teste dos dados de um servidor roubado. As versões são assinadas e reproduzíveis. A página Transparência mostra os resultados das verificações.',
   'cta.title': 'Tem algo que não deveria ficar no chat?',
   'cta.text':
     'Uma senha enviada no chat fica no histórico até alguém apagá-la. Uma mensagem enviada pelo Nylzo é apagada depois de aberta.',

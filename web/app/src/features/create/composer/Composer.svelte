@@ -30,6 +30,7 @@
       before: 'before:bg-linear-to-r before:from-aegis-300/45 before:to-nebula-300/10',
     },
   ] as const;
+  const HERO_PROOFS = ['hero.proof.encrypted', 'hero.proof.cipher', 'hero.proof.tls', 'hero.proof.open'] as const;
 </script>
 
 <svelte:window
@@ -122,6 +123,20 @@
   </div>
 
   <ComposerNotes {composer} {noticeId} />
+  <ul
+    role="list"
+    aria-label={translate('hero.proof.label')}
+    class="mx-auto mt-6 flex max-w-column animate-rise flex-wrap justify-center gap-2 [animation-delay:280ms]"
+  >
+    {#each HERO_PROOFS as proof (proof)}
+      <li
+        class="inline-flex items-center gap-2 rounded-full bg-white/4 px-3 py-1.5 text-caption text-ink-soft ring-1 ring-white/10"
+      >
+        <Icon name="check" class="size-3.5 shrink-0 text-aegis-300" stroke={2} />
+        {translate(proof)}
+      </li>
+    {/each}
+  </ul>
   <p class="sr-only" role="status" aria-live="polite">{composer.stepTitle}</p>
 
   <a

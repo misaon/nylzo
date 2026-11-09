@@ -1,6 +1,6 @@
 import { REPOSITORY_URL } from '../../../../shared/shell/repository.ts';
 
-export type InstallTab = 'compose' | 'binary' | 'verify';
+export type InstallTab = 'cli' | 'compose' | 'binary' | 'verify';
 type TokenKind = 'command' | 'word' | 'flag' | 'number' | 'operator' | 'variable' | 'argument';
 
 export interface Token {
@@ -30,6 +30,33 @@ const HOMEBREW_INSTALL: readonly Token[] = [command('brew'), word('install'), ar
 
 export function installLines(tab: InstallTab, domain: string): readonly (readonly Token[])[] {
   switch (tab) {
+    case 'cli': {
+      return [
+        HOMEBREW_INSTALL,
+        [
+          command('nylzo'),
+          word('create'),
+          flag('--server'),
+          argument('https://nylzo.com'),
+          flag('--ttl'),
+          argument('1h'),
+          flag('--opens'),
+          number('1'),
+          operator('<'),
+          argument('message.txt'),
+          operator('>'),
+          argument('link.txt'),
+        ],
+        [
+          command('nylzo'),
+          word('read'),
+          flag('--link-file'),
+          argument('link.txt'),
+          flag('--out'),
+          argument('received'),
+        ],
+      ];
+    }
     case 'compose': {
       return [
         [command('git'), word('clone'), argument(REPOSITORY_URL)],

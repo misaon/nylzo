@@ -4,12 +4,16 @@ export const messages: Catalog = {
   'action.retry': 'Coba lagi',
   'app.crashed': 'Terjadi kesalahan di halaman ini. Muat ulang halamannya.',
 
-  'limits.terms': 'ketentuan penggunaan',
   'hero.eyebrow': 'Tautan terenkripsi sekali pakai',
   'hero.steps': 'Cara kerjanya',
   'hero.step.write': 'Tulis pesan',
   'hero.step.send': 'Kirim tautannya',
   'hero.step.vanish': 'Hilang setelah dibuka',
+  'hero.proof.label': 'Keunggulan utama',
+  'hero.proof.encrypted': 'Dienkripsi di browser Anda',
+  'hero.proof.cipher': 'AES-256-GCM',
+  'hero.proof.tls': 'TLS pascakuantum',
+  'hero.proof.open': 'Open source',
   'terms.eyebrow': 'Informasi hukum',
   'terms.title': 'Ketentuan Penggunaan',
   'terms.effective':
@@ -262,7 +266,7 @@ export const messages: Catalog = {
   'read.delete.rest.short': 'Hapus',
   'read.delete.rest.confirm': 'Hapus pesan agar tidak bisa dibuka lagi?',
   'read.delete.confirm.title': 'Hapus pesan tanpa membukanya?',
-  'read.note': 'Gratis dan tanpa pendaftaran. Halaman ini tidak memakai cookie maupun alat analitik.',
+  'read.note': 'Gratis dan tanpa pendaftaran. Halaman pesan tidak memakai cookie dan tidak mengukur kunjungan.',
   'read.delete.confirm': 'Setelah itu, tidak ada yang bisa membuka pesan ini lagi, termasuk Anda.',
   'read.delete.yes': 'Ya, hapus',
   'read.delete.no': 'Jangan hapus',
@@ -281,7 +285,8 @@ export const messages: Catalog = {
   'revealed.sender.text':
     'Jika ada permintaan uang, login, atau instalasi, pastikan dulu kepada pengirim melalui saluran lain.',
   'revealed.file': 'Lampiran',
-  'revealed.file.unchecked': 'Tidak ada yang memindainya dari virus. Buka hanya file dari orang yang Anda kenal.',
+  'revealed.file.unchecked':
+    'Lampiran ini terenkripsi, sehingga Nylzo tidak dapat memindainya dengan antivirus. Buka hanya file dari orang yang Anda kenal.',
   'revealed.confirm.title': 'Jenis file ini dapat menjalankan kode. Buka hanya jika Anda memercayai pengirimnya.',
   'revealed.confirm.extension': 'Ekstensi file:',
   'revealed.confirm.none': 'File ini tidak memiliki ekstensi.',
@@ -330,12 +335,15 @@ export const messages: Catalog = {
   'transparency.stores.counters.title': 'Penghitung tanpa alamat',
   'transparency.stores.counters':
     'Jumlah harian pesan yang dibuat disimpan selama {days} setelah hari itu berakhir, sedangkan tantangan sekali pakai yang sudah digunakan hanya beberapa menit.',
+  'transparency.stores.visits.title': 'Kunjungan ke halaman utama',
+  'transparency.stores.visits':
+    'Jumlah total tampilan halaman utama per jam, tanpa cookie dan tanpa alamat IP. Angka ini membantu kami meningkatkan layanan dan menambah kapasitas server tepat waktu. Halaman pesan tidak ikut dihitung.',
   'transparency.stores.addresses.title': 'Alamat IP',
   'transparency.stores.addresses':
     'Tidak disimpan. Batas per alamat hanya disimpan di memori yang tidak pernah dipindahkan ke disk, dan dilupakan saat server dimulai ulang.',
-  'transparency.stores.enforced.title': 'Masa berlaku dan jumlah kali dibuka diawasi server',
+  'transparency.stores.enforced.title': 'Masa berlaku juga dijaga kriptografi',
   'transparency.stores.enforced':
-    'Server ini mengawasi masa berlaku dan jumlah kali dibuka. Sekitar dua jam setelah masa berlaku habis, server menghapus bagian kunci yang dibutuhkan pesan, sehingga salinan yang dibuat setelahnya tidak dapat lagi membuka pesan. Sampai saat itu, server yang jatuh ke tangan orang lain bisa menyimpan pesan beserta bagian kunci tersebut, dan pesan hanya dilindungi oleh kerahasiaan tautan dan kata sandi.',
+    'Masa berlaku dan jumlah kali dibuka diawasi server. Paling lambat dua jam setelah masa berlaku habis, server juga menghapus bagian kunci yang dibutuhkan pesan, sehingga salinan data pun tidak bisa lagi membukanya. Salinan yang dibuat lebih awal tidak dapat membaca pesan tanpa tautan.',
   'transparency.logs.title': 'Apa yang dicatat server di log',
   'transparency.logs.written': 'Dicatat',
   'transparency.logs.written.time': 'Waktu hingga menit',
@@ -354,32 +362,34 @@ export const messages: Catalog = {
   'transparency.logs.never.size': 'Ukuran pesan',
   'transparency.logs.never.duration': 'Waktu pemrosesan',
   'transparency.checks.title': 'Pemeriksaan keamanan',
-  'transparency.checks.note':
-    'Siapa yang memeriksa Nylzo dan bagaimana caranya. Berlaku untuk perangkat lunaknya, bukan hanya untuk instans ini.',
+  'transparency.checks.note': 'Siapa yang memeriksa Nylzo dan bagaimana caranya.',
   'transparency.checks.audit.title': 'Audit independen',
   'transparency.checks.audit': 'Belum dilakukan.',
   'transparency.checks.changes.title': 'Pada setiap perubahan kode',
   'transparency.checks.changes':
-    'Pengujian protokol dan hal-hal yang kami janjikan, analisis statis, pemeriksaan dependensi, dan pengujian data dari server yang dicuri.',
-  'transparency.checks.ai.title': 'Pemeriksaan dengan alat AI',
+    'CodeQL, govulncheck, OSV-Scanner, Grype, dan golangci-lint, pengujian protokol dan hal-hal yang kami janjikan, serta pengujian data dari server yang dicuri. Setiap commit di branch utama ditandatangani.',
+  'transparency.checks.ai.title': 'Pemeriksaan dengan agen AI',
   'transparency.checks.ai':
-    'Alat AI secara rutin memeriksa keamanan kode, terakhir pada 25\u{A0}Oktober dan 1\u{A0}November 2026. Temuannya sudah diperbaiki dan dijelaskan di GitHub.',
+    'Agen AI memeriksa kode dalam lima pemeriksaan keamanan mendalam: 25\u{A0}Oktober, 1\u{A0}November, 7\u{A0}November (klien web dan server), dan 8\u{A0}November 2026 (repositori). Temuannya sudah diperbaiki dan dijelaskan di GitHub.',
+  'transparency.checks.watch.title': 'Pemantauan nylzo.com',
+  'transparency.checks.watch':
+    'Setiap 30\u{A0}menit, kode situs dibandingkan dengan rilis yang ditandatangani. Jika berbeda: mode pemeliharaan otomatis, pemutusan oleh firewall cloud, dan laporan insiden. Setiap jam, tugas otomatis membuat pesan uji, membacanya, lalu membiarkan server menghapusnya.',
   'transparency.checks.ratings.title': 'Penilaian proyek',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (penilaian otomatis) dan OpenSSF Best Practices (penilaian mandiri), tautannya ada di README.',
+    'OpenSSF Scorecard (penilaian otomatis), OpenSSF Best Practices (penilaian mandiri), serta A+ di securityheaders.com dan Mozilla Observatory. Tautannya ada di README.',
   'transparency.others.title': 'Apa yang dilihat pihak lain',
   'transparency.others.hosting.title': 'Hosting dan proxy',
   'transparency.others.hosting':
     'Penyedia hosting dan proxy yang mengakhiri HTTPS melihat alamat IP, waktu, dan ukuran permintaan, serta mencatatnya di log menurut aturan mereka sendiri. Mereka tidak melihat isi pesan.',
-  'transparency.others.client.title': 'Siapa pun yang mengendalikan server atau hosting',
+  'transparency.others.client.title': 'Kode situs',
   'transparency.others.client':
-    'Siapa pun yang mengendalikan server yang sedang berjalan atau hostingnya dapat melihat catatan pesan yang sedang dibuka atau dikelola seseorang, dan dapat mengirim klien web yang dimodifikasi untuk membaca pesan yang Anda buat atau buka di dalamnya. Aplikasi terverifikasi, yaitu klien lokal (nylzo web, nylzo open) dan alat baris perintah nylzo, menjalankan kode dari rilis yang ditandatangani, sehingga server tidak dapat mengubahnya. Pemeriksaan di bawah hanya dapat mendeteksi penggantian seperti itu jika server tidak menghindari pemeriksaan tersebut.',
+    'Siapa pun yang mengambil alih server yang sedang berjalan hanya akan melihat catatan pesan yang sedang dibuka, tidak pernah isinya. Karena itu, di nylzo.com kami membandingkan kode situs dengan rilis yang ditandatangani setiap 30\u{A0}menit, dan jika ada perbedaan, layanan otomatis offline. Pemeriksaan ini mungkin tidak mendeteksi halaman yang ditukar khusus untuk satu orang, sehingga untuk data yang paling sensitif kami menyediakan aplikasi terverifikasi (nylzo web, nylzo open, dan alat baris perintah nylzo) yang menjalankan kode dari rilis yang ditandatangani.',
   'transparency.personal.title': 'Data pribadi',
   'transparency.personal.controller.title': 'Pengendali data',
   'transparency.personal.controller': 'Pengendali data adalah operator yang disebutkan di bagian atas halaman ini.',
   'transparency.personal.basis.title': 'Mengapa dan atas dasar apa',
   'transparency.personal.basis':
-    'Kami menyimpan pesan, menyerahkannya kepada penerima, dan menghapusnya karena pengirim memintanya. Batas dan log kami perlukan demi keamanan layanan (Pasal\u{A0}6 ayat\u{A0}(1) huruf\u{A0}b dan\u{A0}f\u{A0}GDPR).',
+    'Kami menyimpan pesan, menyerahkannya kepada penerima, dan menghapusnya karena pengirim memintanya. Batas, log, dan angka total kunjungan kami perlukan demi keamanan dan pengembangan layanan (Pasal\u{A0}6 ayat\u{A0}(1) huruf\u{A0}b dan\u{A0}f\u{A0}GDPR).',
   'transparency.personal.browser.title': 'Di browser Anda',
   'transparency.personal.browser':
     'Bahasa yang Anda pilih, data sementara selama pesan sedang dibuka, dan daftar Terkirim jika Anda memantau pesan. Semua itu diperlukan untuk fitur yang Anda minta, sehingga tidak memerlukan persetujuan.',
@@ -407,10 +417,10 @@ export const messages: Catalog = {
     'Perintah dari rilis nylzo versi yang sama memeriksa bahwa server mengirim tepat file-file ini dengan header yang sama:',
   'transparency.verify.limit.title': 'Yang tidak dapat dideteksi pemeriksaan ini',
   'transparency.verify.limit':
-    'Pemeriksaan ini hanya memverifikasi apa yang dikirim server ke perintah tersebut. Server dapat mengenali perintah itu dan mengirim kode lain ke browser, sehingga pemeriksaan ini mendeteksi hasil build atau penerapan yang keliru, bukan penggantian yang sengaja disembunyikan server.',
+    'Pemeriksaan ini memverifikasi apa yang dikirim server ke perintah ini. Penggantian yang hanya menyasar browser tertentu mungkin tidak terdeteksi.',
   'transparency.verify.apps.title': 'Aplikasi terverifikasi',
   'transparency.verify.apps':
-    'Siapa pun yang memakai klien web harus memercayai server ini: klien web berasal dari server ini, sehingga server yang jatuh ke tangan orang lain bisa mengubahnya. Aplikasi terverifikasi, yaitu klien lokal (nylzo web, nylzo open) dan alat baris perintah nylzo, menjalankan kode dari rilis yang ditandatangani dan hanya mengandalkan enkripsi.',
+    'Aplikasi terverifikasi, yaitu klien lokal (nylzo web, nylzo open) dan alat baris perintah nylzo, menjalankan kode dari rilis yang ditandatangani. Server hanya mengirimkan data terenkripsi kepada aplikasi tersebut dan tidak dapat menyusupkan kode.',
   'transparency.source': 'Kode sumber, spesifikasi protokol, dan model ancaman',
 
   'nav.home': 'Nylzo, halaman utama',
@@ -444,7 +454,7 @@ export const messages: Catalog = {
   'footer.agents': 'Untuk agen AI',
   'footer.about': 'Siapa di balik Nylzo',
   'footer.terms': 'Ketentuan Penggunaan',
-  'footer.note': 'Tanpa cookie dan analitik.',
+  'footer.note': 'Tanpa cookie, iklan, atau skrip pihak ketiga.',
   'footer.version': 'Versi klien web {version}',
 
   'hero.title': 'Rahasia yang {accent}',
@@ -477,8 +487,7 @@ export const messages: Catalog = {
   'compose.attach': 'File maks. {size}',
   'compose.submit': 'Buat tautan',
   'compose.encrypting': 'Mengenkripsi',
-  'compose.note':
-    'Browser mengenkripsi pesan sebelum dikirim. Gratis dan tanpa pendaftaran. Halaman ini tidak memakai cookie maupun alat analitik.',
+  'compose.note': 'Browser mengenkripsi pesan sebelum dikirim. Gratis, tanpa pendaftaran, dan tanpa cookie.',
 
   'step.counter': 'Langkah {step} dari {total}',
   'step.key.label': 'Kunci',
@@ -711,8 +720,7 @@ export const messages: Catalog = {
   'brute.fact.pass': 'Kata sandi tidak bisa ditebak lewat jaringan',
   'brute.fact.pass.note': 'Setelah 100\u{A0}kata sandi salah, pesan akan terkunci',
   'brute.fact.quantum': 'Komputer kuantum tidak bisa membaca pesan',
-  'brute.fact.quantum.note':
-    'Ia mungkin bisa mengakali hitungan kali dibuka, tetapi isi pesan dilindungi kunci 256-bit',
+  'brute.fact.quantum.note': 'Isi dilindungi kunci 256-bit, dan koneksi dilindungi TLS pascakuantum',
 
   'promise.eyebrow': 'Janji kami',
   'promise.title': 'Janji yang bisa Anda periksa sendiri',
@@ -769,16 +777,54 @@ export const messages: Catalog = {
   'extra.standards.title': 'Tanpa kriptografi buatan sendiri',
   'extra.standards.text': 'Hanya standar teruji dengan spesifikasi publik.',
   'extra.standards.proof': 'AES-256-GCM dan 6\u{A0}standar lainnya',
+  'tech.eyebrow': 'Teknologi',
+  'tech.title': 'Teknologi modern dan teruji di setiap lapisan',
+  'tech.sub': 'Dari enkripsi di browser hingga rilis versi baru. Setiap klaim dapat Anda periksa dalam kode di GitHub.',
+  'tech.crypto.title': 'Enkripsi',
+  'tech.crypto.1': 'AES-256-GCM dengan kunci dari generator acak kriptografis browser',
+  'tech.crypto.2': 'Kata sandi dilindungi scrypt, yang memakai 256\u{A0}MiB memori untuk setiap percobaan',
+  'tech.crypto.3': 'HKDF-SHA-256 menurunkan kunci, Ed25519 menandatangani setiap pembukaan',
+  'tech.crypto.4': 'Koneksi hanya melalui TLS\u{A0}1.3 dengan pertukaran kunci pascakuantum X25519MLKEM768',
+  'tech.crypto.5': 'Tanpa kriptografi buatan sendiri, hanya standar publik',
+  'tech.server.title': 'Server',
+  'tech.server.1': 'Ditulis dengan Go dan pustaka standarnya, hanya dengan enam dependensi langsung',
+  'tech.server.2': 'SQLite dengan catatan tersegel, ID pesan hanya disimpan sebagai hash',
+  'tech.server.3':
+    'Catatan yang dihapus ditimpa dengan nol dan kunci file dimusnahkan, sehingga tidak ada yang bisa membacanya dari disk',
+  'tech.server.4': 'Batas per alamat, kuota pesan harian, dan perlindungan komputasi terhadap beban berlebih',
+  'tech.server.5': 'Memori server tidak pernah dipindahkan ke disk',
+  'tech.web.title': 'Klien web',
+  'tech.web.1': 'Svelte\u{A0}5 mengompilasi komponen menjadi JavaScript murni tanpa DOM virtual',
+  'tech.web.2': 'TypeScript dan JavaScript modern, di-build dan diuji dengan Bun',
+  'tech.web.3': 'Setiap skrip dan stylesheet membawa sidik jari SHA-384, dan browser menolak file yang diubah',
+  'tech.web.4': 'Web Crypto menyimpan kunci sehingga tidak bisa diekspor, ditambah Trusted Types dan CSP yang ketat',
+  'tech.web.5': 'Tanpa cookie, iklan, atau skrip dari server lain',
+  'tech.release.title': 'Pengembangan dan rilis',
+  'tech.release.1': 'Setiap commit di branch utama ditandatangani',
+  'tech.release.2': 'CodeQL, govulncheck, OSV-Scanner, Grype, dan golangci-lint memeriksa setiap perubahan',
+  'tech.release.3': 'Kode sudah melalui lima pemeriksaan keamanan mendalam dengan agen AI',
+  'tech.release.4':
+    'Setiap 6\u{A0}jam Renovate mencari pembaruan dan menerapkan sendiri perbaikan keamanan ke nylzo.com',
+  'tech.release.5':
+    'Rilis ditandatangani dengan Sigstore, dapat direproduksi, dan memiliki asal-usul yang dapat diverifikasi (SLSA)',
+  'tech.release.6': 'Setiap versi memiliki changelog yang jelas',
+  'tech.tests.title': 'Pengujian independen',
+  'tech.test.headers': 'A+ di securityheaders.com',
+  'tech.test.observatory': 'A+ di Mozilla Observatory',
+  'tech.test.pagespeed': '100 untuk aksesibilitas, praktik terbaik, dan SEO (PageSpeed Insights)',
+  'tech.test.scorecard': 'Penilaian OpenSSF Scorecard',
 
-  'host.eyebrow': 'Server sendiri',
-  'host.title': 'Jalankan Nylzo di server Anda sendiri',
+  'host.eyebrow': 'Terminal dan server sendiri',
+  'host.title': 'Nylzo di terminal dan di server Anda sendiri',
   'host.sub':
-    'Seluruh Nylzo adalah satu file yang dapat dijalankan. Data disimpan di SQLite dan dalam file di disk, tanpa database lain dan tanpa layanan pihak ketiga. Masa berlaku, batas, dan kontak di halaman Transparansi Anda atur sendiri.',
+    'Alat resmi nylzo untuk macOS, Linux, dan Windows mengenkripsi langsung di komputer Anda dan tidak memerlukan kode dari server. Seluruh Nylzo juga berupa satu file biner dengan SQLite yang dapat Anda jalankan di server sendiri tanpa layanan pihak ketiga.',
+  'host.point.cli': 'Pasang lewat Homebrew atau Scoop di macOS, Linux, dan Windows',
   'host.point.compose': 'Docker Compose dengan Caddy, yang mengurus sertifikat dan HTTPS di mesin Anda',
   'host.point.signed': 'Image dan biner yang ditandatangani dengan asal-usul yang dapat diverifikasi',
   'host.point.mit': 'Lisensi MIT, sehingga perusahaan pun bisa memakainya',
   'host.guide': 'Panduan penerapan di GitHub',
   'host.tabs': 'Cara instalasi',
+  'host.cli': 'CLI',
   'host.compose': 'Compose',
   'host.binary': 'Biner',
   'host.verify': 'Verifikasi',
@@ -796,58 +842,61 @@ export const messages: Catalog = {
   'compare.row.preview': 'Pratinjau tautan tidak dihitung dibuka',
   'compare.row.passphrase': 'Kata sandi menjadi bagian dari enkripsi',
   'compare.row.secret': 'Rahasia ada di tautan',
-  'compare.row.verify': 'Membandingkan kode dari server dengan rilis',
+  'compare.row.verify': 'Mengawasi kesesuaian situs dengan rilis',
   'compare.row.length': 'Membulatkan panjang ke blok penuh',
   'compare.row.id': 'ID saja tidak membuka pesan',
   'compare.row.stolen': 'Pengujian otomatis data dari server yang dicuri',
   'compare.row.ip': 'Server tidak mencatat alamat IP',
-  'compare.row.audit': 'Audit independen',
   'compare.note.nojs': 'hanya pratinjau tanpa JS',
   'compare.note.server_side': 'di server',
   'compare.note.bits256': '256\u{A0}bit',
   'compare.note.bits131': '≈ 131\u{A0}bit',
   'compare.note.bits128': '128\u{A0}bit',
   'compare.note.none': '—',
-  'compare.note.verify_client': 'hanya apa yang dikirim server ke perintah verify‑client',
+  'compare.note.every30': 'setiap 30\u{A0}menit',
+  'operations.eyebrow': 'Operasional',
+  'operations.title': 'Kami juga mengawasi server nylzo.com',
+  'operations.sub':
+    'Enkripsi melindungi isi pesan. Server, koneksi, dan kode situs kami awasi secara terpisah, dan jika ada yang tidak beres, layanan otomatis offline.',
+  'operations.diagram':
+    'Setiap 30\u{A0}menit kami membandingkan kode di nylzo.com dengan rilis yang ditandatangani. Jika berbeda, layanan beralih ke mode pemeliharaan.',
+  'operations.release': 'Rilis di GitHub',
+  'operations.instance': 'nylzo.com',
+  'operations.check': 'Pemeriksaan',
+  'operations.signed': 'ditandatangani',
+  'operations.compared': 'dibandingkan',
+  'operations.every': 'setiap 30\u{A0}menit',
+  'operations.watch.title': 'Pemeriksaan kode setiap 30\u{A0}menit',
+  'operations.watch.text':
+    'Tugas otomatis di GitHub membandingkan situs yang dikirim nylzo.com dengan rilis yang ditandatangani. Jika ada perbedaan, tugas itu menyalakan mode pemeliharaan dan firewall cloud memutus layanan.',
+  'operations.tls.title': 'Koneksi pascakuantum',
+  'operations.tls.text':
+    'Pesan hanya dikirim melalui TLS\u{A0}1.3 dengan pertukaran kunci X25519MLKEM768. Ini juga melindungi dari pihak yang merekam lalu lintas sekarang dan mendekripsinya nanti dengan komputer kuantum.',
+  'operations.host.title': 'Server di Uni Eropa',
+  'operations.host.text':
+    'Server berjalan di pusat data Hetzner di Finlandia dengan Flatcar Linux, yang partisi sistemnya hanya bisa dibaca. Firewall hanya mengizinkan lalu lintas web dari internet.',
+  'operations.access.title': 'Akses hanya dengan sidik jari',
+  'operations.access.text':
+    'Login ke server hanya bisa dengan kunci perangkat keras dengan Touch ID, dari satu jaringan saja, dan melalui pertukaran kunci pascakuantum.',
+  'operations.updates.title': 'Perbaikan keamanan otomatis',
+  'operations.updates.text':
+    'Setiap 6\u{A0}jam Renovate mencari perbaikan dependensi dan menggabungkan sendiri perbaikan keamanan setelah pengujian lolos. Dari situ terbentuk versi bertanda tangan yang dipasang nylzo.com dalam 10\u{A0}menit.',
+  'operations.apps':
+    'Untuk data yang paling sensitif, tersedia aplikasi nylzo terverifikasi. Aplikasi ini menjalankan kode dari rilis yang ditandatangani dan hanya mengambil data terenkripsi dari server.',
+  'operations.apps.link': 'Aplikasi terverifikasi',
   'compare.note.hmac': 'HMAC selama 10\u{A0}detik',
   'compare.note.truncated': 'IP terpotong',
-  'compare.note.send_audits': 'Audit Send tidak menyebutkannya',
-
-  'limits.eyebrow': 'Batas jaminan kami',
-  'limits.title': 'Tidak ada enkripsi yang bisa melindungi perangkat yang sudah diretas',
-  'limits.sub':
-    'Malware atau orang lain yang punya akses dapat membaca pesan sebelum browser mengenkripsinya, atau tepat setelah penerima membukanya.',
-  'limits.diagram':
-    'Nylzo melindungi pesan selama perjalanan dan di server. Perangkat pengirim dan penerima tidak dapat dilindungi Nylzo.',
-  'limits.you': 'Anda',
-  'limits.server': 'Dalam perjalanan dan di server',
-  'limits.recipient': 'Penerima',
-  'limits.outside': 'di luar kendali kami',
-  'limits.ours': 'kami lindungi',
-  'limits.save.title': 'Penerima dapat menyimpan pesan',
-  'limits.save.note': 'Dengan menyalin atau memotretnya. Kirim hanya kepada orang yang Anda percayai.',
-  'limits.link.title': 'Siapa pun yang pertama memegang tautan bisa membukanya',
-  'limits.link.note':
-    'Karena itu, lindungi pesan sensitif dengan kata sandi dan kirim kata sandinya melalui saluran lain.',
-  'limits.server.title': 'Siapa pun yang mengendalikan server dapat mengubah situs web ini',
-  'limits.server.note':
-    'Ia dapat mengirimkan halaman yang membocorkan pesan kepada orang tertentu, dan browser belum bisa mendeteksinya. Kirim dan baca pesan yang harus tetap aman bahkan dalam situasi itu melalui aplikasi terverifikasi.',
-  'limits.server.link': 'Aplikasi terverifikasi',
-  'limits.abuse.title': 'Bukan untuk penipuan atau malware',
-  'limits.abuse.note': 'Juga bukan untuk konten ilegal lainnya.',
-  'limits.liability':
-    'Nylzo gratis dan tanpa jaminan. Anda menggunakannya secara sukarela, dan kami tidak menjanjikan bahwa Nylzo akan selalu tersedia, bebas dari kesalahan, atau tahan terhadap setiap serangan. Isi pesan menjadi tanggung jawab orang yang mengirimnya. Selengkapnya di {link}.',
 
   'about.eyebrow': 'Siapa di balik Nylzo',
-  'about.title': 'Proyek terbuka dari satu pengembang',
+  'about.title': 'Proyek open source independen dari Ceko',
   'about.text':
-    'Nylzo dikembangkan dan dijalankan oleh satu pengembang dari Ceko di waktu luangnya. Nylzo dibuat agar kata sandi dan kunci tidak tertinggal di chat dan email. Gratis, tanpa iklan, dan tanpa investor.',
+    'Nylzo dikembangkan dan dijalankan oleh seorang pengembang dari Ceko. Nylzo dibuat agar kata sandi dan kunci tidak tertinggal di chat dan email. Gratis, tanpa iklan, dan tanpa investor.',
   'about.tools':
-    'Dalam pengembangan, alat AI terutama dipakai untuk memeriksa keamanan kode. Setiap perubahan juga diperiksa oleh pengujian otomatis dan alat keamanan.',
+    'Setiap perubahan diperiksa oleh pengujian otomatis, analisis statis, dan alat keamanan. Kodenya juga rutin melalui pemeriksaan keamanan dengan agen AI.',
   'about.running.title': 'Biaya operasional',
   'about.running.text': 'Gratis. Biaya ditanggung pembuatnya, tanpa iklan dan tanpa penjualan data.',
   'about.server.title': 'Server',
-  'about.server.text': 'nylzo.com berjalan di Uni Eropa, tepatnya di Finlandia, di server Hetzner.',
+  'about.server.text': 'nylzo.com berjalan di Uni Eropa, di pusat data Hetzner di Finlandia.',
   'about.contact.title': 'Kontak',
   'about.contact.text': 'Tulis bug dan ide di Issues, laporkan kerentanan secara privat melalui Security Advisories.',
   'about.contact.link': 'Issues di GitHub',
@@ -868,7 +917,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'Ya, dengan menyalin atau memotretnya. Kirim pesan hanya kepada orang yang Anda percayai.',
   'faq.operator.question': 'Bisakah operator membaca pesan?',
   'faq.operator.answer':
-    'Tidak dari data di server, karena operator tidak memiliki kuncinya. Namun, siapa pun yang mengendalikan server dapat mengubah situs web ini. Kirim pesan yang harus tetap aman bahkan dalam situasi seperti itu melalui aplikasi terverifikasi.',
+    'Tidak dari data di server: server hanya menerima data terenkripsi dan tidak pernah melihat kunci di tautan. Selain itu, setiap 30\u{A0}menit kami membandingkan kode situs dengan rilis yang ditandatangani, dan jika ada perbedaan, layanan otomatis berhenti. Data yang paling sensitif bisa Anda kirim melalui aplikasi terverifikasi, yang sama sekali tidak memuat kode dari server.',
   'faq.opened.question': 'Apakah saya akan tahu jika pesan sudah dibuka?',
   'faq.opened.answer':
     'Ya, jika Anda memantaunya di Terkirim. Di sana Anda akan melihat kapan pesan pertama kali dibuka, dan Anda bisa membatalkannya.',
@@ -877,10 +926,10 @@ export const messages: Catalog = {
     'Untuk pesan yang hanya bisa dibuka sekali, orang itulah yang melihatnya, dan penerima tidak lagi. Penerima akan menyadarinya, karena alih-alih pesan, ia melihat bahwa pesan sudah dibuka. Karena itu, lindungi hal yang sensitif dengan kata sandi.',
   'faq.free.question': 'Mengapa Nylzo gratis?',
   'faq.free.answer':
-    'Nylzo adalah proyek terbuka tanpa iklan dan tanpa fitur berbayar. Biaya operasionalnya ditanggung pembuatnya. Kami tidak mengumpulkan apa pun tentang Anda, jadi tidak ada yang bisa kami jual.',
-  'faq.audit.question': 'Apakah Nylzo sudah lolos audit keamanan?',
-  'faq.audit.answer':
-    'Audit independen belum. Kodenya terbuka, keamanannya diperiksa secara rutin oleh alat AI, dan setiap perubahan diperiksa oleh pengujian otomatis. Hasil pemeriksaannya ada di halaman Transparansi.',
+    'Nylzo adalah proyek terbuka tanpa iklan dan tanpa fitur berbayar. Biaya operasionalnya ditanggung pembuatnya. Kami tidak menjual data tentang pengunjung. Kunjungan ke halaman utama hanya kami ukur sebagai angka total, agar kami tahu kapan kapasitas server perlu ditambah.',
+  'faq.verify.question': 'Bagaimana saya bisa memeriksa bahwa Nylzo melakukan apa yang dijanjikannya?',
+  'faq.verify.answer':
+    'Kode, spesifikasi protokol, dan vektor uji terbuka untuk umum. Setiap perubahan diperiksa oleh pengujian protokol, analisis statis, pemeriksaan dependensi, dan pengujian data dari server yang dicuri. Rilis ditandatangani dan dapat direproduksi. Hasil pemeriksaannya ada di halaman Transparansi.',
   'cta.title': 'Punya sesuatu yang tidak seharusnya ada di chat?',
   'cta.text':
     'Kata sandi di chat tetap tersimpan di riwayat sampai seseorang menghapusnya. Pesan yang dikirim lewat Nylzo akan dihapus setelah dibuka.',

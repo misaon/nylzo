@@ -15,8 +15,8 @@ Harassment, discrimination, threats, intimidation, sexualized attention, persona
 
 ## Reporting and enforcement
 
-Report conduct concerns privately to the project maintainer, Ondřej Mišák, at [email@ondrejmisak.cz](mailto:email@ondrejmisak.cz). Include links and context where possible; do not publish another person's private information in a public issue. Security vulnerabilities should use the separate process in [SECURITY.md](SECURITY.md).
+Report conduct concerns with GitHub's **Report content** option on the comment, issue, discussion or pull request in question. Include links and context where possible; do not publish another person's private information in a public issue. Security vulnerabilities should use the separate process in [SECURITY.md](SECURITY.md).
 
 The maintainer reviews reports, respects the privacy of the people involved, and shares information only as needed to investigate and respond. Depending on severity and repetition, moderation may include a request to change behavior, removal of content, a warning, a temporary restriction, or a permanent ban. Serious threats or privacy violations can result in an immediate ban.
 
-A person subject to a moderation decision may appeal privately to the same contact, explaining what should be reconsidered. Reports and appeals are considered in context; good-faith reporting must not lead to retaliation.
+A person subject to a moderation decision may appeal in the thread where the decision was announced, explaining what should be reconsidered. Reports and appeals are considered in context; good-faith reporting must not lead to retaliation.
