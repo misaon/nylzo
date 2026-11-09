@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.10.0](https://github.com/misaon/nylzo/compare/v0.9.0...v0.10.0) (2026-11-09)
+
+
+### Fixes
+
+* **deploy:** let search engine crawlers load public pages while messages stay post-quantum ([#289](https://github.com/misaon/nylzo/issues/289)) ([637f487](https://github.com/misaon/nylzo/commit/637f487629f51be1fbe9d8fa50731c7f39ac7db1))
+* **deploy:** start the IPv6 unit on running hosts and quiet the docker CLI ([#266](https://github.com/misaon/nylzo/issues/266)) ([c668766](https://github.com/misaon/nylzo/commit/c66876626b108aa5a3378744bae5200cc7e25948))
+* **deps:** let the guard pass mise lock variants that repeat a verified asset ([#268](https://github.com/misaon/nylzo/issues/268)) ([0fd1f65](https://github.com/misaon/nylzo/commit/0fd1f65083c2b8a80bf24d143bce018cfe1546b5))
+* **release:** leave the release commit out of its own release notes ([#274](https://github.com/misaon/nylzo/issues/274)) ([8fc20e6](https://github.com/misaon/nylzo/commit/8fc20e65e3ed51a5ba8800ed4dafcdfd2c77a804))
+* **release:** scan the release archives so Grype matches Go code by symbol ([#270](https://github.com/misaon/nylzo/issues/270)) ([3efcd8f](https://github.com/misaon/nylzo/commit/3efcd8f51e59aad1744f5649383a9f634a1998ec))
+
+
+### Documentation
+
+* correct the README and Wiki facts and publish every Wiki page ([#271](https://github.com/misaon/nylzo/issues/271)) ([7dd84a0](https://github.com/misaon/nylzo/commit/7dd84a027b5c8e248b9ecba3a05119eb3e595207))
+
+
+### Refactoring
+
+* **deploy:** let OpenTofu enforce its pinned version and drop the duplicate pins ([#278](https://github.com/misaon/nylzo/issues/278)) ([2d40df3](https://github.com/misaon/nylzo/commit/2d40df3d57ca682b2e07a9315525088e8a9ca6b9))
+* remove dead code and configuration the audit found ([#272](https://github.com/misaon/nylzo/issues/272)) ([cfc2092](https://github.com/misaon/nylzo/commit/cfc20924d0a722de591e3de557485d592279bbdc))
+* simplify repository tools and configs, fix two fail-open checks ([#290](https://github.com/misaon/nylzo/issues/290)) ([1207acf](https://github.com/misaon/nylzo/commit/1207acf51a1529e6e2a161ebf8459b33de62a5ef))
+
+
+### CI
+
+* let Scorecard see the vulnerabilities the SCA policy already assessed ([#273](https://github.com/misaon/nylzo/issues/273)) ([b12be93](https://github.com/misaon/nylzo/commit/b12be93cc040a19369442835243c6a6dc2e119fa))
+* publish Scorecard results and dispatch workflows with API 2026-03-10 ([#269](https://github.com/misaon/nylzo/issues/269)) ([1115195](https://github.com/misaon/nylzo/commit/111519550557bbef7742f882076c890d2630bb71))
+* **release:** attach build provenance as an in-toto release asset ([#275](https://github.com/misaon/nylzo/issues/275)) ([963c30e](https://github.com/misaon/nylzo/commit/963c30e54a74479d2e708facd39dca54c5ec8e9f))
+* simplify the workflows without changing what they run ([#276](https://github.com/misaon/nylzo/issues/276)) ([952f4bc](https://github.com/misaon/nylzo/commit/952f4bc79d5c5f31d48f3cc0e04238dc167a1c26))
+
+
+### Tests
+
+* **store:** let raw test connections wait for the background scrub ([#277](https://github.com/misaon/nylzo/issues/277)) ([28dee8a](https://github.com/misaon/nylzo/commit/28dee8a0962693eda5f4b659cf7ca26fc8b2f210))
+
 ## [0.9.0](https://github.com/misaon/nylzo/compare/v0.8.0...v0.9.0) (2026-11-08)
 
 
