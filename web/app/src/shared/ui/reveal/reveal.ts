@@ -1,16 +1,25 @@
 import type { Attachment } from 'svelte/attachments';
 
 let observer: IntersectionObserver | undefined;
+const measured = new WeakSet<Element>();
 
+// The first callback measures every element in one batch, so attaching forces no layout per element.
 function revealObserver(): IntersectionObserver {
   observer ??= new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
         const element = entry.target;
-        if (
-          element instanceof HTMLElement &&
-          entry.intersectionRect.height >= Math.min(entry.boundingClientRect.height * 0.25, 200)
-        ) {
+        if (!(element instanceof HTMLElement)) {
+          continue;
+        }
+        if (!measured.has(element)) {
+          measured.add(element);
+          if (entry.isIntersecting) {
+            observer?.unobserve(element);
+          } else {
+            element.dataset['reveal'] = 'pending';
+          }
+        } else if (entry.intersectionRect.height >= Math.min(entry.boundingClientRect.height * 0.25, 200)) {
           element.dataset['reveal'] = 'in';
           observer?.unobserve(element);
         }
@@ -25,14 +34,10 @@ export const reveal: Attachment<HTMLElement> = (element) => {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
     return;
   }
-  const box = element.getBoundingClientRect();
-  if (box.top < innerHeight && box.bottom > 0) {
-    return;
-  }
-  element.dataset['reveal'] = 'pending';
   revealObserver().observe(element);
   return () => {
     observer?.unobserve(element);
+    measured.delete(element);
     delete element.dataset['reveal'];
   };
 };
