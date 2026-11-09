@@ -42,7 +42,7 @@ runs:
     - uses: jdx/mise-action@b44d12e7d0d8ee7461bb893e1b1993500433185b # v5.2.7
       with:
         # renovate: datasource=github-releases depName=jdx/mise
-        version: 2026.11.2
+        version: 2026.11.3
         install_args: ${{ inputs.tools }}
         cache: ${{ inputs.cache != 'none' }}
         cache_save: ${{ inputs.cache == 'auto' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
