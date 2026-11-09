@@ -7,7 +7,7 @@ toolchain go1.27.3
 require (
 	github.com/caddyserver/caddy/v2 v2.11.7
 	github.com/misaon/nylzo v0.0.0
-	github.com/quic-go/quic-go v0.63.0
+	github.com/quic-go/quic-go v0.65.0
 )
 
 replace github.com/misaon/nylzo => ../..
