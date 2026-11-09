@@ -431,8 +431,9 @@ jobs:
           retention-days: 14
       - name: mise pins match go.mod, Bun packageManager and GoReleaser, and CI runs every mise check
         run: |
-          test "go$(mise current go)" = "$(awk '$1 == "toolchain" { print $2 }' go.mod)"
-          test "go$(mise current go)" = "$(awk '$1 == "toolchain" { print $2 }' deploy/caddy/go.mod)"
+          go_toolchain() { awk '$1 == "go" { go = "go" $2 } $1 == "toolchain" { toolchain = $2 } END { print (toolchain != "" ? toolchain : go) }' "$1"; }
+          test "go$(mise current go)" = "$(go_toolchain go.mod)"
+          test "go$(mise current go)" = "$(go_toolchain deploy/caddy/go.mod)"
           test "bun@$(mise current bun)" = "$(jq -r .packageManager web/package.json)"
           for workflow in .github/workflows/ci.yml .github/workflows/release.yml; do
             versions=$(yq -r '[.jobs[].steps[]? | select(.uses // "" | test("^goreleaser/goreleaser-action@")) | .with.version // "missing"] | .[]' "$workflow")

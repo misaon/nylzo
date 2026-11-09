@@ -15,7 +15,7 @@ test('the maintenance branch joins main and the fast path follows its limits, so
   const rules = settings['packageRules'] as { enabled: boolean; matchBaseBranches?: string[] }[];
   assert.deepEqual(
     rules.map((rule) => rule.enabled),
-    [false, false, true],
+    [false, true],
   );
   assert.deepEqual(rules[0]?.matchBaseBranches, [String.raw`/^release\/v/`]);
   assert.deepEqual(rules.at(-1), {
@@ -36,5 +36,5 @@ test('without a maintenance branch Renovate processes only main', () => {
     miseVersion: '2026.10.19',
   });
   assert.deepEqual(settings['force'], { baseBranchPatterns: ['main'] });
-  assert.equal((settings['packageRules'] as unknown[]).length, 2);
+  assert.equal((settings['packageRules'] as unknown[]).length, 1);
 });

@@ -54,25 +54,44 @@ export const runtimeTest = pinRule([
   },
 ]);
 
-const goDirectives = [
-  { block: '', name: 'go', pattern: /^go (?<version>\d+\.\d+(?:\.\d+)?)$/du },
-  { block: '', name: 'toolchain', pattern: /^toolchain go(?<version>\d+\.\d+\.\d+)$/du },
+const goDirective = /^go (?<version>\d+\.\d+(?:\.\d+)?)$/du;
+const toolchainDirective = /^toolchain go(?<version>\d+\.\d+\.\d+)$/u;
+const requirements = [
   {
     block: '',
-    name: 'module',
     pattern: /^require (?<module>[^\s()]+) (?<version>v\d+\.\d+\.\d+(?:[-+][\w+.-]*)?)(?: \/\/ indirect)?$/du,
   },
   {
     block: 'require',
-    name: 'module',
     pattern: /^\t(?<module>[^\s()]+) (?<version>v\d+\.\d+\.\d+(?:[-+][\w+.-]*)?)(?: \/\/ indirect)?$/du,
   },
 ];
 
+function goRelease(version: string): string {
+  return /^\d+\.\d+$/u.test(version) ? `${version}.0` : version;
+}
+
+function goLanguage(release: string): string {
+  return release.split('.').slice(0, 2).join('.');
+}
+
+// go mod tidy drops a toolchain line equal to the go line; Go then runs the release the go line names.
+function withoutToolchain(lines: readonly string[]): { lines: readonly string[]; toolchain: string | undefined } {
+  const index = lines.findIndex((line) => toolchainDirective.test(line));
+  const toolchain = toolchainDirective.exec(lines[index] ?? '')?.groups?.['version'];
+  if (toolchain === undefined) {
+    return { lines, toolchain };
+  }
+  const blankOnBothSides = lines[index - 1] === '' && lines[index + 1] === '';
+  return { lines: lines.toSpliced(index, blankOnBothSides ? 2 : 1), toolchain };
+}
+
 function goModuleSnapshot(text: string): Snapshot {
   const values: DependencyValue[] = [];
+  const { lines, toolchain } = withoutToolchain(text.split('\n'));
   let block = '';
-  const lines = text.split('\n').map((line) => {
+  let goVersion: string | undefined;
+  const template = lines.map((line) => {
     const opening = /^(?<keyword>[a-z]+) \($/u.exec(line);
     if (opening) {
       block = opening.groups?.['keyword'] ?? '';
@@ -82,17 +101,32 @@ function goModuleSnapshot(text: string): Snapshot {
       block = '';
       return line;
     }
-    for (const directive of goDirectives) {
-      const match = directive.block === block ? directive.pattern.exec(line) : null;
+    const go = block === '' ? goDirective.exec(line) : null;
+    const goSpan = go?.indices?.groups?.['version'];
+    if (goSpan) {
+      goVersion = goRelease(line.slice(...goSpan));
+      values.push(
+        { kind: 'fixed', name: 'go language', value: goLanguage(goVersion) },
+        { kind: 'version', name: 'go', value: goVersion },
+      );
+      return line.slice(0, goSpan[0]) + placeholder('version') + line.slice(goSpan[1]);
+    }
+    for (const requirement of requirements) {
+      const match = requirement.block === block ? requirement.pattern.exec(line) : null;
       const span = match?.indices?.groups?.['version'];
-      if (match && span) {
-        values.push({ kind: 'version', name: match.groups?.['module'] ?? directive.name, value: line.slice(...span) });
+      const module = match?.groups?.['module'];
+      if (span && module !== undefined) {
+        values.push({ kind: 'version', name: module, value: line.slice(...span) });
         return line.slice(0, span[0]) + placeholder('version') + line.slice(span[1]);
       }
     }
     return line;
   });
-  return { template: lines.join('\n'), values };
+  const effectiveToolchain = toolchain ?? goVersion;
+  if (effectiveToolchain !== undefined) {
+    values.push({ kind: 'version', name: 'toolchain', value: effectiveToolchain });
+  }
+  return { template: template.join('\n'), values };
 }
 
 export const goModule: FileRule = (path, before, after) =>

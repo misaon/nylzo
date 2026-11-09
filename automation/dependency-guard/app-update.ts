@@ -1,7 +1,7 @@
 import { repositoryName } from '../github/client.ts';
 import { isBot } from '../github/identity.ts';
 import type { BotIdentity } from '../github/identity.ts';
-import { compareVersions, isSafeUpgrade, stableVersion } from '../versions/semantic-version.ts';
+import { compareVersions, stableVersion } from '../versions/semantic-version.ts';
 import { binaryAssetsPath, hostToolchainPath, ruleFor } from './rules/dependency-files.ts';
 import { mergeReviews } from './rules/file-review.ts';
 import type { FileReview, VersionUpdate } from './rules/file-review.ts';
@@ -28,15 +28,10 @@ export function upgradeProblem(update: VersionUpdate): string | undefined {
   if (before === undefined || after === undefined) {
     return `${change} is not a stable semantic version`;
   }
-  if (isSafeUpgrade(before, after)) {
-    return undefined;
-  }
   if (compareVersions(after, before) <= 0) {
     return `${change} is not newer`;
   }
-  return after.major === before.major
-    ? `${change} changes the minor version below 1.0`
-    : `${change} changes the major version`;
+  return after.major === before.major ? undefined : `${change} changes the major version`;
 }
 
 function madeByApp(commit: Commit, bot: BotIdentity): boolean {
