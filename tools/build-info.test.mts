@@ -31,8 +31,8 @@ test("release, snapshot, dirty, and source-archive metadata remain distinguishab
     writeFileSync(join(directory, "source.txt"), "modified\n");
     assert.equal(buildInfo(directory).version, `0.0.0-dev.g${commit.slice(0, 12)}.dirty`);
     assert.equal(buildInfo(directory).dirty, true);
-    for (const invalid of ["01.2.3", "1.2.3-01", "1.2.3-..", "1.2.3\nextra", "$(command)", ""]) {
-      if (invalid !== "") assert.throws(() => buildInfo(directory, invalid), /semantic version/);
+    for (const invalid of ["01.2.3", "1.2.3-01", "1.2.3-..", "1.2.3\nextra", "$(command)"]) {
+      assert.throws(() => buildInfo(directory, invalid), /semantic version/);
     }
   } finally {
     rmSync(directory, { recursive: true, force: true });

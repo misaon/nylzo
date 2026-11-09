@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { repository } from '../github/client.ts';
+import { repository, unlessMissing } from '../github/client.ts';
 import type { GitHubClient } from '../github/client.ts';
 import { peelTag } from '../github/tags.ts';
 import type { Commit, GuardSource, PullRequest, Review, Tree, TreeEntry } from './source.ts';
@@ -37,21 +37,6 @@ const releaseAsset = z.object({ digest: z.string().nullable(), name: z.string() 
 const releaseSchema = z.object({ assets: z.array(releaseAsset) });
 
 const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
-
-function isMissing(error: unknown): boolean {
-  return error instanceof Error && 'status' in error && error.status === 404;
-}
-
-async function unlessMissing<T>(request: Promise<T>): Promise<T | undefined> {
-  try {
-    return await request;
-  } catch (error) {
-    if (isMissing(error)) {
-      return undefined;
-    }
-    throw error;
-  }
-}
 
 function upstream(fullName: string): { owner: string; repo: string } {
   const [owner = '', repository_ = '', ...rest] = fullName.split('/');

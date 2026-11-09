@@ -32,6 +32,17 @@ export function createGitHubClient(token: string): GitHubClient {
   return client;
 }
 
+export async function unlessMissing<T>(request: Promise<T>): Promise<T | undefined> {
+  try {
+    return await request;
+  } catch (error) {
+    if (error instanceof Error && 'status' in error && error.status === 404) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
 function isServerError(error: unknown): boolean {
   return error instanceof Error && 'status' in error && typeof error.status === 'number' && error.status >= 500;
 }

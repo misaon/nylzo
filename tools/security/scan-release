@@ -21,6 +21,11 @@ scan() {
   local filename="$1" code=0
   shift
   local report="$report_directory/$filename"
+  if ! rm -f -- "$report"; then
+    status=$broken
+    jq -n --arg report "$filename" '{report:$report,exitCode:null,error:"the earlier report could not be removed"}' >> "$statuses"
+    return
+  fi
   grype "$@" --fail-on high --output json --file "$report" || code=$?
   if [[ "$code" != 0 && "$code" != 2 ]] || ! is_grype_report "$report"; then
     status=$broken
@@ -39,6 +44,7 @@ image="$1"
 caddy_image="$2"
 archive_directory="$3"
 report_directory="$4"
+rm -f -- "$report_directory/scan-status.json" || abort 'Cannot remove the earlier scan status.'
 [[ "$image" =~ ^ghcr\.io/misaon/nylzo@sha256:[0-9a-f]{64}$ ]] || abort 'Expected the canonical image by SHA-256 digest.'
 [[ "$caddy_image" =~ ^ghcr\.io/misaon/nylzo-caddy@sha256:[0-9a-f]{64}$ ]] || abort 'Expected the canonical Caddy image by SHA-256 digest.'
 mkdir -p "$report_directory"
@@ -68,9 +74,6 @@ done
 
 reports=("$report_directory"/*.grype.json)
 [[ "${#reports[@]}" = "$report_count" ]] || status=$broken
-for report in "${reports[@]}"; do
-  is_grype_report "$report" || status=$broken
-done
 jq -s --argjson expected "$report_count" '{format:1,complete:(length == $expected),scans:.}' "$statuses" \
   > "$report_directory/scan-status.json"
 exit "$status"

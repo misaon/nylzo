@@ -10,8 +10,8 @@ const automationApp = z.object({
   DEPENDENCY_BOT_ID: z.coerce.number().int().positive(),
 });
 
-export function automationBot(environment: Readonly<NodeJS.ProcessEnv> = process.env): BotIdentity {
-  const { DEPENDENCY_APP_SLUG, DEPENDENCY_BOT_ID } = automationApp.parse(environment);
+export function automationBot(): BotIdentity {
+  const { DEPENDENCY_APP_SLUG, DEPENDENCY_BOT_ID } = automationApp.parse(process.env);
   return { id: DEPENDENCY_BOT_ID, login: `${DEPENDENCY_APP_SLUG}[bot]` };
 }
 

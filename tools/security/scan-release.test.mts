@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -25,13 +25,13 @@ test("release scanning covers every archive and image architecture and fails clo
     const log = join(directory, "calls");
     writeFileSync(
       executable,
-      '#!/bin/sh\nprintf "%s\\n" "$*" >> "$SCAN_LOG"\ntest "$GRYPE_DB_VALIDATE_AGE" = true || exit 9\ntest "$GRYPE_DB_MAX_ALLOWED_BUILT_AGE" = 48h || exit 9\nwhile [ "$#" -gt 0 ]; do\n  if [ "$1" = --file ]; then shift; printf \'{"matches":[],"descriptor":{"name":"grype"}}\' > "$1"; fi\n  shift\ndone\nexit "${SCAN_EXIT:-0}"\n',
+      '#!/bin/sh\nprintf "%s\\n" "$*" >> "$SCAN_LOG"\ntest "$GRYPE_DB_VALIDATE_AGE" = true || exit 9\ntest "$GRYPE_DB_MAX_ALLOWED_BUILT_AGE" = 48h || exit 9\nwhile [ "$#" -gt 0 ]; do\n  if [ "$1" = --file ]; then shift; test -n "$SKIP_REPORT" || printf \'{"matches":[],"descriptor":{"name":"grype"}}\' > "$1"; fi\n  shift\ndone\nexit "${SCAN_EXIT:-0}"\n',
     );
     chmodSync(executable, 0o700);
-    const scan = (reference = image, exit = "0", caddyReference = caddy) =>
+    const scan = (reference = image, exit = "0", caddyReference = caddy, skipReport = "") =>
       spawnSync("bash", ["tools/security/scan-release", reference, caddyReference, directory, join(directory, "reports")], {
         encoding: "utf8",
-        env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, SCAN_LOG: log, SCAN_EXIT: exit },
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, SCAN_LOG: log, SCAN_EXIT: exit, SKIP_REPORT: skipReport },
       });
     assert.equal(scan().status, 0);
     const calls = readFileSync(log, "utf8").trim().split("\n");
@@ -41,10 +41,12 @@ test("release scanning covers every archive and image architecture and fails clo
       for (const reference of [image, caddy])
         assert.ok(calls.includes(`registry:${reference} --platform linux/${architecture} --fail-on high --output json --file ${join(directory, "reports", `${reference === caddy ? "caddy-" : ""}image-linux-${architecture}.grype.json`)}`));
     assert.ok(calls.every((call) => call.includes("--fail-on high")));
+    assert.notEqual(scan(image, "0", caddy, "1").status, 0, "A report left by an earlier scan cannot stand in for one grype did not write");
     assert.notEqual(scan(image, "2").status, 0);
     assert.equal(scan(image, "1").status, 2, "Operational failures cannot be mistaken for detected vulnerabilities, even with valid JSON reports");
     const invalid = scan("ghcr.io/other/project:latest");
     assert.notEqual(invalid.status, 0, invalid.stderr);
+    assert.ok(!existsSync(join(directory, "reports", "scan-status.json")), "An aborted run cannot leave the previous scan status behind");
     assert.notEqual(scan("ghcr.io/misaon/nylzo:latest").status, 0);
     assert.notEqual(scan(image, "0", `caddy@sha256:${"b".repeat(64)}`).status, 0);
     assert.notEqual(scan(image, "0", image).status, 0);
