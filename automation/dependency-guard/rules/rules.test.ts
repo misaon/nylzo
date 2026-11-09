@@ -755,6 +755,29 @@ const cases: readonly Case[] = [
     path: 'deploy/caddy/go.mod',
   },
   {
+    after: caddyModule
+      .replace('go 1.27\n\ntoolchain go1.27.3\n', 'go 1.27.3\n')
+      .replace('caddy/v2 v2.11.7', 'caddy/v2 v2.11.9'),
+    before: caddyModule,
+    expected: 'safe',
+    name: 'Caddy module whose go line reaches the toolchain, so go mod tidy drops the toolchain line',
+    path: 'deploy/caddy/go.mod',
+  },
+  {
+    after: caddyModule.replace('go 1.27\n\ntoolchain go1.27.3\n', 'go 1.27.1\n'),
+    before: caddyModule,
+    expected: 'unsafe',
+    name: 'Caddy module that drops the toolchain line for an older Go',
+    path: 'deploy/caddy/go.mod',
+  },
+  {
+    after: caddyModule.replace('go 1.27\n\ntoolchain go1.27.3\n', 'go 1.28.0\n'),
+    before: caddyModule,
+    expected: 'rejected',
+    name: 'Caddy module that raises the Go language version',
+    path: 'deploy/caddy/go.mod',
+  },
+  {
     after: caddyModule.replace('v3.0.6-0.20261030183946-0e502b87c7aa', 'v3.0.6'),
     before: caddyModule,
     expected: 'unsafe',

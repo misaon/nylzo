@@ -299,6 +299,17 @@
       "enabled": false
     },
     {
+      "description": "A go line naming a full release stands in for a toolchain line that go mod tidy dropped, so it follows each Go release.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchDepTypes": [
+        "golang"
+      ],
+      "matchCurrentValue": "/^\\d+\\.\\d+\\.\\d+$/",
+      "rangeStrategy": "bump"
+    },
+    {
       "description": "Custom managers update these CLI inputs together with their verified binary checksums.",
       "matchManagers": [
         "github-actions"
@@ -375,12 +386,13 @@
       "automerge": true
     },
     {
-      "description": "Below 1.0 a minor can break; Go versions carry a v prefix. Treat them like majors.",
+      "description": "Below 1.0 a minor can break; Go versions carry a v prefix. Each area collects them in one draft for review, on its own branch next to the automatic group.",
       "matchCurrentVersion": "/^v?0\\./",
       "matchUpdateTypes": [
         "minor"
       ],
-      "groupName": null,
+      "additionalBranchPrefix": "below-1-",
+      "commitMessageSuffix": "below 1.0",
       "automerge": false,
       "draftPR": true,
       "rebaseWhen": "conflicted",
@@ -389,9 +401,10 @@
       ]
     },
     {
-      "description": "Breaking upgrades need a planned migration and a code owner approval.",
+      "description": "Breaking upgrades and package replacements need a planned migration and a code owner approval.",
       "matchUpdateTypes": [
-        "major"
+        "major",
+        "replacement"
       ],
       "groupName": null,
       "automerge": false,
