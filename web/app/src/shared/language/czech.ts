@@ -61,8 +61,8 @@ export const czech = {
   'agents.lead':
     'Váš agent pošle nebo přijme heslo, klíč či soubor nástrojem nylzo. Skill agenta vede k\u{A0}tomu, aby tajemství nezůstalo v\u{A0}chatu, v\u{A0}záznamu konverzace ani v\u{A0}parametrech příkazů.',
   'agents.install.title': 'Nainstalujte nástroj nylzo',
-  'agents.install.text': 'Pro Windows, Linux i\u{A0}macOS. Před spuštěním ověřte podpis vydání.',
-  'agents.install.link': 'Stáhnout',
+  'agents.install.text': 'Přes Homebrew na macOS a\u{A0}Linuxu nebo přes Scoop na Windows.',
+  'agents.install.link': 'Návod k\u{A0}instalaci',
   'agents.skill.title': 'Přidejte skill nylzo',
   'agents.skill.text': 'Ve formátu Agent Skills pro agenty, kteří skilly podporují.',
   'agents.skill.link': 'Skill na GitHubu',

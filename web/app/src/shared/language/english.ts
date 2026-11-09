@@ -67,8 +67,8 @@ export const english: Record<MessageKey, string> = {
   'agents.lead':
     'Your agent sends or receives a password, a key or a file with the nylzo tool. The agent skill keeps the secret out of the chat, the conversation transcript and command arguments.',
   'agents.install.title': 'Install the nylzo tool',
-  'agents.install.text': 'For Windows, Linux and macOS. Verify the release signature before you run it.',
-  'agents.install.link': 'Download',
+  'agents.install.text': 'With Homebrew on macOS and Linux, or with Scoop on Windows.',
+  'agents.install.link': 'Installation guide',
   'agents.skill.title': 'Add the nylzo skill',
   'agents.skill.text': 'In the Agent Skills format, for agents that support skills.',
   'agents.skill.link': 'Skill on GitHub',
