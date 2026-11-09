@@ -169,7 +169,7 @@ jobs:
       - uses: anchore/sbom-action/download-syft@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
         with:
           # renovate: datasource=github-releases depName=anchore/syft
-          syft-version: v1.57.0
+          syft-version: v1.57.1
       - name: The base image is the one the distroless project signed
         run: |
           test "$(yq '.kos | length' .goreleaser.yaml)" = 2
