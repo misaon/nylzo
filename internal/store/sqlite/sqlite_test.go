@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -53,9 +54,11 @@ func newBlobs(t *testing.T, directory string) *disk.Blobs {
 	return blobs
 }
 
-func openRaw(t *testing.T, path string) *sql.DB {
+// openRaw waits for the write lock that the store takes in the background to scrub the log after a write.
+func openRaw(t *testing.T, path string, parameters ...string) *sql.DB {
 	t.Helper()
-	database, err := sql.Open("sqlite", "file:"+path)
+	query := strings.Join(append([]string{"_busy_timeout=5000"}, parameters...), "&")
+	database, err := sql.Open("sqlite", "file:"+path+"?"+query)
 	if err != nil {
 		t.Fatal(err)
 	}
