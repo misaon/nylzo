@@ -3,14 +3,13 @@
 
   interface Props {
     readonly class?: ClassValue;
-    readonly animated?: boolean;
   }
 
-  const { class: className = 'size-4', animated = false }: Props = $props();
+  const { class: className = 'size-4' }: Props = $props();
 </script>
 
 <svg
-  class={[className, animated && 'transition-transform motion-safe:action:scale-110']}
+  class={[className, 'transition-transform motion-safe:action:scale-110']}
   viewBox="0 0 24 24"
   fill="currentColor"
   aria-hidden="true"

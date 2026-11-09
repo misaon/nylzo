@@ -7,12 +7,10 @@
     readonly label: string;
     readonly icon: IconName;
     readonly progress: number;
-    readonly fill?: number;
     readonly shown: boolean;
-    readonly announced?: boolean;
   }
 
-  const { label, icon, progress, fill = progress, shown, announced = false }: Props = $props();
+  const { label, icon, progress, shown }: Props = $props();
   const translator = getTranslator();
   const format = $derived(new Intl.NumberFormat(translator.language, { style: 'percent', maximumFractionDigits: 0 }));
   const percent = $derived(format.format(progress));
@@ -24,9 +22,9 @@
     'relative flex h-11 items-center justify-between gap-4 overflow-hidden rounded-control bg-white/4 px-4 text-ui font-medium whitespace-nowrap text-ink shadow-rim ring-1 ring-white/12 transition-opacity duration-500 sm:min-w-44 md:h-9 md:px-3.5',
     shown ? 'opacity-100' : 'pointer-events-none opacity-0',
   ]}
-  aria-hidden={!announced || !shown}
+  aria-hidden={!shown}
 >
-  <progress class="absolute inset-0 h-full w-full progress-glow" max="1" value={fill} aria-hidden="true"></progress>
+  <progress class="absolute inset-0 h-full w-full progress-glow" max="1" value={progress} aria-hidden="true"></progress>
   <span
     class="absolute inset-y-0 left-0 w-1/3 animate-beam bg-linear-to-r from-transparent via-white/8 to-transparent"
     aria-hidden="true"

@@ -1,18 +1,13 @@
 <script lang="ts">
-  import type { ClassValue } from 'svelte/elements';
-
   import Icon from '../icon/Icon.svelte';
-  import type { IconName } from '../icon/icons.ts';
 
   interface Props {
     readonly label: string;
     readonly title: string;
     readonly text: string;
-    readonly icon?: IconName;
-    readonly class?: ClassValue | undefined;
   }
 
-  const { label, title, text, icon = 'alert', class: className }: Props = $props();
+  const { label, title, text }: Props = $props();
   const id = $props.id();
   let pinned = $state(false);
 </script>
@@ -28,12 +23,9 @@
       }
     }}
     onblur={() => (pinned = false)}
-    class={[
-      'inline-flex items-center gap-1.5 underline decoration-white/30 decoration-dotted underline-offset-4 transition hover:text-ink-soft max-sm:-my-3',
-      className,
-    ]}
+    class="inline-flex items-center gap-1.5 underline decoration-white/30 decoration-dotted underline-offset-4 transition hover:text-ink-soft max-sm:-my-3"
   >
-    <Icon name={icon} class="size-3.5 shrink-0" stroke={2} />
+    <Icon name="alert" class="size-3.5 shrink-0" stroke={2} />
     {label}
   </button>
   <span

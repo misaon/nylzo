@@ -9,13 +9,12 @@
     readonly to: IconName;
     readonly swapped: boolean;
     readonly size?: string;
-    readonly toStroke?: number;
     readonly toTone?: ClassValue;
     readonly class?: ClassValue;
     readonly animated?: boolean;
   }
 
-  const { from, to, swapped, size = 'size-4', toStroke, toTone, class: className, animated = false }: Props = $props();
+  const { from, to, swapped, size = 'size-4', toTone, class: className, animated = false }: Props = $props();
 </script>
 
 <span class={[className, 'stack place-items-center']}>
@@ -27,7 +26,6 @@
   <Icon
     name={to}
     {animated}
-    stroke={toStroke}
     class={[size, 'transition-[opacity,scale]', toTone, swapped ? 'scale-100 opacity-100' : 'scale-50 opacity-0']}
   />
 </span>

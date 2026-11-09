@@ -104,21 +104,6 @@
   }
 }
 
-@utility progress-cycle {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  &::-webkit-progress-bar {
-    background: transparent;
-  }
-  &::-webkit-progress-value {
-    background: currentColor;
-  }
-  &::-moz-progress-bar {
-    background: currentColor;
-  }
-}
-
 @layer components {
   dialog.confirm {
     margin: auto;

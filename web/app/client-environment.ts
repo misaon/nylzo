@@ -12,27 +12,7 @@ class FakeMediaQueryList extends EventTarget {
 
 class FakeNode extends EventTarget {}
 
-class FakeIntersectionObserver {
-  readonly #notify: (entries: readonly { readonly isIntersecting: boolean }[]) => void;
-
-  constructor(notify: (entries: readonly { readonly isIntersecting: boolean }[]) => void) {
-    this.#notify = notify;
-  }
-
-  observe(): void {
-    this.#notify([{ isIntersecting: true }]);
-  }
-
-  disconnect(): void {
-    // This synchronous observer fake owns no native observer to disconnect.
-  }
-}
-
-class FakeElement extends FakeNode {
-  matches(): boolean {
-    return false;
-  }
-}
+class FakeElement extends FakeNode {}
 
 export default {
   name: 'svelte-client',
@@ -50,7 +30,6 @@ export default {
       matchMedia,
       Node: FakeNode,
       Element: FakeElement,
-      IntersectionObserver: FakeIntersectionObserver,
     });
     return {
       teardown() {
@@ -58,7 +37,6 @@ export default {
         Reflect.deleteProperty(global, 'matchMedia');
         Reflect.deleteProperty(global, 'Node');
         Reflect.deleteProperty(global, 'Element');
-        Reflect.deleteProperty(global, 'IntersectionObserver');
       },
     };
   },

@@ -1,5 +1,5 @@
 import { KDF_NONE } from '@nylzo/core';
-import { flushSync, onDestroy, tick } from 'svelte';
+import { flushSync, onDestroy } from 'svelte';
 import { prefersReducedMotion } from 'svelte/motion';
 
 import type { Metadata } from '../../shared/api/api.ts';
@@ -14,7 +14,7 @@ import type { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
 import { randomText } from '../../shared/pipeline/random-text.ts';
-import { FocusTargets, keepFocus } from '../../shared/ui/focus/focus.ts';
+import { FocusTargets } from '../../shared/ui/focus/focus.ts';
 import type { IconName } from '../../shared/ui/icon/icons.ts';
 import { Flash } from '../../shared/ui/transition/flash.svelte.ts';
 import { noticeOf } from './read-notice.ts';
@@ -225,7 +225,7 @@ export class ReadPage {
   readonly askDelete = async (): Promise<void> => {
     this.burned = undefined;
     this.askingDelete = true;
-    await this.focus.focusAfterUpdate(() => 'keepMessage');
+    await this.focus.focusAfterUpdate('keepMessage');
   };
 
   readonly askDownload = async (event: MouseEvent, file: RevealedFile): Promise<void> => {
@@ -237,7 +237,7 @@ export class ReadPage {
       return;
     }
     this.confirmingDownload = true;
-    await this.focus.focusAfterUpdate(() => 'keepFile');
+    await this.focus.focusAfterUpdate('keepFile');
   };
 
   readonly burn = async (): Promise<void> => {
@@ -249,8 +249,7 @@ export class ReadPage {
     this.deleting = false;
     this.restDeleted ||= afterReveal && (outcome.outcome === 'deleted' || outcome.outcome === 'ended');
     this.burned = { outcome, afterReveal };
-    await tick();
-    keepFocus(afterReveal ? this.focus.get('revealedTitle') : this.focus.get('readTitle'));
+    await this.focus.keepFocusAfterUpdate(afterReveal ? 'revealedTitle' : 'readTitle');
   };
 
   readonly cancelDelete = async (): Promise<void> => {
@@ -263,7 +262,7 @@ export class ReadPage {
       return;
     }
     this.confirmingDownload = false;
-    await this.focus.focusAfterUpdate(() => 'download');
+    await this.focus.focusAfterUpdate('download');
   };
 
   readonly confirmDownload = async (event: MouseEvent, file: RevealedFile): Promise<void> => {
@@ -271,7 +270,7 @@ export class ReadPage {
       return;
     }
     this.#save(file);
-    await this.focus.focusAfterUpdate(() => 'download');
+    await this.focus.focusAfterUpdate('download');
   };
 
   readonly askCopy = async (): Promise<void> => {
@@ -290,8 +289,7 @@ export class ReadPage {
     await clearClipboard((state) => {
       this.clipboard = state;
     });
-    await tick();
-    keepFocus(this.focus.get('clipboard'));
+    await this.focus.keepFocusAfterUpdate('clipboard');
   };
 
   readonly copyText = async (): Promise<void> => {
@@ -498,7 +496,7 @@ export class ReadPage {
       return;
     }
     if (wasOpening && next.view === 'ready' && this.passphraseRequired) {
-      void this.focus.focusAfterUpdate(() => 'passphrase');
+      void this.focus.focusAfterUpdate('passphrase');
     }
   }
 
@@ -594,7 +592,7 @@ export class ReadPage {
         }
       }, REVEAL_TICK_MS);
     }
-    await this.focus.focusAfterUpdate(() => 'revealedTitle');
+    await this.focus.focusAfterUpdate('revealedTitle');
   }
 
   #startTimeline(): void {

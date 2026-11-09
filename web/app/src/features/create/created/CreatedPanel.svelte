@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
   import { fade, slide } from 'svelte/transition';
 
@@ -95,8 +94,7 @@
     await clearClipboard((state) => {
       clipboard = state;
     });
-    await tick();
-    keepFocus(focus.get('clipboard'));
+    await focus.keepFocusAfterUpdate('clipboard');
   }
 
   async function share() {

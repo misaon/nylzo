@@ -20,7 +20,7 @@ function durationParts(seconds: number): readonly [value: number, unit: Duration
 
 const CZECH_HOURS_WITH_VE = new Set([2, 3, 4, 12, 13, 14, 20, 21, 22, 23]);
 
-export function formatMoment(timestamp: string, language: Language): string {
+export function formatMoment(timestamp: number | string, language: Language): string {
   const moment = new Date(timestamp);
   if (language !== 'cs') {
     return new Intl.DateTimeFormat(language, {
