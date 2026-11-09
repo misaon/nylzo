@@ -33,9 +33,9 @@ export class FocusTargets<Target extends string> {
       };
     };
 
-  async focusAfterUpdate(target: Target): Promise<void> {
+  async focusAfterUpdate(target: Target | (() => Target)): Promise<void> {
     await tick();
-    this.focus(target);
+    this.focus(typeof target === 'function' ? target() : target);
   }
 
   async keepFocusAfterUpdate(fallback: Target): Promise<void> {

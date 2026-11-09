@@ -89,7 +89,7 @@
                   </span>
                   <span
                     class={[
-                      'relative mt-2 block h-[3px] w-full origin-left reveal-draw overflow-hidden rounded-full',
+                      'mt-2 block h-[3px] w-full origin-left reveal-draw rounded-full',
                       part.bar,
                       part.delays.bar,
                       active && part.glow,

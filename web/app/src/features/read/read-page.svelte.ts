@@ -254,7 +254,7 @@ export class ReadPage {
 
   readonly cancelDelete = async (): Promise<void> => {
     this.askingDelete = false;
-    await this.focus.focusAfterUpdate(this.revealed ? 'deleteRest' : 'deleteMessage');
+    await this.focus.focusAfterUpdate(() => (this.revealed ? 'deleteRest' : 'deleteMessage'));
   };
 
   readonly cancelDownload = async (event: MouseEvent): Promise<void> => {
