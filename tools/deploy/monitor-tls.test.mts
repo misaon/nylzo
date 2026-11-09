@@ -48,11 +48,11 @@ test("Caddy serves host status only to the pinned mTLS identity, isolated from t
     assert(image, "The integration test runs the release Caddy build in the pinned Ubuntu image of the runtime tests");
     const runtime = ["--read-only", "--user", "2001:2001", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "--memory", "128m", "--pids-limit", "64", "--tmpfs", "/data:mode=1777", "--tmpfs", "/config:mode=1777", "--tmpfs", "/status:mode=1777", "--env", "HOME=/unwritable-home", "--env", "NYLZO_DOMAIN=nylzo.test", "--mount", `type=bind,source=${fixtureDirectory},target=/fixture,readonly`, "--mount", `type=bind,source=${binaryDirectory},target=/opt/nylzo/bin,readonly`];
     assert.equal(docker("run", "--rm", "--network", "none", ...runtime, image, "/opt/nylzo/bin/caddy", "fmt", "/fixture/nylzo-caddyfile.12345678"), readFileSync(join(fixtureDirectory, "nylzo-caddyfile.12345678"), "utf8"), "The composed production Caddyfile must use canonical formatting");
-    docker("run", "--rm", "--network", "none", ...runtime, image, "/opt/nylzo/bin/caddy", "validate", "--config", "/fixture/nylzo-caddyfile.12345678", "--adapter", "caddyfile");
-    const rejected = spawnSync("docker", ["run", "--rm", "--network", "none", ...runtime, image, "/opt/nylzo/bin/caddy", "validate", "--config", "/fixture/nylzo-caddyfile.invalid", "--adapter", "caddyfile"], { encoding: "utf8", timeout: 30000 });
+    docker("run", "--rm", "--network", "none", ...runtime, image, "/opt/nylzo/bin/caddy", "validate", "--config", "/fixture/nylzo-caddyfile.12345678", "--adapter", "nylzo");
+    const rejected = spawnSync("docker", ["run", "--rm", "--network", "none", ...runtime, image, "/opt/nylzo/bin/caddy", "validate", "--config", "/fixture/nylzo-caddyfile.invalid", "--adapter", "nylzo"], { encoding: "utf8", timeout: 30000 });
     assert.notEqual(rejected.status, 0);
     assert.match(rejected.stdout + rejected.stderr, /invalid_validation_global_option/u);
-    docker("run", "--detach", "--name", name, ...runtime, "--env", "XDG_DATA_HOME=/data", "--env", "XDG_CONFIG_HOME=/config", "--publish", "127.0.0.1::14443", "--publish", "127.0.0.1::8443", image, "/opt/nylzo/bin/caddy", "run", "--config", "/fixture/Caddyfile", "--adapter", "caddyfile");
+    docker("run", "--detach", "--name", name, ...runtime, "--env", "XDG_DATA_HOME=/data", "--env", "XDG_CONFIG_HOME=/config", "--publish", "127.0.0.1::14443", "--publish", "127.0.0.1::8443", image, "/opt/nylzo/bin/caddy", "run", "--config", "/fixture/Caddyfile", "--adapter", "nylzo");
     const status = (document: unknown) => execFileSync("docker", ["exec", "--interactive", name, "sh", "-ec", "cat > /status/next.json\nchmod 0644 /status/next.json\nmv -f /status/next.json /status/status.json"], { input: JSON.stringify(document), stdio: ["pipe", "pipe", "pipe"], timeout: 10000 });
     status(healthy);
     let ca = "";

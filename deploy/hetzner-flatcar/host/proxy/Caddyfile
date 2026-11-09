@@ -1,5 +1,6 @@
 {
 	admin off
+	nylzo_crawler_tls {$NYLZO_DOMAIN} www.{$NYLZO_DOMAIN}
 	acme_ca https://acme-v02.api.letsencrypt.org/directory
 	servers {
 		strict_sni_host on

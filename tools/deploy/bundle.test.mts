@@ -103,7 +103,7 @@ bash /opt/nylzo/host/release-v0.3.0/update/activate /opt/nylzo/host/release-v0.3
 [[ ! -e /opt/nylzo/runtime/heartbeat && ! -e /etc/systemd/system/nylzo-heartbeat.timer ]]
 grep -qx 'ClientAliveInterval 60' /etc/ssh/sshd_config.d/20-nylzo.conf
 if grep -q '^www\.' /etc/caddy/Caddyfile; then exit 1; fi
-grep -q -- '--property=EnvironmentFile=/run/nylzo-caddy-env\.[^ ]* /opt/nylzo/bin/caddy validate --config /run/nylzo-caddyfile\.[^ ]* --adapter caddyfile$' /tmp/systemd-run
+grep -q -- '--property=EnvironmentFile=/run/nylzo-caddy-env\.[^ ]* /opt/nylzo/bin/caddy validate --config /run/nylzo-caddyfile\.[^ ]* --adapter nylzo$' /tmp/systemd-run
 grep -qx 'disable --quiet --now nylzo-update.timer' /tmp/systemctl
 grep -qx 'disable --quiet --now nylzo-heartbeat.timer' /tmp/systemctl
 grep -qx 'mask --quiet systemd-sysupdate-reboot.timer' /tmp/systemctl

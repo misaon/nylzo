@@ -1,3 +1,11 @@
+https://:8443 {
+	tls {
+		protocols tls1.3
+		curves x25519mlkem768
+	}
+	abort
+}
+
 https://{$NYLZO_DOMAIN}:8443 {
 	tls {
 		protocols tls1.3

@@ -65,7 +65,7 @@ chmod 0644 "$caddy_environment"
 if [[ "$first_boot" = false && -x /opt/nylzo/bin/caddy ]] &&
   ! { cmp --silent "$composed" /etc/caddy/Caddyfile && cmp --silent "$caddy_environment" /etc/nylzo/caddy.env; }; then
   systemd-run --wait --pipe --collect --quiet --uid=caddy --gid=caddy --property=EnvironmentFile="$caddy_environment" \
-    /opt/nylzo/bin/caddy validate --config "$composed" --adapter caddyfile >/dev/null || fail 'Caddy rejects the new Caddyfile'
+    /opt/nylzo/bin/caddy validate --config "$composed" --adapter nylzo >/dev/null || fail 'Caddy rejects the new Caddyfile'
 fi
 hardware_keys=/etc/ssh/sshd_config.d/10-nylzo-hardware-keys.conf
 case "$(setting HARDWARE_KEYS_ONLY)" in

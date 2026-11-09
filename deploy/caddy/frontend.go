@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -41,9 +42,10 @@ type Frontend struct {
 	PublicURL   string `json:"public_url"`
 	Maintenance string `json:"maintenance,omitempty"`
 	// The operator's contact, the same as NYLZO_CONTACT of the server, so its link is the one the pages may reach.
-	Contact string `json:"contact,omitempty"`
-	handler http.Handler
-	pages   webclient.Pages
+	Contact         string `json:"contact,omitempty"`
+	handler         http.Handler
+	pages           webclient.Pages
+	classicalPolicy string
 }
 
 func (*Frontend) CaddyModule() caddy.ModuleInfo {
@@ -73,6 +75,12 @@ func (f *Frontend) Provision(_ caddy.Context) error {
 			return errBuildWithoutVersion
 		}
 	}
+	f.classicalPolicy = "connect-src " + strings.Join([]string{
+		f.PublicURL + "/assets/",
+		f.PublicURL + api.InstancePath,
+		f.PublicURL + api.TransparencyPath,
+		f.PublicURL + webclient.ManifestPath,
+	}, " ")
 	if f.pages, err = build.Render(f.PublicURL, f.Contact); err != nil {
 		return err
 	}
@@ -104,6 +112,14 @@ func contactArgument(dispenser *caddyfile.Dispenser) (string, error) {
 }
 
 func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+	if r.TLS == nil || r.TLS.CurveID != tls.X25519MLKEM768 {
+		if !publicOverClassicalTLS(r) {
+			webclient.SetSecurityHeaders(w.Header(), false)
+			w.WriteHeader(http.StatusForbidden)
+			return nil
+		}
+		w = &classicalResponse{ResponseWriter: w, policy: f.classicalPolicy}
+	}
 	maintenance := f.underMaintenance()
 	switch {
 	case r.URL.Path == api.HealthPath:
@@ -122,6 +138,57 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyh
 		f.handler.ServeHTTP(w, r)
 		return nil
 	}
+}
+
+// publicOverClassicalTLS admits what the public pages load; the instance limits only without message headers.
+func publicOverClassicalTLS(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	switch r.URL.Path {
+	case api.TransparencyPath:
+		return true
+	case api.InstancePath:
+		return r.URL.RawQuery == "" && !carriesProtocolHeader(r.Header)
+	default:
+		return webclient.IsPublicDocument(r.URL.Path)
+	}
+}
+
+func carriesProtocolHeader(header http.Header) bool {
+	for name := range header {
+		if strings.HasPrefix(name, "X-Nylzo-") {
+			return true
+		}
+	}
+	return false
+}
+
+// classicalResponse adds a second policy, which the browser enforces too, so the page reaches no message route.
+type classicalResponse struct {
+	http.ResponseWriter
+
+	policy  string
+	written bool
+}
+
+func (c *classicalResponse) WriteHeader(status int) {
+	if !c.written {
+		c.written = true
+		c.Header().Add("Content-Security-Policy", c.policy)
+	}
+	c.ResponseWriter.WriteHeader(status)
+}
+
+func (c *classicalResponse) Write(body []byte) (int, error) {
+	if !c.written {
+		c.WriteHeader(http.StatusOK)
+	}
+	return c.ResponseWriter.Write(body)
+}
+
+func (c *classicalResponse) Unwrap() http.ResponseWriter {
+	return c.ResponseWriter
 }
 
 func (f *Frontend) unmarshalSubdirective(dispenser *caddyfile.Dispenser) error {

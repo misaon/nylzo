@@ -5,19 +5,23 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httptrace"
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
+	"github.com/quic-go/quic-go/http3"
 
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -333,5 +337,126 @@ func TestFrontendTakesTheOperatorContactForItsAllowlist(t *testing.T) {
 	var page ErrorPage
 	if err := page.UnmarshalCaddyfile(caddyfile.NewTestDispenser("nylzo_error {\n status 500\n}")); err == nil {
 		t.Fatal("an unknown subdirective was accepted")
+	}
+}
+
+func TestCrawlersReachOnlyPublicDocumentsOverClassicalTLS(t *testing.T) {
+	for _, configuration := range []string{
+		filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),
+		filepath.Join("..", "compose", "Caddyfile"),
+	} {
+		t.Run(configuration, func(t *testing.T) {
+			var requests atomic.Int64
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				requests.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, `{}`)
+			}))
+			defer backend.Close()
+			address, roots := startCaddyWith(t, configuration, backend.Listener.Addr().String(), "", crawlerAddresses)
+			classical := &tls.Config{RootCAs: roots, CurvePreferences: []tls.CurveID{tls.X25519}}
+			postQuantum := &http.Client{
+				Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}},
+				Timeout:   10 * time.Second,
+			}
+			clients := map[string]*http.Client{
+				"TCP": {
+					Transport: &http.Transport{TLSClientConfig: classical, ForceAttemptHTTP2: true},
+					Timeout:   10 * time.Second,
+				},
+				"HTTP/3": {Transport: &http3.Transport{TLSClientConfig: classical}, Timeout: 10 * time.Second},
+			}
+			const policy = "connect-src https://localhost/assets/ https://localhost/api/v1/instance " +
+				"https://localhost/.well-known/nylzo/transparency.json https://localhost/.well-known/nylzo/client.json"
+			build, err := webclient.Load(web.Files())
+			if err != nil {
+				t.Fatal(err)
+			}
+			public := []string{
+				"/",
+				"/cs/",
+				"/terms",
+				"/transparency",
+				"/agents",
+				"/robots.txt",
+				"/sitemap.xml",
+				webclient.ManifestPath,
+			}
+			for name := range build.Assets {
+				public = append(public, "/assets/"+name)
+			}
+			pagePolicies := map[string]string{}
+			for _, path := range public {
+				response, getErr := postQuantum.Get("https://" + address + path)
+				if getErr != nil {
+					t.Fatal(getErr)
+				}
+				_ = response.Body.Close()
+				if response.TLS.CurveID != tls.X25519MLKEM768 ||
+					len(response.Header.Values("Content-Security-Policy")) != 1 {
+					t.Fatalf("%s over ML-KEM: %s with policies %q", path, response.TLS.CurveID,
+						response.Header.Values("Content-Security-Policy"))
+				}
+				pagePolicies[path] = response.Header.Get("Content-Security-Policy")
+			}
+			for transport, client := range clients {
+				do := func(method, path string, header http.Header) *http.Response {
+					t.Helper()
+					request, _ := http.NewRequest(method, "https://"+address+path, http.NoBody)
+					maps.Copy(request.Header, header)
+					response, doErr := client.Do(request)
+					if doErr != nil {
+						t.Fatalf("%s %s %s: %v", transport, method, path, doErr)
+					}
+					if response.TLS == nil || response.TLS.CurveID != tls.X25519 {
+						t.Fatalf("%s: the crawler connection did not use X25519", transport)
+					}
+					return response
+				}
+				for _, path := range public {
+					response := do(http.MethodGet, path, nil)
+					_ = response.Body.Close()
+					if got := response.Header.Values("Content-Security-Policy"); response.StatusCode != http.StatusOK ||
+						!slices.Equal(got, []string{pagePolicies[path], policy}) {
+						t.Errorf("%s %s: status %d, policies %q", transport, path, response.StatusCode, got)
+					}
+				}
+				for _, path := range []string{api.InstancePath, api.TransparencyPath} {
+					response := do(http.MethodGet, path, nil)
+					_ = response.Body.Close()
+					if response.StatusCode != http.StatusOK || requests.Swap(0) != 1 {
+						t.Errorf("%s %s did not come from the backend: %d", transport, path, response.StatusCode)
+					}
+				}
+				for _, test := range []struct {
+					method, path string
+					header       http.Header
+				}{
+					{http.MethodGet, api.InstancePath, http.Header{api.TTLHeaderName: {"3600"}}},
+					{http.MethodGet, api.InstancePath + "?create", nil},
+					{http.MethodPost, api.MessagesPath, nil},
+					{http.MethodGet, api.MessagesPath + "/AAAAAAAAAAAAAAAAAAAAAA/blob", nil},
+					{http.MethodGet, api.HealthPath, nil},
+					{http.MethodGet, "/r", http.Header{"Sec-Fetch-Dest": {"document"}}},
+					{http.MethodGet, "/sent", nil},
+					{http.MethodGet, "/m/AAAAAAAAAAAAAAAAAAAAAA", nil},
+					{http.MethodGet, "/missing", nil},
+					{http.MethodPost, "/", nil},
+				} {
+					refused := do(test.method, test.path, test.header)
+					body, _ := io.ReadAll(refused.Body)
+					_ = refused.Body.Close()
+					if refused.StatusCode != http.StatusForbidden || len(body) != 0 ||
+						refused.Header.Get("Content-Security-Policy") != webclient.NonHTMLCSP ||
+						refused.Header.Get("X-Content-Type-Options") != "nosniff" {
+						t.Errorf("%s %s %s: %d with %d bytes, %v", transport, test.method, test.path,
+							refused.StatusCode, len(body), refused.Header)
+					}
+				}
+				if requests.Load() != 0 {
+					t.Fatalf("%s: a refused request reached the backend", transport)
+				}
+			}
+		})
 	}
 }

@@ -53,15 +53,14 @@ const replace = (filename: string, contents: string) => {
 const environment = ignition.storage.files.find(file => file.path === "/etc/nylzo/service.env")!;
 replace(environment.path, decode(environment).replace(/^NYLZO_PUBLIC_URL=.*$/mu, "NYLZO_PUBLIC_URL=http://127.0.0.1"));
 if (build !== undefined) {
-  // Until the initial release ships a Caddy build, the VM starts on an older official Caddy (this revision's build
-  // stands in for it) and installs the official release that host-tools.json approves through the verified path.
-  const approved = JSON.parse(await readFile(new URL("../../deploy/hetzner-flatcar/toolchain.json", import.meta.url), "utf8")).caddy;
-  const caddy = "/opt/nylzo/caddy/v0.0.0/caddy";
+  // The host files of this revision may need its Caddy, so this build stands in for the initial release's Caddy;
+  // runtime.test.mts covers the verified download of a release's Caddy.
+  const tag = `release-${site.initialRelease}`;
+  const caddy = `/opt/nylzo/caddy/${tag}/caddy`;
   const digest = createHash("sha256").update(await readFile(build)).digest("hex");
-  ignition.storage.files.push({ path: "/var/lib/nylzo-deploy/caddy.tag", mode: 0o600, overwrite: true, contents: { source: "data:,v0.0.0%0A" } } as any);
-  ignition.storage.files.push({ path: "/var/lib/nylzo-deploy/caddy.approved.tag", mode: 0o600, overwrite: true, contents: { source: `data:,v${approved}%0A` } } as any);
+  ignition.storage.files.push({ path: "/var/lib/nylzo-deploy/caddy.tag", mode: 0o600, overwrite: true, contents: { source: `data:,${tag}%0A` } } as any);
   ignition.storage.links.push({ path: "/opt/nylzo/bin/caddy", target: caddy, overwrite: true });
-  ignition.systemd.units.push({ name: "nylzo-vm-caddy.service", enabled: false, contents: `[Unit]\nWants=network-online.target\nAfter=network-online.target\nConditionPathExists=!${caddy}\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/usr/bin/mkdir -p /opt/nylzo/caddy/v0.0.0\nExecStart=/usr/bin/curl --fail --silent --show-error --retry 10 --retry-connrefused --max-time 300 --output ${caddy}.download ${server}/caddy\nExecStart=/usr/bin/bash -c "echo '${digest}  ${caddy}.download' | sha256sum --check --strict"\nExecStart=/usr/bin/chmod 0755 ${caddy}.download\nExecStart=/usr/bin/mv -T ${caddy}.download ${caddy}\n` });
+  ignition.systemd.units.push({ name: "nylzo-vm-caddy.service", enabled: false, contents: `[Unit]\nWants=network-online.target\nAfter=network-online.target\nConditionPathExists=!${caddy}\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/usr/bin/mkdir -p /opt/nylzo/caddy/${tag}\nExecStart=/usr/bin/curl --fail --silent --show-error --retry 10 --retry-connrefused --max-time 300 --output ${caddy}.download ${server}/caddy\nExecStart=/usr/bin/bash -c "echo '${digest}  ${caddy}.download' | sha256sum --check --strict"\nExecStart=/usr/bin/chmod 0755 ${caddy}.download\nExecStart=/usr/bin/mv -T ${caddy}.download ${caddy}\n` });
 }
 ignition.storage.files.push({ path: "/opt/nylzo-vm-test", mode: 0o700, overwrite: true, contents: { compression: "gzip", source: "data:;base64," + gzipSync(await readFile(new URL("vm-acceptance", import.meta.url))).toString("base64") } });
 ignition.systemd.units.push({ name: "nylzo-vm-debug.service", enabled: false, contents: "[Service]\nType=oneshot\nExecStart=/usr/bin/journalctl --no-pager -b -n 150 -u nylzo* -u caddy -u docker\nExecStart=/usr/bin/systemctl list-jobs --no-pager\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n" });

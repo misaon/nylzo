@@ -76,6 +76,10 @@ Review also found that the certificate monitor tried to read Caddy's private cer
 
 The DNS plan was reviewed and applied: Universal SSL is disabled, CAA permits only the instance's Let's Encrypt account through HTTP-01, and one `issuewild ";"` record forbids wildcard issuance. Null MX, SPF and DMARC reject mail use of this application domain. Authoritative answers and DNSSEC-validated recursive answers matched the intended records. Registrar locks and revocation status of previously issued wildcard certificates remain outstanding.
 
+## Search engine access of 8 November 2026
+
+Google Search Console reported the sitemap as an HTTP error and PageSpeed Insights could not load nylzo.com, because the site refused every TLS handshake without X25519MLKEM768. Google documents no TLS groups for its crawlers. Accepting X25519 from everyone was rejected: Firefox before 151 and ESR 140 retry a failed handshake without ML-KEM, so a page loaded over ML-KEM would send its later API requests over X25519, before any refusal could arrive. The site and the `www` redirect now accept X25519 only from the published Google, Bing and Seznam crawler ranges, and those connections reach only the public documents ([transport](../guides/Security-model.md#transport)). The catch-all listener and the monitoring listener stay post-quantum only. The review also found that port 8443 had no catch-all site, so a handshake naming another host, such as `www`, got Caddy's default policy with TLS 1.2 and classical key exchange; an ML-KEM-only catch-all now closes it.
+
 ## Outstanding acceptance
 
 - **DNSSEC:** The DS record is published at `.com` and the chain validates (checked 31 October 2026). Keep the domain monitor enabled to catch drift.

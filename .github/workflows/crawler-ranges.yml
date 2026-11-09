@@ -1,0 +1,70 @@
+name: Crawler ranges
+
+on:
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: crawler-ranges
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Propose the published crawler ranges
+    if: github.repository == 'misaon/nylzo' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    environment: dependency-updates
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: $/.github/actions/setup
+        with:
+          tools: bun
+          cache: none
+      # A failed or suspicious download stops here and the committed list stays as it is.
+      - name: Download and check the published ranges
+        run: bun tools/crawler-ranges.mts
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDENCY_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+      # GitHub signs a commit made through the API, so the branch passes the signed-commit rule.
+      - name: Open, update or close the pull request
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          BRANCH: automation/crawler-ranges
+          TITLE: "fix(deploy): update the published search engine crawler ranges"
+        run: |
+          file=deploy/caddy/crawlers.json
+          open=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
+          if git diff --quiet -- "$file"; then
+            if [ -n "$open" ]; then gh pr close "$open" --delete-branch --comment "The published ranges match main again."; fi
+            exit 0
+          fi
+          git diff --stat -- "$file"
+          proposed=$(gh api "repos/${GITHUB_REPOSITORY}/contents/${file}?ref=${BRANCH}" --jq .content 2> /dev/null | base64 --decode | sha256sum || true)
+          if [ -n "$open" ] && [ "$proposed" = "$(sha256sum < "$file")" ]; then exit 0; fi
+          head=$(git rev-parse HEAD)
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}" -f sha="$head" -F force=true > /dev/null 2>&1 \
+            || gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/heads/${BRANCH}" -f sha="$head" > /dev/null
+          jq --null-input \
+            --arg repository "$GITHUB_REPOSITORY" --arg branch "$BRANCH" --arg head "$head" --arg title "$TITLE" \
+            --arg contents "$(base64 --wrap=0 "$file")" --arg path "$file" \
+            '{query: "mutation($input: CreateCommitOnBranchInput!) { createCommitOnBranch(input: $input) { commit { oid } } }",
+              variables: {input: {branch: {repositoryNameWithOwner: $repository, branchName: $branch}, expectedHeadOid: $head,
+                message: {headline: $title}, fileChanges: {additions: [{path: $path, contents: $contents}]}}}}' \
+            | gh api graphql --input - > /dev/null
+          if [ -z "$open" ]; then
+            gh pr create --head "$BRANCH" --base main --title "$TITLE" \
+              --body "The weekly refresh of the Google, Bing and Seznam crawler ranges that may use X25519 (docs/wiki/guides/Security-model.md#transport). Check the diff for ranges that are not crawler addresses; they reach production with the next release."
+          fi

@@ -44,8 +44,8 @@ func NewHandler(build Build, publicURL, contact string, information buildinfo.In
 	mux.HandleFunc("GET /", site.serveNotFound)
 	mux.HandleFunc("GET /assets/{name}", site.serveAsset)
 	mux.HandleFunc("GET /"+agentsGuideFile, serveIfBuilt(build.AgentsGuide))
-	mux.HandleFunc("GET /robots.txt", site.serveRobots)
-	mux.HandleFunc("GET /sitemap.xml", site.serveSitemap)
+	mux.HandleFunc("GET "+robotsPath, site.serveRobots)
+	mux.HandleFunc("GET "+sitemapPath, site.serveSitemap)
 	mux.HandleFunc("GET "+ManifestPath, site.serveManifest)
 	return frontendHeaders(mux), nil
 }
@@ -55,7 +55,7 @@ func HandlePages(mux *http.ServeMux, handler func(path string) http.HandlerFunc)
 	for _, path := range PagePaths {
 		mux.HandleFunc("GET "+pagePattern(path), handler(path))
 	}
-	mux.HandleFunc("GET /cs", redirectToCzechHome)
+	mux.HandleFunc("GET "+czechRedirectPath, redirectToCzechHome)
 }
 
 func pagePattern(path string) string {
