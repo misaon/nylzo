@@ -1,6 +1,25 @@
 # Nylzo CLI
 
-The same `nylzo` binary creates and reads messages, serves a verified web client on your computer, checks an instance's web client, and runs the server. Build it with `mise run build`, or use a [verified release](Verify-a-release.md). Run `nylzo` for command help. This guide uses `https://nylzo.example` as a placeholder for your own instance.
+The same `nylzo` binary creates and reads messages, serves a verified web client on your computer, checks an instance's web client, and runs the server. Run `nylzo` for command help. This guide uses `https://nylzo.example` as a placeholder for your own instance.
+
+## Install
+
+On macOS and Linux, use [Homebrew](https://brew.sh):
+
+```sh
+brew install misaon/nylzo/nylzo
+```
+
+On Windows, use [Scoop](https://scoop.sh):
+
+```powershell
+scoop bucket add nylzo https://github.com/misaon/homebrew-nylzo
+scoop install nylzo/nylzo
+```
+
+Upgrade with `brew upgrade nylzo` or `scoop update nylzo`; only the latest release receives security fixes. The formula and the manifest in [misaon/homebrew-nylzo](https://github.com/misaon/homebrew-nylzo) pin each release archive by its SHA-256 hash. Their workflow writes a new release there only after it has verified the release's signature and build provenance and installed it on macOS, Linux and Windows. [Verify a release](Verify-a-release.md#verify-a-homebrew-or-scoop-install) shows how to check an install yourself.
+
+The macOS and Windows binaries carry no Apple notarization or Authenticode signature. macOS refuses to run a binary from an archive that a browser downloaded. Homebrew does not mark its downloads that way, and Scoop adds no Mark of the Web on Windows. To build from source instead, run `mise run build` in a checkout.
 
 ## Keep secrets out of arguments
 

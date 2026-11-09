@@ -41,7 +41,7 @@ Test only systems and data you own or have explicit permission to test. Prefer a
 
 ## Official sources and artifact verification
 
-The canonical source is [misaon/nylzo](https://github.com/misaon/nylzo). Download releases only from its [Releases page](https://github.com/misaon/nylzo/releases) and container images from `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. A checksum alone does not establish authenticity: verify its Sigstore signature and the artifact's provenance against this repository and the exact release tag. Use [Verify a release](../guides/Verify-a-release.md) and the [release checklist](../maintainers/Release-checklist.md).
+The canonical source is [misaon/nylzo](https://github.com/misaon/nylzo). Install the CLI only from [misaon/homebrew-nylzo](https://github.com/misaon/homebrew-nylzo) with Homebrew or Scoop, download release archives only from the [Releases page](https://github.com/misaon/nylzo/releases), and pull container images only from `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. A checksum alone does not establish authenticity: verify its Sigstore signature and the artifact's provenance against this repository and the exact release tag. Use [Verify a release](../guides/Verify-a-release.md) and the [release checklist](../maintainers/Release-checklist.md).
 
 ## Fixes and releases
 
