@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
+import { upgradeProblem } from '../app-update.ts';
 import { bunLock } from './lockfiles.ts';
 import { packageManifest } from './manifests.ts';
 
@@ -27,6 +28,23 @@ test('Bun dependency review accepts the real lock and rejects policy, source and
     assert.ok(review('web/bun.lock', locked, JSON.stringify(mutated)).findings.length > 0);
   }
   assert.ok(review('web/bun.lock', locked, 'not JSON').findings.length > 0);
+});
+
+test('Bun lockfile overrides may advance a version but not change their list or form', () => {
+  const lock = Bun.JSON5.parse(locked) as Record<string, unknown>;
+  const overrides = lock['overrides'] as Record<string, string>;
+  const withOverrides = (changed: Record<string, string>): string =>
+    JSON.stringify({ ...lock, overrides: { ...overrides, ...changed } });
+  const patch = review('web/bun.lock', locked, withOverrides({ minimatch: '11.0.5' }));
+  assert.deepEqual(patch.findings, []);
+  assert.deepEqual(patch.updates.map(upgradeProblem), [undefined]);
+  const major = review('web/bun.lock', locked, withOverrides({ minimatch: '12.0.0' }));
+  assert.ok(major.updates.some((update) => upgradeProblem(update) !== undefined));
+  for (const changed of [{ attacker: '1.0.0' }, { minimatch: '^11.0.5' }, { attacker: '1.0.0', minimatch: '11.0.5' }]) {
+    assert.ok(review('web/bun.lock', locked, withOverrides(changed)).findings.length > 0);
+  }
+  const { minimatch: _removed, ...remaining } = overrides;
+  assert.ok(review('web/bun.lock', locked, JSON.stringify({ ...lock, overrides: remaining })).findings.length > 0);
 });
 
 test('Bun engine pins and native compiler aliases may advance without changing their identity', () => {

@@ -55,6 +55,11 @@ const packageManifest = `{
 }
 `;
 
+const overriddenManifest = packageManifest.replace(
+  '"private": true,',
+  '"private": true, "overrides": { "minimatch": "11.0.1" },',
+);
+
 const lockfile = `---
 lockfileVersion: '9.0'
 
@@ -347,6 +352,48 @@ const cases: readonly Case[] = [
     expected: 'rejected',
     name: 'package.json adds overrides',
     path: 'web/package.json',
+  },
+  {
+    after: overriddenManifest.replace('11.0.1', '11.0.5'),
+    before: overriddenManifest,
+    expected: 'safe',
+    name: 'package.json override patch update',
+    path: 'automation/package.json',
+  },
+  {
+    after: overriddenManifest.replace('11.0.1', '12.0.0'),
+    before: overriddenManifest,
+    expected: 'unsafe',
+    name: 'package.json override major update',
+    path: 'automation/package.json',
+  },
+  {
+    after: overriddenManifest.replace('"11.0.1"', '"11.0.1", "attacker": "1.0.0"'),
+    before: overriddenManifest,
+    expected: 'rejected',
+    name: 'package.json adds an override',
+    path: 'automation/package.json',
+  },
+  {
+    after: overriddenManifest.replace('"minimatch": "11.0.1"', ''),
+    before: overriddenManifest,
+    expected: 'rejected',
+    name: 'package.json removes an override',
+    path: 'automation/package.json',
+  },
+  {
+    after: overriddenManifest.replace('"11.0.1"', '"^11.0.5"'),
+    before: overriddenManifest,
+    expected: 'rejected',
+    name: 'package.json override becomes a range',
+    path: 'automation/package.json',
+  },
+  {
+    after: overriddenManifest.replace('"11.0.1"', '"npm:attacker@11.0.5"'),
+    before: overriddenManifest,
+    expected: 'rejected',
+    name: 'package.json override becomes an alias',
+    path: 'automation/package.json',
   },
   {
     after: packageManifest.replace('"svelte": "5.57.2"', '"svelte": "https://attacker.invalid/svelte.tgz"'),

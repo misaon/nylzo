@@ -8,6 +8,7 @@ import type { FileReview, FileRule, ValueKind } from './file-review.ts';
 type JsonObject = Record<string, unknown>;
 
 const dependencySections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
+const exactVersion = /^\d+\.\d+\.\d+$/u;
 const packageManagerRelease = /^(?<manager>pnpm|bun)@(?<version>\d+\.\d+\.\d+)$/u;
 const sha256 = /^[a-f\d]{64}$/u;
 const versionPrefix = /^(?<prefix>jq-|v)?(?<version>.*)$/u;
@@ -36,6 +37,27 @@ function parseObject(path: string, text: string, review: FileReview): JsonObject
 function sameKeys(left: Readonly<JsonObject>, right: Readonly<JsonObject>): boolean {
   const keys = Object.keys(left);
   return keys.length === Object.keys(right).length && keys.every((key) => Object.hasOwn(right, key));
+}
+
+export function revertOverrideUpdates(path: string, before: unknown, after: unknown, review: FileReview): unknown {
+  if (!isObject(before) || !isObject(after)) {
+    return after;
+  }
+  const reverted = { ...after };
+  for (const [name, version] of Object.entries(after)) {
+    const previous = before[name];
+    if (
+      typeof previous === 'string' &&
+      typeof version === 'string' &&
+      previous !== version &&
+      exactVersion.test(previous) &&
+      exactVersion.test(version)
+    ) {
+      review.updates.push({ after: version, before: previous, name: `${path} overrides.${name}` });
+      reverted[name] = previous;
+    }
+  }
+  return reverted;
 }
 
 export const packageManifest: FileRule = (path, before, after) => {
@@ -69,6 +91,9 @@ export const packageManifest: FileRule = (path, before, after) => {
       });
       newDependencies[name] = value;
     }
+  }
+  if (Object.hasOwn(next, 'overrides')) {
+    next['overrides'] = revertOverrideUpdates(path, old['overrides'], next['overrides'], review);
   }
   if (old['packageManager'] !== next['packageManager']) {
     const previous = packageManagerRelease.exec(String(old['packageManager']))?.groups;
