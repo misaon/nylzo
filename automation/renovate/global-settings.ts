@@ -13,13 +13,6 @@ const maintenanceRules = [
     matchUpdateTypes: ['major'],
     enabled: false,
   },
-  {
-    description: 'Maintenance lines take no pre-1.0 minor either.',
-    matchBaseBranches: [maintenanceLine],
-    matchCurrentVersion: String.raw`/^v?0\./`,
-    matchUpdateTypes: ['minor'],
-    enabled: false,
-  },
 ];
 
 export function globalSettings(input: GlobalSettingsInput): Record<string, unknown> {

@@ -386,21 +386,6 @@
       "automerge": true
     },
     {
-      "description": "Below 1.0 a minor can break; Go versions carry a v prefix. Each area collects them in one draft for review, on its own branch next to the automatic group.",
-      "matchCurrentVersion": "/^v?0\\./",
-      "matchUpdateTypes": [
-        "minor"
-      ],
-      "additionalBranchPrefix": "below-1-",
-      "commitMessageSuffix": "below 1.0",
-      "automerge": false,
-      "draftPR": true,
-      "rebaseWhen": "conflicted",
-      "addLabels": [
-        "requires-attention"
-      ]
-    },
-    {
       "description": "Breaking upgrades and package replacements need a planned migration and a code owner approval.",
       "matchUpdateTypes": [
         "major",

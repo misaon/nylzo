@@ -35,11 +35,6 @@ export function compareVersions(left: SemanticVersion, right: SemanticVersion): 
   return left.major - right.major || left.minor - right.minor || left.patch - right.patch;
 }
 
-export function isSafeUpgrade(before: SemanticVersion, after: SemanticVersion): boolean {
-  const sameCompatibilityLine = after.major === before.major && (before.major > 0 || after.minor === before.minor);
-  return sameCompatibilityLine && compareVersions(after, before) > 0;
-}
-
 export function maintenanceBranch(version: SemanticVersion): string {
   return `release/v${version.major}.${version.minor}`;
 }

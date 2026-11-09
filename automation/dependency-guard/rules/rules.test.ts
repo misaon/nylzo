@@ -297,7 +297,7 @@ const cases: readonly Case[] = [
   {
     after: goModule.replace('crypto v0.58.0', 'crypto v0.59.0'),
     before: goModule,
-    expected: 'unsafe',
+    expected: 'safe',
     name: 'go.mod minor update below 1.0',
     path: 'go.mod',
   },
