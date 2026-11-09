@@ -43,6 +43,8 @@ The [Scorecard report](https://scorecard.dev/viewer/?uri=github.com/misaon/nylzo
 
 Review findings individually. A young project with one maintainer can score lower on contributor diversity or independent review; a high combined score does not establish that its cryptography is correct. The [governance page](Repository-governance.md) records the single-maintainer review exception.
 
+Signed-Releases averages the last five releases and rounds down: a release with a `.intoto.jsonl` asset scores 10, one with only a signature file such as `.sigstore.json` scores 8. Scorecard reads asset names only, so GitHub attestations do not count and the release workflow attaches the same provenance as `nylzo_<version>.intoto.jsonl`. Published releases are immutable, so the check reaches 10 only after five releases carry that file.
+
 The [OpenSSF Baseline profile](https://www.bestpractices.dev/en/projects/15969) links assertions to supporting evidence. Its badge is a self-assessment, separate from the automated Scorecard report. Keep assertions current and display only earned badge levels.
 
 The [control policies](Security-controls.md) define source-analysis, license, VEX, and credential requirements. The [security assessment](Security-assessment.md) maps actors, interfaces, and threats to implementation controls and tests.
