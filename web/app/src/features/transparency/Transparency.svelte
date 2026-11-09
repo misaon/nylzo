@@ -199,6 +199,19 @@
   </ul>
 {/snippet}
 
+{#snippet detail(term: MessageKey, value: string, href?: string)}
+  <div class={[CARD, 'px-4 py-3']}>
+    <dt class="text-micro text-ink-mute">{translate(term)}</dt>
+    <dd class="mt-1 text-body wrap-anywhere text-ink">
+      {#if href}
+        <a {href} rel="noreferrer" class={[TEXT_LINK, INLINE_TARGET]}>{contactLabel(value)}</a>
+      {:else}
+        {value}
+      {/if}
+    </dd>
+  </div>
+{/snippet}
+
 {#snippet fact(term: string, value: string, testId: string, wide = false)}
   <div class={[CARD, 'px-4 py-3', wide && 'sm:col-span-2']}>
     <dt class="text-micro text-ink-mute">{term}</dt>
@@ -263,29 +276,13 @@
       {#if operator && (operator.name || operator.contact || operator.hosting)}
         <dl class="mt-5 grid gap-3 sm:grid-cols-2">
           {#if operator.name}
-            <div class={[CARD, 'px-4 py-3']}>
-              <dt class="text-micro text-ink-mute">{translate('transparency.operator.name')}</dt>
-              <dd class="mt-1 text-body wrap-anywhere text-ink">{operator.name}</dd>
-            </div>
+            {@render detail('transparency.operator.name', operator.name)}
           {/if}
           {#if operator.contact}
-            {const href = $derived(contactHref(operator.contact))}
-            <div class={[CARD, 'px-4 py-3']}>
-              <dt class="text-micro text-ink-mute">{translate('transparency.operator.contact')}</dt>
-              <dd class="mt-1 text-body wrap-anywhere text-ink">
-                {#if href}
-                  <a {href} rel="noreferrer" class={[TEXT_LINK, INLINE_TARGET]}>{contactLabel(operator.contact)}</a>
-                {:else}
-                  {operator.contact}
-                {/if}
-              </dd>
-            </div>
+            {@render detail('transparency.operator.contact', operator.contact, contactHref(operator.contact))}
           {/if}
           {#if operator.hosting}
-            <div class={[CARD, 'px-4 py-3']}>
-              <dt class="text-micro text-ink-mute">{translate('transparency.operator.hosting')}</dt>
-              <dd class="mt-1 text-body wrap-anywhere text-ink">{operator.hosting}</dd>
-            </div>
+            {@render detail('transparency.operator.hosting', operator.hosting)}
           {/if}
         </dl>
       {:else}
@@ -415,7 +412,7 @@
         <div class="mt-3 flex items-center gap-3 rounded-pane py-2 pr-2 pl-4 well">
           <Icon name="terminal" class="size-[18px] shrink-0 text-aegis-300" />
           <p class="min-w-0 flex-1 text-body-sm wrap-anywhere text-aegis-200 tabular-nums" translate="no">{command}</p>
-          <CopyButton text={() => command} class="max-sm:w-11 max-sm:px-0" labelClass="max-sm:sr-only" />
+          <CopyButton text={command} class="max-sm:w-11 max-sm:px-0" labelClass="max-sm:sr-only" />
         </div>
       </div>
       {@render caution(translate('transparency.verify.limit.title'), translate('transparency.verify.limit'))}
@@ -436,7 +433,7 @@
         rel="noreferrer"
         class="max-sm:h-auto max-sm:min-h-11 max-sm:py-2.5 max-sm:text-left max-sm:whitespace-normal"
       >
-        <GithubMark class="size-4 shrink-0" animated />
+        <GithubMark class="size-4 shrink-0" />
         {translate('transparency.source')}
       </Button>
     </div>

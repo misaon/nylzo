@@ -34,12 +34,13 @@
   } as const satisfies Record<Screen, 'home' | 'page' | 'read'>;
 
   const { start }: Props = $props();
-  const path = untrack(() => start.path);
+  const { path, language: startLanguage } = untrack(() => start);
   const screen: Screen = screenOf(path);
-  const translator = setTranslator(new Translator(untrack(() => start.language)));
+  const translator = setTranslator(new Translator(startLanguage));
   const { translate } = translator;
   const variant = HEADER_VARIANTS[screen];
-  let requestedLanguage = untrack(() => start.language);
+  let requestedLanguage = startLanguage;
+  const onlanguage = (language: Language) => void switchLanguage(language);
 
   function returned() {
     if (location.pathname !== path) {
@@ -95,7 +96,7 @@
 <div class="relative min-h-dvh overflow-x-clip bg-void-950 font-sans text-ink">
   <Sky />
   <div class="relative z-10 flex min-h-dvh flex-col">
-    <SiteHeader {variant} current={screen} onlanguage={(language) => void switchLanguage(language)} />
+    <SiteHeader {variant} current={screen} {onlanguage} />
     <main class={['flex-1', screen !== 'notFound' && 'min-h-svh']}>
       <svelte:boundary>
         {#if screen === 'read'}
@@ -127,6 +128,6 @@
         {/snippet}
       </svelte:boundary>
     </main>
-    <SiteFooter compact={screen === 'read'} current={screen} onlanguage={(language) => void switchLanguage(language)} />
+    <SiteFooter compact={screen === 'read'} current={screen} {onlanguage} />
   </div>
 </div>

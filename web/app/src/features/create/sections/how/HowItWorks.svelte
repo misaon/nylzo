@@ -3,27 +3,11 @@
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
   import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
-  import { AutoCycle } from './auto-cycle.svelte.ts';
   import HowDiagram from './HowDiagram.svelte';
   import { LINK_PARTS } from './link-parts.ts';
 
   const { translate } = getTranslator();
-
-  const READ_BASE_MS = 1100;
-  const READ_MS_PER_CHARACTER = 28;
-  const READ_MIN_MS = 4100;
-  const READ_MAX_MS = 6750;
-
-  function body(index: number): string {
-    const part = LINK_PARTS[index] ?? LINK_PARTS[0];
-    return part ? translate(part.body) : '';
-  }
-
-  const cycle = new AutoCycle(
-    () => LINK_PARTS.length,
-    (index) => Math.min(READ_MAX_MS, Math.max(READ_MIN_MS, READ_BASE_MS + body(index).length * READ_MS_PER_CHARACTER)),
-  );
-  cycle.select(LINK_PARTS.length - 1);
+  let selected = $state(LINK_PARTS.length - 1);
 </script>
 
 <span id="jak" class="block" aria-hidden="true"></span>
@@ -59,12 +43,6 @@
       role="group"
       aria-labelledby="how-link-title"
       {@attach reveal}
-      {@attach cycle.observe}
-      {@attach cycle.advance}
-      onmouseenter={cycle.pointerEnter}
-      onmouseleave={cycle.pointerLeave}
-      onfocusin={cycle.focusIn}
-      onfocusout={cycle.focusOut}
     >
       <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
@@ -82,7 +60,7 @@
       <div class="relative mt-6 rounded-pane p-2.5 well md:px-6 md:py-5">
         <div class="flex flex-col gap-2 lg:flex-row lg:gap-6">
           {#each LINK_PARTS as part, index (part.id)}
-            {const active = $derived(cycle.index === index)}
+            {const active = $derived(selected === index)}
             <div
               class={[
                 'max-lg:rounded-pane max-lg:p-3.5 max-lg:ring-1 lg:contents',
@@ -96,7 +74,7 @@
                 ]}
                 type="button"
                 aria-pressed={active}
-                onclick={() => cycle.select(index)}
+                onclick={() => (selected = index)}
               >
                 <span class="flex w-fit max-w-full flex-col">
                   <span
@@ -117,17 +95,7 @@
                       active && part.glow,
                     ]}
                     aria-hidden="true"
-                  >
-                    <progress
-                      class={[
-                        'pointer-events-none absolute inset-0 block h-full w-full progress-cycle',
-                        part.tone,
-                        active ? 'opacity-100' : 'opacity-0',
-                      ]}
-                      max="1"
-                      value={active ? cycle.progress : 0}
-                    ></progress>
-                  </span>
+                  ></span>
                 </span>
                 <span
                   class={[
@@ -156,9 +124,9 @@
             <p
               class={[
                 'text-body text-pretty text-ink-soft transition-opacity duration-500',
-                cycle.index === index ? 'opacity-100' : 'pointer-events-none opacity-0',
+                selected === index ? 'opacity-100' : 'pointer-events-none opacity-0',
               ]}
-              aria-hidden={cycle.index !== index}
+              aria-hidden={selected !== index}
             >
               {translate(part.body)}
             </p>

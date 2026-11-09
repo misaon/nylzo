@@ -4,16 +4,16 @@
   import { VERIFIED_CLIENTS_URL } from '../../../shared/shell/repository.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import { ARROW_LINK, INLINE_TARGET, TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
-  import { reveal } from '../../../shared/ui/reveal/reveal.ts';
+  import { reveal, REVEAL_INDEXES } from '../../../shared/ui/reveal/reveal.ts';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
 
   const { translate } = getTranslator();
 
   const limits = [
-    { key: 'limits.save', icon: 'camera', revealIndex: '[--reveal-index:0]' },
-    { key: 'limits.link', icon: 'link', revealIndex: '[--reveal-index:1]' },
-    { key: 'limits.server', icon: 'shield', revealIndex: '[--reveal-index:2]' },
-    { key: 'limits.abuse', icon: 'ban', revealIndex: '[--reveal-index:3]' },
+    { key: 'limits.save', icon: 'camera' },
+    { key: 'limits.link', icon: 'link' },
+    { key: 'limits.server', icon: 'shield' },
+    { key: 'limits.abuse', icon: 'ban' },
   ] as const;
   const DEVICE =
     'reveal-pop grid size-12 place-items-center rounded-pane text-white outline-1 outline-offset-3 outline-solar-300/30 outline-dashed tile-warning [--reveal-delay:900ms]';
@@ -93,11 +93,11 @@
     </div>
     <div class="relative mt-8 overflow-hidden rounded-pane well md:mt-10" {@attach reveal}>
       <ul role="list" class="grid md:grid-cols-2">
-        {#each limits as limit (limit.key)}
+        {#each limits as limit, index (limit.key)}
           <li
             class={[
               'grid reveal-focus grid-cols-[auto_minmax(0,1fr)] content-start items-center gap-x-4 border-white/8 p-5 [--reveal-blur:5px] [--reveal-step:90ms] max-md:not-last:border-b md:p-6 md:odd:border-r md:nth-[-n+2]:border-b',
-              limit.revealIndex,
+              REVEAL_INDEXES[index],
             ]}
           >
             <IconTile
@@ -106,7 +106,7 @@
               size="medium"
               class={[
                 'row-span-2 reveal-pop self-center [--reveal-delay:150ms] [--reveal-step:90ms]',
-                limit.revealIndex,
+                REVEAL_INDEXES[index],
               ]}
             />
             <h3 class="col-start-2 text-title-sm text-balance text-ink">

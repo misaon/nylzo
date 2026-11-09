@@ -33,9 +33,14 @@ export class FocusTargets<Target extends string> {
       };
     };
 
-  async focusAfterUpdate(target: () => Target): Promise<void> {
+  async focusAfterUpdate(target: Target): Promise<void> {
     await tick();
-    this.focus(target());
+    this.focus(target);
+  }
+
+  async keepFocusAfterUpdate(fallback: Target): Promise<void> {
+    await tick();
+    keepFocus(this.#elements[fallback]);
   }
 
   focus(target: Target): void {

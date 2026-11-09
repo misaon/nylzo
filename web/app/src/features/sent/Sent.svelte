@@ -33,7 +33,7 @@
   let storageFailed = $state(false);
   const focus = new FocusTargets<string>();
   const retention = $derived(translator.plural('count.day', RETENTION_DAYS));
-  const listed = $derived(view.view === 'list' && view.items.length > 0);
+  const items = $derived(view.view === 'list' ? view.items : []);
 
   // A session of the local client has an origin nobody purges later, so it opens no storage (Protocol §14.1).
   const store = servedByLocalClient() ? memoryStore() : browserSentStore();
@@ -79,8 +79,7 @@
 
   void sent.load();
 
-  const time = (value: string | number) =>
-    formatMoment(typeof value === 'number' ? new Date(value).toISOString() : value, translator.language);
+  const time = (moment: number | string) => formatMoment(moment, translator.language);
   const headingId = (id: string) => `sent-item-${id}`;
 
   function endedState(state: MessageState): Exclude<MessageState, 'available'> {
@@ -119,8 +118,10 @@
         return translate('sent.failed');
       }
       case 'loaded': {
-        const ended = state.status.endedAt ?? new Date(item.expiresAt).toISOString();
-        return translate(`sent.ended.${endedState(state.status.state)}`, { time: time(ended), days: retention });
+        return translate(`sent.ended.${endedState(state.status.state)}`, {
+          time: time(state.status.endedAt ?? item.expiresAt),
+          days: retention,
+        });
       }
     }
   }
@@ -217,7 +218,7 @@
     <Button
       variant="ghost"
       size="compact"
-      class={['self-start sm:self-auto', !listed && 'invisible max-sm:hidden']}
+      class={['self-start sm:self-auto', items.length === 0 && 'invisible max-sm:hidden']}
       onclick={() => (confirming = { kind: 'forget_all' })}
     >
       <Icon name="close" class="size-4 shrink-0" animated />
@@ -225,9 +226,9 @@
     </Button>
   </div>
 
-  {#if listed && view.view === 'list'}
+  {#if items.length > 0}
     <ul role="list" class="mt-8 grid gap-3">
-      {#each view.items as item (item.id)}
+      {#each items as item (item.id)}
         {const badge = $derived(badgeOf(item))}
         {const pending = $derived(item.state.kind === 'loading')}
         {const live = $derived(pending || (item.state.kind === 'loaded' && !item.ended))}

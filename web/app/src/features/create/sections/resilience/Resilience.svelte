@@ -3,7 +3,7 @@
 
   import { getTranslator } from '../../../../shared/language/translator.svelte.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
-  import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
+  import { reveal, REVEAL_INDEXES } from '../../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import Switch from '../../../../shared/ui/switch/Switch.svelte';
   import IconTile from '../../../../shared/ui/tile/IconTile.svelte';
@@ -21,14 +21,6 @@
     { key: 'brute.fact.id', icon: 'hash', tone: 'current' },
     { key: 'brute.fact.pass', icon: 'keyhole', tone: 'current' },
     { key: 'brute.fact.quantum', icon: 'atom', tone: 'warning' },
-  ] as const;
-  const FACT_ORDER = ['[--reveal-index:0]', '[--reveal-index:1]', '[--reveal-index:2]'] as const;
-  const ATTACKER_ORDER = [
-    '[--reveal-index:0]',
-    '[--reveal-index:1]',
-    '[--reveal-index:2]',
-    '[--reveal-index:3]',
-    '[--reveal-index:4]',
   ] as const;
 
   let attacker = $state<Attacker>('laptop');
@@ -113,7 +105,7 @@
                   }}
                   class={[
                     'flex w-full reveal-focus items-center gap-4 rounded-pane px-4 py-3 text-left ring-1 transition [--reveal-blur:4px] [--reveal-delay:250ms] [--reveal-y:8px]',
-                    ATTACKER_ORDER[index],
+                    REVEAL_INDEXES[index],
                     selected ? 'bg-aegis-500/12 ring-aegis-300/50' : 'bg-white/4 ring-white/12 hover:bg-white/6',
                   ]}
                 >
@@ -224,14 +216,14 @@
             <li
               class={[
                 'flex reveal-focus items-center gap-4 p-6 [--reveal-blur:5px] [--reveal-step:110ms] md:p-8 lg:flex-col lg:gap-3 lg:text-center',
-                FACT_ORDER[index],
+                REVEAL_INDEXES[index],
               ]}
             >
               <IconTile
                 icon={fact.icon}
                 tone={fact.tone}
                 size="medium"
-                class={['reveal-pop [--reveal-delay:160ms] [--reveal-step:110ms]', FACT_ORDER[index]]}
+                class={['reveal-pop [--reveal-delay:160ms] [--reveal-step:110ms]', REVEAL_INDEXES[index]]}
               />
               <span class="min-w-0">
                 <span class="block text-body text-ink">{translate(fact.key)}</span>

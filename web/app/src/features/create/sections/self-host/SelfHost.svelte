@@ -103,7 +103,7 @@
             </button>
           {/each}
         </div>
-        <CopyButton text={() => installText(tab, domain)} label={translate('host.copy.label')} class="max-sm:hidden" />
+        <CopyButton text={installText(tab, domain)} label={translate('host.copy.label')} class="max-sm:hidden" />
       </div>
       <div
         class="mt-2.5 overflow-hidden rounded-pane bg-void-950/85 shadow-[0_18px_40px_-18px_oklch(0.05_0.03_275/0.9)] ring-1 ring-white/12"

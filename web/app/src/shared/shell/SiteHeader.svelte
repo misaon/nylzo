@@ -72,7 +72,7 @@
         </Button>
       {/if}
       <Button variant="ghost" href={REPOSITORY_URL} class="max-sm:hidden">
-        <GithubMark animated />
+        <GithubMark />
         <span class="max-sm:sr-only">{translate('footer.github')}</span>
       </Button>
       {#if onlanguage}

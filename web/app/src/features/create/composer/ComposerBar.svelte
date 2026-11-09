@@ -85,7 +85,6 @@
         icon="lock"
         progress={composer.timeline.paced.progress}
         shown={composer.busy}
-        announced
       />
     </div>
   </div>

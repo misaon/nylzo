@@ -230,7 +230,7 @@ export class Composer {
 
   readonly another = async (): Promise<void> => {
     this.#reset();
-    await this.focus.focusAfterUpdate(() => 'text');
+    await this.focus.focusAfterUpdate('text');
   };
 
   readonly closeMenu = (trigger: Menu): void => {
@@ -308,7 +308,7 @@ export class Composer {
 
   readonly pickFile = (next?: File): void => {
     this.file = next;
-    this.problems = this.problems.filter((problem) => problem.field !== 'file' && problem.field !== 'content');
+    this.#forgetProblems('file', 'content');
     if (next && this.limits && next.size > this.limits.maxFileBytes) {
       this.problems = [...this.problems, { field: 'file', code: 'too_large' }];
     }
@@ -347,7 +347,7 @@ export class Composer {
 
   readonly generatePassphrase = (): void => {
     this.passphrase = generatePassphrase();
-    this.problems = this.problems.filter((problem) => problem.field !== 'passphrase');
+    this.#forgetProblems('passphrase');
   };
 
   readonly toggleProtect = async (): Promise<void> => {
@@ -356,11 +356,11 @@ export class Composer {
       if (this.passphrase === '') {
         this.generatePassphrase();
       }
-      await this.focus.focusAfterUpdate(() => 'passphrase');
+      await this.focus.focusAfterUpdate('passphrase');
       return;
     }
     this.passphrase = '';
-    this.problems = this.problems.filter((problem) => problem.field !== 'passphrase');
+    this.#forgetProblems('passphrase');
   };
 
   constructor(translator: Translator) {
@@ -380,6 +380,10 @@ export class Composer {
     this.sealed = result;
     this.phase = 'done';
     this.remembered = 'off';
+  }
+
+  #forgetProblems(...fields: readonly CreateField[]): void {
+    this.problems = this.problems.filter((problem) => !fields.includes(problem.field));
   }
 
   #onProgress(progress: CreateProgress): void {
@@ -480,7 +484,7 @@ export class Composer {
         return;
       }
       this.failure = error instanceof CreateError ? error.failure : { kind: 'failed' };
-      await this.focus.focusAfterUpdate(() => 'submit');
+      await this.focus.focusAfterUpdate('submit');
     }
   }
 
@@ -489,7 +493,7 @@ export class Composer {
     await tick();
     if (problems.some((problem) => problem.field === 'passphrase')) {
       this.menu = 'security';
-      await this.focus.focusAfterUpdate(() => 'passphrase');
+      await this.focus.focusAfterUpdate('passphrase');
     } else if (problems.some((problem) => problem.field === 'content' || problem.field === 'text')) {
       this.focus.focus('text');
     } else if (problems.some((problem) => problem.field === 'file')) {

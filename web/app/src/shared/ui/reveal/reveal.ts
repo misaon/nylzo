@@ -1,5 +1,13 @@
 import type { Attachment } from 'svelte/attachments';
 
+export const REVEAL_INDEXES = [
+  '[--reveal-index:0]',
+  '[--reveal-index:1]',
+  '[--reveal-index:2]',
+  '[--reveal-index:3]',
+  '[--reveal-index:4]',
+] as const;
+
 let observer: IntersectionObserver | undefined;
 const measured = new WeakSet<Element>();
 

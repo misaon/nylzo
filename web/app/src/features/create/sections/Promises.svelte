@@ -72,7 +72,7 @@
           </div>
         </div>
         <Button variant="ghost" href={REPOSITORY_URL} class="self-start md:self-auto">
-          <GithubMark class="size-4 shrink-0 max-md:hidden" animated />
+          <GithubMark class="size-4 shrink-0 max-md:hidden" />
           {translate('promise.open.link')}
           <Icon name="external" class="size-4 md:size-3.5 md:[stroke-width:2] md:opacity-70" animated />
         </Button>

@@ -7,7 +7,7 @@
   import Button from './Button.svelte';
 
   interface Props {
-    readonly text: () => string;
+    readonly text: string;
     readonly label?: string | undefined;
     readonly class?: ClassValue;
     readonly labelClass?: ClassValue;
@@ -21,7 +21,7 @@
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(text());
+      await navigator.clipboard.writeText(text);
       copied.show();
     } catch {
       copied.hide();
