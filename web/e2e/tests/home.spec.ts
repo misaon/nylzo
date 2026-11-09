@@ -97,6 +97,19 @@ test('the language switch moves between / and /cs/ in place, a saved choice wins
   await expect(page).toHaveURL(`${BASE_URL}/`);
 });
 
+test('a page without a message switches language after a release removed its catalogs by loading again', async ({
+  newPage,
+}) => {
+  const page = await newPage({ locale: 'en-US' });
+  await openApp(page, '/transparency');
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await page.route('**/assets/czech-*.js', async (route) => route.fulfill({ status: 404 }), { times: 1 });
+  await page.evaluate(() => Object.assign(globalThis, { nylzoSamePage: true }));
+  await chooseLanguage(page, 'Čeština');
+  await expect(page.locator('html[data-ready]')).toHaveAttribute('lang', 'cs');
+  expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(false);
+});
+
 test(
   'English section links and legacy fragments navigate without JavaScript',
   { tag: '@cross-browser' },
