@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/misaon/nylzo/compare/v0.10.0...v0.11.0) (2026-11-09)
+
+
+### Features
+
+* **web:** add the Seznam webmaster verification tag ([#293](https://github.com/misaon/nylzo/issues/293)) ([727bba4](https://github.com/misaon/nylzo/commit/727bba4fa58e107595e1686d8449615e1f666fc2))
+
 ## [0.10.0](https://github.com/misaon/nylzo/compare/v0.9.0...v0.10.0) (2026-11-09)
 
 
