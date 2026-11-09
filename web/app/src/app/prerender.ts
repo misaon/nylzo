@@ -24,15 +24,8 @@ interface OgImage {
   readonly height: number;
 }
 
-interface HomeStyles {
-  readonly stylesheet: string;
-  readonly fontStylesheet: string;
-  readonly inline: string;
-}
-
 export interface HomeAssets {
   readonly image: OgImage;
-  readonly styles: HomeStyles;
 }
 
 const PUBLIC_URL_PLACEHOLDER = '__NYLZO_PUBLIC_URL__';
@@ -40,10 +33,8 @@ const PUBLIC_START = '<!--nylzo:public-->';
 const PUBLIC_END = '<!--/nylzo:public-->';
 const OG_LOCALES: Readonly<Record<Language, string>> = { en: 'en_US', cs: 'cs_CZ' };
 const REVEAL_WITHOUT_SCRIPT = `<noscript><style>html:not([data-fonts]) body{content-visibility:visible}</style></noscript>`;
-const STYLESHEET = /<link rel="stylesheet"[^>]* href="([^"]+)"[^>]*>/u;
 const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/gu;
 const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/gu;
-const FONT_FACE = /@font-face\{[^}]*\}/gu;
 const APPLE_TOUCH_ICON = /<link rel="apple-touch-icon" href="([^"]+)"/u;
 const MODULE_SCRIPT = /<script type="module"[^>]*><\/script>\s*/u;
 const MODULE_PRELOAD = /<link rel="modulepreload"[^>]*>\s*/gu;
@@ -163,25 +154,6 @@ function seoHead(language: Language, image: OgImage, logo: string): string {
   return [...shared, PUBLIC_START, ...located, PUBLIC_END].join('\n');
 }
 
-export function splitFontFaces(css: string): { readonly fontFaces: string; readonly inline: string } {
-  const fontFaces = css.match(FONT_FACE)?.join('') ?? '';
-  if (fontFaces === '') {
-    throw new Error('prerender: the stylesheet declares no fonts');
-  }
-  return { fontFaces, inline: css.replaceAll(FONT_FACE, '') };
-}
-
-function inlineStyles(page: string, { stylesheet, fontStylesheet, inline }: HomeStyles): string {
-  if (STYLESHEET.exec(page)?.[1] !== stylesheet || inline.includes('</style')) {
-    throw new Error(`prerender: cannot inline the stylesheet ${stylesheet}`);
-  }
-  return replaceOnce(
-    page,
-    STYLESHEET,
-    `<link rel="stylesheet" crossorigin href="${fontStylesheet}">\n<style>${inline}</style>`,
-  );
-}
-
 function fontPreloads(page: string, language: Language): string {
   if (matchCount(page, CZECH_FONT_PRELOAD) === 0 || matchCount(page, EXTENDED_FONT_PRELOAD) === 0) {
     throw new Error('prerender: the index preloads no Czech or extended Latin fonts');
@@ -190,7 +162,7 @@ function fontPreloads(page: string, language: Language): string {
   return language === 'cs' ? home : home.replaceAll(CZECH_FONT_PRELOAD, '');
 }
 
-export function homeTemplate(index: string, language: Language, { image, styles }: HomeAssets): string {
+export function homeTemplate(index: string, language: Language, { image }: HomeAssets): string {
   const { head, body } = render(App, { props: { start: { path: HOME_PATHS[language], language } } });
   let page = replaceOnce(index, /<html lang="[a-z]+">/u, `<html lang="${language}">`);
   page = replaceOnce(page, /<meta\s+name="description"[^>]*>\s*/u, '');
@@ -200,7 +172,7 @@ export function homeTemplate(index: string, language: Language, { image, styles 
   }
   page = replaceOnce(page, /<title>[^<]*<\/title>/u, `${head.trim()}\n${seoHead(language, image, logo)}`);
   page = replaceOnce(page, '</head>', `${REVEAL_WITHOUT_SCRIPT}\n</head>`);
-  page = fontPreloads(inlineStyles(page, styles), language);
+  page = fontPreloads(page, language);
   return replaceOnce(page, '<body></body>', `<body>${body}</body>`);
 }
 

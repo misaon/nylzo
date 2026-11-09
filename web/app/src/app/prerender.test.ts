@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { LANGUAGES } from '../shared/language/language.ts';
-import { homeTemplate, splitFontFaces } from './prerender.ts';
+import { homeTemplate } from './prerender.ts';
 
 const INDEX = `<!doctype html>
 <html lang="cs">
@@ -21,13 +21,7 @@ const INDEX = `<!doctype html>
 </html>
 `;
 const IMAGE = { path: '/assets/og-image-a1.png', width: 1200, height: 630 };
-const CSS = 'body{color:#fff}@font-face{src:url(/assets/geist-czech-c3.woff2)}h1{margin:0}';
-const STYLES = {
-  stylesheet: '/assets/style-b2.css',
-  fontStylesheet: '/assets/fonts-f7.css',
-  inline: splitFontFaces(CSS).inline,
-};
-const ASSETS = { image: IMAGE, styles: STYLES };
+const ASSETS = { image: IMAGE };
 
 function count(page: string, pattern: RegExp): number {
   return page.match(new RegExp(pattern, 'gu'))?.length ?? 0;
@@ -59,9 +53,7 @@ describe('homeTemplate', () => {
     expect(page.replace(block, '')).not.toContain('__NYLZO_PUBLIC_URL__');
     expect(page).toContain(`<meta property="og:locale" content="${language === 'en' ? 'en_US' : 'cs_CZ'}">`);
     expect(page).toContain('<noscript><style>');
-    expect(page).toContain('<link rel="stylesheet" crossorigin href="/assets/fonts-f7.css">');
-    expect(page).toContain('<style>body{color:#fff}h1{margin:0}</style>');
-    expect(page).not.toContain('style-b2.css');
+    expect(page).toContain('<link rel="stylesheet" crossorigin href="/assets/style-b2.css">');
     expect(count(page, /-czech-[\w-]+\.woff2" as="font"/u)).toBe(language === 'cs' ? 2 : 0);
     expect(page).not.toContain('latin-ext');
     expect(page).toContain('geist-latin-wght-normal-d4.woff2" as="font"');
@@ -96,13 +88,6 @@ describe('homeTemplate', () => {
       /<body><\/body>/u,
     );
     expect(() => homeTemplate(INDEX.replace('<title>Nylzo</title>', ''), 'en', ASSETS)).toThrow(/title/u);
-    expect(() =>
-      homeTemplate(INDEX, 'en', { image: IMAGE, styles: { ...STYLES, stylesheet: '/assets/other.css' } }),
-    ).toThrow(/stylesheet/u);
-    expect(() =>
-      homeTemplate(INDEX, 'en', { image: IMAGE, styles: { ...STYLES, inline: 'a{}</style><script>' } }),
-    ).toThrow(/stylesheet/u);
     expect(() => homeTemplate(INDEX.replaceAll('-czech-', '-other-'), 'cs', ASSETS)).toThrow(/Czech/u);
-    expect(() => splitFontFaces('body{}')).toThrow(/fonts/u);
   });
 });
