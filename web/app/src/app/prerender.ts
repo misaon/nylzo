@@ -32,6 +32,8 @@ const PUBLIC_URL_PLACEHOLDER = '__NYLZO_PUBLIC_URL__';
 const PUBLIC_START = '<!--nylzo:public-->';
 const PUBLIC_END = '<!--/nylzo:public-->';
 const OG_LOCALES: Readonly<Record<Language, string>> = { en: 'en_US', cs: 'cs_CZ' };
+// Inline, so no element is styled before the stylesheet arrives and then runs its transitions when the page appears.
+const HIDE_UNTIL_FONTS = `<style>html:not([data-fonts]) body{content-visibility:hidden}</style>`;
 const REVEAL_WITHOUT_SCRIPT = `<noscript><style>html:not([data-fonts]) body{content-visibility:visible}</style></noscript>`;
 const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/gu;
 const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/gu;
@@ -171,7 +173,7 @@ export function homeTemplate(index: string, language: Language, { image }: HomeA
     throw new Error('prerender: the index has no apple touch icon for the organization logo');
   }
   page = replaceOnce(page, /<title>[^<]*<\/title>/u, `${head.trim()}\n${seoHead(language, image, logo)}`);
-  page = replaceOnce(page, '</head>', `${REVEAL_WITHOUT_SCRIPT}\n</head>`);
+  page = replaceOnce(page, '</head>', `${HIDE_UNTIL_FONTS}\n${REVEAL_WITHOUT_SCRIPT}\n</head>`);
   page = fontPreloads(page, language);
   return replaceOnce(page, '<body></body>', `<body>${body}</body>`);
 }

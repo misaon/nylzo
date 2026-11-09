@@ -53,6 +53,9 @@ describe('homeTemplate', () => {
     expect(page.replace(block, '')).not.toContain('__NYLZO_PUBLIC_URL__');
     expect(page).toContain(`<meta property="og:locale" content="${language === 'en' ? 'en_US' : 'cs_CZ'}">`);
     expect(page).toContain('<noscript><style>');
+    const hidden = page.indexOf('<style>html:not([data-fonts]) body{content-visibility:hidden}</style>');
+    expect(hidden).toBeGreaterThan(-1);
+    expect(hidden).toBeLessThan(page.indexOf('<noscript><style>'));
     expect(page).toContain('<link rel="stylesheet" crossorigin href="/assets/style-b2.css">');
     expect(count(page, /-czech-[\w-]+\.woff2" as="font"/u)).toBe(language === 'cs' ? 2 : 0);
     expect(page).not.toContain('latin-ext');
