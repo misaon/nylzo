@@ -8,6 +8,7 @@ interface DiagramNode {
   readonly title: MessageKey;
   readonly text: MessageKey;
   readonly animation: string;
+  readonly glow: string;
   readonly delay: string;
   readonly captionDelay: string;
   readonly badge?: { readonly icon: IconName; readonly animation: string };
@@ -19,6 +20,7 @@ export const DIAGRAM_NODES: readonly DiagramNode[] = [
     title: 'how.node.sender',
     text: 'how.node.sender.text',
     animation: 'motion-safe:animate-how-node-sender',
+    glow: 'motion-safe:after:animate-how-node-sender-peak',
     delay: '[--reveal-delay:0ms]',
     captionDelay: '[--reveal-delay:160ms]',
   },
@@ -27,6 +29,7 @@ export const DIAGRAM_NODES: readonly DiagramNode[] = [
     title: 'how.node.server',
     text: 'how.node.server.text',
     animation: 'motion-safe:animate-how-node-server',
+    glow: 'motion-safe:before:animate-how-node-server-hold motion-safe:after:animate-how-node-server-peak',
     delay: '[--reveal-delay:420ms]',
     captionDelay: '[--reveal-delay:580ms]',
     badge: { icon: 'lock', animation: 'motion-safe:animate-how-stored' },
@@ -36,6 +39,7 @@ export const DIAGRAM_NODES: readonly DiagramNode[] = [
     title: 'how.node.recipient',
     text: 'how.node.recipient.text',
     animation: 'motion-safe:animate-how-node-recipient',
+    glow: 'motion-safe:before:animate-how-node-recipient-hold motion-safe:after:animate-how-node-recipient-peak',
     delay: '[--reveal-delay:840ms]',
     captionDelay: '[--reveal-delay:1000ms]',
     badge: { icon: 'check', animation: 'motion-safe:animate-how-opened' },
@@ -92,8 +96,14 @@ export const LAYOUTS: Readonly<Record<DiagramLayout, Layout>> = {
     endDot: 2.5,
     lines: ['M86 140H150', 'M210 140H274'],
     chips: [
-      { position: 'left-[32.78%] top-[51.85%]', animation: 'motion-safe:animate-how-chip-a' },
-      { position: 'left-[67.22%] top-[51.85%]', animation: 'motion-safe:animate-how-chip-b' },
+      {
+        position: 'left-[32.78%] top-[51.85%]',
+        animation: 'glow-chip motion-safe:ring-aegis-400/40 motion-safe:after:animate-how-chip-a',
+      },
+      {
+        position: 'left-[67.22%] top-[51.85%]',
+        animation: 'glow-chip motion-safe:ring-aegis-400/40 motion-safe:after:animate-how-chip-b',
+      },
     ],
     chipIcon: 'hidden size-3',
     chipStroke: 2.2,
@@ -126,8 +136,14 @@ export const LAYOUTS: Readonly<Record<DiagramLayout, Layout>> = {
     endDot: 3,
     lines: ['M194 170H456', 'M544 170H806'],
     chips: [
-      { position: 'left-[32.50%] top-[53.13%]', animation: 'motion-safe:animate-how-chip-a' },
-      { position: 'left-[67.50%] top-[53.13%]', animation: 'motion-safe:animate-how-chip-b' },
+      {
+        position: 'left-[32.50%] top-[53.13%]',
+        animation: 'glow-chip motion-safe:ring-aegis-400/40 motion-safe:after:animate-how-chip-a',
+      },
+      {
+        position: 'left-[67.50%] top-[53.13%]',
+        animation: 'glow-chip motion-safe:ring-aegis-400/40 motion-safe:after:animate-how-chip-b',
+      },
     ],
     chipIcon: 'size-3.5',
     chipStroke: 2,

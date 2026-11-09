@@ -9,7 +9,7 @@ const CATALOG_SOURCES = {
 } satisfies Record<Language, () => Promise<Catalog>>;
 const catalogs = new Map<Language, Catalog>();
 
-// The language a page opens in loads with it; the others load once the page is ready.
+// The language a page opens in loads with it; another loads only when the reader switches to it.
 export async function loadCatalog(language: Language): Promise<void> {
   if (!catalogs.has(language)) {
     catalogs.set(language, await CATALOG_SOURCES[language]());

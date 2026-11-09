@@ -9,7 +9,7 @@ import test from "node:test";
 
 const execute = promisify(execFile);
 
-test("host certificate checks verify the live TLS identity, trust, and renewal reserve without reading Caddy storage", { timeout: 60000 }, async () => {
+test("host certificate checks verify the live TLS identity, trust, renewal reserve, and short lifetime without reading Caddy storage", { timeout: 60000 }, async () => {
   const directory = mkdtempSync(join(tmpdir(), "nylzo-host-certificate-"));
   try {
     const bin = join(directory, "bin"), output = join(directory, "status");
@@ -24,7 +24,7 @@ test("host certificate checks verify the live TLS identity, trust, and renewal r
       chmodSync(join(bin, name), 0o700);
     }
     writeFileSync(join(directory, "caddy.env"), "NYLZO_DOMAIN=nylzo.example.org\n");
-    for (const [name, domain, days] of [["valid", "nylzo.example.org", "7"], ["foreign", "other.example.org", "7"], ["renewal-due", "nylzo.example.org", "1"]]) {
+    for (const [name, domain, days] of [["valid", "nylzo.example.org", "7"], ["foreign", "other.example.org", "7"], ["renewal-due", "nylzo.example.org", "1"], ["long-lived", "nylzo.example.org", "30"]]) {
       execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-days", days!, "-subj", `/CN=${domain}`, "-addext", `subjectAltName=DNS:${domain}`, "-addext", "extendedKeyUsage=serverAuth", "-keyout", join(directory, `${name}.key`), "-out", join(directory, `${name}.crt`)], { stdio: "pipe", timeout: 10000 });
     }
     const run = async (endpoint: string, ca: string) => {
@@ -35,7 +35,7 @@ test("host certificate checks verify the live TLS identity, trust, and renewal r
       } });
       return JSON.parse(readFileSync(join(output, "status.json"), "utf8")).checks.certificate;
     };
-    for (const [identity, ca, expected] of [["valid", "valid", true], ["valid", "foreign", false], ["foreign", "foreign", false], ["renewal-due", "renewal-due", false]] as const) {
+    for (const [identity, ca, expected] of [["valid", "valid", true], ["valid", "foreign", false], ["foreign", "foreign", false], ["renewal-due", "renewal-due", false], ["long-lived", "long-lived", false]] as const) {
       const server = createServer({ key: readFileSync(join(directory, `${identity}.key`)), cert: readFileSync(join(directory, `${identity}.crt`)), minVersion: "TLSv1.3" }, socket => socket.end());
       server.on("tlsClientError", () => {});
       await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));

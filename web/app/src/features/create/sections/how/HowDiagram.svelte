@@ -112,7 +112,7 @@
   {/each}
   <span
     class={[
-      'absolute inline-flex h-7 -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-void-950 bg-[linear-gradient(180deg,oklch(0.72_0.14_305/0.34),oklch(0.72_0.14_305/0.14))] px-3 text-caption font-medium whitespace-nowrap text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.18),0_0_24px_-4px_oklch(0.72_0.14_305/0.85)] ring-1 ring-nebula-300/60 motion-safe:animate-how-chip-key',
+      'glow-chip-key absolute inline-flex h-7 -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-void-950 bg-[linear-gradient(180deg,oklch(0.72_0.14_305/0.34),oklch(0.72_0.14_305/0.14))] px-3 text-caption font-medium whitespace-nowrap text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.18),0_0_24px_-4px_oklch(0.72_0.14_305/0.85)] ring-1 ring-nebula-300/60 motion-safe:shadow-none motion-safe:ring-nebula-300/40 motion-safe:after:animate-how-chip-key',
       shape.keyChip,
     ]}
   >
@@ -124,6 +124,7 @@
       <span
         class="absolute -inset-[45%] rounded-full bg-[radial-gradient(closest-side,oklch(0.56_0.19_258/0.28),transparent)]"
       ></span>
+      <span class={['glow-node absolute inset-0 rounded-full', node.glow]}></span>
       <span
         class={[
           'relative grid aspect-square w-full place-items-center rounded-full text-ink-soft glass-pop',

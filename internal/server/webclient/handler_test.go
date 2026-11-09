@@ -29,7 +29,7 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 		if response.Header().Get("X-Content-Type-Options") != "nosniff" ||
-			response.Header().Get("Cache-Control") != "no-store" {
+			response.Header().Get("Cache-Control") != expectedCacheControl(path, response.Code) {
 			t.Fatalf("%s lost its security headers: %v", path, response.Header())
 		}
 		return response
@@ -88,7 +88,8 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 		probe.Header.Set("Sec-Fetch-Dest", fetch.destination)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, probe)
-		if response.Code != fetch.status || response.Header().Get("Cache-Control") != "no-store" {
+		if response.Code != fetch.status ||
+			response.Header().Get("Cache-Control") != expectedCacheControl(fetch.path, response.Code) {
 			t.Fatalf("a %s %s request for %s answered %d", fetch.site, fetch.destination, fetch.path, response.Code)
 		}
 	}
@@ -106,5 +107,61 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 	}
 	if response := request(http.MethodPost, "/r", "", ""); response.Code != http.StatusMethodNotAllowed {
 		t.Fatal("the frontend accepted a mutation")
+	}
+}
+
+// expectedCacheControl caches only scripts and stylesheets, which every page loads with Subresource Integrity (D119).
+func expectedCacheControl(path string, status int) string {
+	if status == http.StatusOK && strings.HasPrefix(path, "/assets/") &&
+		(strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css")) {
+		return "max-age=31536000, immutable"
+	}
+	return "no-store"
+}
+
+func TestSecurityTextFollowsRFC9116(t *testing.T) {
+	t.Parallel()
+	build := load(t, builtClient(t))
+	const advisories = "Contact: https://github.com/misaon/nylzo/security/advisories/new\n"
+	const rest = "Expires: 2027-11-09T09:51:48Z\n" +
+		"Policy: https://github.com/misaon/nylzo/blob/main/SECURITY.md\n" +
+		"Preferred-Languages: en, cs\n"
+	for name, instance := range map[string]struct {
+		publicURL, contact, date, body string
+	}{
+		"email contact": {
+			"https://nylzo.example", "security@nylzo.example", "2026-11-09T09:51:48Z",
+			"Contact: mailto:security@nylzo.example\n" + advisories + rest +
+				"Canonical: https://nylzo.example/.well-known/security.txt\n",
+		},
+		"web contact":    {"", "https://nylzo.example/contact", "2026-11-09T10:51:48+01:00", "Contact: https://nylzo.example/contact\n" + advisories + rest},
+		"no contact":     {"", "", "2026-11-09T09:51:48Z", advisories + rest},
+		"no commit time": {"https://nylzo.example", "", "", ""},
+	} {
+		handler, err := webclient.NewHandler(
+			build,
+			instance.publicURL,
+			instance.contact,
+			buildinfo.Info{Version: "0.4.0", Date: instance.date},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, webclient.SecurityTextPath, http.NoBody))
+		if instance.body == "" {
+			if response.Code != http.StatusNotFound {
+				t.Fatalf("%s: a build without a commit time answered %d", name, response.Code)
+			}
+			continue
+		}
+		if response.Code != http.StatusOK || response.Body.String() != instance.body ||
+			response.Header().Get("Content-Type") != "text/plain; charset=utf-8" ||
+			response.Header().Get("Content-Security-Policy") != webclient.NonHTMLCSP {
+			t.Fatalf("%s: %d %v\n%s", name, response.Code, response.Header(), response.Body.String())
+		}
+	}
+	if !webclient.IsPublicDocument(webclient.SecurityTextPath) {
+		t.Fatal("scanners over classical TLS cannot read security.txt")
 	}
 }

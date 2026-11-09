@@ -338,8 +338,12 @@ func TestBuiltClientIsServed(t *testing.T) {
 		if csp := asset.Header.Get("Content-Security-Policy"); csp != webclient.NonHTMLCSP {
 			t.Fatalf("%s: the worker and the other assets must keep CSP default-src 'none', got %q", path, csp)
 		}
+		cacheControl := "no-store"
+		if strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css") {
+			cacheControl = "max-age=31536000, immutable"
+		}
 		if asset.Header.Get("X-Content-Type-Options") != "nosniff" ||
-			asset.Header.Get("Cache-Control") != "no-store" ||
+			asset.Header.Get("Cache-Control") != cacheControl ||
 			asset.Header.Get("Vary") != "Accept-Encoding" {
 			t.Fatalf("%s: headers %v", path, asset.Header)
 		}

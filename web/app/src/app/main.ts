@@ -1,10 +1,9 @@
 import { hydrate, mount } from 'svelte';
 
 import '../app.css';
-import { attempt } from '../shared/attempt.ts';
 import { prepareWorker } from '../shared/kdf/worker-source.ts';
 import { loadCatalog } from '../shared/language/catalogs.ts';
-import { browserPreferences, LANGUAGES, savedLanguage, storedLanguage } from '../shared/language/language.ts';
+import { browserPreferences, savedLanguage, storedLanguage } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { takeHandoff } from '../shared/local-client/handoff.ts';
 import { HOME_PATHS, homeLanguage, screenOf } from './pages.ts';
@@ -85,10 +84,6 @@ async function boot(): Promise<void> {
     mount(App, options);
   }
   document.documentElement.dataset['ready'] = '';
-  // A tab left open across a release can no longer fetch the old build's catalogs.
-  for (const other of LANGUAGES.filter((listed) => listed !== language)) {
-    void attempt(loadCatalog(other));
-  }
   void tidy();
 }
 

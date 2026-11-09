@@ -44,7 +44,7 @@
             >{translate('who.you.badge')}</span
           >
         </div>
-        <div class="rounded-pane p-4 well motion-safe:animate-who-read-message">
+        <div class="glow-source rounded-pane p-4 well motion-safe:after:animate-who-read-message">
           <p class={LABEL}>{translate('who.label.message')}</p>
           <p class="mt-2 text-body text-ink">
             {translate('who.you.message')}
@@ -54,7 +54,7 @@
           </p>
           <p class="mt-1 text-body text-ink-soft">{translate('who.you.message.note')}</p>
         </div>
-        <div class="rounded-pane p-4 well motion-safe:animate-who-read-file">
+        <div class="glow-source rounded-pane p-4 well motion-safe:after:animate-who-read-file">
           <p class={LABEL}>{translate('who.label.file')}</p>
           <div class="mt-2 flex items-center gap-3">
             <IconTile icon="file" tone="current" size="medium" />
@@ -64,7 +64,7 @@
             </div>
           </div>
         </div>
-        <div class="rounded-pane p-4 well motion-safe:animate-who-read-key">
+        <div class="glow-source rounded-pane p-4 well motion-safe:after:animate-who-read-key">
           <p class={LABEL}>{translate('who.label.key')}</p>
           <p class="mt-2 text-body text-ink">{translate('who.you.key')}</p>
           <p class="mt-1 truncate text-caption text-ink-mute">
@@ -138,7 +138,7 @@
             >{translate('who.server.badge')}</span
           >
         </div>
-        <div class="rounded-pane p-4 well motion-safe:animate-who-store-message">
+        <div class="glow-source rounded-pane p-4 well motion-safe:after:animate-who-store-message">
           <p class={LABEL}>{translate('who.label.message')}</p>
           <p
             class="mt-2 h-18 overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,black_16%,black_50%,transparent)] text-caption break-all text-ink-mute/60 motion-safe:animate-who-arrive-message"
@@ -151,7 +151,7 @@
           </p>
           <p class="sr-only">{translate('who.server.badge')}</p>
         </div>
-        <div class="rounded-pane p-4 well motion-safe:animate-who-store-file">
+        <div class="glow-source rounded-pane p-4 well motion-safe:after:animate-who-store-file">
           <p class={LABEL}>{translate('who.label.file')}</p>
           <div class="mt-2 flex items-center gap-3 motion-safe:animate-who-arrive-file">
             <span class="relative grid size-10 shrink-0 place-items-center rounded-control text-ink-soft tile-neutral">
@@ -168,7 +168,9 @@
             </div>
           </div>
         </div>
-        <div class="flex flex-col rounded-pane border border-dashed border-white/20 p-4 motion-safe:animate-who-deny">
+        <div
+          class="glow-deny flex flex-col rounded-pane border border-dashed border-white/20 p-4 motion-safe:border-white/15 motion-safe:after:animate-who-deny"
+        >
           <p class={LABEL}>{translate('who.label.key')}</p>
           <p class="mt-2 flex items-center gap-2 text-body text-ink-soft">
             <Icon name="ban" class="size-4 shrink-0 text-aegis-300" />

@@ -13,7 +13,7 @@ Every Hetzner/Flatcar host writes a coarse readiness report every two minutes. I
 - `applicationUpdates`: no deployment-failure marker and a successful update check within 30 minutes, or one still running within 15 minutes.
 - `osUpdates`: update-engine reports a known non-error state and checked within 24 hours. This does not prove that every upstream patch is installed.
 - `clock`: within the last hour, at least two of GitHub, Sigstore and Let's Encrypt agreed with the system clock to within a minute over TLS.
-- `certificate`: the served certificate for the domain is valid for at least 36 more hours.
+- `certificate`: the served certificate for the domain is valid for at least 36 more hours and was issued for at most seven days. A longer certificate, for example one issued before the `shortlived` profile, fails the check.
 
 ## Heartbeat
 

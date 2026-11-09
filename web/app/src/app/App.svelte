@@ -63,6 +63,11 @@
     try {
       await loadCatalog(language);
     } catch {
+      // A release removed this build's catalogs; a page that holds no message loads again from the new build.
+      saveLanguage(browserPreferences(), language);
+      if (navigator.onLine && screen !== 'create' && screen !== 'read') {
+        location.reload();
+      }
       return;
     }
     if (requestedLanguage !== language) {
