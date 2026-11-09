@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.12.0](https://github.com/misaon/nylzo/compare/v0.11.0...v0.12.0) (2026-11-09)
+
+
+### Features
+
+* act on the findings of the external site tests ([#300](https://github.com/misaon/nylzo/issues/300)) ([d14b9bd](https://github.com/misaon/nylzo/commit/d14b9bd0720a69475621c1092a7c71b9448697c1))
+* install the CLI with Homebrew and Scoop ([#301](https://github.com/misaon/nylzo/issues/301)) ([2638c94](https://github.com/misaon/nylzo/commit/2638c94425ea95fbf9308f73131cede6860ae621))
+* **web:** add ten languages, a view countdown and UI fixes ([#302](https://github.com/misaon/nylzo/issues/302)) ([a6be5b0](https://github.com/misaon/nylzo/commit/a6be5b03fc8cdab500cc55bee77b330b525bab5d))
+
+
+### Fixes
+
+* **dependency-guard:** accept version bumps of existing overrides ([#297](https://github.com/misaon/nylzo/issues/297)) ([ff9b776](https://github.com/misaon/nylzo/commit/ff9b7764bd254917d5435a8308da8ee3176ada82))
+
+
+### Build
+
+* **infrastructure:** update dependency osv-scanner to v2.7.1 (main) ([#298](https://github.com/misaon/nylzo/issues/298)) ([1c35c61](https://github.com/misaon/nylzo/commit/1c35c61de19ed4a1723a3b04797d99b71037efb1))
+
+
+### CI
+
+* **deps:** update ci dependencies (main) ([#280](https://github.com/misaon/nylzo/issues/280)) ([059f94b](https://github.com/misaon/nylzo/commit/059f94b1e334551fa3cddd26cdea8bfb8d2c034d))
+
+
+### Maintenance
+
+* **web:** remove the Seznam webmaster verification tag ([#295](https://github.com/misaon/nylzo/issues/295)) ([3a8de44](https://github.com/misaon/nylzo/commit/3a8de44807baf1a2623288a99e67ba5e2aaebb3a))
+
 ## [0.11.0](https://github.com/misaon/nylzo/compare/v0.10.0...v0.11.0) (2026-11-09)
 
 
