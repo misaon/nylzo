@@ -26,12 +26,25 @@ func builtHome(language string) string {
 <script type="module" src="/assets/index-a1.js"></script><link rel="stylesheet" href="/assets/style-b2.css"></head><body><h1>home ` + language + `</h1></body></html>`
 }
 
-func templates(index, english, czech string) fstest.MapFS {
-	return fstest.MapFS{
-		"dist/index.html":   {Data: []byte(index)},
-		"dist/home.en.html": {Data: []byte(english)},
-		"dist/home.cs.html": {Data: []byte(czech)},
+var homeLanguages = []string{"en", "cs", "de", "es", "fr", "id", "it", "ja", "pl", "pt-BR", "sk", "zh-Hans"}
+
+func homePath(language string) string {
+	if language == "en" {
+		return "/"
 	}
+	return "/" + strings.ToLower(language) + "/"
+}
+
+func everyHome(page string) func(language string) string {
+	return func(string) string { return page }
+}
+
+func templates(index string, home func(language string) string) fstest.MapFS {
+	files := fstest.MapFS{"dist/index.html": {Data: []byte(index)}}
+	for _, language := range homeLanguages {
+		files["dist/home."+language+".html"] = &fstest.MapFile{Data: []byte(home(language))}
+	}
+	return files
 }
 
 func gzipped(t *testing.T, data string) []byte {
@@ -49,7 +62,7 @@ func gzipped(t *testing.T, data string) []byte {
 
 func builtClient(t *testing.T) fstest.MapFS {
 	t.Helper()
-	files := templates(builtIndex, builtHome("en"), builtHome("cs"))
+	files := templates(builtIndex, builtHome)
 	maps.Copy(files, fstest.MapFS{
 		"placeholder.html":             {Data: []byte("placeholder")},
 		"dist/assets/index-a1.js":      {Data: []byte(appJS)},
@@ -94,7 +107,7 @@ func TestLoadTypesEveryAsset(t *testing.T) {
 		t.Fatalf("a missing build must give the placeholder: %+v", placeholder)
 	}
 	const page = `<p>built</p>`
-	if withoutAssets := load(t, templates(page, page, page)); !withoutAssets.Built {
+	if withoutAssets := load(t, templates(page, everyHome(page))); !withoutAssets.Built {
 		t.Fatal("a build without assets must load")
 	}
 }
@@ -103,7 +116,7 @@ func TestLoadRefusesABrokenBuild(t *testing.T) {
 	t.Parallel()
 	const page = `<p></p>`
 	index := func(extra fstest.MapFS) fstest.MapFS {
-		files := templates(page, page, page)
+		files := templates(page, everyHome(page))
 		maps.Copy(files, extra)
 		return files
 	}

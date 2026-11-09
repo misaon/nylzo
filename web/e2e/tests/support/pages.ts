@@ -21,7 +21,7 @@ export async function createMessageInPage(page: Page, message: ComposedMessage, 
   await openApp(page, `${base}/`);
   await page.getByLabel('Message text').fill(message.text ?? '');
   if (message.file) {
-    await page.getByLabel(/Attachment up to/u).setInputFiles(message.file);
+    await page.getByLabel(/File up to/u).setInputFiles(message.file);
   }
   if (message.passphrase) {
     await choosePassphrase(page, message.passphrase);

@@ -40,7 +40,7 @@ test('the composer forgets the text, the passphrase and the file once the link e
 }) => {
   const text = page.getByLabel('Message text');
   const passphrase = page.getByLabel('Passphrase', { exact: true });
-  const attachment = page.getByLabel(/Attachment up to/u);
+  const attachment = page.getByLabel(/File up to/u);
   const attachedFiles = () => attachment.evaluate((input: HTMLInputElement) => input.files?.length ?? 0);
 
   await openApp(page, '/');
@@ -129,7 +129,7 @@ test('a double click on Create link with an attachment creates one message', asy
   });
   await page.getByLabel('Message text').fill('double');
   await page
-    .getByLabel(/Attachment up to/u)
+    .getByLabel(/File up to/u)
     .setInputFiles({ name: 'big.pdf', mimeType: 'application/pdf', buffer: Buffer.alloc(4 * 1024 * 1024, 1) });
   await page.getByRole('button', { name: 'Create link' }).dblclick();
   await createdLink(page);

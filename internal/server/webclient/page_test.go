@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -43,7 +44,7 @@ func rendered(t *testing.T, build webclient.Build, path, publicURL string) strin
 func TestPublicURLFillsTheHomePages(t *testing.T) {
 	t.Parallel()
 	build := load(t, builtClient(t))
-	for _, path := range []string{"/", "/cs/"} {
+	for _, path := range []string{"/", "/cs/", "/pt-br/", "/zh-hans/"} {
 		with := rendered(t, build, path, "https://nylzo.example")
 		if !strings.Contains(with, `<link rel="canonical" href="https://nylzo.example/">`) ||
 			!strings.Contains(with, `content="https://nylzo.example/assets/favicon-e5.png"`) {
@@ -69,7 +70,12 @@ func TestPublicBlocksAreFilledOrDropped(t *testing.T) {
 	const page = `<p></p>`
 	const blocks = page + "a<!--nylzo:public-->[__NYLZO_PUBLIC_URL__/x]<!--/nylzo:public-->b" +
 		"<!--nylzo:public-->__NYLZO_PUBLIC_URL__<!--/nylzo:public-->c"
-	build := load(t, templates(page, blocks, page))
+	build := load(t, templates(page, func(language string) string {
+		if language == "en" {
+			return blocks
+		}
+		return page
+	}))
 	for publicURL, want := range map[string]string{"": page + "abc", "https://n.example": page + "a[https://n.example/x]bhttps://n.examplec"} {
 		if got := rendered(t, build, "/", publicURL); got != want {
 			t.Fatalf("%q: %q", publicURL, got)
@@ -135,12 +141,23 @@ func TestRobotsAndSitemap(t *testing.T) {
 	); robots != "User-agent: *\nDisallow: /api/\n\nSitemap: "+publicURL+"/sitemap.xml\n" {
 		t.Fatalf("robots.txt with a public URL: %q", robots)
 	}
-	links := `<xhtml:link rel="alternate" hreflang="en" href="https://nylzo.example:8443/"/><xhtml:link rel="alternate" hreflang="cs" href="https://nylzo.example:8443/cs/"/><xhtml:link rel="alternate" hreflang="x-default" href="https://nylzo.example:8443/"/>`
-	want := `<?xml version="1.0" encoding="UTF-8"?>` + "\n" +
-		`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">` + "\n" +
-		`<url><loc>https://nylzo.example:8443/</loc>` + links + "</url>\n" +
-		`<url><loc>https://nylzo.example:8443/cs/</loc>` + links + "</url>\n</urlset>\n"
-	if sitemap := string(webclient.Sitemap(publicURL)); sitemap != want {
+	var links strings.Builder
+	for _, language := range homeLanguages {
+		links.WriteString(
+			`<xhtml:link rel="alternate" hreflang="` + language + `" href="` + publicURL + homePath(language) + `"/>`,
+		)
+	}
+	links.WriteString(`<xhtml:link rel="alternate" hreflang="x-default" href="` + publicURL + `/"/>`)
+	var want strings.Builder
+	want.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
+	want.WriteString(
+		`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">` + "\n",
+	)
+	for _, language := range homeLanguages {
+		want.WriteString(`<url><loc>` + publicURL + homePath(language) + `</loc>` + links.String() + "</url>\n")
+	}
+	want.WriteString("</urlset>\n")
+	if sitemap := string(webclient.Sitemap(publicURL)); sitemap != want.String() {
 		t.Fatalf("sitemap.xml:\n%s", sitemap)
 	}
 }
@@ -207,27 +224,38 @@ func TestManifestListsTheEmbeddedFiles(t *testing.T) {
 		return sha(rendered(t, build, path, "https://nylzo.example"))
 	}
 	got := build.Manifest("v1.2.3", "https://nylzo.example", pages, buildinfo.Info{})
+	var homePaths []string
+	var homeFiles []webclient.ManifestFile
+	var homeTemplates []webclient.ManifestTemplate
+	for _, language := range homeLanguages {
+		homePaths = append(homePaths, homePath(language))
+		homeFiles = append(
+			homeFiles,
+			webclient.ManifestFile{Path: homePath(language), SHA256: served(homePath(language))},
+		)
+		homeTemplates = append(homeTemplates, webclient.ManifestTemplate{
+			Name:   "home." + language + ".html",
+			SHA256: sha(builtHome(language)),
+		})
+	}
+	slices.SortFunc(homeTemplates, func(first, second webclient.ManifestTemplate) int {
+		return strings.Compare(first.Name, second.Name)
+	})
 	want := webclient.Manifest{
 		Build:     buildinfo.Info{Version: "v1.2.3"},
 		Server:    "v1.2.3",
 		Built:     true,
 		PublicURL: "https://nylzo.example",
-		Pages:     []string{"/", "/cs/", "/sent", "/transparency", "/terms", "/agents", "/r", "/m/{id}"},
-		Files: []webclient.ManifestFile{
-			{Path: "/", SHA256: served("/")},
-			{Path: "/cs/", SHA256: served("/cs/")},
-			{Path: "/sent", SHA256: served("/sent")},
-			{Path: "/assets/favicon-d4.svg", SHA256: sha(faviconSVG)},
-			{Path: "/assets/favicon-e5.png", SHA256: sha(faviconPNG)},
-			{Path: "/assets/index-a1.js", SHA256: sha(appJS)},
-			{Path: "/assets/kdf-worker-c3.js", SHA256: sha("self.onmessage=null")},
-			{Path: "/assets/style-b2.css", SHA256: sha("body{}")},
-		},
-		Templates: []webclient.ManifestTemplate{
-			{Name: "home.cs.html", SHA256: sha(builtHome("cs"))},
-			{Name: "home.en.html", SHA256: sha(builtHome("en"))},
-			{Name: "index.html", SHA256: sha(builtIndex)},
-		},
+		Pages:     append(homePaths, "/sent", "/transparency", "/terms", "/agents", "/r", "/m/{id}"),
+		Files: append(homeFiles,
+			webclient.ManifestFile{Path: "/sent", SHA256: served("/sent")},
+			webclient.ManifestFile{Path: "/assets/favicon-d4.svg", SHA256: sha(faviconSVG)},
+			webclient.ManifestFile{Path: "/assets/favicon-e5.png", SHA256: sha(faviconPNG)},
+			webclient.ManifestFile{Path: "/assets/index-a1.js", SHA256: sha(appJS)},
+			webclient.ManifestFile{Path: "/assets/kdf-worker-c3.js", SHA256: sha("self.onmessage=null")},
+			webclient.ManifestFile{Path: "/assets/style-b2.css", SHA256: sha("body{}")},
+		),
+		Templates: append(homeTemplates, webclient.ManifestTemplate{Name: "index.html", SHA256: sha(builtIndex)}),
 	}
 	if gotJSON, wantJSON := encode(t, got), encode(t, want); gotJSON != wantJSON {
 		t.Fatalf("manifest\n got %s\nwant %s", gotJSON, wantJSON)

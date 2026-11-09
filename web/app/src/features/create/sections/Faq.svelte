@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { formatDays } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { LONGEST_TTL_DAYS } from '../../../shared/ttl/ttl-choices.ts';
   import Accordion from '../../../shared/ui/accordion/Accordion.svelte';
@@ -8,7 +7,7 @@
 
   const translator = getTranslator();
   const { translate } = translator;
-  const longest = $derived(formatDays(LONGEST_TTL_DAYS, translator.language));
+  const longest = $derived(translator.plural('count.day', LONGEST_TTL_DAYS));
 
   const columns = FAQ_COLUMNS;
   const COLUMN_DELAYS = ['md:[--reveal-delay:0ms]', 'md:[--reveal-delay:110ms]'] as const;

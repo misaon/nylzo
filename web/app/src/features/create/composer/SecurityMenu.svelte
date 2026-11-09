@@ -20,7 +20,7 @@
   const id = $props.id();
 </script>
 
-<div class="sm:relative" data-menu>
+<div class="min-w-0 sm:relative" data-menu>
   <MenuChip
     {composer}
     menu="security"

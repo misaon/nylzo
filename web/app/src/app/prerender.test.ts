@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { LANGUAGES } from '../shared/language/language.ts';
+import { homePath, LANGUAGE_DETAILS, LANGUAGES } from '../shared/language/language.ts';
 import { homeTemplate } from './prerender.ts';
 
 const INDEX = `<!doctype html>
@@ -22,6 +22,8 @@ const INDEX = `<!doctype html>
 `;
 const IMAGE = { path: '/assets/og-image-a1.png', width: 1200, height: 630 };
 const ASSETS = { image: IMAGE };
+const WITH_CZECH_LETTERS = new Set(['cs', 'sk']);
+const WITH_EXTENDED_LETTERS = new Set(['pl', 'sk']);
 
 function count(page: string, pattern: RegExp): number {
   return page.match(new RegExp(pattern, 'gu'))?.length ?? 0;
@@ -35,7 +37,7 @@ function publicBlock(page: string): string {
 describe('homeTemplate', () => {
   it.each(LANGUAGES)('renders the %s home page with its own head and content', (language) => {
     const page = homeTemplate(INDEX, language, ASSETS);
-    const home = language === 'en' ? '/' : '/cs/';
+    const home = homePath(language);
     expect(page).toContain(`<html lang="${language}">`);
     expect(count(page, /<title>/u)).toBe(1);
     expect(count(page, /<meta name="description"/u)).toBe(1);
@@ -46,19 +48,22 @@ describe('homeTemplate', () => {
     expect(count(page, /<!--\/nylzo:public-->/u)).toBe(1);
     const block = publicBlock(page);
     expect(block).toContain(`<link rel="canonical" href="__NYLZO_PUBLIC_URL__${home}">`);
-    expect(block).toContain('<link rel="alternate" hreflang="en" href="__NYLZO_PUBLIC_URL__/">');
-    expect(block).toContain('<link rel="alternate" hreflang="cs" href="__NYLZO_PUBLIC_URL__/cs/">');
+    for (const alternate of LANGUAGES) {
+      expect(block).toContain(
+        `<link rel="alternate" hreflang="${alternate}" href="__NYLZO_PUBLIC_URL__${homePath(alternate)}">`,
+      );
+    }
     expect(block).toContain('<link rel="alternate" hreflang="x-default" href="__NYLZO_PUBLIC_URL__/">');
     expect(block).toContain(`<meta property="og:image" content="__NYLZO_PUBLIC_URL__${IMAGE.path}">`);
     expect(page.replace(block, '')).not.toContain('__NYLZO_PUBLIC_URL__');
-    expect(page).toContain(`<meta property="og:locale" content="${language === 'en' ? 'en_US' : 'cs_CZ'}">`);
+    expect(page).toContain(`<meta property="og:locale" content="${LANGUAGE_DETAILS[language].openGraphLocale}">`);
     expect(page).toContain('<noscript><style>');
     const hidden = page.indexOf('<style>html:not([data-fonts]) body{content-visibility:hidden}</style>');
     expect(hidden).toBeGreaterThan(-1);
     expect(hidden).toBeLessThan(page.indexOf('<noscript><style>'));
     expect(page).toContain('<link rel="stylesheet" crossorigin href="/assets/style-b2.css">');
-    expect(count(page, /-czech-[\w-]+\.woff2" as="font"/u)).toBe(language === 'cs' ? 2 : 0);
-    expect(page).not.toContain('latin-ext');
+    expect(count(page, /-czech-[\w-]+\.woff2" as="font"/u)).toBe(WITH_CZECH_LETTERS.has(language) ? 2 : 0);
+    expect(count(page, /latin-ext/u)).toBe(WITH_EXTENDED_LETTERS.has(language) ? 1 : 0);
     expect(page).toContain('geist-latin-wght-normal-d4.woff2" as="font"');
   });
 

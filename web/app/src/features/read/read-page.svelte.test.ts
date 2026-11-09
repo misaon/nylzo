@@ -8,8 +8,8 @@ import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
 import { startWorker } from '../../shared/kdf/worker-source.ts';
 import { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
-import { ReadPage } from './read-page.svelte.ts';
-import type { BurnOutcome, ReaderDependencies, ReadView } from './reader.ts';
+import { ReadPage, SHOWN_SECONDS } from './read-page.svelte.ts';
+import type { BurnOutcome, ClosedView, ReaderDependencies, ReadView } from './reader.ts';
 import { createReader } from './reader.ts';
 
 // Avoid an await in this hoisted factory: Svelte instruments awaits with a runtime import.
@@ -51,7 +51,7 @@ describe('read page interactions', () => {
     load: vi.fn<() => Promise<void>>(),
     reveal: vi.fn<(passphrase?: string) => Promise<void>>(),
     burn: vi.fn<() => Promise<BurnOutcome>>(),
-    clear: vi.fn<() => void>(),
+    clear: vi.fn<(closed?: ClosedView) => void>(),
   };
   let notify: (view: ReadView) => void;
   let dependencies: ReaderDependencies;
@@ -77,7 +77,7 @@ describe('read page interactions', () => {
     reader.load.mockResolvedValue();
     reader.reveal.mockResolvedValue();
     reader.burn.mockResolvedValue({ outcome: 'deleted' });
-    reader.clear.mockImplementation(() => notify({ view: 'cleared' }));
+    reader.clear.mockImplementation((closed) => notify(closed ?? { view: 'cleared' }));
     vi.mocked(createReader).mockImplementation((options, onView) => {
       dependencies = options;
       notify = onView;
@@ -202,7 +202,8 @@ describe('read page interactions', () => {
     expect(page.phase).toBe('revealed');
     expect(page.revealText).toBe('Hello 🌍\nworld');
     expect(focused).toHaveBeenCalledOnce();
-    expect(vi.getTimerCount()).toBe(0);
+    expect(page.secondsLeft).toBeGreaterThan(SHOWN_SECONDS - 5);
+    expect(vi.getTimerCount()).toBe(1);
   });
 
   it('uses a shorter timeline and skips scrambling for reduced motion', async () => {
@@ -215,7 +216,8 @@ describe('read page interactions', () => {
     await vi.advanceTimersByTimeAsync(1100);
     expect(page.revealText).toBe('Private text');
     expect(page.phase).toBe('revealed');
-    expect(vi.getTimerCount()).toBe(0);
+    expect(page.secondsLeft).toBe(SHOWN_SECONDS);
+    expect(vi.getTimerCount()).toBe(1);
     await expect(dependencies.shown?.()).resolves.toBeUndefined();
   });
 
@@ -347,15 +349,31 @@ describe('read page interactions', () => {
     expect(remove).toHaveBeenCalledOnce();
   });
 
+  it('forgets an opened message once it was on screen for the shown time (D124)', () => {
+    const page = new ReadPage(new Translator('en'));
+    notify({ view: 'revealed', text: 'secret', file, burnable: false, opensRemaining: 0 });
+    expect(page.afterFacts[0]).toEqual({ icon: 'timer', text: 'Deleted in 15:00' });
+    vi.advanceTimersByTime(61_000);
+    expect(page.afterFacts[0]?.text).toBe('Deleted in 13:59');
+    expect(reader.clear).not.toHaveBeenCalled();
+    vi.advanceTimersByTime((SHOWN_SECONDS - 61) * 1000);
+    expect(reader.clear).toHaveBeenCalledExactlyOnceWith({ view: 'timed_out' });
+    expect(page.notice).toBe('timed_out');
+    expect(page.status).toBe('Time to view is up');
+    expect(page.revealText).toBeUndefined();
+    expect(page.secondsLeft).toBeUndefined();
+    expect(revokeSavedFiles).toHaveBeenCalledOnce();
+  });
+
   it('shows metadata and end-state facts in the selected language', () => {
     const translator = new Translator('cs');
     const page = new ReadPage(translator);
     expect(page.readyFacts).toEqual([]);
     ready({ kdfId: KDF_SCRYPT });
     expect(page.readyFacts.map((fact) => fact.icon)).toEqual(['clock', 'eye', 'key']);
-    expect(page.opensLeft(1)).toBe(translator.translate('open.chip.opens.one', { count: 1 }));
-    expect(page.opensLeft(2)).toBe(translator.translate('open.chip.opens.few', { count: 2 }));
-    expect(page.opensLeft(5)).toBe(translator.translate('open.chip.opens.other', { count: 5 }));
+    expect(page.opensLeft(1)).toBe('Zbývá 1 otevření');
+    expect(page.opensLeft(2)).toBe('Zbývají 2 otevření');
+    expect(page.opensLeft(5)).toBe('Zbývá 5 otevření');
     notify({ view: 'ended', state: 'opened', firstOpenedAt: metadata.expiresAt });
     expect(page.afterFacts[0]?.icon).toBe('eye');
     notify({ view: 'ended', state: 'expired', endedAt: metadata.expiresAt });

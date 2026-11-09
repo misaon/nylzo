@@ -104,7 +104,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
   }
 
   await page
-    .getByLabel(/Attachment up to/u)
+    .getByLabel(/File up to/u)
     .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
   await expect(page.getByText('notes.txt')).toBeVisible();
   await expectAccessible(page, 'attachment', '#create');

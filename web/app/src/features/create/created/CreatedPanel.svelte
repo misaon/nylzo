@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { tick } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
-  import { fade } from 'svelte/transition';
+  import { fade, slide } from 'svelte/transition';
 
   import { clearClipboard } from '../../../shared/clipboard/clear-clipboard.ts';
   import { formatMoment } from '../../../shared/language/format.ts';
@@ -8,7 +9,7 @@
   import { MAX_LABEL_CHARACTERS } from '../../../shared/sent-records/sent-record.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
   import { PRIVATE_TEXT } from '../../../shared/ui/field/private-fields.ts';
-  import { FocusTargets } from '../../../shared/ui/focus/focus.ts';
+  import { FocusTargets, keepFocus } from '../../../shared/ui/focus/focus.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
@@ -34,11 +35,13 @@
   const id = $props.id();
 
   const COPIED_MS = 2400;
+  const SAVED_MS = 900;
   const PASSPHRASE_MASK = '•'.repeat(18);
 
   const copied = new Flash(COPIED_MS);
   const passphraseCopied = new Flash(COPIED_MS);
-  const focus = new FocusTargets<'link' | 'title'>();
+  const justSaved = new Flash(SAVED_MS);
+  const focus = new FocusTargets<'clipboard' | 'link' | 'title'>();
   let entered = $state(false);
   let editing = $state(false);
   let clipboard = $state<'cleared' | 'copied' | 'failed' | 'untouched'>('untouched');
@@ -51,6 +54,7 @@
       typeof navigator.share === 'function' &&
       navigator.canShare({ url: created.link }),
   );
+  const trackingShown = $derived(canRemember && (remembered !== 'remembered' || justSaved.shown));
   const clipboardText = $derived.by(() => {
     if (clipboard === 'failed') {
       return translate('created.copy_failed');
@@ -85,6 +89,14 @@
     } catch {
       passphraseShown = true;
     }
+  }
+
+  async function clearCopies() {
+    await clearClipboard((state) => {
+      clipboard = state;
+    });
+    await tick();
+    keepFocus(focus.get('clipboard'));
   }
 
   async function share() {
@@ -301,26 +313,19 @@
           </li>
         </ul>
         <p
+          {@attach focus.attach('clipboard')}
           role="status"
+          tabindex="-1"
           class={[
-            'absolute inset-x-0 top-0 flex flex-col items-center justify-center gap-x-3 gap-y-1 fade-swap max-sm:static max-sm:mt-3 max-sm:overflow-y-clip max-sm:[transition-property:opacity,transform,translate,height,margin-top] max-sm:duration-200 max-sm:[interpolate-size:allow-keywords] max-sm:inert:mt-0 max-sm:inert:h-0 sm:flex-row',
+            'absolute inset-x-0 top-0 flex flex-col items-center justify-center gap-x-3 gap-y-1 fade-swap outline-none max-sm:static max-sm:mt-3 max-sm:overflow-y-clip max-sm:[transition-property:opacity,transform,translate,height,margin-top] max-sm:duration-200 max-sm:[interpolate-size:allow-keywords] max-sm:inert:mt-0 max-sm:inert:h-0 sm:flex-row',
             clipboard === 'untouched' ? 'pointer-events-none opacity-0' : 'opacity-100',
             clipboard === 'failed' && 'text-rose-300',
           ]}
           inert={clipboard === 'untouched'}
         >
           <span class="text-pretty">{clipboard === 'untouched' ? '' : clipboardText}</span>
-          {#if clipboard !== 'failed'}
-            <Button
-              variant="ghost"
-              size="compact"
-              onclick={() =>
-                void clearClipboard((state) => {
-                  clipboard = state;
-                })}
-              disabled={clipboard !== 'copied'}
-              class={clipboard === 'copied' ? 'opacity-100' : 'opacity-0'}
-            >
+          {#if clipboard === 'copied'}
+            <Button variant="ghost" size="compact" onclick={() => void clearCopies()}>
               {translate('clipboard.clear')}
             </Button>
           {/if}
@@ -329,8 +334,10 @@
     </div>
   </div>
 
-  {#if canRemember}
+  {#if trackingShown}
     <div
+      out:slide={{ duration: motionMs(400) }}
+      onoutroend={() => keepFocus(focus.get('title'))}
       class={[
         'flex flex-col gap-3 border-t border-white/8 px-4 py-4 text-left transition-[opacity,translate] sm:flex-row sm:items-center sm:gap-4',
         item('delay-220'),
@@ -347,6 +354,7 @@
         class="flex flex-row gap-2 sm:items-center"
         onsubmit={(event) => {
           event.preventDefault();
+          justSaved.show();
           onremember(label);
         }}
       >
@@ -404,7 +412,7 @@
       </li>
       <li class="flex items-center gap-1.5 whitespace-nowrap max-sm:min-h-6 max-sm:text-ui">
         <Icon name="eye" class="size-4 shrink-0 text-ink-mute" />
-        {translate(opensMax === 1 ? 'compose.opens.one' : 'compose.opens.other', { count: opensMax })}
+        {translator.plural('compose.opens', opensMax)}
       </li>
       {#if passphrase !== ''}
         <li class="flex items-center gap-1.5 whitespace-nowrap text-nebula-300 max-sm:min-h-6 max-sm:text-ui">

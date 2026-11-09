@@ -1,4 +1,4 @@
-import type { Language } from '../../../../shared/language/language.ts';
+import type { Translator } from '../../../../shared/language/translator.svelte.ts';
 import { TTL_CHOICES } from '../../../../shared/ttl/ttl-choices.ts';
 
 export type Attacker = 'laptop' | 'gpu' | 'farm' | 'datacenter' | 'world';
@@ -57,45 +57,22 @@ export function judge(attacker: Attacker, quantum: boolean): Judgement {
   return { verdict: last, bigBang: false, yearsLog10 };
 }
 
-type YearsKey =
-  | 'brute.years.billion.fraction'
-  | 'brute.years.billion'
-  | 'brute.years.million.fraction'
-  | 'brute.years.million'
-  | 'brute.years.one'
-  | 'brute.years.few'
-  | 'brute.years.other';
+const LARGE_YEARS = 1e6;
 
-export interface YearsAmount {
-  readonly key: YearsKey;
-  readonly amount: string;
-}
-
-const PLURAL_KEYS: Partial<Record<Intl.LDMLPluralRule, YearsKey>> = {
-  one: 'brute.years.one',
-  few: 'brute.years.few',
-};
-
-const SCALES: readonly { readonly size: number; readonly fraction: YearsKey; readonly whole: YearsKey }[] = [
-  { size: 1e9, fraction: 'brute.years.billion.fraction', whole: 'brute.years.billion' },
-  { size: 1e6, fraction: 'brute.years.million.fraction', whole: 'brute.years.million' },
-];
-
-export function yearsAmount(yearsLog10: number, language: Language): YearsAmount {
+export function yearsText(yearsLog10: number, translator: Translator): string {
+  const { language, translate } = translator;
   const years = 10 ** yearsLog10;
-  const number = (value: number, digits: number) =>
-    new Intl.NumberFormat(language, { maximumFractionDigits: digits, minimumFractionDigits: digits }).format(value);
-  for (const { size, fraction, whole } of SCALES) {
-    if (years >= size) {
-      const value = years / size;
-      return value < 10
-        ? { key: fraction, amount: number(value, 1) }
-        : { key: whole, amount: number(Math.round(value), 0) };
-    }
+  if (years < LARGE_YEARS) {
+    return new Intl.NumberFormat(language, { style: 'unit', unit: 'year', unitDisplay: 'long' }).format(
+      Math.round(years),
+    );
   }
-  const rounded = Math.round(years);
-  const rule = new Intl.PluralRules(language).select(rounded);
-  return { key: PLURAL_KEYS[rule] ?? 'brute.years.other', amount: number(rounded, 0) };
+  const amount = new Intl.NumberFormat(language, {
+    notation: 'compact',
+    compactDisplay: 'long',
+    maximumSignificantDigits: 2,
+  }).format(years);
+  return translate('brute.years.large', { amount });
 }
 
 export interface Countdown {

@@ -9,8 +9,7 @@ import { isKnownSafeFile } from '../../shared/files/file-name.ts';
 import { revokeSavedFiles, saveFile } from '../../shared/files/save-file.ts';
 import { scryptInWorker, stopRunningWorkers } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
-import type { MessageKey } from '../../shared/language/czech.ts';
-import { formatMoment, formatWait } from '../../shared/language/format.ts';
+import { formatClock, formatMoment, formatWait } from '../../shared/language/format.ts';
 import type { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
@@ -22,7 +21,7 @@ import { noticeOf } from './read-notice.ts';
 import type { Burned, Notice } from './read-notice.ts';
 import { readerSession } from './reader-session.ts';
 import { createReader } from './reader.ts';
-import type { BurnOutcome, BusyStep, Reader, ReadView, RevealedFile } from './reader.ts';
+import type { BurnOutcome, BusyStep, ClosedView, Reader, ReadView, RevealedFile } from './reader.ts';
 import { markHiddenCharacters } from './revealed/hidden-characters.ts';
 import type { MarkedText } from './revealed/hidden-characters.ts';
 
@@ -36,6 +35,7 @@ export interface Fact {
 
 export type FocusTarget =
   | 'bar'
+  | 'clipboard'
   | 'deleteMessage'
   | 'deleteRest'
   | 'download'
@@ -70,6 +70,9 @@ const SCRAMBLE_LEAD = 1.15;
 const FLASH_MS = 2400;
 const NOISE_CHARACTERS = 260;
 const NOISE_GROWTH = 900;
+const SETTLE_WAIT_MS = 700;
+const COUNTDOWN_TICK_MS = 1000;
+export const SHOWN_SECONDS = 15 * 60;
 const FAILED_BURNS: ReadonlySet<BurnOutcome['outcome']> = new Set(['failed', 'retry_later', 'unknown']);
 const WHITESPACE: ReadonlySet<string> = new Set([' ', '\n', '\t']);
 
@@ -92,6 +95,9 @@ export class ReadPage {
   #revealWhenReady = false;
   #markShown: (() => void) | undefined;
   #revealTimer: ReturnType<typeof setInterval> | undefined;
+  #countdownTimer: ReturnType<typeof setInterval> | undefined;
+  readonly #settleTimer: ReturnType<typeof setTimeout>;
+  #shownUntil = 0;
   readonly #reader: Reader;
   readonly #translator: Translator;
 
@@ -115,6 +121,8 @@ export class ReadPage {
   clipboard = $state<'cleared' | 'copied' | 'untouched'>('untouched');
   linkInHistory = $state(false);
   noise = $state('');
+  settled = $state(false);
+  secondsLeft = $state<number>();
   readonly copied = new Flash(FLASH_MS);
   readonly downloaded = new Flash(FLASH_MS);
   readonly focus = new FocusTargets<FocusTarget>();
@@ -162,6 +170,9 @@ export class ReadPage {
     if (this.opening && this.view.view === 'busy') {
       return translate(`busy.${this.view.step}`);
     }
+    if (this.notice === 'timed_out') {
+      return translate('open.notice.timed_out');
+    }
     return this.burnNote;
   });
 
@@ -188,10 +199,14 @@ export class ReadPage {
     const { translate } = this.#translator;
     if (this.revealed) {
       const more = this.revealed.burnable && !this.restDeleted;
-      return [
+      const facts: Fact[] = [
         { icon: 'check', text: translate('open.chip.now') },
         { icon: 'eye', text: more ? this.opensLeft(this.revealed.opensRemaining) : translate('open.chip.last') },
       ];
+      if (this.secondsLeft !== undefined) {
+        facts.unshift({ icon: 'timer', text: translate('open.chip.clears', { time: formatClock(this.secondsLeft) }) });
+      }
+      return facts;
     }
     if (this.notice === 'burned') {
       return [{ icon: 'check', text: translate('open.chip.burned') }];
@@ -271,10 +286,13 @@ export class ReadPage {
     this.confirmingCopy = false;
   };
 
-  readonly clearClipboard = (): Promise<void> =>
-    clearClipboard((state) => {
+  readonly clearClipboard = async (): Promise<void> => {
+    await clearClipboard((state) => {
       this.clipboard = state;
     });
+    await tick();
+    keepFocus(this.focus.get('clipboard'));
+  };
 
   readonly copyText = async (): Promise<void> => {
     this.confirmingCopy = false;
@@ -297,24 +315,22 @@ export class ReadPage {
   };
 
   readonly leave = (): void => {
-    stopRunningWorkers();
-    revokeSavedFiles();
     this.#left = true;
-    this.burned = undefined;
-    this.confirmingDownload = false;
-    this.askingDelete = false;
-    this.showPassphrase = false;
-    this.passphrase = '';
-    this.#pending = undefined;
-    this.revealText = undefined;
-    this.marked = undefined;
-    this.confirmingCopy = false;
-    clearInterval(this.#revealTimer);
-    this.#stopTimeline();
-    this.#reader.clear();
-    this.#settleShown();
+    this.#close({ view: 'cleared' });
     // Commit removal before pagehide returns and the browser freezes this document.
     flushSync();
+  };
+
+  readonly checkCountdown = (): void => {
+    if (this.#countdownTimer === undefined) {
+      return;
+    }
+    const left = (this.#shownUntil - performance.now()) / 1000;
+    if (left > 0) {
+      this.secondsLeft = Math.ceil(left);
+      return;
+    }
+    this.#close({ view: 'timed_out' });
   };
 
   readonly onConfirmKeydown = (event: KeyboardEvent): void => {
@@ -399,16 +415,21 @@ export class ReadPage {
       },
       (view) => this.#onView(view),
     );
+    this.#settleTimer = setTimeout(() => {
+      this.settled = true;
+    }, SETTLE_WAIT_MS);
     onDestroy(() => {
       this.timeline.stop();
       clearInterval(this.#revealTimer);
+      clearTimeout(this.#settleTimer);
+      this.#stopCountdown();
       this.#reader.clear();
     });
     void this.#reader.load();
   }
 
   #burnText({ outcome, afterReveal }: Burned): string {
-    const { translate, language } = this.#translator;
+    const { translate, plural } = this.#translator;
     switch (outcome.outcome) {
       case 'deleted': {
         return afterReveal ? translate('read.deleted_rest') : '';
@@ -417,7 +438,7 @@ export class ReadPage {
         return afterReveal ? translate(`read.ended.${outcome.state}`) : '';
       }
       case 'retry_later': {
-        return translate('read.retry_later', { time: formatWait(outcome.retryAfter, language) });
+        return translate('read.retry_later', { time: formatWait(outcome.retryAfter, plural) });
       }
       case 'unknown': {
         return afterReveal ? translate('read.delete.failed') : '';
@@ -500,11 +521,35 @@ export class ReadPage {
     this.#markShown = undefined;
   }
 
+  #close(closed: ClosedView): void {
+    stopRunningWorkers();
+    revokeSavedFiles();
+    this.burned = undefined;
+    this.confirmingDownload = false;
+    this.askingDelete = false;
+    this.showPassphrase = false;
+    this.passphrase = '';
+    this.#pending = undefined;
+    this.revealText = undefined;
+    this.marked = undefined;
+    this.confirmingCopy = false;
+    clearInterval(this.#revealTimer);
+    this.#stopTimeline();
+    this.#stopCountdown();
+    this.#reader.clear(closed);
+    this.#settleShown();
+  }
+
   #show(next: ReadView): void {
     const wasRevealed = this.shown.view === 'revealed';
     this.shown = next;
+    if (next.view !== 'loading') {
+      clearTimeout(this.#settleTimer);
+      this.settled = true;
+    }
     if (next.view !== 'revealed') {
       clearInterval(this.#revealTimer);
+      this.#stopCountdown();
       this.revealText = undefined;
       this.marked = undefined;
       return;
@@ -514,7 +559,21 @@ export class ReadPage {
       return;
     }
 
+    this.#startCountdown();
     void this.#startReveal(next.text);
+  }
+
+  #startCountdown(): void {
+    this.#stopCountdown();
+    this.#shownUntil = performance.now() + SHOWN_SECONDS * 1000;
+    this.secondsLeft = SHOWN_SECONDS;
+    this.#countdownTimer = setInterval(this.checkCountdown, COUNTDOWN_TICK_MS);
+  }
+
+  #stopCountdown(): void {
+    clearInterval(this.#countdownTimer);
+    this.#countdownTimer = undefined;
+    this.secondsLeft = undefined;
   }
 
   async #startReveal(revealed: string | undefined): Promise<void> {
@@ -570,13 +629,7 @@ export class ReadPage {
   }
 
   opensLeft(count: number): string {
-    const { translate, language } = this.#translator;
-    const rule = new Intl.PluralRules(language).select(count);
-    const keys: Partial<Record<Intl.LDMLPluralRule, MessageKey>> = {
-      one: 'open.chip.opens.one',
-      few: 'open.chip.opens.few',
-    };
-    return translate(keys[rule] ?? 'open.chip.opens.other', { count });
+    return this.#translator.plural('open.chip.opens', count);
   }
 
   shortTime(timestamp: string): string {

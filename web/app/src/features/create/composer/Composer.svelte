@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Interpolated from '../../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import CreatedPanel from '../created/CreatedPanel.svelte';
@@ -44,7 +45,9 @@
   <div class="mx-auto max-w-column text-center">
     <p class="mb-3 animate-rise text-eyebrow text-aegis-300 uppercase">{translate('hero.eyebrow')}</p>
     <h1 class="animate-rise-visible font-display text-hero font-light text-balance md:text-hero-lg">
-      {translate('hero.title.lead')} <span class="text-aegis-300">{translate('hero.title.accent')}</span>
+      <Interpolated text={translate('hero.title')} placeholder="accent"
+        ><span class="text-aegis-300">{translate('hero.title.accent')}</span></Interpolated
+      >
     </h1>
     <div
       class={[

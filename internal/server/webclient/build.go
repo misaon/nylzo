@@ -30,13 +30,28 @@ var (
 	errGunzipDiffers         = errors.New("does not unpack to the file")
 )
 
-var templateNames = []string{indexTemplate, "home.en.html", "home.cs.html"}
+var templateNames = append([]string{indexTemplate}, HomeTemplates()...)
 
-var statusTemplateNames = []string{
-	serverErrorPage + ".en.html",
-	serverErrorPage + ".cs.html",
-	maintenancePage + ".en.html",
-	maintenancePage + ".cs.html",
+var statusTemplateNames = statusTemplateList()
+
+// HomeTemplates names the prerendered home page of every language, which a build must contain.
+func HomeTemplates() []string {
+	names := make([]string, 0, len(languages))
+	for _, language := range languages {
+		names = append(names, homeTemplate(language.tag))
+	}
+	return names
+}
+
+func statusTemplateList() []string {
+	pages := []string{serverErrorPage, maintenancePage}
+	names := make([]string, 0, len(pages)*len(languages))
+	for _, page := range pages {
+		for _, language := range languages {
+			names = append(names, page+"."+language.tag+".html")
+		}
+	}
+	return names
 }
 
 func isStatusTemplate(name string) bool {

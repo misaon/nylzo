@@ -31,13 +31,16 @@
 <div class="relative mt-4 grid text-caption">
   <p
     class={[
-      'col-start-1 row-start-1 flex items-center justify-center gap-2 overflow-y-clip text-ink-mute transition-[opacity,height] duration-500 [interpolate-size:allow-keywords]',
+      'col-start-1 row-start-1 overflow-y-clip text-center text-balance text-ink-mute transition-[opacity,height] duration-500 [interpolate-size:allow-keywords]',
       quiet ? 'opacity-100' : 'pointer-events-none opacity-0',
       failed && 'h-0',
     ]}
   >
-    <Icon name="shieldCheck" stroke={1.7} class="size-4 shrink-0 text-aegis-300" />
-    {translate('compose.note')}
+    <Icon
+      name="shieldCheck"
+      stroke={1.7}
+      class="mr-2 inline-block size-4 shrink-0 align-[-3px] text-aegis-300"
+    />{translate('compose.note')}
   </p>
   <div
     class={[
@@ -62,7 +65,7 @@
       composer.problemNotice === '' ? 'pointer-events-none invisible opacity-0' : 'opacity-100',
     ]}
   >
-    <p id={noticeId} role="alert" class="font-medium text-[#fda4af]">{problemNotice}</p>
+    <p id={noticeId} role="alert" class="font-medium text-balance text-[#fda4af]">{problemNotice}</p>
   </div>
   <div
     class={[
@@ -71,12 +74,11 @@
     ]}
     inert={!rememberedShown}
   >
-    <p
-      role="status"
-      class={['flex items-center gap-2', composer.remembered === 'failed' ? 'text-rose-300' : 'text-ink-mute']}
-    >
-      <Icon name={composer.remembered === 'failed' ? 'alert' : 'check'} class="size-4 shrink-0 text-aegis-300" />
-      {rememberedText}
+    <p role="status" class={['text-balance', composer.remembered === 'failed' ? 'text-rose-300' : 'text-ink-mute']}>
+      <Icon
+        name={composer.remembered === 'failed' ? 'alert' : 'check'}
+        class="mr-2 inline-block size-4 shrink-0 align-[-3px] text-aegis-300"
+      />{rememberedText}
     </p>
     <a href="/sent" class={ARROW_LINK}>
       {translate('created.status_link')}

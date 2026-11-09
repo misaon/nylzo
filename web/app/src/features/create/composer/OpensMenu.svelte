@@ -10,12 +10,13 @@
   }
 
   const { composer }: Props = $props();
-  const { translate } = getTranslator();
+  const translator = getTranslator();
+  const { translate } = translator;
   const id = $props.id();
   const SEGMENTS = Array.from({ length: 10 }, (_, index) => index + 1);
 </script>
 
-<div class="sm:relative" data-menu>
+<div class="min-w-0 sm:relative" data-menu>
   <MenuChip
     {composer}
     menu="opens"
@@ -46,7 +47,7 @@
         <div class="flex flex-col items-center gap-1">
           <output class="text-stat font-light text-ink tabular-nums" aria-live="polite">{composer.opensMax}</output>
           <span class="text-micro text-ink-mute" aria-hidden="true"
-            >{translate(composer.opensMax === 1 ? 'compose.opens.unit.one' : 'compose.opens.unit.other')}</span
+            >{translator.plural('compose.opens.unit', composer.opensMax)}</span
           >
         </div>
         <button

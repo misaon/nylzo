@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { formatWait } from '../../shared/language/format.ts';
+  import { formatDuration, formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import { isAlarming, NOTICE_ICONS } from './read-notice.ts';
   import type { ReadPage } from './read-page.svelte.ts';
-  import { panelClasses } from './read-page.svelte.ts';
+  import { panelClasses, SHOWN_SECONDS } from './read-page.svelte.ts';
 
   interface Props {
     readonly page: ReadPage;
@@ -19,7 +19,10 @@
     const { notice, shown } = page;
     if (notice === 'busy') {
       const retryAfter = shown.view === 'retry_later' ? shown.retryAfter : undefined;
-      return translate('open.notice.busy.text', { time: formatWait(retryAfter, translator.language) });
+      return translate('open.notice.busy.text', { time: formatWait(retryAfter, translator.plural) });
+    }
+    if (notice === 'timed_out') {
+      return translate('open.notice.timed_out.text', { time: formatDuration(SHOWN_SECONDS, translator.language) });
     }
     return translate(notice === 'loading' ? 'open.loading.text' : `open.notice.${notice}.text`);
   });

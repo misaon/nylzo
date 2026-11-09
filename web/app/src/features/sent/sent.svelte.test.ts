@@ -39,6 +39,15 @@ describe('sent messages interface', () => {
     }
     return element;
   }
+
+  function forgetButton(): HTMLButtonElement {
+    const label = translator.translate('sent.forget.label');
+    const element = [...target.querySelectorAll('button')].find((candidate) => candidate.textContent.includes(label));
+    if (!element) {
+      throw new Error(`missing button ${label}`);
+    }
+    return element;
+  }
   function show(items?: readonly SentItem[]): void {
     component = mount(Sent, { target });
     flushSync();
@@ -153,7 +162,7 @@ describe('sent messages interface', () => {
     button(translator.translate('sent.cancel.no')).click();
     await tick();
     expect(page.cancel).not.toHaveBeenCalled();
-    button(`${translator.translate('sent.forget')}${translator.translate('sent.forget.suffix')}`).click();
+    forgetButton().click();
     flushSync();
     expect(page.forget).not.toHaveBeenCalled();
     button(translator.translate('sent.forget.yes')).click();
@@ -162,7 +171,7 @@ describe('sent messages interface', () => {
 
   it('forgets an ended record directly, and confirms before forgetting the whole list', async () => {
     show([{ ...item(), cancellable: false, ended: true }]);
-    button(`${translator.translate('sent.forget')}${translator.translate('sent.forget.suffix')}`).click();
+    forgetButton().click();
     await tick();
     expect(page.forget).toHaveBeenCalledExactlyOnceWith(item().id);
     expect(target.querySelector('dialog')).toBeNull();
@@ -176,7 +185,7 @@ describe('sent messages interface', () => {
   it('shows storage failure if forgetting fails and returns focus to the page', async () => {
     page.forget.mockRejectedValue(new Error('storage denied'));
     show([{ ...item(), cancellable: false }]);
-    button(`${translator.translate('sent.forget')}${translator.translate('sent.forget.suffix')}`).click();
+    forgetButton().click();
     await vi.waitFor(() =>
       expect(target.querySelector('[role="status"]')?.textContent).toBe(translator.translate('sent.unavailable')),
     );

@@ -1,4 +1,4 @@
-import type { MessageKey } from '../../../../shared/language/czech.ts';
+import type { MessageKey } from '../../../../shared/language/catalog.ts';
 
 export type MarkKind = 'yes' | 'strong' | 'no' | 'partial';
 

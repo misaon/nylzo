@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { formatDays } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import GithubMark from '../../../shared/shell/GithubMark.svelte';
   import { REPOSITORY_URL } from '../../../shared/shell/repository.ts';
@@ -16,8 +15,8 @@
   const { translate } = translator;
   const TOMBSTONE_DAYS = 7;
 
-  const longest = $derived(formatDays(LONGEST_TTL_DAYS, translator.language));
-  const forgotten = $derived(formatDays(TOMBSTONE_DAYS, translator.language));
+  const longest = $derived(translator.plural('count.day', LONGEST_TTL_DAYS));
+  const forgotten = $derived(translator.plural('count.day', TOMBSTONE_DAYS));
   const CARD =
     'glow-on-hover glass reveal-rise hover-lift rounded-card p-6 [--reveal-scale:0.96] [--reveal-step:120ms] [--reveal-duration:1.1s]';
 </script>

@@ -91,7 +91,7 @@ describe('created message panel', () => {
     expect(input?.selectionEnd).toBe(created.link.length);
     input?.blur();
     flushSync();
-    expect(target.textContent).toContain(translator.translate('compose.opens.other', { count: 3 }));
+    expect(target.textContent).toContain(translator.plural('compose.opens', 3));
     button('created.another').click();
     expect(another).toHaveBeenCalledOnce();
   });
@@ -102,11 +102,15 @@ describe('created message panel', () => {
     await tick();
     expect(writeText).toHaveBeenCalledExactlyOnceWith(created.link);
     expect(status()).toContain(translator.translate('clipboard.copied'));
-    button('clipboard.clear').click();
+    vi.advanceTimersToNextFrame();
+    const clear = button('clipboard.clear');
+    clear.focus();
+    clear.click();
     await tick();
     expect(writeText).toHaveBeenLastCalledWith('');
-    expect(button('clipboard.clear').disabled).toBe(true);
+    expect(target.textContent).not.toContain(translator.translate('clipboard.clear'));
     expect(status()).toContain(translator.translate('clipboard.cleared'));
+    await vi.waitFor(() => expect(document.activeElement?.getAttribute('role')).toBe('status'));
   });
 
   it('selects the link for manual copy if the clipboard API refuses', async () => {

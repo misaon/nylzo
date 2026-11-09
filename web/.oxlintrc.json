@@ -709,7 +709,7 @@
       }
     },
     {
-      "files": ["app/src/shared/language/english.ts", "app/src/shared/language/czech.ts"],
+      "files": ["app/src/shared/language/messages/*.ts"],
       "rules": {
         "max-lines": [
           "error",

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Interpolated from '../../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { REPOSITORY_URL } from '../../../shared/shell/repository.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
@@ -63,8 +64,9 @@
       {/each}
     </dl>
     <p class="reveal-focus text-caption text-pretty text-ink-mute [--reveal-blur:4px] md:col-span-2" {@attach reveal}>
-      {translate('about.terms')}
-      <a href="/terms" class={[TEXT_LINK, INLINE_TARGET]}>{translate('about.terms.link')}</a>.
+      <Interpolated text={translate('about.terms')} placeholder="link"
+        ><a href="/terms" class={[TEXT_LINK, INLINE_TARGET]}>{translate('about.terms.link')}</a></Interpolated
+      >
     </p>
   </div>
 </section>

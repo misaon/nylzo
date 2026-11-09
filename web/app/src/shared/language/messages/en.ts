@@ -1,6 +1,6 @@
-import type { MessageKey } from './czech.ts';
+import type { Catalog } from '../catalog.ts';
 
-export const english: Record<MessageKey, string> = {
+export const messages: Catalog = {
   'action.retry': 'Try again',
   'app.crashed': 'The page ran into an error. Reload it.',
 
@@ -12,8 +12,7 @@ export const english: Record<MessageKey, string> = {
   'hero.step.vanish': 'Gone once opened',
   'terms.eyebrow': 'Legal',
   'terms.title': 'Terms of use',
-  'terms.effective':
-    'Effective from 11 November 2026. The Czech version is binding; the English text is a translation.',
+  'terms.effective': 'Effective from 11 November 2026. The Czech version is binding; this version is a translation.',
   'terms.summary.title': 'In short',
   'terms.summary.1': 'Nylzo is free, comes without warranty, and you use it voluntarily.',
   'terms.summary.2':
@@ -86,6 +85,13 @@ export const english: Record<MessageKey, string> = {
   'agents.markdown':
     'The same content is available as Markdown at /agents.md, so agents can read it without a browser.',
   'action.copy': 'Copy',
+  'count.day': { one: '{count}\u{A0}day', other: '{count}\u{A0}days' },
+  'count.attempt': { one: '{count}\u{A0}attempt', other: '{count}\u{A0}attempts' },
+  'count.character': { one: '{count}\u{A0}character', other: '{count}\u{A0}characters' },
+  'count.file': { one: '{count}\u{A0}file', other: '{count}\u{A0}files' },
+  'wait.second': { one: '{count}\u{A0}second', other: '{count}\u{A0}seconds' },
+  'wait.minute': { one: '{count}\u{A0}minute', other: '{count}\u{A0}minutes' },
+  'wait.hour': { one: '{count}\u{A0}hour', other: '{count}\u{A0}hours' },
   'action.copied': 'Copied',
   'error.notFound.label': 'Error 404',
   'error.notFound.title': 'This page does not exist',
@@ -115,7 +121,7 @@ export const english: Record<MessageKey, string> = {
   'terms.liability.title': 'Liability',
   'terms.liability.1':
     "To the extent the law allows, the operator is not liable for harm caused by using the service or by being unable to use it. This does not apply to harm to a person's natural rights (such as life, health or privacy), to harm caused intentionally or by gross negligence, or to any other case where the law does not allow liability to be excluded or limited in advance.",
-  'terms.other.privacy': 'How personal data is handled is described on the',
+  'terms.other.privacy': 'How personal data is handled is described on the {link}.',
   'terms.other.privacy.link': 'Transparency page',
   'terms.other.law':
     'These terms and the use of the service are governed by Czech law, and the competent Czech courts decide disputes. This does not affect the mandatory law of the country where you live or your right to sue elsewhere where the law allows it.',
@@ -217,7 +223,7 @@ export const english: Record<MessageKey, string> = {
   'sent.ended.deleted': 'The recipient deleted it, or the operator removed it. The entry stays here for {days}.',
   'sent.cancel.title': 'Cancel the message “{label}”?',
   'sent.cancel.title.untitled': 'Cancel the message?',
-  'sent.forget.suffix': ' from the list',
+  'sent.forget.label': 'Remove from the list',
   'sent.forget.title': 'Remove the message from the list?',
   'sent.forget_all.title': 'Clear the whole list?',
 
@@ -410,8 +416,6 @@ export const english: Record<MessageKey, string> = {
   'language.label': 'Language',
   'language.list': 'Languages',
   'language.current': 'Language: {language}',
-  'language.name.cs': 'Czech',
-  'language.name.en': 'English',
 
   'footer.tagline': 'One-time encrypted links. Open source under the MIT license.',
   'footer.product': 'Product',
@@ -430,7 +434,7 @@ export const english: Record<MessageKey, string> = {
   'footer.note': 'No cookies or analytics.',
   'footer.version': 'Web client version {version}',
 
-  'hero.title.lead': 'A secret that',
+  'hero.title': 'A secret that {accent}',
   'hero.title.accent': 'opens once',
   'seo.title': 'Share passwords and files securely with one-time links | Nylzo',
   'seo.description':
@@ -442,12 +446,9 @@ export const english: Record<MessageKey, string> = {
   'compose.drop.title': 'Drop the file here',
   'compose.drop.note': 'It is encrypted along with the text. Up to {size}.',
   'compose.file.over': '{size} (limit {limit})',
-  'compose.ttl.label': 'Valid for {ttl}',
   'compose.ttl.title': 'Message expiry',
-  'compose.opens.one': '{count} open',
-  'compose.opens.other': '{count} opens',
-  'compose.opens.unit.one': 'open',
-  'compose.opens.unit.other': 'opens',
+  'compose.opens': { one: '{count} open', other: '{count} opens' },
+  'compose.opens.unit': { one: 'open', other: 'opens' },
   'compose.opens.title': 'How many times the message opens',
   'compose.opens.less': 'Fewer opens',
   'compose.opens.more': 'More opens',
@@ -460,7 +461,7 @@ export const english: Record<MessageKey, string> = {
   'compose.passphrase.switch.note': 'Without it, even someone who intercepts the link cannot open the message.',
   'compose.passphrase.placeholder': 'At least {min} characters, e.g. {words} words',
   'compose.passphrase.generate': 'Generate',
-  'compose.attach': 'Attachment up to {size}',
+  'compose.attach': 'File up to {size}',
   'compose.submit': 'Create link',
   'compose.encrypting': 'Encrypting',
   'compose.note':
@@ -516,11 +517,10 @@ export const english: Record<MessageKey, string> = {
   'open.passphrase.hide': 'Hide passphrase',
   'open.passphrase.empty': 'Enter the passphrase from the sender.',
   'open.chip.expires': 'Valid until {time}',
-  'open.chip.opens.one': '{count} open left',
-  'open.chip.opens.few': '{count} opens left',
-  'open.chip.opens.other': '{count} opens left',
+  'open.chip.opens': { one: '{count} open left', other: '{count} opens left' },
   'open.chip.now': 'Opened just now',
   'open.chip.last': 'Last open',
+  'open.chip.clears': 'Deleted in {time}',
   'open.chip.first_opened': 'First opened {time}',
   'open.chip.ended': 'Ended {time}',
   'open.step.derive.label': 'Key',
@@ -539,7 +539,7 @@ export const english: Record<MessageKey, string> = {
   'open.copy.text': 'Copy message',
   'open.copied.text': 'The text is on the clipboard. It stays there after you close this page.',
   'open.download': 'Download',
-  'open.download.suffix': ' attachment',
+  'open.download.file': 'Download attachment',
   'open.notice.opened': 'The message has already been opened',
   'open.notice.opened.text': 'If it was not you who opened it, let the sender know.',
   'open.notice.expired': 'The message has expired',
@@ -576,6 +576,9 @@ export const english: Record<MessageKey, string> = {
   'open.notice.busy.text': 'Try again in {time}. Trying again does not use up an open.',
   'open.notice.cleared': 'This page no longer shows the message',
   'open.notice.cleared.text': 'You left the page, so it no longer shows the message.',
+  'open.notice.timed_out': 'Time to view is up',
+  'open.notice.timed_out.text':
+    'The message was on screen for {time}, so the page deleted it. This protects it in case you walk away from the device.',
   'open.chip.burned': 'Deleted without opening',
   'open.notice.burned': 'You deleted the message',
   'open.notice.burned.text': 'Nobody can open it now, you included.',
@@ -644,8 +647,7 @@ export const english: Record<MessageKey, string> = {
   'who.server.file.size': 'size about 2.4 MB',
   'who.server.key': 'Does not have it',
   'who.server.sees': 'Sees when the message is deleted. Does not record IP addresses.',
-  'who.try': 'Try how long it would take to',
-  'who.try.last': 'guess the key',
+  'who.try': 'Try how long it would take to guess the key',
   'brute.eyebrow': 'Key strength',
   'brute.title': 'How long would it take to guess the key?',
   'brute.sub':
@@ -678,13 +680,7 @@ export const english: Record<MessageKey, string> = {
   'brute.verdict.beyond': 'Far longer than the universe has existed',
   'brute.about': 'Roughly {time}.',
   'brute.bigbang': 'Had it started guessing at the Big Bang, it would most likely still be at it.',
-  'brute.years.billion.fraction': '{amount} billion years',
-  'brute.years.billion': '{amount} billion years',
-  'brute.years.million.fraction': '{amount} million years',
-  'brute.years.million': '{amount} million years',
-  'brute.years.one': '{amount} year',
-  'brute.years.few': '{amount} years',
-  'brute.years.other': '{amount} years',
+  'brute.years.large': '{amount} years',
   'brute.left.keys': 'Keys left to try',
   'brute.left.steps': 'Steps it has left',
   'brute.live': 'live',
@@ -816,7 +812,7 @@ export const english: Record<MessageKey, string> = {
   'limits.abuse.title': 'Not for fraud or malware',
   'limits.abuse.note': 'Nor for any other illegal content.',
   'limits.liability':
-    'Nylzo is free and comes with no warranty. You use it voluntarily, and we do not promise it will always be available, free of bugs or resistant to every attack. Whoever sends a message is responsible for its content. More in the',
+    'Nylzo is free and comes with no warranty. You use it voluntarily, and we do not promise it will always be available, free of bugs or resistant to every attack. Whoever sends a message is responsible for its content. More in the {link}.',
 
   'about.eyebrow': 'Who is behind Nylzo',
   'about.title': 'An open project by one developer',
@@ -835,7 +831,7 @@ export const english: Record<MessageKey, string> = {
   'about.code.title': 'Code and development',
   'about.code.text': 'Public on GitHub under the MIT license.',
   'about.code.link': 'Source code',
-  'about.terms': 'Using Nylzo is voluntary and comes with no warranty. The details are in the',
+  'about.terms': 'Using Nylzo is voluntary and comes with no warranty. The details are in the {link}.',
   'about.terms.link': 'terms of use',
   'faq.eyebrow': 'Questions',
   'faq.title': 'Before you send your first message',

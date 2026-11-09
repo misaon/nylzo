@@ -1,7 +1,7 @@
 import { MIN_TTL_SECONDS } from '@nylzo/core';
 
 import type { InstanceLimits } from '../api/responses.ts';
-import type { MessageKey } from '../language/czech.ts';
+import type { MessageKey } from '../language/catalog.ts';
 
 export const SECONDS_PER_DAY = 86_400;
 

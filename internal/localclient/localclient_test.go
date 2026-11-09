@@ -59,13 +59,18 @@ func answerJSON(w http.ResponseWriter, _ *http.Request) {
 
 func webBuild(t *testing.T) webclient.Build {
 	t.Helper()
-	build, err := webclient.Load(fstest.MapFS{
+	files := fstest.MapFS{
 		"placeholder.html":        {Data: []byte("placeholder")},
 		"dist/index.html":         {Data: []byte(pageIndex)},
-		"dist/home.en.html":       {Data: []byte(strings.Replace(pageIndex, "<body>", "<body><h1>en</h1>", 1))},
-		"dist/home.cs.html":       {Data: []byte(strings.Replace(pageIndex, "<body>", "<body><h1>cs</h1>", 1))},
 		"dist/assets/index-a1.js": {Data: []byte(appJS)},
-	})
+	}
+	for _, name := range webclient.HomeTemplates() {
+		language := strings.TrimSuffix(strings.TrimPrefix(name, "home."), ".html")
+		files["dist/"+name] = &fstest.MapFile{
+			Data: []byte(strings.Replace(pageIndex, "<body>", "<body><h1>"+language+"</h1>", 1)),
+		}
+	}
+	build, err := webclient.Load(files)
 	if err != nil {
 		t.Fatal(err)
 	}

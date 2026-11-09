@@ -17,7 +17,7 @@
 | [cmd/nylzo](../../../cmd/nylzo), [internal/cli](../../../internal/cli), [internal/client](../../../internal/client) | CLI with `cli/messages`, `cli/operator`, `cli/verifyclient` and `cli/local`; HTTP client |
 | [internal/localclient](../../../internal/localclient)                                                               | Verified local client: embedded web client on loopback, API relay and link handoff       |
 | [internal/buildinfo](../../../internal/buildinfo)                                                                   | Version and commit data reported by the CLI and the server                               |
-| [web/app](../../../web/app)                                                                                         | Svelte web client with English and Czech interfaces                                      |
+| [web/app](../../../web/app)                                                                                         | Svelte web client in 12 languages, with Czech as the source text                                      |
 | [web/e2e](../../../web/e2e)                                                                                         | Playwright tests, including CLI/browser interoperability                                 |
 | [skills/nylzo](../../../skills/nylzo)                                                                               | Agent Skills instructions for using the CLI                                              |
 | [deploy/compose](../../../deploy/compose)                                                                           | Self-hosting example with Caddy and Docker secrets                                       |

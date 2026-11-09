@@ -1,6 +1,6 @@
 <script lang="ts">
   import { BUILD_INFO, buildSourceHref } from '../build-info.ts';
-  import type { MessageKey } from '../language/czech.ts';
+  import type { MessageKey } from '../language/catalog.ts';
   import type { Language } from '../language/language.ts';
   import LanguageMenu from '../language/LanguageMenu.svelte';
   import { getTranslator } from '../language/translator.svelte.ts';

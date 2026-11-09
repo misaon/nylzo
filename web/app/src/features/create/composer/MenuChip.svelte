@@ -16,12 +16,13 @@
     readonly popoverId: string;
     readonly icon: IconName;
     readonly label: string;
+    readonly hint?: string;
     readonly reserve?: string;
     readonly problem: boolean;
     readonly accent?: boolean;
   }
 
-  const { composer, menu, popoverId, icon, label, reserve, problem, accent = false }: Props = $props();
+  const { composer, menu, popoverId, icon, label, hint, reserve, problem, accent = false }: Props = $props();
   const open = $derived(composer.menu === menu);
 </script>
 
@@ -40,8 +41,10 @@
   ]}
 >
   <Icon name={icon} class="size-4 shrink-0" animated />
-  <span class="grid">
-    <span class="col-start-1 row-start-1">{label}</span>
+  <span class="grid min-w-0">
+    <span class="col-start-1 row-start-1 truncate">
+      {#if hint !== undefined}<span class="sr-only">{hint}: </span>{/if}{label}
+    </span>
     {#if reserve !== undefined}
       <span class="invisible col-start-1 row-start-1" aria-hidden="true">{reserve}</span>
     {/if}

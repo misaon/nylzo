@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -18,20 +19,37 @@ const (
 	publicURLPlaceholder = "__NYLZO_PUBLIC_URL__"
 	publicStart          = "<!--nylzo:public-->"
 	publicEnd            = "<!--/nylzo:public-->"
-	englishHome          = "/"
-	czechHome            = "/cs/"
 	sentPath             = "/sent"
 	transparencyPath     = "/transparency"
 	termsPath            = "/terms"
 	agentsPath           = "/agents"
-	czechRedirectPath    = "/cs"
 	robotsPath           = "/robots.txt"
 	sitemapPath          = "/sitemap.xml"
 	messagePagePath      = "/m/{id}"
 	htmlContentType      = "text/html; charset=utf-8"
 )
 
-var homeTemplates = map[string]string{englishHome: "home.en.html", czechHome: "home.cs.html"}
+var homeTemplates = homeTemplateNames()
+
+func homeTemplateNames() map[string]string {
+	names := map[string]string{}
+	for _, language := range languages {
+		names[homePath(language.tag)] = homeTemplate(language.tag)
+	}
+	return names
+}
+
+var homeRedirects = homeRedirectPaths()
+
+func homeRedirectPaths() map[string]string {
+	redirects := map[string]string{}
+	for _, path := range homePaths() {
+		if path != "/" {
+			redirects[strings.TrimSuffix(path, "/")] = path
+		}
+	}
+	return redirects
+}
 
 var (
 	errPublicMarkersUnpaired    = errors.New("the public markers do not pair up")
@@ -39,10 +57,16 @@ var (
 )
 
 // publicDocuments carry no message and no message metadata, so a crawler may load them over classical TLS.
-var publicDocuments = []string{
-	englishHome, czechHome, czechRedirectPath, termsPath, transparencyPath, agentsPath, "/" + agentsGuideFile,
-	robotsPath, sitemapPath, SecurityTextPath, ManifestPath,
-}
+var publicDocuments = slices.Concat(homePaths(), slices.Sorted(maps.Keys(homeRedirects)), []string{
+	termsPath,
+	transparencyPath,
+	agentsPath,
+	"/" + agentsGuideFile,
+	robotsPath,
+	sitemapPath,
+	SecurityTextPath,
+	ManifestPath,
+})
 
 func IsPublicDocument(path string) bool {
 	if name, ok := strings.CutPrefix(path, "/assets/"); ok {

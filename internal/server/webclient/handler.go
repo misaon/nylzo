@@ -53,12 +53,17 @@ func NewHandler(build Build, publicURL, contact string, information buildinfo.In
 	return frontendHeaders(mux), nil
 }
 
-// HandlePages routes every path of PagePaths to the handler that page returns, and /cs to the Czech home page.
+// HandlePages routes every path of PagePaths to the handler that page returns, and a home page address
+// without its trailing slash, such as /cs, to that home page.
 func HandlePages(mux *http.ServeMux, handler func(path string) http.HandlerFunc) {
 	for _, path := range PagePaths {
 		mux.HandleFunc("GET "+pagePattern(path), handler(path))
 	}
-	mux.HandleFunc("GET "+czechRedirectPath, redirectToCzechHome)
+	for from, to := range homeRedirects {
+		mux.HandleFunc("GET "+from, func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, to, http.StatusPermanentRedirect)
+		})
+	}
 }
 
 func pagePattern(path string) string {
@@ -66,10 +71,6 @@ func pagePattern(path string) string {
 		return path + "{$}"
 	}
 	return path
-}
-
-func redirectToCzechHome(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, czechHome, http.StatusPermanentRedirect)
 }
 
 func (f *frontend) page(path string) http.HandlerFunc {

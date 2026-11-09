@@ -65,12 +65,12 @@ Each release includes per-archive SPDX SBOMs. [Versioning and releases](../maint
 
 ## Map the web client to the signed manifest
 
-The signed `checksums.txt` also lists every file of the web client that the binary embeds and serves. Assets appear under their own names, such as `index-CSp4oozy.js`. The pages come from three templates:
+The signed `checksums.txt` also lists every file of the web client that the binary embeds and serves. Assets appear under their own names, such as `index-CSp4oozy.js`. The pages come from these templates:
 
 | Template in `checksums.txt` | Pages an instance renders from it |
 | --- | --- |
 | `home.en.html` | `/` |
-| `home.cs.html` | `/cs/` |
+| `home.{tag}.html` for the other languages, such as `home.cs.html` or `home.pt-BR.html` | `/{tag in lowercase}/`, such as `/cs/` or `/pt-br/` |
 | `index.html` | `/sent`, `/transparency`, `/terms`, `/agents`, `/r` and `/m/{id}` |
 
 `agents.md` is served unchanged on `/agents.md`. An instance fills its public URL into the marked blocks of a template and serves the result unchanged on every response. Its `/.well-known/nylzo/client.json` lists the template hashes under `templates`, which match `checksums.txt`, and the hashes of the pages as it sends them under `files`. [`nylzo web`](Verified-clients.md) serves the same files from the binary.

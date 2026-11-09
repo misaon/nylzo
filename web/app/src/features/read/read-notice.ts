@@ -19,6 +19,7 @@ export type Notice =
   | 'reopen'
   | 'retired'
   | 'tampered'
+  | 'timed_out'
   | 'unknown';
 
 export interface Burned {
@@ -45,6 +46,7 @@ export const NOTICE_ICONS: Readonly<Record<Notice, IconName>> = {
   failed: 'alert',
   busy: 'clock',
   cleared: 'eyeOff',
+  timed_out: 'timer',
 };
 
 const ALARMING: ReadonlySet<Notice> = new Set(['failed', 'invalid', 'locked', 'tampered']);
@@ -92,6 +94,7 @@ export function noticeOf(view: ReadView, burned: Burned | undefined): Notice {
     case 'reopen':
     case 'retired':
     case 'tampered':
+    case 'timed_out':
     case 'unknown': {
       return view.view;
     }

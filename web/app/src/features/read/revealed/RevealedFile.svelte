@@ -64,11 +64,10 @@
           disabled={page.confirmingDownload}
           onclick={(event: MouseEvent) => void page.askDownload(event, file)}
           class="max-sm:w-11 max-sm:px-0"
+          aria-label={translate('open.download.file')}
         >
           <SwapIcon from="download" to="check" swapped={page.downloaded.shown} toTone="text-aegis-200" animated />
-          <span class="max-sm:sr-only">{translate('open.download')}</span><span class="sr-only"
-            >{translate('open.download.suffix')}</span
-          >
+          <span class="max-sm:sr-only" aria-hidden="true">{translate('open.download')}</span>
         </Button>
       </div>
       <div

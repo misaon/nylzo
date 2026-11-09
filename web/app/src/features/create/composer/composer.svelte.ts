@@ -6,7 +6,7 @@ import { prefersReducedMotion } from 'svelte/motion';
 import { createApi } from '../../../shared/api/api.ts';
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
 import { scryptInWorker, solvePowInWorker, stopRunningWorkers } from '../../../shared/kdf/kdf.ts';
-import { formatBytes, formatCount, formatDuration, formatWait } from '../../../shared/language/format.ts';
+import { formatBytes, formatDuration, formatWait } from '../../../shared/language/format.ts';
 import type { Translator } from '../../../shared/language/translator.svelte.ts';
 import { instanceOrigin, servedByLocalClient } from '../../../shared/local-client/instance-origin.ts';
 import { PacedTimeline } from '../../../shared/pipeline/paced-timeline.svelte.ts';
@@ -169,14 +169,14 @@ export class Composer {
   });
 
   readonly problemOf = $derived.by(() => {
-    const { translate, language } = this.#translator;
+    const { translate, plural, language } = this.#translator;
     const messages: Partial<Record<CreateField, string>> = {};
     for (const problem of this.problems) {
       messages[problem.field] ??= translate(problemKey(problem), {
         size: formatBytes(problem.field === 'text' ? this.textLimit : this.fileLimit, language),
         max: this.maxOpens,
         min: MIN_PASSPHRASE_CHARACTERS,
-        missing: formatCount(this.missingCharacters, 'character', language),
+        missing: plural('count.character', this.missingCharacters),
       });
     }
     return messages;
@@ -368,10 +368,10 @@ export class Composer {
   }
 
   #failureText(failure: CreateFailure): string {
-    const { translate, language } = this.#translator;
+    const { translate, plural } = this.#translator;
     const retryAfter =
       failure.kind === 'rate_limited' || failure.kind === 'unavailable' ? failure.retryAfter : undefined;
-    return translate(failureKey(failure), { time: formatWait(retryAfter, language) });
+    return translate(failureKey(failure), { time: formatWait(retryAfter, plural) });
   }
 
   #finish(result: SealedMessage): void {
@@ -511,7 +511,7 @@ export class Composer {
   }
 
   opensLabel(count: number): string {
-    return this.#translator.translate(count === 1 ? 'compose.opens.one' : 'compose.opens.other', { count });
+    return this.#translator.plural('compose.opens', count);
   }
 
   ttlLabel(seconds: number): string {

@@ -10,11 +10,12 @@ import (
 
 const ManifestPath = "/.well-known/nylzo/client.json"
 
-var PagePaths = []string{
-	englishHome, czechHome, sentPath, transparencyPath, termsPath, agentsPath, core.LinkPath, messagePagePath,
-}
+var PagePaths = slices.Concat(
+	homePaths(),
+	[]string{sentPath, transparencyPath, termsPath, agentsPath, core.LinkPath, messagePagePath},
+)
 
-var manifestPages = []string{englishHome, czechHome, sentPath}
+var manifestPages = append(homePaths(), sentPath)
 
 type ManifestFile struct {
 	Path   string `json:"path"`

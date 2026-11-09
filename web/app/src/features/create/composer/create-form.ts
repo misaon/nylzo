@@ -1,5 +1,5 @@
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
-import type { MessageKey } from '../../../shared/language/czech.ts';
+import type { MessageKey } from '../../../shared/language/catalog.ts';
 import type { CreateFailure, CreateProblem, FileInput } from '../create-message.ts';
 
 export function problemKey(problem: CreateProblem): MessageKey {

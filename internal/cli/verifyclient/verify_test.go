@@ -82,11 +82,9 @@ func gzipBytes(t *testing.T, data []byte) []byte {
 
 func webFiles(t *testing.T) fstest.MapFS {
 	t.Helper()
-	return fstest.MapFS{
+	files := fstest.MapFS{
 		"placeholder.html":             {Data: []byte("placeholder")},
 		"dist/index.html":              {Data: []byte(webIndex)},
-		"dist/home.en.html":            {Data: []byte(webHome)},
-		"dist/home.cs.html":            {Data: []byte(strings.Replace(webHome, "<html>", `<html lang="cs">`, 1))},
 		"dist/assets/index-a1.js":      {Data: []byte(webJS)},
 		"dist/assets/index-a1.js.gz":   {Data: gzipBytes(t, []byte(webJS))},
 		"dist/assets/style-b2.css":     {Data: []byte("body{}")},
@@ -94,6 +92,13 @@ func webFiles(t *testing.T) fstest.MapFS {
 		"dist/assets/favicon-d4.svg":   {Data: []byte(webIcon)},
 		"dist/assets/favicon-e5.png":   {Data: []byte("\x89PNG\r\n\x1a\n")},
 	}
+	for _, name := range webclient.HomeTemplates() {
+		language := strings.TrimSuffix(strings.TrimPrefix(name, "home."), ".html")
+		files["dist/"+name] = &fstest.MapFile{
+			Data: []byte(strings.Replace(webHome, "<html>", `<html lang="`+language+`">`, 1)),
+		}
+	}
+	return files
 }
 
 func newWebTestServer(t *testing.T, files fs.FS, version string, wrap func(http.Handler) http.Handler) string {
@@ -216,7 +221,7 @@ func TestVerifyClientAcceptsTheSameClient(t *testing.T) {
 	files := webFiles(t)
 	result := runVerify(t, newWebTestServer(t, files, "test", nil), files)
 	if result.code != command.ExitOK ||
-		result.stdout != "the server sends the web client of nylzo test unchanged: 8 pages and 5 files checked\n" {
+		result.stdout != "the server sends the web client of nylzo test unchanged: 18 pages and 5 files checked\n" {
 		t.Fatalf("%+v", result)
 	}
 	public := runVerify(t, newPublicWebTestServer(t, files, "test", "https://nylzo.example:8443", nil), files)
