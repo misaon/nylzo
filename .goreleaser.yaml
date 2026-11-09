@@ -203,20 +203,24 @@ release:
   extra_files:
     - glob: .host-bundle/nylzo-host_{{ .Version }}.tar
   header: |
-    ## Download Nylzo {{ .Version }}
+    ## Install Nylzo {{ .Version }}
 
-    | Platform | Architecture | Download |
-    | --- | --- | --- |
-    | Windows | x64 | [ZIP](https://github.com/misaon/nylzo/releases/download/{{ .Tag }}/nylzo_{{ .Version }}_windows_amd64.zip) |
-    | Windows | ARM64 | [ZIP](https://github.com/misaon/nylzo/releases/download/{{ .Tag }}/nylzo_{{ .Version }}_windows_arm64.zip) |
-    | Linux | x64 | [tar.gz](https://github.com/misaon/nylzo/releases/download/{{ .Tag }}/nylzo_{{ .Version }}_linux_amd64.tar.gz) |
-    | Linux | ARM64 | [tar.gz](https://github.com/misaon/nylzo/releases/download/{{ .Tag }}/nylzo_{{ .Version }}_linux_arm64.tar.gz) |
-    | macOS | Intel | [tar.gz](https://github.com/misaon/nylzo/releases/download/{{ .Tag }}/nylzo_{{ .Version }}_darwin_amd64.tar.gz) |
-    | macOS | Apple silicon | [tar.gz](https://github.com/misaon/nylzo/releases/download/{{ .Tag }}/nylzo_{{ .Version }}_darwin_arm64.tar.gz) |
+    On macOS and Linux:
 
-    Each archive contains the CLI and embedded web client. Linux and macOS also support the server; use WSL or Docker to run the server on Windows.
+    ```sh
+    brew install misaon/nylzo/nylzo
+    ```
 
-    Source: [{{ .ShortCommit }}](https://github.com/misaon/nylzo/commit/{{ .FullCommit }}). Source commit date: {{ .CommitDate }}. Run `nylzo version --json` for the binary's source identity. Verify downloads using the signatures and provenance below before execution.
+    On Windows:
+
+    ```powershell
+    scoop bucket add nylzo https://github.com/misaon/homebrew-nylzo
+    scoop install nylzo/nylzo
+    ```
+
+    The [tap](https://github.com/misaon/homebrew-nylzo) offers this release within a few hours, once it has verified the signatures and provenance below. The archives below are what Homebrew, Scoop and servers download. Their macOS and Windows binaries carry no Apple notarization or Authenticode signature, so install the CLI with a package manager. Each archive contains the CLI and embedded web client. Linux and macOS also support the server; use WSL or Docker to run the server on Windows.
+
+    Source: [{{ .ShortCommit }}](https://github.com/misaon/nylzo/commit/{{ .FullCommit }}). Source commit date: {{ .CommitDate }}. Run `nylzo version --json` for the binary's source identity. Verify an archive using the signatures and provenance below before you run it.
 
   footer: |
     Verify a download or the image before you run it:
