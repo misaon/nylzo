@@ -27,7 +27,7 @@ test("a refresh never widens the list beyond published public crawler ranges", (
   assert.throws(() => rangesOf(list({ ipv6Prefix: "2001:4860:4801:10::/64" }), ["ipv4Prefix"]), /no usable prefixes/u);
   assert.throws(
     () => crawlerList([list({ ipv4Prefix: "66.249.64.0/27" }), list(), list({ ipv4Prefix: "157.55.39.0/24" }), list({ ipv4Prefix: "77.75.72.26/32" })]),
-    new RegExp(`${sources[1]!.url.replaceAll(".", "\\.")}: the list has no prefixes$`, "u"),
+    { message: `${sources[1]!.url}: the list has no prefixes` },
   );
 });
 
