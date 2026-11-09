@@ -9,14 +9,14 @@
   import Sent from '../features/sent/Sent.svelte';
   import Terms from '../features/terms/Terms.svelte';
   import Transparency from '../features/transparency/Transparency.svelte';
-  import { loadCatalog } from '../shared/language/catalogs.ts';
-  import { browserPreferences, saveLanguage } from '../shared/language/language.ts';
+  import { loadCatalog } from '../shared/language/catalog.ts';
+  import { browserPreferences, homePath, saveLanguage } from '../shared/language/language.ts';
   import type { Language } from '../shared/language/language.ts';
   import { setTranslator, Translator } from '../shared/language/translator.svelte.ts';
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
-  import { HOME_PATHS, screenOf } from './pages.ts';
+  import { screenOf } from './pages.ts';
   import type { Screen } from './pages.ts';
 
   interface Props {
@@ -85,7 +85,7 @@
     }
     saveLanguage(browserPreferences(), language);
     if (screen === 'create') {
-      history.replaceState(history.state, '', `${HOME_PATHS[language]}${location.hash}`);
+      history.replaceState(history.state, '', `${homePath(language)}${location.hash}`);
     }
   }
 </script>

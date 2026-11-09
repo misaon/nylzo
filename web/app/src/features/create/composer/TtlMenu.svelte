@@ -20,13 +20,14 @@
   }
 </script>
 
-<div class="sm:relative" data-menu>
+<div class="min-w-0 sm:relative" data-menu>
   <MenuChip
     {composer}
     menu="ttl"
     popoverId="{id}-ttl"
     icon="clock"
-    label={translate('compose.ttl.label', { ttl: composer.ttlLabel(composer.ttlSeconds) })}
+    label={composer.ttlLabel(composer.ttlSeconds)}
+    hint={translate('compose.ttl.title')}
     problem={composer.problemOf.ttl !== undefined}
   />
   <Popover

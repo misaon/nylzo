@@ -141,6 +141,7 @@ export const ICONS = {
     { path: 'M5 12c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5' },
   ],
   terminal: [{ rect: [3.5, 4.5, 17, 15, 2.5] }, { path: 'M7.5 9.5l3 2.5-3 2.5M12.5 15h4' }],
+  timer: [{ circle: [12, 13.5, 7.5] }, { path: 'M10 3h4M12 13.5l3-3' }],
   trash: [trashLid, { path: 'M10 11v5M14 11v5' }],
   unlock: [lockBody, { path: 'M8 10.5V7.5a4 4 0 0 1 7.6-1.7' }],
   update: [clockFace, { path: 'M12 16V8M8.5 11.5L12 8l3.5 3.5' }],

@@ -1,4 +1,4 @@
-import type { MessageKey } from '../../../../shared/language/czech.ts';
+import type { MessageKey } from '../../../../shared/language/catalog.ts';
 import type { IconName } from '../../../../shared/ui/icon/icons.ts';
 
 export type DiagramLayout = 'mobile' | 'desktop';

@@ -25,8 +25,8 @@
     role="list"
     class={['flex flex-wrap items-center justify-start gap-x-5 gap-y-1.5 text-caption text-ink-soft', className]}
   >
-    {#each list as fact (fact.text)}
-      <li class={['flex items-center gap-1.5 whitespace-nowrap', fact.accent && 'text-nebula-300']}>
+    {#each list as fact (fact.icon)}
+      <li class={['flex items-center gap-1.5 whitespace-nowrap tabular-nums', fact.accent && 'text-nebula-300']}>
         <Icon name={fact.icon} class={['size-4 shrink-0', !fact.accent && 'text-ink-mute']} />
         {fact.text}
       </li>

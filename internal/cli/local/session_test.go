@@ -75,12 +75,17 @@ func start(t *testing.T, options local.Options) *run {
 		w.Write([]byte(`{}`))
 	}))
 	t.Cleanup(instance.Close)
-	build, err := webclient.Load(fstest.MapFS{
-		"placeholder.html":  {Data: []byte("placeholder")},
-		"dist/index.html":   {Data: []byte(`<!doctype html><head></head><body></body>`)},
-		"dist/home.en.html": {Data: []byte(`<!doctype html><head></head><body><h1>en</h1></body>`)},
-		"dist/home.cs.html": {Data: []byte(`<!doctype html><head></head><body><h1>cs</h1></body>`)},
-	})
+	files := fstest.MapFS{
+		"placeholder.html": {Data: []byte("placeholder")},
+		"dist/index.html":  {Data: []byte(`<!doctype html><head></head><body></body>`)},
+	}
+	for _, name := range webclient.HomeTemplates() {
+		language := strings.TrimSuffix(strings.TrimPrefix(name, "home."), ".html")
+		files["dist/"+name] = &fstest.MapFile{
+			Data: []byte(`<!doctype html><head></head><body><h1>` + language + `</h1></body>`),
+		}
+	}
+	build, err := webclient.Load(files)
 	if err != nil {
 		t.Fatal(err)
 	}

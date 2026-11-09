@@ -1,4 +1,6 @@
-export const czech = {
+import type { CatalogShape } from '../catalog.ts';
+
+export const messages = {
   'action.retry': 'Zkusit znovu',
   'app.crashed': 'Stránka narazila na chybu. Načtěte ji znovu.',
 
@@ -10,7 +12,7 @@ export const czech = {
   'hero.step.vanish': 'Po otevření zmizí',
   'terms.eyebrow': 'Právní informace',
   'terms.title': 'Podmínky užívání',
-  'terms.effective': 'Platné od 11.\u{A0}11.\u{A0}2026. Závazná je česká verze, anglická je překlad.',
+  'terms.effective': 'Platné od 11.\u{A0}11.\u{A0}2026. Závazná je česká verze, ostatní jazykové verze jsou překlady.',
   'terms.summary.title': 'Krátce',
   'terms.summary.1': 'Nylzo je zdarma, bez záruky a\u{A0}jeho používání je dobrovolné.',
   'terms.summary.2': 'Zprávu šifruje váš prohlížeč. Klíč nemáme, a\u{A0}proto zprávu nepřečteme ani neobnovíme.',
@@ -80,6 +82,13 @@ export const czech = {
   'agents.markdown':
     'Stejný obsah je k\u{A0}dispozici i\u{A0}v\u{A0}Markdownu na /agents.md, aby ho agenti přečetli bez prohlížeče.',
   'action.copy': 'Zkopírovat',
+  'count.day': { one: '{count}\u{A0}den', few: '{count}\u{A0}dny', other: '{count}\u{A0}dní' },
+  'count.attempt': { one: '{count}\u{A0}pokus', few: '{count}\u{A0}pokusy', other: '{count}\u{A0}pokusů' },
+  'count.character': { one: '{count}\u{A0}znak', few: '{count}\u{A0}znaky', other: '{count}\u{A0}znaků' },
+  'count.file': { one: '{count}\u{A0}soubor', few: '{count}\u{A0}soubory', other: '{count}\u{A0}souborů' },
+  'wait.second': { one: '{count}\u{A0}sekundu', few: '{count}\u{A0}sekundy', other: '{count}\u{A0}sekund' },
+  'wait.minute': { one: '{count}\u{A0}minutu', few: '{count}\u{A0}minuty', other: '{count}\u{A0}minut' },
+  'wait.hour': { one: '{count}\u{A0}hodinu', few: '{count}\u{A0}hodiny', other: '{count}\u{A0}hodin' },
   'action.copied': 'Zkopírováno',
   'error.notFound.label': 'Chyba 404',
   'error.notFound.title': 'Tahle stránka neexistuje',
@@ -109,7 +118,7 @@ export const czech = {
   'terms.liability.title': 'Odpovědnost',
   'terms.liability.1':
     'V\u{A0}rozsahu, v\u{A0}jakém to právní předpisy dovolují, provozovatel neodpovídá za újmu vzniklou užíváním služby nebo nemožností ji užívat. To neplatí pro újmu na přirozených právech člověka (například na životě, zdraví nebo soukromí), pro újmu způsobenou úmyslně nebo z\u{A0}hrubé nedbalosti ani v\u{A0}dalších případech, kdy právo nedovoluje odpovědnost předem vyloučit nebo omezit.',
-  'terms.other.privacy': 'Osobní údaje popisuje',
+  'terms.other.privacy': 'Osobní údaje popisuje {link}.',
   'terms.other.privacy.link': 'stránka Transparentnost',
   'terms.other.law':
     'Podmínky a\u{A0}užívání služby se řídí českým právem a\u{A0}spory rozhodují příslušné české soudy. Tím nejsou dotčeny kogentní předpisy státu, kde žijete, ani vaše právo žalovat jinde, kde to zákon dovolí.',
@@ -210,7 +219,7 @@ export const czech = {
   'sent.ended.deleted': 'Smazal ji příjemce, nebo ji odstranil provozovatel. Záznam tu zůstane ještě {days}.',
   'sent.cancel.title': 'Zrušit zprávu „{label}“?',
   'sent.cancel.title.untitled': 'Zrušit zprávu?',
-  'sent.forget.suffix': ' ze seznamu',
+  'sent.forget.label': 'Odebrat ze seznamu',
   'sent.forget.title': 'Odebrat zprávu ze seznamu?',
   'sent.forget_all.title': 'Vymazat celý seznam?',
 
@@ -405,8 +414,6 @@ export const czech = {
   'language.label': 'Jazyk',
   'language.list': 'Jazyky',
   'language.current': 'Jazyk: {language}',
-  'language.name.cs': 'čeština',
-  'language.name.en': 'angličtina',
 
   'footer.tagline': 'Jednorázové šifrované odkazy. Open source pod licencí MIT.',
   'footer.product': 'Produkt',
@@ -425,7 +432,7 @@ export const czech = {
   'footer.note': 'Bez cookies a\u{A0}analytiky.',
   'footer.version': 'Verze webového klienta {version}',
 
-  'hero.title.lead': 'Tajemství na',
+  'hero.title': 'Tajemství na {accent}',
   'hero.title.accent': 'jedno otevření',
   'seo.title': 'Jak bezpečně poslat heslo: jednorázový šifrovaný odkaz | Nylzo',
   'seo.description':
@@ -437,12 +444,9 @@ export const czech = {
   'compose.drop.title': 'Pusťte soubor sem',
   'compose.drop.note': 'Zašifruje se spolu s\u{A0}textem. Nejvýš {size}.',
   'compose.file.over': '{size} (limit {limit})',
-  'compose.ttl.label': 'Platí {ttl}',
   'compose.ttl.title': 'Platnost zprávy',
-  'compose.opens.one': '{count} otevření',
-  'compose.opens.other': '{count} otevření',
-  'compose.opens.unit.one': 'otevření',
-  'compose.opens.unit.other': 'otevření',
+  'compose.opens': { one: '{count} otevření', few: '{count} otevření', other: '{count} otevření' },
+  'compose.opens.unit': { one: 'otevření', few: 'otevření', other: 'otevření' },
   'compose.opens.title': 'Kolikrát jde zprávu otevřít',
   'compose.opens.less': 'Méně otevření',
   'compose.opens.more': 'Více otevření',
@@ -512,11 +516,14 @@ export const czech = {
   'open.passphrase.hide': 'Skrýt heslo',
   'open.passphrase.empty': 'Zadejte heslo od odesílatele.',
   'open.chip.expires': 'Platí do {time}',
-  'open.chip.opens.one': 'Zbývá {count} otevření',
-  'open.chip.opens.few': 'Zbývají {count} otevření',
-  'open.chip.opens.other': 'Zbývá {count} otevření',
+  'open.chip.opens': {
+    one: 'Zbývá {count} otevření',
+    few: 'Zbývají {count} otevření',
+    other: 'Zbývá {count} otevření',
+  },
   'open.chip.now': 'Otevřeno teď',
   'open.chip.last': 'Poslední otevření',
+  'open.chip.clears': 'Smaže se za {time}',
   'open.chip.first_opened': 'Poprvé otevřena {time}',
   'open.chip.ended': 'Skončila {time}',
   'open.step.derive.label': 'Klíč',
@@ -535,7 +542,7 @@ export const czech = {
   'open.copy.text': 'Zkopírovat zprávu',
   'open.copied.text': 'Text je ve schránce. Zůstane tam i\u{A0}po zavření stránky.',
   'open.download': 'Stáhnout',
-  'open.download.suffix': ' přílohu',
+  'open.download.file': 'Stáhnout přílohu',
   'open.notice.opened': 'Zpráva už byla otevřena',
   'open.notice.opened.text': 'Pokud jste ji neotevřeli vy, dejte vědět odesílateli.',
   'open.notice.expired': 'Platnost zprávy vypršela',
@@ -574,6 +581,9 @@ export const czech = {
   'open.notice.busy.text': 'Zkuste to za {time}. Opakovaným pokusem otevření nespotřebujete.',
   'open.notice.cleared': 'Stránka už zprávu neukazuje',
   'open.notice.cleared.text': 'Protože jste stránku opustili, zpráva se už nezobrazuje.',
+  'open.notice.timed_out': 'Čas na zobrazení vypršel',
+  'open.notice.timed_out.text':
+    'Zpráva byla na obrazovce {time}, a\u{A0}tak ji stránka smazala. Chrání to zprávu, kdybyste od zařízení odešli.',
   'open.chip.burned': 'Smazáno bez otevření',
   'open.notice.burned': 'Zprávu jste smazali',
   'open.notice.burned.text': 'Už ji nikdo neotevře, ani vy.',
@@ -641,8 +651,7 @@ export const czech = {
   'who.server.file.size': 'velikost přibližně 2,4\u{A0}MB',
   'who.server.key': 'Nemá ho',
   'who.server.sees': 'Vidí čas smazání. IP adresu nezapisuje.',
-  'who.try': 'Vyzkoušejte, jak dlouho by trvalo klíč',
-  'who.try.last': 'uhodnout',
+  'who.try': 'Vyzkoušejte, jak dlouho by trvalo klíč uhodnout',
   'brute.eyebrow': 'Síla klíče',
   'brute.title': 'Jak dlouho by trvalo klíč uhodnout?',
   'brute.sub':
@@ -674,13 +683,7 @@ export const czech = {
   'brute.verdict.beyond': 'Mnohem déle, než existuje vesmír',
   'brute.about': 'Zhruba {time}.',
   'brute.bigbang': 'Kdyby začal hádat při velkém třesku, nejspíš by hádal dodnes.',
-  'brute.years.billion.fraction': '{amount} miliardy let',
-  'brute.years.billion': '{amount} miliard let',
-  'brute.years.million.fraction': '{amount} milionu let',
-  'brute.years.million': '{amount} milionů let',
-  'brute.years.one': '{amount} rok',
-  'brute.years.few': '{amount} roky',
-  'brute.years.other': '{amount} let',
+  'brute.years.large': '{amount} let',
   'brute.left.keys': 'Klíčů, které zbývá vyzkoušet',
   'brute.left.steps': 'Kroků, které mu zbývají',
   'brute.live': 'naživo',
@@ -812,7 +815,7 @@ export const czech = {
   'limits.abuse.title': 'Ne pro podvody ani malware',
   'limits.abuse.note': 'Ani pro jiný nezákonný obsah.',
   'limits.liability':
-    'Nylzo je zdarma a\u{A0}bez záruky. Používáte ho dobrovolně a\u{A0}neslibujeme, že bude vždy dostupné, bez chyb nebo odolné každému útoku. Za obsah zprávy odpovídá ten, kdo ji posílá. Víc v',
+    'Nylzo je zdarma a\u{A0}bez záruky. Používáte ho dobrovolně a\u{A0}neslibujeme, že bude vždy dostupné, bez chyb nebo odolné každému útoku. Za obsah zprávy odpovídá ten, kdo ji posílá. Víc v {link}.',
 
   'about.eyebrow': 'Kdo za Nylzo stojí',
   'about.title': 'Otevřený projekt jednoho vývojáře',
@@ -830,7 +833,7 @@ export const czech = {
   'about.code.title': 'Kód a\u{A0}vývoj',
   'about.code.text': 'Veřejně na GitHubu pod licencí MIT.',
   'about.code.link': 'Zdrojový kód',
-  'about.terms': 'Používání Nylzo je dobrovolné a\u{A0}bez záruky. Podrobnosti jsou v',
+  'about.terms': 'Používání Nylzo je dobrovolné a\u{A0}bez záruky. Podrobnosti jsou v {link}.',
   'about.terms.link': 'podmínkách užívání',
   'faq.eyebrow': 'Časté otázky',
   'faq.title': 'Než pošlete první zprávu',
@@ -861,6 +864,4 @@ export const czech = {
   'cta.button': 'Napsat zprávu',
   'host.domain': 'vase-domena.cz',
   'host.terminal': 'bash — nylzo',
-};
-
-export type MessageKey = keyof typeof czech;
+} satisfies CatalogShape;

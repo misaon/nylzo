@@ -26,25 +26,19 @@ func Sitemap(publicURL string) []byte {
 		return nil
 	}
 	var links strings.Builder
-	for _, alternate := range []struct{ language, path string }{
-		{"en", englishHome},
-		{"cs", czechHome},
-		{"x-default", englishHome},
-	} {
-		fmt.Fprintf(
-			&links,
-			`<xhtml:link rel="alternate" hreflang="%s" href="%s%s"/>`,
-			alternate.language,
-			publicURL,
-			alternate.path,
-		)
+	alternate := func(hreflang, path string) {
+		fmt.Fprintf(&links, `<xhtml:link rel="alternate" hreflang="%s" href="%s%s"/>`, hreflang, publicURL, path)
 	}
+	for _, language := range languages {
+		alternate(language.tag, homePath(language.tag))
+	}
+	alternate("x-default", homePath(defaultLanguage))
 	var out strings.Builder
 	out.WriteString(`<?xml version="1.0" encoding="UTF-8"?>` + "\n")
 	out.WriteString(
 		`<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">` + "\n",
 	)
-	for _, path := range []string{englishHome, czechHome} {
+	for _, path := range homePaths() {
 		fmt.Fprintf(&out, "<url><loc>%s%s</loc>%s</url>\n", publicURL, path, links.String())
 	}
 	out.WriteString("</urlset>\n")

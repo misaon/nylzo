@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
+import type { Language } from '../../../../shared/language/language.ts';
 import { Translator } from '../../../../shared/language/translator.svelte.ts';
-import { ATTACKERS, countdown, judge, yearsAmount } from './brute-force.ts';
+import { ATTACKERS, countdown, judge, yearsText } from './brute-force.ts';
 
-function words(yearsLog10: number, language: 'cs' | 'en'): string {
-  const { translate } = new Translator(language);
-  const { key, amount } = yearsAmount(yearsLog10, language);
-  return translate(key, { amount }).replaceAll('\u{A0}', ' ');
+function words(yearsLog10: number, language: Language): string {
+  return yearsText(yearsLog10, new Translator(language)).replaceAll('\u{A0}', ' ');
 }
 
 describe('brute force illustration', () => {
@@ -23,6 +22,7 @@ describe('brute force illustration', () => {
     expect(10 ** world.yearsLog10).toBeCloseTo(8.46e9, -8);
     expect(words(world.yearsLog10, 'cs')).toBe('8,5 miliardy let');
     expect(words(world.yearsLog10, 'en')).toBe('8.5 billion years');
+    expect(words(world.yearsLog10, 'ja')).toBe('85億年');
   });
 
   it('counts down from 2^256 and marks the digits that changed', () => {

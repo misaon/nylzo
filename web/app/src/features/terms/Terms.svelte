@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { MessageKey } from '../../shared/language/czech.ts';
-  import { formatDays } from '../../shared/language/format.ts';
+  import type { MessageKey } from '../../shared/language/catalog.ts';
+  import Interpolated from '../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { LONGEST_TTL_DAYS } from '../../shared/ttl/ttl-choices.ts';
   import { INLINE_TARGET, TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
@@ -51,7 +51,7 @@
 
   const translator = getTranslator();
   const { translate } = translator;
-  const longest = $derived(formatDays(LONGEST_TTL_DAYS, translator.language));
+  const longest = $derived(translator.plural('count.day', LONGEST_TTL_DAYS));
 </script>
 
 <svelte:head>
@@ -74,8 +74,10 @@
     <ul class="mt-3 grid list-disc gap-2 pl-5 text-body text-pretty text-ink-soft">
       {#if section.link}
         <li>
-          {translate(section.link.lead)}
-          <a href={section.link.href} class={[TEXT_LINK, INLINE_TARGET]}>{translate(section.link.label)}</a>.
+          <Interpolated text={translate(section.link.lead)} placeholder="link"
+            ><a href={section.link.href} class={[TEXT_LINK, INLINE_TARGET]}>{translate(section.link.label)}</a
+            ></Interpolated
+          >
         </li>
       {/if}
       {#each section.items as item (item)}

@@ -188,9 +188,8 @@
         href="#resilience"
         class="group inline-block min-h-11 reveal-focus rounded-control px-3 py-2.5 text-center text-body text-balance text-aegis-300 transition hover:text-aegis-200"
       >
-        {translate('who.try')}
-        <span class="whitespace-nowrap"
-          >{translate('who.try.last')}<Icon
+        {translate('who.try')}<span class="whitespace-nowrap"
+          >{'\u{2060}'}<Icon
             name="caretDown"
             class="ml-1.5 inline-block size-3.5 align-[-2px] transition group-hover:translate-y-0.5"
             stroke={2}

@@ -3,6 +3,31 @@
     color-scheme: dark;
     background: var(--color-void-950);
   }
+  :root:lang(ja) {
+    --font-sans:
+      'Geist', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Yu Gothic', Meiryo, 'Noto Sans JP',
+      sans-serif;
+    --font-display: 'Sora', var(--font-sans);
+  }
+  :root:lang(zh) {
+    --font-sans:
+      'Geist', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', 'Microsoft YaHei', 'Noto Sans SC', sans-serif;
+    --font-display: 'Sora', var(--font-sans);
+  }
+  :root:is(:lang(ja), :lang(zh)) {
+    --text-hero--letter-spacing: 0;
+    --text-hero-lg--letter-spacing: 0;
+    --text-section--letter-spacing: 0;
+    --text-section-lg--letter-spacing: 0;
+    --text-page--letter-spacing: 0;
+    --text-page-lg--letter-spacing: 0;
+    --text-panel--letter-spacing: 0;
+    --text-panel-lg--letter-spacing: 0;
+    --text-eyebrow--letter-spacing: 0.04em;
+  }
+  :lang(ja) :is(h1, h2, h3) {
+    word-break: auto-phrase;
+  }
   @media (prefers-reduced-motion: no-preference) {
     html {
       scroll-behavior: smooth;

@@ -73,6 +73,7 @@ export type ReadView =
   | { readonly view: 'reopen' }
   | { readonly view: 'retired' }
   | { readonly view: 'retry_later'; readonly retryAfter?: number | undefined }
+  | { readonly view: 'timed_out' }
   | {
       readonly view: 'revealed';
       readonly text?: string | undefined;
@@ -117,7 +118,7 @@ export interface Reader {
   readonly load: () => Promise<void>;
   readonly reveal: (passphrase?: string) => Promise<void>;
   readonly burn: () => Promise<BurnOutcome>;
-  readonly clear: () => void;
+  readonly clear: (closed?: ClosedView) => void;
 }
 
 interface Secrets {
@@ -224,11 +225,15 @@ async function linkSecrets(link: Link): Promise<Secrets> {
   }
 }
 
-function cleared(view: ReadView): ReadView {
+export type ClosedView = Extract<ReadView, { readonly view: 'cleared' | 'timed_out' }>;
+
+const LEFT_PAGE: ClosedView = { view: 'cleared' };
+
+function closedInstead(view: ReadView, closed: ClosedView): ReadView {
   if (view.view === 'revealed') {
     view.file?.bytes.fill(0);
   }
-  return { view: 'cleared' };
+  return closed;
 }
 
 function burnOutcomeOf(error: unknown): BurnOutcome {
@@ -268,11 +273,11 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let readKey: RequestKey | undefined;
   let lease: string | undefined;
   let revealable = false;
-  let left = false;
+  let closedAs: ClosedView | undefined;
 
   const storedLease = () => lease ?? leaseOf(safely(() => session.getItem(LEASE_KEY), null));
   const allowed = () => page.visible() && !page.prerendering();
-  const pageLeft = (): boolean => left;
+  const pageLeft = (): boolean => closedAs !== undefined;
 
   // Session storage holds only the lease, which authorizes nothing without the key from the link.
   function keepLease(value: string): void {
@@ -330,7 +335,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   }
 
   function show(next: ReadView): void {
-    const view = left ? cleared(next) : next;
+    const view = closedAs ? closedInstead(next, closedAs) : next;
     revealable = view.view === 'ready';
     revealedView = view.view === 'revealed' ? view : undefined;
     if (view.view !== 'ready' && view.view !== 'busy') {
@@ -491,7 +496,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
         shareKeys: newShareKey,
         onLease: keepLease,
         onProgress,
-        proceed: () => !left,
+        proceed: () => !pageLeft(),
       });
       return { envelope: claimed, lease: claimed.lease, fromLease: false };
     } catch (error) {
@@ -710,10 +715,10 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     return outcome;
   }
 
-  function clear(): void {
-    left = true;
+  function clear(closed = LEFT_PAGE): void {
+    closedAs = closed;
     revealedView?.file?.bytes.fill(0);
-    show({ view: 'cleared' });
+    show(closed);
   }
 
   return { load, reveal, burn, clear };

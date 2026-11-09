@@ -12,17 +12,12 @@ type previewText struct {
 	description string
 }
 
-var previewTexts = map[string]previewText{
-	"en": {"One-time message · Nylzo", "Open the link in your browser. The message appears only after a click."},
-	"cs": {"Jednorázová zpráva · Nylzo", "Otevřete odkaz v prohlížeči, zpráva se zobrazí až po kliknutí."},
-}
-
 // previewHTML is the page link-preview agents get for a message link. It is the same for every message,
 // so a chat preview tells nothing about the message, its sender or its expiry.
-func previewHTML(language, publicURL, image string) string {
-	text := previewTexts[language]
+func previewHTML(language language, publicURL, image string) string {
+	text := language.preview
 	var page strings.Builder
-	page.WriteString(`<!doctype html><html lang="` + language + `"><head><meta charset="utf-8">`)
+	page.WriteString(`<!doctype html><html lang="` + language.tag + `"><head><meta charset="utf-8">`)
 	page.WriteString(`<meta name="viewport" content="width=device-width, initial-scale=1">`)
 	page.WriteString(`<meta name="robots" content="noindex, nofollow"><title>` + text.title + `</title>`)
 	page.WriteString(`<meta property="og:type" content="website"><meta property="og:site_name" content="Nylzo">`)
@@ -47,8 +42,8 @@ func previewPages(publicURL string, assets map[string]Asset) map[string][]byte {
 		}
 	}
 	pages := map[string][]byte{}
-	for _, language := range pageLanguages {
-		pages[language] = []byte(previewHTML(language, publicURL, image))
+	for _, language := range languages {
+		pages[language.tag] = []byte(previewHTML(language, publicURL, image))
 	}
 	return pages
 }

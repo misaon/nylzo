@@ -61,7 +61,8 @@ for (const [name, data] of bundled) {
     checkStyles(data.toString(), name, bundled);
   }
 }
-for (const name of ['index.html', 'home.en.html', 'home.cs.html', ...statusPages.keys()]) {
+const homePages = [...pages.keys()].map((language) => `home.${language}.html`);
+for (const name of ['index.html', ...homePages, ...statusPages.keys()]) {
   const file = path.join(distribution, name);
   writeFileSync(file, secureHtml(readFileSync(file, 'utf8'), bundled));
 }

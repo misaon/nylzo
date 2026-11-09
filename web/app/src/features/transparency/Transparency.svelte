@@ -4,8 +4,8 @@
   import { createApi } from '../../shared/api/api.ts';
   import type { Transparency } from '../../shared/api/api.ts';
   import { BUILD_INFO } from '../../shared/build-info.ts';
-  import type { MessageKey } from '../../shared/language/czech.ts';
-  import { formatBytes, formatCount, formatDays, formatDuration } from '../../shared/language/format.ts';
+  import type { MessageKey } from '../../shared/language/catalog.ts';
+  import { formatBytes, formatDuration } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { instanceOrigin } from '../../shared/local-client/instance-origin.ts';
   import GithubMark from '../../shared/shell/GithubMark.svelte';
@@ -82,7 +82,7 @@
   let view = $state.raw<View>({ view: 'loading' });
   const data = $derived(view.view === 'ready' ? view.data : undefined);
 
-  const days = (seconds: number) => formatDays(Math.round(seconds / SECONDS_PER_DAY), translator.language);
+  const days = (seconds: number) => translator.plural('count.day', Math.round(seconds / SECONDS_PER_DAY));
   const period = (seconds: number) =>
     seconds % SECONDS_PER_DAY === 0 ? days(seconds) : formatDuration(seconds, translator.language);
   const limit = (value: number) => (value === 0 ? translate('transparency.limits.none') : String(value));
@@ -383,7 +383,7 @@
             {translate('transparency.files.title')}
           </h3>
           <p class="text-micro text-ink-mute tabular-nums">
-            {formatCount(data.files.length, 'file', translator.language)} · SHA-256
+            {translator.plural('count.file', data.files.length)} · SHA-256
           </p>
         </div>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{translate('transparency.files')}</p>

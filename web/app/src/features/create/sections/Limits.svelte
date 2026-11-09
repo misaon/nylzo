@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Interpolated from '../../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { VERIFIED_CLIENTS_URL } from '../../../shared/shell/repository.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
@@ -129,8 +130,9 @@
         class="flex reveal-focus flex-col gap-3 border-t border-white/8 bg-white/4 px-5 py-4 [--reveal-blur:4px] [--reveal-index:4] [--reveal-step:90ms] sm:flex-row sm:items-center sm:justify-between sm:gap-6 md:px-6"
       >
         <p class="max-w-[760px] text-caption text-ink-mute">
-          {translate('limits.liability')}
-          <a href="/terms" class={[TEXT_LINK, INLINE_TARGET]}>{translate('limits.terms')}</a>.
+          <Interpolated text={translate('limits.liability')} placeholder="link"
+            ><a href="/terms" class={[TEXT_LINK, INLINE_TARGET]}>{translate('limits.terms')}</a></Interpolated
+          >
         </p>
       </div>
     </div>

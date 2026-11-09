@@ -2,7 +2,6 @@ package webclient
 
 import (
 	"net/http"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -11,13 +10,10 @@ import (
 const (
 	serverErrorPage = "error"
 	maintenancePage = "maintenance"
-	defaultLanguage = "en"
 	unavailableBody = `{"error":"unavailable"}`
 
 	MaintenanceRetry = 30 * time.Second
 )
-
-var pageLanguages = []string{defaultLanguage, "cs"}
 
 // WantsPage reports whether a browser navigates to the address, so a status page answers instead of a bare status.
 func WantsPage(r *http.Request) bool {
@@ -32,8 +28,7 @@ func PreferredLanguage(acceptLanguage string) string {
 	chosen, best := defaultLanguage, 0.0
 	for part := range strings.SplitSeq(acceptLanguage, ",") {
 		preference := parsePreference(part)
-		language, _, _ := strings.Cut(preference.token, "-")
-		if preference.quality > best && slices.Contains(pageLanguages, language) {
+		if language, ok := matchLanguage(preference.token); ok && preference.quality > best {
 			chosen, best = language, preference.quality
 		}
 	}

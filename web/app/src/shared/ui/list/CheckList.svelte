@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { MessageKey } from '../../language/czech.ts';
+  import type { MessageKey } from '../../language/catalog.ts';
   import { getTranslator } from '../../language/translator.svelte.ts';
   import Icon from '../icon/Icon.svelte';
 

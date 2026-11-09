@@ -6,8 +6,8 @@
 
   import type { MessageState } from '../../shared/api/api-errors.ts';
   import { createApi } from '../../shared/api/api.ts';
-  import type { MessageKey } from '../../shared/language/czech.ts';
-  import { formatDays, formatMoment, formatWait } from '../../shared/language/format.ts';
+  import type { MessageKey } from '../../shared/language/catalog.ts';
+  import { formatMoment, formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { servedByLocalClient } from '../../shared/local-client/instance-origin.ts';
   import { memoryStore } from '../../shared/sent-records/memory-sent-store.ts';
@@ -32,7 +32,7 @@
   let cancelled = $state.raw<CancelOutcome>();
   let storageFailed = $state(false);
   const focus = new FocusTargets<string>();
-  const retention = $derived(formatDays(RETENTION_DAYS, translator.language));
+  const retention = $derived(translator.plural('count.day', RETENTION_DAYS));
   const listed = $derived(view.view === 'list' && view.items.length > 0);
 
   // A session of the local client has an origin nobody purges later, so it opens no storage (Protocol §14.1).
@@ -49,7 +49,7 @@
       return translate('sent.cancelled');
     }
     if (cancelled?.outcome === 'retry_later') {
-      return translate('read.retry_later', { time: formatWait(cancelled.retryAfter, translator.language) });
+      return translate('read.retry_later', { time: formatWait(cancelled.retryAfter, translator.plural) });
     }
     return cancelled?.outcome === 'failed' ? translate('sent.failed') : '';
   });
@@ -113,7 +113,7 @@
         return translate('sent.unknown');
       }
       case 'retry_later': {
-        return translate('read.retry_later', { time: formatWait(state.retryAfter, translator.language) });
+        return translate('read.retry_later', { time: formatWait(state.retryAfter, translator.plural) });
       }
       case 'failed': {
         return translate('sent.failed');
@@ -353,9 +353,8 @@
                 onclick={() => askForget(item)}
               >
                 <Icon name="close" class="size-4 shrink-0" animated />
-                <span
-                  >{translate('sent.forget')}<span class="max-sm:sr-only">{translate('sent.forget.suffix')}</span></span
-                >
+                <span class="sm:hidden" aria-hidden="true">{translate('sent.forget')}</span>
+                <span class="max-sm:sr-only">{translate('sent.forget.label')}</span>
               </Button>
             </div>
           </div>

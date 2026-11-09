@@ -249,11 +249,9 @@ func gunzipped(t *testing.T, body string) string {
 
 func builtClient(t *testing.T) fstest.MapFS {
 	t.Helper()
-	return fstest.MapFS{
+	files := fstest.MapFS{
 		"placeholder.html":             {Data: []byte("placeholder")},
 		"dist/index.html":              {Data: []byte(builtIndex)},
-		"dist/home.en.html":            {Data: []byte(builtHome("en"))},
-		"dist/home.cs.html":            {Data: []byte(builtHome("cs"))},
 		"dist/assets/index-a1.js":      {Data: []byte(appJS)},
 		"dist/assets/index-a1.js.gz":   {Data: gzipped(t, appJS)},
 		"dist/assets/style-b2.css":     {Data: []byte("body{}")},
@@ -262,6 +260,10 @@ func builtClient(t *testing.T) fstest.MapFS {
 		"dist/assets/favicon-e5.png":   {Data: []byte("\x89PNG\r\n\x1a\n")},
 		"dist/agents.md":               {Data: []byte(agentsGuide)},
 	}
+	for _, language := range []string{"en", "cs", "de", "es", "fr", "id", "it", "ja", "pl", "pt-BR", "sk", "zh-Hans"} {
+		files["dist/home."+language+".html"] = &fstest.MapFile{Data: []byte(builtHome(language))}
+	}
+	return files
 }
 
 type fetchedPage struct {
@@ -370,25 +372,27 @@ func TestHomePagesHaveTheirOwnAddresses(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil), WithWebFiles(builtClient(t)))
 	for path, want := range map[string]string{
-		"/":       "<h1>home en</h1>",
-		"/cs/":    "<h1>home cs</h1>",
-		"/sent":   "<body></body>",
-		"/terms":  "<body></body>",
-		"/agents": "<body></body>",
+		"/":         "<h1>home en</h1>",
+		"/cs/":      "<h1>home cs</h1>",
+		"/pt-br/":   "<h1>home pt-BR</h1>",
+		"/zh-hans/": "<h1>home zh-Hans</h1>",
+		"/sent":     "<body></body>",
+		"/terms":    "<body></body>",
+		"/agents":   "<body></body>",
 	} {
 		page := harness.get(path, nil)
 		if page.StatusCode != http.StatusOK || !strings.Contains(page.body, want) {
 			t.Fatalf("%s: %d %s", path, page.StatusCode, page.body)
 		}
 	}
-	for _, path := range []string{"/cs", "/cs?utm=1"} {
+	for path, location := range map[string]string{"/cs": "/cs/", "/cs?utm=1": "/cs/", "/pt-br": "/pt-br/"} {
 		redirect := harness.fetch(path, nil, false)
-		if redirect.StatusCode != http.StatusPermanentRedirect || redirect.Header.Get("Location") != "/cs/" ||
+		if redirect.StatusCode != http.StatusPermanentRedirect || redirect.Header.Get("Location") != location ||
 			redirect.Header.Get("X-Robots-Tag") != "noindex, nofollow" {
 			t.Fatalf("%s: %d %q %v", path, redirect.StatusCode, redirect.Header.Get("Location"), redirect.Header)
 		}
 	}
-	for _, path := range []string{"/en/", "/cs/sent", "/cs/x", "/CS/", "/report"} {
+	for _, path := range []string{"/en/", "/cs/sent", "/cs/x", "/CS/", "/pt-BR/", "/zh/", "/report"} {
 		if missing := harness.get(path, nil); missing.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s: %d", path, missing.StatusCode)
 		}

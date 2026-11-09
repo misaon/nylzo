@@ -7,6 +7,7 @@ import { watchViolations } from './support/watchers.ts';
 const HOMES = [
   { path: '/', language: 'en', heading: 'A secret that opens once', title: /^Share passwords and files securely/u },
   { path: '/cs/', language: 'cs', heading: 'Tajemství na jedno otevření', title: /^Jak bezpečně poslat heslo/u },
+  { path: '/ja/', language: 'ja', heading: '一度だけ開ける秘密', title: /^パスワードを安全に送る方法/u },
 ];
 
 for (const home of HOMES) {
@@ -103,7 +104,7 @@ test('a page without a message switches language after a release removed its cat
   const page = await newPage({ locale: 'en-US' });
   await openApp(page, '/transparency');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  await page.route('**/assets/czech-*.js', async (route) => route.fulfill({ status: 404 }), { times: 1 });
+  await page.route('**/assets/cs-*.js', async (route) => route.fulfill({ status: 404 }), { times: 1 });
   await page.evaluate(() => Object.assign(globalThis, { nylzoSamePage: true }));
   await chooseLanguage(page, 'Čeština');
   await expect(page.locator('html[data-ready]')).toHaveAttribute('lang', 'cs');

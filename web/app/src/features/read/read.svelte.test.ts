@@ -90,8 +90,11 @@ describe('read interface', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps reveal disabled while loading and renders the privacy guarantees', () => {
+  it('shows the card once the first answer arrives or the wait runs out, with reveal disabled while loading', () => {
     show();
+    expect(target.querySelector('h1')).toBeNull();
+    vi.advanceTimersByTime(700);
+    flushSync();
     expect(button(translator.translate('read.reveal')).disabled).toBe(true);
     expect(target.textContent).toContain(translator.translate('open.trust.title'));
     ready();
@@ -183,8 +186,8 @@ describe('read interface', () => {
       burnable: false,
       opensRemaining: 0,
     });
-    const download = [...target.querySelectorAll('button')].find((element) =>
-      element.textContent.includes(translator.translate('open.download.suffix')),
+    const download = [...target.querySelectorAll('button')].find(
+      (element) => element.getAttribute('aria-label') === translator.translate('open.download.file'),
     );
     download?.click();
     await tick();

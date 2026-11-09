@@ -1,4 +1,4 @@
-import type { MessageKey } from '../../shared/language/czech.ts';
+import type { MessageKey } from '../../shared/language/catalog.ts';
 import { REPOSITORY_URL } from '../../shared/shell/repository.ts';
 
 export interface AgentLink {

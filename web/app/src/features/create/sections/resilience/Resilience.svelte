@@ -7,7 +7,7 @@
   import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import Switch from '../../../../shared/ui/switch/Switch.svelte';
   import IconTile from '../../../../shared/ui/tile/IconTile.svelte';
-  import { ATTACKERS, countdown, judge, yearsAmount } from './brute-force.ts';
+  import { ATTACKERS, countdown, judge, yearsText } from './brute-force.ts';
   import type { Attacker } from './brute-force.ts';
   import { CELL_DELAYS } from './cell-delays.ts';
 
@@ -40,11 +40,10 @@
   const counter = $derived(countdown(attacker, quantum, elapsed));
   const cells = $derived(`${counter.head}${counter.tail}`.trim().split(' '));
   const live = $derived(Math.max(LIVE_CELLS, counter.tail.trim() === '' ? 0 : counter.tail.trim().split(' ').length));
-  const years = $derived(yearsAmount(judgement.yearsLog10, translator.language));
   const subtitle = $derived(
     judgement.bigBang
       ? translate('brute.bigbang')
-      : translate('brute.about', { time: translate(years.key, { amount: years.amount }) }),
+      : translate('brute.about', { time: yearsText(judgement.yearsLog10, translator) }),
   );
 
   function restart(change: () => void) {

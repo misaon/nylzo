@@ -135,17 +135,18 @@
           ]}
           inert={page.clipboard === 'untouched'}
         >
-          <p role="status" class="flex flex-wrap items-center gap-x-3 gap-y-1 px-1">
+          <p
+            {@attach page.focus.attach('clipboard')}
+            role="status"
+            tabindex="-1"
+            class="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 outline-none"
+          >
             {translate(page.clipboard === 'cleared' ? 'clipboard.cleared' : 'clipboard.copied')}
-            <Button
-              variant="ghost"
-              size="compact"
-              onclick={() => void page.clearClipboard()}
-              disabled={page.clipboard !== 'copied'}
-              class={page.clipboard === 'copied' ? 'opacity-100' : 'opacity-0'}
-            >
-              {translate('clipboard.clear')}
-            </Button>
+            {#if page.clipboard === 'copied'}
+              <Button variant="ghost" size="compact" onclick={() => void page.clearClipboard()}>
+                {translate('clipboard.clear')}
+              </Button>
+            {/if}
           </p>
         </div>
       </div>

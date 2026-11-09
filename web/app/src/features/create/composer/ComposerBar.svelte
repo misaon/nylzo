@@ -29,10 +29,10 @@
 </script>
 
 <div class="relative border-t border-white/8">
-  <div class="relative flex flex-col gap-4 p-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+  <div class="relative flex flex-col gap-4 p-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-3">
     <div
       class={[
-        'grid grid-cols-2 gap-1.5 transition-opacity duration-500 sm:flex sm:items-center',
+        'grid grid-cols-2 gap-1.5 transition-opacity duration-500 sm:flex sm:flex-wrap sm:items-center',
         composer.busy ? 'pointer-events-none opacity-40' : 'opacity-100',
       ]}
       inert={composer.busy}
@@ -40,7 +40,7 @@
       <TtlMenu {composer} />
       <OpensMenu {composer} />
       <SecurityMenu {composer} />
-      <div class="group/action relative">
+      <div class="group/action relative min-w-0">
         <input
           id="{id}-file"
           {@attach composer.focus.attach('file')}
@@ -59,12 +59,14 @@
           ]}
         >
           <Icon name="paperclip" class="size-4 shrink-0" animated />
-          {translate('compose.attach', { size: formatBytes(composer.fileLimit, translator.language) })}
+          <span class="truncate">
+            {translate('compose.attach', { size: formatBytes(composer.fileLimit, translator.language) })}
+          </span>
         </label>
       </div>
     </div>
 
-    <div class="stack shrink-0">
+    <div class="stack shrink-0 sm:ml-auto">
       <Button
         {@attach composer.focus.attach('submit')}
         variant="primary"

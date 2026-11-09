@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { formatCount, formatWait } from '../../shared/language/format.ts';
+  import { formatWait } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Button from '../../shared/ui/button/Button.svelte';
   import { privatePassphrase, submitOnEnter } from '../../shared/ui/field/private-fields.ts';
@@ -38,10 +38,10 @@
       return translate('read.rejected.wrong_or_changed');
     }
     if (rejected.retryAfter > 0) {
-      return translate('read.rejected.wait', { time: formatWait(rejected.retryAfter, translator.language) });
+      return translate('read.rejected.wait', { time: formatWait(rejected.retryAfter, translator.plural) });
     }
     return translate('read.rejected.wrong', {
-      attempts: formatCount(rejected.attemptsLeft, 'attempt', translator.language),
+      attempts: translator.plural('count.attempt', rejected.attemptsLeft),
     });
   });
   const alert = $derived.by(() => {

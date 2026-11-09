@@ -1,4 +1,4 @@
-import type { MessageKey } from '../../../../shared/language/czech.ts';
+import type { MessageKey } from '../../../../shared/language/catalog.ts';
 
 interface LinkPart {
   readonly id: string;
@@ -69,7 +69,7 @@ export const LINK_PARTS: readonly LinkPart[] = [
     body: 'how.link.key.body',
     tone: 'text-aegis-300',
     bar: 'bg-aegis-300/35',
-    glow: 'shadow-glow',
+    glow: 'shadow-[0_0_8px_oklch(0.77_0.115_249/0.7)]',
     delays: {
       text: '[--reveal-delay:770ms]',
       bar: '[--reveal-delay:850ms]',

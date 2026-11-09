@@ -5,16 +5,13 @@ import { FAQ_KEYS } from '../features/create/sections/faq-entries.ts';
 import { STATUS_PAGES } from '../features/errors/status-page.ts';
 import type { StatusPage } from '../features/errors/status-page.ts';
 import StatusDocument from '../features/errors/StatusDocument.svelte';
-import { loadCatalog } from '../shared/language/catalogs.ts';
-import { formatDays } from '../shared/language/format.ts';
-import { LANGUAGES } from '../shared/language/language.ts';
+import { loadCatalog } from '../shared/language/catalog.ts';
+import { DEFAULT_LANGUAGE, homePath, LANGUAGE_DETAILS, LANGUAGES } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
-import type { Translate } from '../shared/language/translator.svelte.ts';
 import { REPOSITORY_URL } from '../shared/shell/repository.ts';
 import { LONGEST_TTL_DAYS } from '../shared/ttl/ttl-choices.ts';
 import App from './App.svelte';
-import { HOME_PATHS } from './pages.ts';
 
 await Promise.all(LANGUAGES.map(async (language) => loadCatalog(language)));
 
@@ -31,10 +28,11 @@ export interface HomeAssets {
 const PUBLIC_URL_PLACEHOLDER = '__NYLZO_PUBLIC_URL__';
 const PUBLIC_START = '<!--nylzo:public-->';
 const PUBLIC_END = '<!--/nylzo:public-->';
-const OG_LOCALES: Readonly<Record<Language, string>> = { en: 'en_US', cs: 'cs_CZ' };
 // Inline, so no element is styled before the stylesheet arrives and then runs its transitions when the page appears.
 const HIDE_UNTIL_FONTS = `<style>html:not([data-fonts]) body{content-visibility:hidden}</style>`;
 const REVEAL_WITHOUT_SCRIPT = `<noscript><style>html:not([data-fonts]) body{content-visibility:visible}</style></noscript>`;
+const CZECH_LETTERS = /[čďěňřšťůž]/iu;
+const OTHER_EXTENDED_LETTERS = /(?![čďěňřšťůž])[\u{100}-\u{24F}]/iu;
 const CZECH_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-czech-[\w-]+\.woff2"[^>]*>\n?/gu;
 const EXTENDED_FONT_PRELOAD = /<link rel="preload" href="\/assets\/[\w-]+-latin-ext-[\w-]+\.woff2"[^>]*>\n?/gu;
 const APPLE_TOUCH_ICON = /<link rel="apple-touch-icon" href="([^"]+)"/u;
@@ -76,9 +74,10 @@ function replaceOnce(source: string, pattern: RegExp | string, replacement: stri
   return source.replace(pattern, () => replacement);
 }
 
-function structuredData(language: Language, translate: Translate, logo: string): unknown {
+function structuredData(language: Language, translator: Translator, logo: string): unknown {
+  const { translate, plural } = translator;
   const organization = { '@id': `${absolute('/')}#organization` };
-  const days = formatDays(LONGEST_TTL_DAYS, language);
+  const days = plural('count.day', LONGEST_TTL_DAYS);
   return {
     '@context': 'https://schema.org',
     '@graph': [
@@ -102,7 +101,7 @@ function structuredData(language: Language, translate: Translate, logo: string):
         '@type': 'WebApplication',
         '@id': `${absolute('/')}#app`,
         name: 'Nylzo',
-        url: absolute(HOME_PATHS[language]),
+        url: absolute(homePath(language)),
         description: translate('seo.description'),
         inLanguage: language,
         applicationCategory: 'SecurityApplication',
@@ -116,7 +115,7 @@ function structuredData(language: Language, translate: Translate, logo: string):
       },
       {
         '@type': 'FAQPage',
-        '@id': `${absolute(HOME_PATHS[language])}#faq`,
+        '@id': `${absolute(homePath(language))}#faq`,
         inLanguage: language,
         mainEntity: FAQ_KEYS.map((key) => ({
           '@type': 'Question',
@@ -129,29 +128,32 @@ function structuredData(language: Language, translate: Translate, logo: string):
 }
 
 function seoHead(language: Language, image: OgImage, logo: string): string {
-  const { translate } = new Translator(language);
+  const translator = new Translator(language);
+  const { translate } = translator;
   const shared = [
     meta('og:type', 'website'),
     meta('og:site_name', 'Nylzo'),
     meta('og:title', translate('seo.title')),
     meta('og:description', translate('seo.description')),
-    meta('og:locale', OG_LOCALES[language]),
-    ...LANGUAGES.filter((other) => other !== language).map((other) => meta('og:locale:alternate', OG_LOCALES[other])),
+    meta('og:locale', LANGUAGE_DETAILS[language].openGraphLocale),
+    ...LANGUAGES.filter((other) => other !== language).map((other) =>
+      meta('og:locale:alternate', LANGUAGE_DETAILS[other].openGraphLocale),
+    ),
     '<meta name="twitter:card" content="summary_large_image">',
   ];
   const located = [
-    `<link rel="canonical" href="${absolute(HOME_PATHS[language])}">`,
+    `<link rel="canonical" href="${absolute(homePath(language))}">`,
     ...LANGUAGES.map(
-      (alternate) => `<link rel="alternate" hreflang="${alternate}" href="${absolute(HOME_PATHS[alternate])}">`,
+      (alternate) => `<link rel="alternate" hreflang="${alternate}" href="${absolute(homePath(alternate))}">`,
     ),
-    `<link rel="alternate" hreflang="x-default" href="${absolute(HOME_PATHS.en)}">`,
-    meta('og:url', absolute(HOME_PATHS[language])),
+    `<link rel="alternate" hreflang="x-default" href="${absolute(homePath(DEFAULT_LANGUAGE))}">`,
+    meta('og:url', absolute(homePath(language))),
     meta('og:image', absolute(image.path)),
     meta('og:image:type', 'image/png'),
     meta('og:image:width', String(image.width)),
     meta('og:image:height', String(image.height)),
     meta('og:image:alt', translate('seo.image')),
-    `<script type="application/ld+json">${jsonScript(structuredData(language, translate, logo))}</script>`,
+    `<script type="application/ld+json">${jsonScript(structuredData(language, translator, logo))}</script>`,
   ];
   return [...shared, PUBLIC_START, ...located, PUBLIC_END].join('\n');
 }
@@ -160,12 +162,13 @@ function fontPreloads(page: string, language: Language): string {
   if (matchCount(page, CZECH_FONT_PRELOAD) === 0 || matchCount(page, EXTENDED_FONT_PRELOAD) === 0) {
     throw new Error('prerender: the index preloads no Czech or extended Latin fonts');
   }
-  const home = page.replaceAll(EXTENDED_FONT_PRELOAD, '');
-  return language === 'cs' ? home : home.replaceAll(CZECH_FONT_PRELOAD, '');
+  const { fontSample } = LANGUAGE_DETAILS[language];
+  const home = OTHER_EXTENDED_LETTERS.test(fontSample) ? page : page.replaceAll(EXTENDED_FONT_PRELOAD, '');
+  return CZECH_LETTERS.test(fontSample) ? home : home.replaceAll(CZECH_FONT_PRELOAD, '');
 }
 
 export function homeTemplate(index: string, language: Language, { image }: HomeAssets): string {
-  const { head, body } = render(App, { props: { start: { path: HOME_PATHS[language], language } } });
+  const { head, body } = render(App, { props: { start: { path: homePath(language), language } } });
   let page = replaceOnce(index, /<html lang="[a-z]+">/u, `<html lang="${language}">`);
   page = replaceOnce(page, /<meta\s+name="description"[^>]*>\s*/u, '');
   const logo = APPLE_TOUCH_ICON.exec(index)?.[1];

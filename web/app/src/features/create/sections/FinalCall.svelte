@@ -7,7 +7,7 @@
   const { translate } = getTranslator();
 </script>
 
-<section class="px-4 pt-12 pb-32 sm:px-6" aria-labelledby="cta-title">
+<section class="px-4 pt-12 pb-32 sm:px-6 md:pt-40" aria-labelledby="cta-title">
   <div class="mx-auto flex max-w-[760px] flex-col items-center text-center" {@attach reveal}>
     <h2
       id="cta-title"
