@@ -15,7 +15,7 @@ grype = "0.121.2"
 gitsign = "0.18.0"
 gh = "2.103.3"
 jq = "1.8.2"
-osv-scanner = "2.7.0"
+osv-scanner = "2.7.1"
 opentofu = "1.13.9"
 bun = "1.4.4"
 
