@@ -12,12 +12,13 @@ import (
 )
 
 type frontend struct {
-	pages    Pages
-	previews map[string][]byte
-	assets   map[string]Asset
-	robots   []byte
-	sitemap  []byte
-	manifest []byte
+	pages        Pages
+	previews     map[string][]byte
+	assets       map[string]Asset
+	robots       []byte
+	sitemap      []byte
+	securityText []byte
+	manifest     []byte
 }
 
 func NewHandler(build Build, publicURL, contact string, information buildinfo.Info) (http.Handler, error) {
@@ -32,12 +33,13 @@ func NewHandler(build Build, publicURL, contact string, information buildinfo.In
 	}
 	manifest, _ := json.Marshal(build.Manifest(information.Version, publicURL, pages, information))
 	site := &frontend{
-		pages:    pages,
-		previews: previewPages(publicURL, build.Assets),
-		assets:   build.Assets,
-		robots:   Robots(publicURL),
-		sitemap:  Sitemap(publicURL),
-		manifest: manifest,
+		pages:        pages,
+		previews:     previewPages(publicURL, build.Assets),
+		assets:       build.Assets,
+		robots:       Robots(publicURL),
+		sitemap:      Sitemap(publicURL),
+		securityText: SecurityText(publicURL, contact, information.Date),
+		manifest:     manifest,
 	}
 	mux := http.NewServeMux()
 	HandlePages(mux, site.page)
@@ -46,6 +48,7 @@ func NewHandler(build Build, publicURL, contact string, information buildinfo.In
 	mux.HandleFunc("GET /"+agentsGuideFile, serveIfBuilt(build.AgentsGuide))
 	mux.HandleFunc("GET "+robotsPath, site.serveRobots)
 	mux.HandleFunc("GET "+sitemapPath, site.serveSitemap)
+	mux.HandleFunc("GET "+SecurityTextPath, site.serveSecurityText)
 	mux.HandleFunc("GET "+ManifestPath, site.serveManifest)
 	return frontendHeaders(mux), nil
 }
@@ -125,6 +128,15 @@ func (f *frontend) serveSitemap(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
 	_, _ = w.Write(f.sitemap)
+}
+
+func (f *frontend) serveSecurityText(w http.ResponseWriter, r *http.Request) {
+	if f.securityText == nil {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = w.Write(f.securityText)
 }
 
 func (f *frontend) serveManifest(w http.ResponseWriter, _ *http.Request) {

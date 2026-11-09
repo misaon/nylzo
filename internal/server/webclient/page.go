@@ -41,7 +41,7 @@ var (
 // publicDocuments carry no message and no message metadata, so a crawler may load them over classical TLS.
 var publicDocuments = []string{
 	englishHome, czechHome, czechRedirectPath, termsPath, transparencyPath, agentsPath, "/" + agentsGuideFile,
-	robotsPath, sitemapPath, ManifestPath,
+	robotsPath, sitemapPath, SecurityTextPath, ManifestPath,
 }
 
 func IsPublicDocument(path string) bool {
