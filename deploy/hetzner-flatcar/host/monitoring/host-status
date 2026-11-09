@@ -21,9 +21,15 @@ domain=$(sed -n 's/^NYLZO_DOMAIN=//p' "${NYLZO_CADDY_ENV:-/etc/nylzo/caddy.env}"
 endpoint=${NYLZO_CERTIFICATE_ENDPOINT:-127.0.0.1:443}
 if [[ "$domain" =~ ^[a-z0-9.-]{1,253}$ && "$endpoint" =~ ^127\.0\.0\.1:[0-9]{1,5}$ ]]; then
   # Inspect the certificate actually served, without access to Caddy's private storage.
-  if timeout 5 openssl s_client -connect "$endpoint" -servername "$domain" \
-    -verify_hostname "$domain" -verify_return_error </dev/null 2>/dev/null |
-    openssl x509 -noout -checkend 129600 >/dev/null 2>&1; then certificate=true; fi
+  if served=$(timeout 5 openssl s_client -connect "$endpoint" -servername "$domain" \
+    -verify_hostname "$domain" -verify_return_error </dev/null 2>/dev/null | openssl x509 2>/dev/null) &&
+    openssl x509 -noout -checkend 129600 <<< "$served" >/dev/null 2>&1; then
+    # A certificate issued before the shortlived profile keeps a stolen key valid for months.
+    lifetime=$(openssl x509 -noout -dateopt iso_8601 -startdate -enddate <<< "$served" 2>/dev/null |
+      jq --raw-input --null-input '[inputs | capture("^not(?<edge>Before|After)=(?<time>.+)$")
+        | {(.edge): (.time | strptime("%Y-%m-%d %H:%M:%SZ") | mktime)}] | add | .After - .Before' 2>/dev/null) || lifetime=""
+    if [[ "$lifetime" =~ ^[0-9]{1,10}$ ]] && (( 10#$lifetime <= 7 * 86400 )); then certificate=true; fi
+  fi
 fi
 services=true
 for unit in nylzo.service caddy.service nylzo-ready.service nylzo-firewall.service update-engine.service locksmithd.service nylzo-update.timer; do

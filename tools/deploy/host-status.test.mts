@@ -11,10 +11,10 @@ test("host reports keep every failure visible without exporting operational deta
     const bin = join(directory, "bin"), output = join(directory, "status");
     mkdirSync(bin); mkdirSync(output);
     const requiredUnits = ["nylzo.service", "caddy.service", "nylzo-ready.service", "nylzo-firewall.service", "update-engine.service", "locksmithd.service", "nylzo-update.timer"];
-    const fixture = { now: 2_000_000, lastCheck: 1_999_900, checked: 1_999_800, operation: "UPDATE_STATUS_IDLE", policy: true, services: Object.fromEntries(requiredUnits.map(unit => [unit, "active"])), active: false, result: "success", available: "16777216", clock: "1999000", certificate: true };
+    const fixture = { now: 2_000_000, lastCheck: 1_999_900, checked: 1_999_800, operation: "UPDATE_STATUS_IDLE", policy: true, services: Object.fromEntries(requiredUnits.map(unit => [unit, "active"])), active: false, result: "success", available: "16777216", clock: "1999000", certificate: true, lifetime: 160 * 3600 };
     writeFileSync(join(directory, "caddy.env"), "NYLZO_DOMAIN=nylzo.example.org\n");
     const program = `#!${process.execPath}
-import {basename} from 'node:path';import {spawnSync} from 'node:child_process';
+import {basename} from 'node:path';import {spawnSync} from 'node:child_process';import {readFileSync} from 'node:fs';
 const state=JSON.parse(process.env.STATUS_FIXTURE),args=process.argv.slice(2),name=basename(process.argv[1]);
 if(name==='timeout'){process.exit(spawnSync(args[1],args.slice(2),{stdio:'inherit'}).status??1)}
 if(name==='host-policy')process.exit(state.policy?0:1);
@@ -28,8 +28,11 @@ if(name==='systemctl'){
 else if(name==='date')console.log(args[0]==='+%s'?state.now:state.lastCheck);
 else if(name==='update_engine_client')console.log('LAST_CHECKED_TIME='+state.checked+'\\nCURRENT_OP='+state.operation);
 else if(name==='openssl'){
- if(args[0]==='s_client')process.exit(state.certificate&&args.join(' ')==='s_client -connect 127.0.0.1:443 -servername nylzo.example.org -verify_hostname nylzo.example.org -verify_return_error'?0:1);
- process.exit(args.join(' ')==='x509 -noout -checkend 129600'?0:1);
+ const command=args.join(' '),stamp=(seconds)=>new Date(Date.UTC(2026,10,6)+seconds*1000).toISOString().replace('T',' ').replace(/\\.\\d+Z$/,'Z');
+ if(args[0]==='s_client'){console.log('served');process.exitCode=state.certificate&&command==='s_client -connect 127.0.0.1:443 -servername nylzo.example.org -verify_hostname nylzo.example.org -verify_return_error'?0:1}
+ else if(command==='x509'){const served=readFileSync(0,'utf8')==='served\\n';if(served)console.log('certificate');process.exitCode=served?0:1}
+ else if(command==='x509 -noout -dateopt iso_8601 -startdate -enddate')console.log('notBefore='+stamp(0)+'\\nnotAfter='+stamp(state.lifetime));
+ else process.exitCode=command==='x509 -noout -checkend 129600'?0:1;
 }
 `;
     for (const command of ["host-policy", "systemctl", "df", "date", "update_engine_client", "timeout", "openssl"]) {
@@ -51,7 +54,8 @@ else if(name==='openssl'){
       ["osUpdates", (s: any) => s.checked -= 86401], ["osUpdates", (s: any) => s.checked = s.now + 1],
       ["osUpdates", (s: any) => s.operation = "UPDATE_STATUS_REPORTING_ERROR_EVENT"], ["osUpdates", (s: any) => s.operation = "UNKNOWN"],
       ["clock", (s: any) => s.clock = String(s.now - 3601)], ["clock", (s: any) => s.clock = String(s.now + 1)], ["clock", (s: any) => s.clock = ""],
-      ["certificate", (s: any) => s.certificate = false],
+      ["certificate", (s: any) => s.certificate = false], ["certificate", (s: any) => s.lifetime = 90 * 86400],
+      ["certificate", (s: any) => s.lifetime = 7 * 86400 + 1],
     ] as const) {
       const state = structuredClone(fixture); mutate(state);
       const report = run(state);
