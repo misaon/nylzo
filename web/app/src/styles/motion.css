@@ -47,6 +47,11 @@
   --animate-how-node-sender: how-node-sender 7s var(--ease-silk) infinite;
   --animate-how-node-server: how-node-server 7s var(--ease-silk) infinite;
   --animate-how-node-recipient: how-node-recipient 7s var(--ease-silk) infinite;
+  --animate-how-node-sender-peak: how-node-sender-peak 7s var(--ease-silk) infinite;
+  --animate-how-node-server-peak: how-node-server-peak 7s var(--ease-silk) infinite;
+  --animate-how-node-server-hold: how-node-server-hold 7s var(--ease-silk) infinite;
+  --animate-how-node-recipient-peak: how-node-recipient-peak 7s var(--ease-silk) infinite;
+  --animate-how-node-recipient-hold: how-node-recipient-hold 7s var(--ease-silk) infinite;
   --animate-how-stored: how-stored 7s var(--ease-silk) infinite;
   --animate-how-opened: how-opened 7s var(--ease-silk) infinite;
   --animate-how-chip-a: how-chip-cipher 7s var(--ease-silk) 0.8s infinite;
@@ -214,16 +219,10 @@
     0%,
     15%,
     100% {
-      border-color: oklch(1 0 0 / 0.075);
-      box-shadow:
-        inset 0 1px 2px oklch(0.05 0.03 275 / 0.6),
-        0 0 0 0 oklch(0.56 0.19 258 / 0);
+      opacity: 0;
     }
     5% {
-      border-color: oklch(0.67 0.16 252 / 0.55);
-      box-shadow:
-        inset 0 1px 2px oklch(0.05 0.03 275 / 0.6),
-        0 0 32px -8px oklch(0.56 0.19 258 / 0.85);
+      opacity: 1;
     }
   }
   @keyframes who-flow-in {
@@ -375,12 +374,10 @@
     0%,
     16%,
     100% {
-      border-color: oklch(1 0 0 / 0.15);
-      background-color: oklch(0.67 0.16 252 / 0);
+      opacity: 0;
     }
     5% {
-      border-color: oklch(0.67 0.16 252 / 0.6);
-      background-color: oklch(0.67 0.16 252 / 0.07);
+      opacity: 1;
     }
   }
   @keyframes who-drift {
@@ -427,96 +424,103 @@
   @keyframes how-node-sender {
     0% {
       color: oklch(0.86 0.014 255);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 0 oklch(0.56 0.19 258 / 0);
     }
     4% {
       color: oklch(0.93 0.035 246);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 6px oklch(0.67 0.16 252 / 0.12),
-        0 0 48px -4px oklch(0.56 0.19 258 / 0.95);
     }
     14%,
     100% {
       color: oklch(0.86 0.014 255);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 0 oklch(0.56 0.19 258 / 0);
+    }
+  }
+  @keyframes how-node-sender-peak {
+    0%,
+    14%,
+    100% {
+      opacity: 0;
+    }
+    4% {
+      opacity: 1;
     }
   }
   @keyframes how-node-server {
     0%,
     19% {
       color: oklch(0.86 0.014 255);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 0 oklch(0.56 0.19 258 / 0);
     }
     23% {
       color: oklch(0.93 0.035 246);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 6px oklch(0.67 0.16 252 / 0.12),
-        0 0 48px -4px oklch(0.56 0.19 258 / 0.95);
     }
     28%,
     44% {
       color: oklch(0.86 0.06 246);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 3px oklch(0.67 0.16 252 / 0.08),
-        0 0 32px -8px oklch(0.56 0.19 258 / 0.7);
     }
     52%,
     100% {
       color: oklch(0.86 0.014 255);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 0 oklch(0.56 0.19 258 / 0);
+    }
+  }
+  @keyframes how-node-server-peak {
+    0%,
+    19%,
+    28%,
+    100% {
+      opacity: 0;
+    }
+    23% {
+      opacity: 1;
+    }
+  }
+  @keyframes how-node-server-hold {
+    0%,
+    23%,
+    52%,
+    100% {
+      opacity: 0;
+    }
+    28%,
+    44% {
+      opacity: 1;
     }
   }
   @keyframes how-node-recipient {
     0%,
     39% {
       color: oklch(0.86 0.014 255);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 0 oklch(0.56 0.19 258 / 0);
     }
     43% {
       color: oklch(0.93 0.035 246);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 6px oklch(0.67 0.16 252 / 0.12),
-        0 0 48px -4px oklch(0.56 0.19 258 / 0.95);
     }
     50%,
     88% {
       color: oklch(0.86 0.06 246);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 3px oklch(0.67 0.16 252 / 0.08),
-        0 0 32px -8px oklch(0.56 0.19 258 / 0.7);
     }
     96%,
     100% {
       color: oklch(0.86 0.014 255);
-      box-shadow:
-        inset 0 1px 0 oklch(1 0 0 / 0.08),
-        0 24px 60px -20px oklch(0.04 0.03 275 / 0.95),
-        0 0 0 0 oklch(0.56 0.19 258 / 0);
+    }
+  }
+  @keyframes how-node-recipient-peak {
+    0%,
+    39%,
+    50%,
+    100% {
+      opacity: 0;
+    }
+    43% {
+      opacity: 1;
+    }
+  }
+  @keyframes how-node-recipient-hold {
+    0%,
+    43%,
+    96%,
+    100% {
+      opacity: 0;
+    }
+    50%,
+    88% {
+      opacity: 1;
     }
   }
   @keyframes how-stored {
@@ -565,28 +569,20 @@
     0%,
     12%,
     100% {
-      box-shadow:
-        0 0 0 1px oklch(0.67 0.16 252 / 0.4),
-        0 0 0 0 oklch(0.56 0.19 258 / 0);
+      opacity: 0;
     }
     3% {
-      box-shadow:
-        0 0 0 1px oklch(0.77 0.115 249 / 0.9),
-        0 0 18px -2px oklch(0.56 0.19 258 / 0.9);
+      opacity: 1;
     }
   }
   @keyframes how-chip-key {
     0%,
     12%,
     100% {
-      box-shadow:
-        0 0 0 1px oklch(0.8 0.1 305 / 0.4),
-        0 0 0 0 oklch(0.72 0.14 305 / 0);
+      opacity: 0;
     }
     3% {
-      box-shadow:
-        0 0 0 1px oklch(0.8 0.1 305 / 0.9),
-        0 0 18px -2px oklch(0.72 0.14 305 / 0.9);
+      opacity: 1;
     }
   }
   @keyframes icon-blink {
@@ -721,6 +717,96 @@
 @keyframes nebula-scroll {
   to {
     transform: translate3d(0, -10%, 0) scale(1.06);
+  }
+}
+
+@utility glow-source {
+  @variant motion-safe {
+    position: relative;
+    &::after {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border: 1px solid oklch(0.67 0.16 252 / 0.55);
+      border-radius: inherit;
+      box-shadow: 0 0 32px -8px oklch(0.56 0.19 258 / 0.85);
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+}
+
+@utility glow-deny {
+  @variant motion-safe {
+    position: relative;
+    isolation: isolate;
+    &::after {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      z-index: -1;
+      border: 1px dashed oklch(0.67 0.16 252 / 0.6);
+      border-radius: inherit;
+      background: oklch(0.67 0.16 252 / 0.07);
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+}
+
+@utility glow-chip {
+  @variant motion-safe {
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow:
+        0 0 0 1px oklch(0.77 0.115 249 / 0.9),
+        0 0 18px -2px oklch(0.56 0.19 258 / 0.9);
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+}
+
+@utility glow-chip-key {
+  @variant motion-safe {
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      box-shadow:
+        0 0 0 1px oklch(0.8 0.1 305 / 0.9),
+        0 0 18px -2px oklch(0.72 0.14 305 / 0.9);
+      opacity: 0;
+      pointer-events: none;
+    }
+  }
+}
+
+@utility glow-node {
+  @variant motion-safe {
+    &::before,
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      opacity: 0;
+      pointer-events: none;
+    }
+    &::before {
+      box-shadow:
+        0 0 0 3px oklch(0.67 0.16 252 / 0.08),
+        0 0 32px -8px oklch(0.56 0.19 258 / 0.7);
+    }
+    &::after {
+      box-shadow:
+        0 0 0 6px oklch(0.67 0.16 252 / 0.12),
+        0 0 48px -4px oklch(0.56 0.19 258 / 0.95);
+    }
   }
 }
 
