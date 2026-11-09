@@ -4,12 +4,16 @@ export const messages: Catalog = {
   'action.retry': 'Spróbuj ponownie',
   'app.crashed': 'Na stronie wystąpił błąd. Wczytaj ją ponownie.',
 
-  'limits.terms': 'warunkach korzystania',
   'hero.eyebrow': 'Jednorazowe szyfrowane linki',
   'hero.steps': 'Jak to działa',
   'hero.step.write': 'Napisz wiadomość',
   'hero.step.send': 'Wyślij link',
   'hero.step.vanish': 'Po otwarciu znika',
+  'hero.proof.label': 'Główne zalety',
+  'hero.proof.encrypted': 'Szyfrowane w\u{A0}twojej przeglądarce',
+  'hero.proof.cipher': 'AES-256-GCM',
+  'hero.proof.tls': 'Postkwantowy TLS',
+  'hero.proof.open': 'Open source',
   'terms.eyebrow': 'Informacje prawne',
   'terms.title': 'Warunki korzystania',
   'terms.effective':
@@ -289,7 +293,8 @@ export const messages: Catalog = {
   'read.delete.rest.short': 'Usuń',
   'read.delete.rest.confirm': 'Usunąć pozostałe otwarcia?',
   'read.delete.confirm.title': 'Usunąć wiadomość bez otwierania?',
-  'read.note': 'Bezpłatnie i\u{A0}bez rejestracji. Strona nie używa plików cookie ani narzędzi analitycznych.',
+  'read.note':
+    'Bezpłatnie i\u{A0}bez rejestracji. Strona z\u{A0}wiadomością nie używa plików cookie ani nie mierzy ruchu.',
   'read.delete.confirm': 'Potem nikt już jej nie otworzy, nawet ty.',
   'read.delete.yes': 'Tak, usuń',
   'read.delete.no': 'Nie usuwaj',
@@ -307,7 +312,8 @@ export const messages: Catalog = {
   'revealed.sender.title': 'Nylzo nie weryfikuje nadawców',
   'revealed.sender.text': 'Prośbę o\u{A0}pieniądze, logowanie lub instalację potwierdź u\u{A0}nadawcy inną drogą.',
   'revealed.file': 'Załącznik',
-  'revealed.file.unchecked': 'Nikt nie sprawdził go pod kątem wirusów. Otwieraj tylko pliki od osób, które znasz.',
+  'revealed.file.unchecked':
+    'Załącznik jest zaszyfrowany, więc Nylzo nie może sprawdzić go programem antywirusowym. Otwieraj tylko pliki od osób, które znasz.',
   'revealed.confirm.title': 'Ten typ pliku może uruchomić kod. Otwórz go tylko wtedy, gdy ufasz nadawcy.',
   'revealed.confirm.extension': 'Rozszerzenie pliku:',
   'revealed.confirm.none': 'Plik nie ma rozszerzenia.',
@@ -356,12 +362,15 @@ export const messages: Catalog = {
   'transparency.stores.counters.title': 'Liczniki bez adresów',
   'transparency.stores.counters':
     'Dzienne liczniki utworzonych wiadomości przechowuje jeszcze przez {days} po zakończeniu dnia, a\u{A0}wykorzystane jednorazowe wyzwania tylko przez kilka minut.',
+  'transparency.stores.visits.title': 'Ruch na stronie głównej',
+  'transparency.stores.visits':
+    'Zbiorcze liczby wyświetleń strony głównej w\u{A0}podziale na godziny, bez plików cookie i\u{A0}bez adresów IP. Pomagają nam ulepszać usługę i\u{A0}w\u{A0}porę wzmocnić serwer. Strony z\u{A0}wiadomościami nie są wliczane do pomiaru.',
   'transparency.stores.addresses.title': 'Adresy IP',
   'transparency.stores.addresses':
     'Nie przechowuje ich. Limity dla poszczególnych adresów trzyma tylko w\u{A0}pamięci, która nigdy nie trafia na dysk, i\u{A0}po restarcie o\u{A0}nich zapomina.',
-  'transparency.stores.enforced.title': 'Ważności i\u{A0}liczby otwarć pilnuje serwer',
+  'transparency.stores.enforced.title': 'Ważności pilnuje też kryptografia',
   'transparency.stores.enforced':
-    'Ważności i\u{A0}liczby otwarć pilnuje ten serwer. Mniej więcej w\u{A0}ciągu dwóch godzin po wygaśnięciu ważności usuwa część klucza, której wiadomość potrzebuje, więc kopia wykonana później już jej nie otworzy. Do tego czasu serwer w\u{A0}cudzych rękach mógłby zatrzymać wiadomość i\u{A0}tę część klucza, a\u{A0}chroniłaby ją tylko tajność linku i\u{A0}hasła.',
+    'Ważności i\u{A0}liczby otwarć pilnuje serwer. Najpóźniej dwie godziny po wygaśnięciu ważności usuwa też część klucza, której wiadomość potrzebuje, więc potem nie otworzy jej nawet kopia danych. Kopia wykonana wcześniej nie odczyta wiadomości bez linku.',
   'transparency.logs.title': 'Co serwer zapisuje w\u{A0}logach',
   'transparency.logs.written': 'Zapisuje',
   'transparency.logs.written.time': 'Czas obcięty do minuty',
@@ -380,31 +389,34 @@ export const messages: Catalog = {
   'transparency.logs.never.size': 'Rozmiar wiadomości',
   'transparency.logs.never.duration': 'Czas obsługi',
   'transparency.checks.title': 'Kontrole bezpieczeństwa',
-  'transparency.checks.note': 'Kto i\u{A0}jak sprawdza Nylzo. Dotyczy oprogramowania, nie tylko tej instancji.',
+  'transparency.checks.note': 'Kto i\u{A0}jak sprawdza Nylzo.',
   'transparency.checks.audit.title': 'Niezależny audyt',
   'transparency.checks.audit': 'Jeszcze się nie odbył.',
   'transparency.checks.changes.title': 'Przy każdej zmianie kodu',
   'transparency.checks.changes':
-    'Testy protokołu i\u{A0}tego, co obiecujemy, analiza statyczna, kontrola zależności i\u{A0}test danych ze skradzionego serwera.',
-  'transparency.checks.ai.title': 'Kontrole z\u{A0}użyciem narzędzi AI',
+    'CodeQL, govulncheck, OSV-Scanner, Grype i\u{A0}golangci-lint, testy protokołu i\u{A0}tego, co obiecujemy, oraz test danych ze skradzionego serwera. Każdy commit w\u{A0}gałęzi głównej jest podpisany.',
+  'transparency.checks.ai.title': 'Kontrole z\u{A0}udziałem agentów AI',
   'transparency.checks.ai':
-    'Narzędzia AI regularnie sprawdzają bezpieczeństwo kodu, ostatnio 25\u{A0}października i\u{A0}1\u{A0}listopada 2026\u{A0}r. Znalezione problemy zostały naprawione i\u{A0}opisane na GitHubie.',
+    'Agenci AI sprawdzili kod w\u{A0}pięciu dogłębnych kontrolach bezpieczeństwa: 25\u{A0}października, 1\u{A0}listopada, 7\u{A0}listopada (klient webowy i\u{A0}serwer) oraz 8\u{A0}listopada 2026\u{A0}r. (repozytorium). Znalezione problemy zostały naprawione i\u{A0}opisane na GitHubie.',
+  'transparency.checks.watch.title': 'Monitorowanie nylzo.com',
+  'transparency.checks.watch':
+    'Co 30\u{A0}minut porównanie kodu strony z\u{A0}podpisanym wydaniem. Przy rozbieżności automatyczny tryb prac technicznych, odcięcie przez firewall w\u{A0}chmurze i\u{A0}zgłoszenie incydentu. Co godzinę automatyczne zadanie tworzy wiadomość testową, odczytuje ją i\u{A0}zleca jej usunięcie.',
   'transparency.checks.ratings.title': 'Oceny projektu',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (ocena automatyczna) i\u{A0}OpenSSF Best Practices (samoocena), linki w\u{A0}README.',
+    'OpenSSF Scorecard (ocena automatyczna), OpenSSF Best Practices (samoocena) oraz A+ na securityheaders.com i\u{A0}w\u{A0}Mozilla Observatory. Linki są w\u{A0}README.',
   'transparency.others.title': 'Co widzą inni',
   'transparency.others.hosting.title': 'Hosting i\u{A0}proxy',
   'transparency.others.hosting':
     'Dostawca hostingu i\u{A0}serwer proxy, na którym kończy się połączenie HTTPS, widzą adresy IP, czasy i\u{A0}rozmiary żądań oraz prowadzą logi według własnych zasad. Treści wiadomości nie widzą.',
-  'transparency.others.client.title': 'Kto kontroluje serwer lub hosting',
+  'transparency.others.client.title': 'Kod strony',
   'transparency.others.client':
-    'Kto kontroluje działający serwer lub hosting, widzi rekordy wiadomości, które ktoś właśnie otwiera lub którymi zarządza, i\u{A0}może wysłać zmodyfikowany klient webowy oraz odczytać wiadomości, które w\u{A0}nim utworzysz lub otworzysz. Zweryfikowane aplikacje, czyli lokalny klient (nylzo web, nylzo open) i\u{A0}narzędzie nylzo do wiersza poleceń, uruchamiają kod z\u{A0}podpisanego wydania, więc serwer nie może go zmienić. Kontrola poniżej wykryje taką podmianę tylko wtedy, gdy serwer nie próbuje jej obejść.',
+    'Kto przejąłby działający serwer, zobaczyłby tylko rekordy wiadomości, które są właśnie otwierane, nigdy ich treści. Dlatego na nylzo.com co 30\u{A0}minut porównujemy kod strony z\u{A0}podpisanym wydaniem, a\u{A0}przy rozbieżności usługa sama się odłącza. Strony podstawionej celowo jednej osobie kontrola mogłaby nie wykryć, dlatego do najbardziej wrażliwych danych oferujemy zweryfikowane aplikacje (nylzo web, nylzo open i\u{A0}narzędzie nylzo do wiersza poleceń), które uruchamiają kod z\u{A0}podpisanego wydania.',
   'transparency.personal.title': 'Dane osobowe',
   'transparency.personal.controller.title': 'Administrator',
   'transparency.personal.controller': 'Administratorem danych jest operator wskazany na górze tej strony.',
   'transparency.personal.basis.title': 'Dlaczego i\u{A0}na jakiej podstawie',
   'transparency.personal.basis':
-    'Wiadomość przechowujemy, przekazujemy odbiorcy i\u{A0}usuwamy, ponieważ poprosił o\u{A0}to nadawca. Limity i\u{A0}logi są nam potrzebne ze względu na bezpieczeństwo usługi (art.\u{A0}6 ust.\u{A0}1 lit.\u{A0}b i\u{A0}f\u{A0}RODO).',
+    'Wiadomość przechowujemy, przekazujemy odbiorcy i\u{A0}usuwamy, ponieważ poprosił o\u{A0}to nadawca. Limity, logi i\u{A0}zbiorcze dane o\u{A0}ruchu są nam potrzebne ze względu na bezpieczeństwo i\u{A0}rozwój usługi (art.\u{A0}6 ust.\u{A0}1 lit.\u{A0}b i\u{A0}f\u{A0}RODO).',
   'transparency.personal.browser.title': 'W\u{A0}twojej przeglądarce',
   'transparency.personal.browser':
     'Wybrany język, tymczasowa informacja podczas otwierania wiadomości i\u{A0}lista na stronie Wysłane, jeśli śledzisz wiadomość. Są niezbędne do działania funkcji, o\u{A0}które prosisz, dlatego nie wymagają zgody.',
@@ -433,10 +445,10 @@ export const messages: Catalog = {
     'Polecenie z\u{A0}wydania nylzo w\u{A0}tej samej wersji sprawdzi, czy serwer wysyła dokładnie te pliki z\u{A0}tymi samymi nagłówkami:',
   'transparency.verify.limit.title': 'Czego kontrola nie wykryje',
   'transparency.verify.limit':
-    'Sprawdza tylko to, co serwer wysłał temu poleceniu. Serwer może je rozpoznać i\u{A0}wysyłać przeglądarkom inny kod, więc kontrola wykryje wadliwą kompilację lub wdrożenie, ale nie podmianę, którą serwer celowo ukrywa.',
+    'Sprawdza, co serwer wysłał temu poleceniu. Podmiany skierowanej tylko do wybranych przeglądarek może nie wykryć.',
   'transparency.verify.apps.title': 'Zweryfikowana aplikacja',
   'transparency.verify.apps':
-    'Kto używa klienta webowego, musi ufać temu serwerowi: klient webowy pochodzi z\u{A0}niego, więc serwer w\u{A0}cudzych rękach mógłby go zmienić. Zweryfikowane aplikacje, czyli lokalny klient (nylzo web, nylzo open) i\u{A0}narzędzie nylzo do wiersza poleceń, uruchamiają kod z\u{A0}podpisanego wydania i\u{A0}polegają wyłącznie na szyfrowaniu.',
+    'Zweryfikowane aplikacje, czyli lokalny klient (nylzo web, nylzo open) i\u{A0}narzędzie nylzo do wiersza poleceń, uruchamiają kod z\u{A0}podpisanego wydania. Serwer dostarcza im tylko szyfrogram i\u{A0}nie może podsunąć im kodu.',
   'transparency.source': 'Kod źródłowy, specyfikacja protokołu i\u{A0}model zagrożeń',
 
   'nav.home': 'Nylzo, strona główna',
@@ -470,7 +482,7 @@ export const messages: Catalog = {
   'footer.agents': 'Dla agentów AI',
   'footer.about': 'Kto stoi za Nylzo',
   'footer.terms': 'Warunki korzystania',
-  'footer.note': 'Bez plików cookie i\u{A0}analityki.',
+  'footer.note': 'Bez plików cookie, reklam i\u{A0}zewnętrznych skryptów.',
   'footer.version': 'Wersja klienta webowego {version}',
 
   'hero.title': 'Sekret na {accent}',
@@ -509,7 +521,7 @@ export const messages: Catalog = {
   'compose.submit': 'Utwórz link',
   'compose.encrypting': 'Szyfrujemy',
   'compose.note':
-    'Przeglądarka szyfruje wiadomość jeszcze przed wysłaniem. Bezpłatnie i\u{A0}bez rejestracji. Strona nie używa plików cookie ani narzędzi analitycznych.',
+    'Przeglądarka szyfruje wiadomość jeszcze przed wysłaniem. Bezpłatnie, bez rejestracji i\u{A0}bez plików cookie.',
 
   'step.counter': 'Krok {step} z\u{A0}{total}',
   'step.key.label': 'Klucz',
@@ -743,7 +755,7 @@ export const messages: Catalog = {
   'brute.fact.pass': 'Hasła nie da się odgadnąć przez sieć',
   'brute.fact.pass.note': 'Po 100\u{A0}błędnych hasłach wiadomość się blokuje',
   'brute.fact.quantum': 'Komputer kwantowy nie odczyta wiadomości',
-  'brute.fact.quantum.note': 'Mógłby obejść liczenie otwarć, treść chroni 256-bitowy klucz',
+  'brute.fact.quantum.note': 'Treść chroni 256-bitowy klucz, a\u{A0}połączenie postkwantowy TLS',
 
   'promise.eyebrow': 'Co obiecujemy',
   'promise.title': 'Obietnice, które możesz sprawdzić',
@@ -799,16 +811,55 @@ export const messages: Catalog = {
   'extra.standards.title': 'Żadnej własnej kryptografii',
   'extra.standards.text': 'Tylko sprawdzone standardy z\u{A0}publiczną specyfikacją.',
   'extra.standards.proof': 'AES-256-GCM i\u{A0}6\u{A0}innych standardów',
+  'tech.eyebrow': 'Technologia',
+  'tech.title': 'Nowoczesne i\u{A0}sprawdzone technologie w\u{A0}każdej warstwie',
+  'tech.sub':
+    'Od szyfrowania w\u{A0}przeglądarce po wydanie nowej wersji. Każdą informację sprawdzisz w\u{A0}kodzie na GitHubie.',
+  'tech.crypto.title': 'Szyfrowanie',
+  'tech.crypto.1': 'AES-256-GCM z\u{A0}kluczem z\u{A0}kryptograficznego generatora przeglądarki',
+  'tech.crypto.2': 'Hasło chroni scrypt, który na każdą próbę zużywa 256\u{A0}MiB pamięci',
+  'tech.crypto.3': 'Klucze wyprowadza HKDF-SHA-256, otwarcie podpisuje Ed25519',
+  'tech.crypto.4': 'Połączenie tylko przez TLS\u{A0}1.3 z\u{A0}postkwantową wymianą X25519MLKEM768',
+  'tech.crypto.5': 'Żadnej własnej kryptografii, tylko publiczne standardy',
+  'tech.server.title': 'Serwer',
+  'tech.server.1': 'Napisany w\u{A0}Go i\u{A0}jego bibliotece standardowej, ma tylko sześć bezpośrednich zależności',
+  'tech.server.2': 'SQLite z\u{A0}zapieczętowanymi rekordami, ID wiadomości przechowuje tylko jako hash',
+  'tech.server.3':
+    'Usunięte rekordy nadpisuje zerami, a\u{A0}plikom niszczy klucze, więc nikt nie odczyta ich z\u{A0}dysku',
+  'tech.server.4': 'Limity na adres, dzienny pułap wiadomości i\u{A0}obliczeniowa ochrona przed przeciążeniem',
+  'tech.server.5': 'Pamięć serwera nigdy nie trafia na dysk',
+  'tech.web.title': 'Klient webowy',
+  'tech.web.1': 'Svelte\u{A0}5 kompiluje komponenty do czystego JavaScriptu bez wirtualnego DOM',
+  'tech.web.2': 'TypeScript i\u{A0}nowoczesny JavaScript, budowanie i\u{A0}testy w\u{A0}środowisku Bun',
+  'tech.web.3': 'Każdy skrypt i\u{A0}arkusz stylów ma odcisk SHA-384, a\u{A0}zmieniony plik przeglądarka odrzuci',
+  'tech.web.4':
+    'Web Crypto przechowuje klucze tak, by nie dało się ich wyeksportować, do tego Trusted Types i\u{A0}ścisła polityka CSP',
+  'tech.web.5': 'Bez plików cookie, reklam i\u{A0}skryptów z\u{A0}obcych serwerów',
+  'tech.release.title': 'Rozwój i\u{A0}wydania',
+  'tech.release.1': 'Każdy commit w\u{A0}gałęzi głównej jest podpisany',
+  'tech.release.2': 'Każdą zmianę sprawdzają CodeQL, govulncheck, OSV-Scanner, Grype i\u{A0}golangci-lint',
+  'tech.release.3': 'Kod przeszedł pięć dogłębnych kontroli bezpieczeństwa z\u{A0}udziałem agentów AI',
+  'tech.release.4':
+    'Renovate co 6\u{A0}godzin szuka aktualizacji, a\u{A0}poprawki bezpieczeństwa sam wdraża na nylzo.com',
+  'tech.release.5': 'Wydania są podpisane przez Sigstore, odtwarzalne i\u{A0}mają weryfikowalne pochodzenie (SLSA)',
+  'tech.release.6': 'Każda wersja ma przejrzysty changelog',
+  'tech.tests.title': 'Niezależne testy',
+  'tech.test.headers': 'Ocena A+ na securityheaders.com',
+  'tech.test.observatory': 'Ocena A+ w\u{A0}Mozilla Observatory',
+  'tech.test.pagespeed': '100 za ułatwienia dostępu, sprawdzone metody i\u{A0}SEO (PageSpeed Insights)',
+  'tech.test.scorecard': 'Ocena OpenSSF Scorecard',
 
-  'host.eyebrow': 'Własny serwer',
-  'host.title': 'Uruchom Nylzo u\u{A0}siebie',
+  'host.eyebrow': 'Terminal i\u{A0}własny serwer',
+  'host.title': 'Nylzo w\u{A0}terminalu i\u{A0}na własnym serwerze',
   'host.sub':
-    'Całe Nylzo to jeden plik wykonywalny. Dane zapisuje w\u{A0}SQLite i\u{A0}w\u{A0}plikach na dysku, bez dodatkowej bazy danych i\u{A0}bez usług zewnętrznych. Ważność, limity i\u{A0}kontakt na stronie Przejrzystość ustawiasz samodzielnie.',
+    'Oficjalne narzędzie nylzo dla macOS, Linuksa i\u{A0}Windowsa szyfruje bezpośrednio na twoim komputerze i\u{A0}nie potrzebuje kodu z\u{A0}serwera. Całe Nylzo to także jeden plik wykonywalny z\u{A0}SQLite, który uruchomisz na własnym serwerze bez usług zewnętrznych.',
+  'host.point.cli': 'Instalacja przez Homebrew lub Scoop na macOS, Linuksie i\u{A0}Windowsie',
   'host.point.compose': 'Docker Compose z\u{A0}Caddy, który na twoim serwerze zapewni certyfikat i\u{A0}HTTPS',
   'host.point.signed': 'Podpisane obrazy i\u{A0}pliki binarne z\u{A0}weryfikowalnym pochodzeniem',
   'host.point.mit': 'Licencja MIT, więc także dla firm',
   'host.guide': 'Instrukcja wdrożenia na GitHubie',
   'host.tabs': 'Sposób instalacji',
+  'host.cli': 'CLI',
   'host.compose': 'Compose',
   'host.binary': 'Plik binarny',
   'host.verify': 'Weryfikacja',
@@ -826,57 +877,61 @@ export const messages: Catalog = {
   'compare.row.preview': 'Podgląd linku niczego nie zużywa',
   'compare.row.passphrase': 'Hasło jest częścią szyfrowania',
   'compare.row.secret': 'Sekret w\u{A0}linku',
-  'compare.row.verify': 'Porównanie kodu z\u{A0}serwera z\u{A0}wydaniem',
+  'compare.row.verify': 'Pilnuje zgodności strony z\u{A0}wydaniem',
   'compare.row.length': 'Zaokrągla długość do pełnych bloków',
   'compare.row.id': 'Samo ID nie otwiera wiadomości',
   'compare.row.stolen': 'Automatyczny test danych ze skradzionego serwera',
   'compare.row.ip': 'Serwer nie zapisuje adresów IP',
-  'compare.row.audit': 'Niezależny audyt',
   'compare.note.nojs': 'tylko podgląd bez JS',
   'compare.note.server_side': 'na serwerze',
   'compare.note.bits256': '256\u{A0}bitów',
   'compare.note.bits131': '≈ 131\u{A0}bitów',
   'compare.note.bits128': '128\u{A0}bitów',
   'compare.note.none': '—',
-  'compare.note.verify_client': 'tylko to, co serwer wyśle poleceniu verify\u{2011}client',
+  'compare.note.every30': 'co 30\u{A0}min',
+  'operations.eyebrow': 'Działanie usługi',
+  'operations.title': 'Pilnujemy też serwera nylzo.com',
+  'operations.sub':
+    'Szyfrowanie chroni treść wiadomości. Serwera, połączenia i\u{A0}kodu strony pilnujemy osobno, a\u{A0}gdy coś się nie zgadza, usługa sama się odłącza.',
+  'operations.diagram':
+    'Co 30\u{A0}minut porównujemy kod na nylzo.com z\u{A0}podpisanym wydaniem. Jeśli się różni, usługa przechodzi w\u{A0}tryb prac technicznych.',
+  'operations.release': 'Wydanie na GitHubie',
+  'operations.instance': 'nylzo.com',
+  'operations.check': 'Weryfikacja',
+  'operations.signed': 'podpisane',
+  'operations.compared': 'porównane',
+  'operations.every': 'co 30\u{A0}min',
+  'operations.watch.title': 'Kontrola kodu co 30\u{A0}minut',
+  'operations.watch.text':
+    'Automatyczne zadanie na GitHubie porównuje stronę, którą wysyła nylzo.com, z\u{A0}podpisanym wydaniem. Przy rozbieżności włącza tryb prac technicznych, a\u{A0}firewall w\u{A0}chmurze odłącza usługę.',
+  'operations.tls.title': 'Połączenie postkwantowe',
+  'operations.tls.text':
+    'Wiadomości przechodzą tylko przez TLS\u{A0}1.3 z\u{A0}wymianą kluczy X25519MLKEM768. To chroni także przed sytuacją, w\u{A0}której ktoś zapisałby ruch i\u{A0}później odszyfrował go komputerem kwantowym.',
+  'operations.host.title': 'Serwer w\u{A0}UE',
+  'operations.host.text':
+    'Działa w\u{A0}centrum danych Hetznera w\u{A0}Finlandii, na systemie Flatcar Linux z\u{A0}partycją systemową tylko do odczytu. Firewall przepuszcza z\u{A0}internetu tylko ruch do strony.',
+  'operations.access.title': 'Dostęp tylko odciskiem palca',
+  'operations.access.text':
+    'Do serwera można się zalogować tylko kluczem sprzętowym z\u{A0}Touch ID, z\u{A0}jednej sieci i\u{A0}przez postkwantową wymianę kluczy.',
+  'operations.updates.title': 'Automatyczne poprawki bezpieczeństwa',
+  'operations.updates.text':
+    'Renovate co 6\u{A0}godzin szuka poprawek zależności, a\u{A0}poprawkę bezpieczeństwa sam scala, gdy testy przejdą. Powstaje z\u{A0}niej podpisana wersja, którą nylzo.com instaluje w\u{A0}ciągu 10\u{A0}minut.',
+  'operations.apps':
+    'Do najbardziej wrażliwych danych masz zweryfikowaną aplikację nylzo. Uruchamia kod z\u{A0}podpisanego wydania, a\u{A0}z\u{A0}serwera pobiera tylko szyfrogram.',
+  'operations.apps.link': 'Zweryfikowane aplikacje',
   'compare.note.hmac': 'HMAC przez 10\u{A0}s',
   'compare.note.truncated': 'skrócone IP',
-  'compare.note.send_audits': 'Audyty Send o\u{A0}tym nie wspominają',
-
-  'limits.eyebrow': 'Gdzie kończą się nasze gwarancje',
-  'limits.title': 'Żadne szyfrowanie nie ochroni przejętego urządzenia',
-  'limits.sub':
-    'Złośliwe oprogramowanie lub osoba z\u{A0}dostępem do urządzenia przeczyta wiadomość, zanim przeglądarka ją zaszyfruje, albo zaraz po tym, jak odbiorca ją otworzy.',
-  'limits.diagram':
-    'Nylzo chroni wiadomość w\u{A0}drodze i\u{A0}na serwerze. Urządzeń nadawcy i\u{A0}odbiorcy chronić nie może.',
-  'limits.you': 'Ty',
-  'limits.server': 'W\u{A0}drodze i\u{A0}na serwerze',
-  'limits.recipient': 'Odbiorca',
-  'limits.outside': 'poza naszym zasięgiem',
-  'limits.ours': 'chronimy',
-  'limits.save.title': 'Odbiorca może zapisać wiadomość',
-  'limits.save.note': 'Skopiować ją lub sfotografować. Wysyłaj tylko do osób, którym ufasz.',
-  'limits.link.title': 'Kto pierwszy ma link, ten go otworzy',
-  'limits.link.note': 'Dlatego wrażliwe wiadomości chroń hasłem, a\u{A0}hasło wysyłaj inną drogą.',
-  'limits.server.title': 'Kto kontroluje serwer, może zmienić tę stronę',
-  'limits.server.note':
-    'Wybranej osobie może wysłać stronę, która ujawni wiadomość, a\u{A0}przeglądarka jeszcze tego nie rozpozna. Wiadomość, która musi pozostać bezpieczna nawet wtedy, wysyłaj i\u{A0}czytaj przez zweryfikowaną aplikację.',
-  'limits.server.link': 'Zweryfikowane aplikacje',
-  'limits.abuse.title': 'Nie do oszustw ani złośliwego oprogramowania',
-  'limits.abuse.note': 'Ani do innych nielegalnych treści.',
-  'limits.liability':
-    'Nylzo jest bezpłatne i\u{A0}bez gwarancji. Korzystasz z\u{A0}niego dobrowolnie i\u{A0}nie obiecujemy, że będzie zawsze dostępne, wolne od błędów ani odporne na każdy atak. Za treść wiadomości odpowiada osoba, która ją wysyła. Więcej w\u{A0}{link}.',
 
   'about.eyebrow': 'Kto stoi za Nylzo',
-  'about.title': 'Otwarty projekt jednego programisty',
+  'about.title': 'Niezależny projekt open source z\u{A0}Czech',
   'about.text':
-    'Nylzo w\u{A0}wolnym czasie rozwija i\u{A0}utrzymuje jeden programista z\u{A0}Czech. Powstało, aby hasła i\u{A0}klucze nie zostawały w\u{A0}czatach i\u{A0}e-mailach. Jest bezpłatne, bez reklam i\u{A0}bez inwestorów.',
+    'Nylzo rozwija i\u{A0}utrzymuje programista z\u{A0}Czech. Powstało, aby hasła i\u{A0}klucze nie zostawały w\u{A0}czatach i\u{A0}e-mailach. Jest bezpłatne, bez reklam i\u{A0}bez inwestorów.',
   'about.tools':
-    'Narzędzia AI służą przy rozwoju głównie do sprawdzania bezpieczeństwa kodu. Każdą zmianę dodatkowo sprawdzają automatyczne testy i\u{A0}narzędzia bezpieczeństwa.',
+    'Każdą zmianę sprawdzają automatyczne testy, analiza statyczna i\u{A0}narzędzia bezpieczeństwa. Kod przechodzi też regularne kontrole bezpieczeństwa z\u{A0}udziałem agentów AI.',
   'about.running.title': 'Utrzymanie',
   'about.running.text': 'Bezpłatnie. Koszty pokrywa autor, bez reklam i\u{A0}sprzedaży danych.',
   'about.server.title': 'Serwer',
-  'about.server.text': 'nylzo.com działa w\u{A0}UE, w\u{A0}Finlandii, u\u{A0}Hetznera.',
+  'about.server.text': 'nylzo.com działa w\u{A0}UE, w\u{A0}centrum danych Hetznera w\u{A0}Finlandii.',
   'about.contact.title': 'Kontakt',
   'about.contact.text':
     'Błędy i\u{A0}pomysły zgłaszaj w\u{A0}Issues, a\u{A0}podatności zgłaszaj prywatnie przez Security Advisories.',
@@ -897,7 +952,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'Tak, może ją skopiować lub sfotografować. Wysyłaj ją tylko do osób, którym ufasz.',
   'faq.operator.question': 'Czy operator może przeczytać wiadomość?',
   'faq.operator.answer':
-    'Z\u{A0}danych na serwerze nie, nie ma do nich klucza. Kto jednak kontroluje serwer, może zmienić tę stronę. Wiadomość, która musi pozostać bezpieczna także w\u{A0}takim przypadku, wyślij przez zweryfikowaną aplikację.',
+    'Z\u{A0}danych na serwerze nie: serwer dostaje tylko szyfrogram i\u{A0}nigdy nie widzi klucza z\u{A0}linku. Co 30\u{A0}minut porównujemy też kod strony z\u{A0}podpisanym wydaniem, a\u{A0}przy rozbieżności usługa sama się wyłącza. Najbardziej wrażliwe dane możesz wysłać przez zweryfikowaną aplikację, która w\u{A0}ogóle nie wczytuje kodu z\u{A0}serwera.',
   'faq.opened.question': 'Czy dowiem się, że ktoś otworzył wiadomość?',
   'faq.opened.answer':
     'Tak, jeśli śledzisz ją w\u{A0}Wysłanych. Zobaczysz tam, kiedy ktoś pierwszy raz ją otworzył, i\u{A0}możesz ją anulować.',
@@ -906,10 +961,10 @@ export const messages: Catalog = {
     'Przy wiadomości na jedno otwarcie zobaczy ją ta osoba, a\u{A0}odbiorca już nie. Odbiorca to zauważy, bo zamiast wiadomości zobaczy informację, że została już otwarta. Dlatego wrażliwe rzeczy chroń hasłem.',
   'faq.free.question': 'Dlaczego Nylzo jest bezpłatne?',
   'faq.free.answer':
-    'To otwarty projekt bez reklam i\u{A0}bez płatnych funkcji. Utrzymanie opłaca autor. Nie zbieramy o\u{A0}tobie żadnych danych, więc nie mamy czego sprzedać.',
-  'faq.audit.question': 'Czy Nylzo przeszło audyt bezpieczeństwa?',
-  'faq.audit.answer':
-    'Niezależnego jeszcze nie. Kod jest otwarty, jego bezpieczeństwo regularnie sprawdzają narzędzia AI, a\u{A0}każdą zmianę automatyczne testy. Wyniki kontroli są na stronie Przejrzystość.',
+    'To otwarty projekt bez reklam i\u{A0}bez płatnych funkcji. Utrzymanie opłaca autor. Nie sprzedajemy danych o\u{A0}odwiedzających. Ruch na stronie głównej mierzymy tylko w\u{A0}liczbach zbiorczych, aby wiedzieć, kiedy wzmocnić serwer.',
+  'faq.verify.question': 'Jak sprawdzić, czy Nylzo robi to, co obiecuje?',
+  'faq.verify.answer':
+    'Kod, specyfikacja protokołu i\u{A0}wektory testowe są publiczne. Każdą zmianę sprawdzają testy protokołu, analiza statyczna, kontrola zależności i\u{A0}test danych ze skradzionego serwera. Wydania są podpisane i\u{A0}odtwarzalne. Wyniki kontroli pokazuje strona Przejrzystość.',
   'cta.title': 'Masz coś, co nie powinno trafić do czatu?',
   'cta.text':
     'Hasło w\u{A0}czacie zostaje w\u{A0}historii, dopóki ktoś go nie usunie. Wiadomość wysłana przez Nylzo zostaje usunięta po otwarciu.',

@@ -33,7 +33,7 @@ Only the latest stable release receives security fixes and ordinary bug fixes. S
 
 ## Coordinated disclosure
 
-The maintainer aims to acknowledge reports within five business days. This is a best-effort target. There is no guaranteed response time and no paid bug bounty. GitHub notifications are the primary contact channel; if there is no acknowledgement, follow up in the private report or contact [email@ondrejmisak.cz](mailto:email@ondrejmisak.cz) without including exploit details in the email.
+The maintainer aims to acknowledge reports within five business days. This is a best-effort target. There is no guaranteed response time and no paid bug bounty. GitHub notifications are the only contact channel; if there is no acknowledgement, follow up in the private report.
 
 Please allow investigation and a coordinated fix before public disclosure. The maintainer will discuss impact, mitigation, and a disclosure date in the private report. Confirmed vulnerabilities should receive a GitHub Security Advisory and a CVE where appropriate, with credit according to the reporter's preference. There is no external security certification implied by this policy or by passing CI.
 

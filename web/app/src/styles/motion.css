@@ -31,7 +31,7 @@
   --animate-who-arrive-file: who-arrive-file 10s var(--ease-silk) infinite;
   --animate-who-deny: who-deny 10s var(--ease-silk) 6.8s infinite;
   --animate-who-drift: who-drift 18s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
-  --animate-trust-marquee: trust-marquee 40s linear infinite;
+  --animate-trust-marquee: trust-marquee 120s linear infinite;
   --animate-burst: burst 1.6s var(--ease-silk) 0.35s both;
   --animate-icon-blink: icon-blink 0.5s var(--ease-silk);
   --animate-icon-hop: icon-hop 0.6s var(--ease-silk);

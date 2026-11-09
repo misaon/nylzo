@@ -124,7 +124,8 @@ test(
       ['comparison', 'srovnani'],
       ['promises', 'sliby'],
       ['algorithms', 'algoritmy'],
-      ['limits', 'hranice'],
+      ['operations', 'limits'],
+      ['operations', 'hranice'],
     ] as const;
 
     for (const [current, previous] of sections) {

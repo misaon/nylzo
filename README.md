@@ -43,7 +43,7 @@
 3. The server counts opens and enforces the expiry. When the hour in which a link expires ends, the server erases the key it needs to produce the link's decryption share, so a copy of the stored data stops opening too.
 4. The recipient's browser or CLI decrypts the message locally.
 
-The [protocol](https://github.com/misaon/nylzo/wiki/Protocol) defines the cryptography. The [security model](https://github.com/misaon/nylzo/wiki/Security-model) explains what Nylzo does not protect against, such as a server that sends you a modified web client.
+The [protocol](https://github.com/misaon/nylzo/wiki/Protocol) defines the cryptography. The [security model](https://github.com/misaon/nylzo/wiki/Security-model) describes each layer of protection and the threat model behind it.
 
 ## Get started
 
@@ -79,7 +79,28 @@ The [CLI guide](https://github.com/misaon/nylzo/wiki/CLI) covers passphrases, at
 
 ## Security
 
-Nylzo is pre-1.0 software and has not had an independent security audit. Only the latest release receives security fixes. Read the [security model](https://github.com/misaon/nylzo/wiki/Security-model) before you share sensitive data, and report vulnerabilities [privately](https://github.com/misaon/nylzo/security/advisories/new) as [SECURITY.md](SECURITY.md) describes.
+- Your device encrypts the message with AES-256-GCM. The 256-bit key stays in the link after `#`, so the server stores only ciphertext.
+- A passphrase goes through scrypt with 256 MiB of memory per guess, and the server locks a message after 100 wrong guesses.
+- Every change runs a stolen-server test. It searches a copy of the database, files and logs for keys, content, file names, message IDs and IP addresses, and must find none.
+- nylzo.com carries messages only over TLS 1.3 with the post-quantum key exchange X25519MLKEM768.
+- Every 30 minutes a workflow compares the web client nylzo.com serves with the signed release. On a mismatch it puts the instance into maintenance and closes it at the Hetzner Cloud Firewall.
+- The host runs Flatcar Container Linux in Finland. SSH accepts only hardware keys from one administrator network, with post-quantum key exchange.
+- Renovate looks for dependency updates every six hours. It merges a security fix once every check passes, and nylzo.com installs the signed patch release within ten minutes.
+- Releases are signed and reproducible, with build provenance.
+
+Independent tests of nylzo.com: [securityheaders.com](https://securityheaders.com/?q=https%3A%2F%2Fnylzo.com%2F&followRedirects=on) and [Mozilla Observatory](https://developer.mozilla.org/en-US/observatory/analyze?host=nylzo.com) rate it A+, and [PageSpeed Insights](https://pagespeed.web.dev/analysis?url=https%3A%2F%2Fnylzo.com%2F) gives it 100 for accessibility, best practices and SEO.
+
+The [security model](https://github.com/misaon/nylzo/wiki/Security-model) describes each layer and the threat model behind it. Report vulnerabilities [privately](https://github.com/misaon/nylzo/security/advisories/new), as [SECURITY.md](SECURITY.md) describes.
+
+## Built with
+
+| Layer | Technology |
+| --- | --- |
+| Encryption | AES-256-GCM, scrypt, HKDF-SHA-256, Ed25519, TLS 1.3 with X25519MLKEM768 |
+| Server | Go and its standard library with six direct dependencies, SQLite, Caddy |
+| Web | Svelte 5, TypeScript, Bun, Web Crypto, Subresource Integrity, Trusted Types, a strict CSP |
+| Hosting | Hetzner Cloud in Finland, Flatcar Container Linux, OpenTofu, Let's Encrypt |
+| Supply chain | Signed commits, CodeQL, govulncheck, OSV-Scanner, Grype, golangci-lint, Renovate, Sigstore, SLSA provenance, release-please changelogs |
 
 ## Contributing
 

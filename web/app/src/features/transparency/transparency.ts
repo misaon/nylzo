@@ -11,3 +11,5 @@ export function contactHref(contact: string): string | undefined {
   }
   return HTTPS.test(contact) ? contact : undefined;
 }
+
+export const OFFICIAL_ORIGIN = 'https://nylzo.com';

@@ -66,7 +66,7 @@ export const COMPARE_ROWS: readonly CompareRow[] = [
     label: 'compare.row.verify',
     fade: '[--reveal-delay:375ms]',
     cells: [
-      { kind: 'partial', note: 'compare.note.verify_client', delay: '[--reveal-delay:695ms]' },
+      { kind: 'strong', note: 'compare.note.every30', delay: '[--reveal-delay:695ms]' },
       { kind: 'no', delay: '[--reveal-delay:865ms]' },
       { kind: 'no', delay: '[--reveal-delay:1035ms]' },
       { kind: 'no', delay: '[--reveal-delay:1205ms]' },
@@ -115,17 +115,6 @@ export const COMPARE_ROWS: readonly CompareRow[] = [
       { kind: 'no', delay: '[--reveal-delay:1175ms]' },
       { kind: 'partial', note: 'compare.note.truncated', delay: '[--reveal-delay:1345ms]' },
       { kind: 'no', delay: '[--reveal-delay:1515ms]' },
-    ],
-  },
-  {
-    label: 'compare.row.audit',
-    fade: '[--reveal-delay:600ms]',
-    cells: [
-      { kind: 'no', delay: '[--reveal-delay:870ms]' },
-      { kind: 'no', delay: '[--reveal-delay:1040ms]' },
-      { kind: 'no', delay: '[--reveal-delay:1210ms]' },
-      { kind: 'no', delay: '[--reveal-delay:1380ms]' },
-      { kind: 'no', note: 'compare.note.send_audits', delay: '[--reveal-delay:1550ms]' },
     ],
   },
 ];

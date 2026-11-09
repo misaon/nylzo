@@ -9,7 +9,7 @@ export const FAQ_COLUMNS = [
     { key: 'faq.opened', order: 'max-md:order-2' },
     { key: 'faq.intercepted', order: 'max-md:order-4' },
     { key: 'faq.free', order: 'max-md:order-6' },
-    { key: 'faq.audit', order: 'max-md:order-8' },
+    { key: 'faq.verify', order: 'max-md:order-8' },
   ],
 ] as const;
 
