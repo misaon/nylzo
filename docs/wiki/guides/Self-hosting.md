@@ -50,7 +50,7 @@ Start from the deployment directory:
 docker compose up -d
 ```
 
-Check the HTTPS instance and its `/transparency` page. Run `nylzo verify-client --server https://your-domain.example` with the matching verified release; understand the [limits of that check](Security-model.md#the-client-is-part-of-the-trust-boundary).
+Check the HTTPS instance and its `/transparency` page. Run `nylzo verify-client --server https://your-domain.example` with a `nylzo` of the release the instance runs. [Homebrew and Scoop](CLI.md#install) install the latest release, the only one that receives security fixes. Understand the [limits of that check](Security-model.md#the-client-is-part-of-the-trust-boundary).
 
 ## What the example configures
 

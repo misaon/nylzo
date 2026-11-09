@@ -6,7 +6,7 @@
 2. Merge the aggregate PR when ready to publish. The merge authorizes the release; ordinary PR merges do not deploy.
 3. Wait for full CI and all three CodeQL analyses on the merged source. `release-tag.yml` signs a tag only after those checks pass. Investigate failures without bypassing checks.
 4. Confirm the immutable GitHub Release has all six platform archives, both Caddy archives, checksums and their Sigstore bundle, SBOMs, signed evidence including release-policy metadata, and build provenance, including the `nylzo_X.Y.Z.intoto.jsonl` asset. Verify both images were promoted only after the vulnerability gate passed. GitHub creates a new package as private, so after the first release with Caddy make the `nylzo-caddy` package public in its package settings; the release workflow's last step fails until both image packages are public. Then set `initialRelease` in `tools/deploy/check.mts` to that release so the CI virtual machine installs its Caddy through the verified update path.
-5. Follow [Verify a release](../guides/Verify-a-release.md), then confirm the host reports the expected version and the monitor passes. An emergency maintainer-signed release uses the separate manual approval path described in [Releasing](Releasing.md).
+5. Follow [Verify a release](../guides/Verify-a-release.md), then confirm the host reports the expected version and the monitor passes. Within four hours `brew info misaon/nylzo/nylzo` and the [Scoop manifest](https://github.com/misaon/homebrew-nylzo/blob/main/bucket/nylzo.json) show the new version; otherwise inspect the [tap's update workflow](https://github.com/misaon/homebrew-nylzo/actions). An emergency maintainer-signed release uses the separate manual approval path described in [Releasing](Releasing.md).
 
 ## Automatic dependency patches
 
@@ -21,4 +21,4 @@ mise run release:verify
 mise run release:verify-image
 ```
 
-These compare signed published archives, client files and image binaries against an independent rebuild. Record the platform, verifier and checksum-manifest SHA-256 when reporting a rebuild. If verification fails, stop deployment and investigate; never overwrite a published artifact or move its tag. Run `nylzo verify-client --server https://…` after deployment using a verified release binary.
+These compare signed published archives, client files and image binaries against an independent rebuild. Record the platform, verifier and checksum-manifest SHA-256 when reporting a rebuild. If verification fails, stop deployment and investigate; never overwrite a published artifact or move its tag. After deployment, run `nylzo verify-client --server https://…` with `nylzo` from Homebrew or Scoop once the tap offers the release.

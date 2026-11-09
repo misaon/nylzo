@@ -38,6 +38,31 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
         run: bun automation/release-tag/stalled.ts
 
+  package-managers:
+    name: Homebrew and Scoop offer the latest release
+    if: github.repository == 'misaon/nylzo' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: Fail when the tap lags more than four hours behind the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release=$(gh api repos/misaon/nylzo/releases/latest --jq 'select(.immutable and (.draft | not)) | "\(.tag_name) \(.published_at)"')
+          [[ -n "$release" ]] || { echo "::error::GitHub names no immutable latest release."; exit 1; }
+          tag=${release% *}
+          published=$(date --date "${release#* }" +%s)
+          formula=$(gh api repos/misaon/homebrew-nylzo/contents/Formula/nylzo.rb --header 'Accept: application/vnd.github.raw+json' | sed -n 's/^  version "\(.*\)"$/\1/p')
+          manifest=$(gh api repos/misaon/homebrew-nylzo/contents/bucket/nylzo.json --header 'Accept: application/vnd.github.raw+json' | jq -r .version)
+          if [[ "$formula" != "${tag#v}" || "$manifest" != "${tag#v}" ]] && (( $(date +%s) - published > 4 * 3600 )); then
+            echo "::error::The tap offers formula ${formula:-none} and manifest ${manifest:-none}, but ${tag} was published more than four hours ago. Inspect https://github.com/misaon/homebrew-nylzo/actions."
+            exit 1
+          fi
+          echo "The tap offers formula ${formula} and manifest ${manifest}; the latest release is ${tag}."
+
   host:
     name: Authenticated host readiness
     if: vars.NYLZO_HOST_MONITOR_ENABLED == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_run'

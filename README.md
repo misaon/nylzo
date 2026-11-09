@@ -16,7 +16,7 @@
 
 <p align="center">
   <a href="https://nylzo.com"><strong>Create a link</strong></a> ·
-  <a href="https://github.com/misaon/nylzo/releases/latest">Download</a> ·
+  <a href="#install-the-cli">Install</a> ·
   <a href="https://github.com/misaon/nylzo/wiki">Documentation</a> ·
   <a href="https://github.com/misaon/nylzo/wiki/Self-hosting">Self-host</a>
 </p>
@@ -47,13 +47,28 @@ The [protocol](https://github.com/misaon/nylzo/wiki/Protocol) defines the crypto
 
 ## Get started
 
-| Use Nylzo          | Start here                                                                                                                                                     |
-| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Use Nylzo          | Start here                                                                                                                                                    |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | In your browser    | [Create a link at nylzo.com](https://nylzo.com). No account required. Its limits and operator are on its [transparency page](https://nylzo.com/transparency). |
-| From your terminal | [Download the CLI](https://github.com/misaon/nylzo/releases/latest) for Windows, Linux, or macOS, on x64 or ARM64.                                            |
-| On your own server | [Deploy with Docker Compose and Caddy](https://github.com/misaon/nylzo/wiki/Self-hosting), or run the binary behind a TLS proxy.                               |
+| From your terminal | [Install the CLI](#install-the-cli) with Homebrew on macOS and Linux or with Scoop on Windows, on x64 or ARM64.                                               |
+| On your own server | [Deploy with Docker Compose and Caddy](https://github.com/misaon/nylzo/wiki/Self-hosting), or run the binary behind a TLS proxy.                              |
 
-[Verify your download](https://github.com/misaon/nylzo/wiki/Verify-a-release) before you run it. Then create a link from a file and read it back:
+### Install the CLI
+
+On macOS and Linux:
+
+```sh
+brew install misaon/nylzo/nylzo
+```
+
+On Windows:
+
+```powershell
+scoop bucket add nylzo https://github.com/misaon/homebrew-nylzo
+scoop install nylzo/nylzo
+```
+
+The [tap](https://github.com/misaon/homebrew-nylzo) offers a release only after it has verified the release's signature and build provenance. [Verify a release](https://github.com/misaon/nylzo/wiki/Verify-a-release#verify-a-homebrew-or-scoop-install) shows how to check an install yourself. Then create a link from a file and read it back:
 
 ```sh
 nylzo create --server https://nylzo.com --ttl 1h --opens 1 < message.txt > link.txt

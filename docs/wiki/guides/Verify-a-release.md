@@ -1,16 +1,37 @@
 # Verify a release
 
-Use only [misaon/nylzo releases](https://github.com/misaon/nylzo/releases), `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. Published release tags and assets are immutable. The examples verify the latest release; set `tag` to another stable version from the releases page if you need one:
+Install the CLI with [Homebrew or Scoop](CLI.md#install). This page shows how to check what they installed, and how to verify the release archives and container images that servers run.
+
+Use only [misaon/homebrew-nylzo](https://github.com/misaon/homebrew-nylzo), [misaon/nylzo releases](https://github.com/misaon/nylzo/releases), `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. Published release tags and assets are immutable. The examples verify the latest release; set `tag` to another stable version from the releases page if you need one:
 
 ```sh
 tag=$(gh release view --repo misaon/nylzo --json tagName --jq .tagName)
 ```
 
-Install [GitHub CLI](https://cli.github.com/) and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) from their official sources. Choose the archive for your platform: `linux`, `darwin` (macOS), or `windows`; architecture `amd64` (x64) or `arm64`. Windows archives are ZIP files; Linux and macOS use `tar.gz`.
+Install [GitHub CLI](https://cli.github.com/) and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) from their official sources.
+
+## Verify a Homebrew or Scoop install
+
+The formula and the manifest pin the SHA-256 hash of each archive, and Homebrew and Scoop refuse a download that does not match. To check the build provenance of the archive you installed on macOS or Linux:
+
+```sh
+brew fetch --formula misaon/nylzo/nylzo
+gh attestation verify "$(brew --cache --formula misaon/nylzo/nylzo)" --repo misaon/nylzo \
+  --signer-workflow misaon/nylzo/.github/workflows/release.yml \
+  --source-ref "refs/tags/v$(nylzo version)" --deny-self-hosted-runners
+```
+
+On Windows, Scoop keeps the archive in its cache, by default under `scoop\cache` in your profile:
+
+```powershell
+$version = nylzo version
+$archive = Get-ChildItem -Path "$env:USERPROFILE\scoop\cache" -Filter "nylzo#$version#*" | Select-Object -First 1
+gh attestation verify $archive.FullName --repo misaon/nylzo --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/v$version" --deny-self-hosted-runners
+```
 
 ## Download and verify an archive
 
-This example selects Linux x64:
+Homebrew, Scoop and servers download these archives. The macOS and Windows binaries carry no Apple notarization or Authenticode signature, and macOS refuses to run a binary from an archive that a browser downloaded, so install the CLI with a package manager on a desktop. Choose the archive for your platform: `linux`, `darwin` (macOS), or `windows`; architecture `amd64` (x64) or `arm64`. Windows archives are ZIP files; Linux and macOS use `tar.gz`. This example selects Linux x64:
 
 ```sh
 archive="nylzo_${tag#v}_linux_amd64.tar.gz"

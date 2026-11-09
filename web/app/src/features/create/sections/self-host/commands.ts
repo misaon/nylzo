@@ -26,6 +26,8 @@ const number = (text: string): Token => ({ text, kind: 'number' });
 const operator = (text: string, joined = false): Token => ({ text, kind: 'operator', joined });
 const argument = (text: string, joined = false): Token => ({ text, kind: 'argument', joined });
 
+const HOMEBREW_INSTALL: readonly Token[] = [command('brew'), word('install'), argument('misaon/nylzo/nylzo')];
+
 export function installLines(tab: InstallTab, domain: string): readonly (readonly Token[])[] {
   switch (tab) {
     case 'compose': {
@@ -74,6 +76,7 @@ export function installLines(tab: InstallTab, domain: string): readonly (readonl
     }
     case 'binary': {
       return [
+        HOMEBREW_INSTALL,
         [
           command('openssl'),
           word('rand'),
@@ -101,7 +104,10 @@ export function installLines(tab: InstallTab, domain: string): readonly (readonl
       ];
     }
     case 'verify': {
-      return [[command('nylzo'), word('verify-client'), flag('--server'), argument(`https://${domain}`)]];
+      return [
+        HOMEBREW_INSTALL,
+        [command('nylzo'), word('verify-client'), flag('--server'), argument(`https://${domain}`)],
+      ];
     }
   }
 }

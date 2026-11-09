@@ -27,7 +27,7 @@ Your browser does not send the part of the link after `#` to the server. The pag
 
 ## Use the local client
 
-Install a [verified release](Verify-a-release.md) of `nylzo`.
+Install `nylzo` with [Homebrew or Scoop](CLI.md#install).
 
 To write a message:
 

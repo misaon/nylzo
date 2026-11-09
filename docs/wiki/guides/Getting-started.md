@@ -12,7 +12,7 @@ A message link is a bearer secret. Keep real links and passphrases out of public
 
 ## Use the CLI
 
-[Download and verify](Verify-a-release.md) the archive for your operating system and architecture, then extract it. The binary includes both the CLI and the web client. Run `nylzo` for help and `nylzo version --json` for its build identity.
+Install `nylzo` with Homebrew on macOS and Linux or with Scoop on Windows, as the [CLI guide](CLI.md#install) shows. The binary includes both the CLI and the web client. Run `nylzo` for help and `nylzo version --json` for its build identity.
 
 The [CLI guide](CLI.md) covers creating and reading messages, attachments, private input files, cancellation, abuse reports, and `verify-client`. Use private input files or hidden prompts for secrets; keep links and passphrases out of command arguments.
 

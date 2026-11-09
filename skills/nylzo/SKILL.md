@@ -2,7 +2,7 @@
 name: nylzo
 description: Send a secret (password, API key, token, private file) as a one-time encrypted nylzo link, or open a nylzo link someone sent, with the nylzo CLI, so the secret stays out of the chat, the transcript and command arguments. Use when the user wants to share or receive credentials or a sensitive file, mentions nylzo, or has a link like https://host/r#2.0.ID.KEY.HASH.
 license: MIT
-compatibility: Needs the nylzo CLI on PATH (https://github.com/misaon/nylzo/releases) and network access to a nylzo server.
+compatibility: Needs the nylzo CLI on PATH (`brew install misaon/nylzo/nylzo`, or Scoop on Windows, see https://github.com/misaon/homebrew-nylzo) and network access to a nylzo server.
 ---
 
 # nylzo: one-time links for secrets
