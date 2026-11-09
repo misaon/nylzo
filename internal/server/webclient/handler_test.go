@@ -29,7 +29,7 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, request)
 		if response.Header().Get("X-Content-Type-Options") != "nosniff" ||
-			response.Header().Get("Cache-Control") != "no-store" {
+			response.Header().Get("Cache-Control") != expectedCacheControl(path, response.Code) {
 			t.Fatalf("%s lost its security headers: %v", path, response.Header())
 		}
 		return response
@@ -88,7 +88,8 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 		probe.Header.Set("Sec-Fetch-Dest", fetch.destination)
 		response := httptest.NewRecorder()
 		handler.ServeHTTP(response, probe)
-		if response.Code != fetch.status || response.Header().Get("Cache-Control") != "no-store" {
+		if response.Code != fetch.status ||
+			response.Header().Get("Cache-Control") != expectedCacheControl(fetch.path, response.Code) {
 			t.Fatalf("a %s %s request for %s answered %d", fetch.site, fetch.destination, fetch.path, response.Code)
 		}
 	}
@@ -107,4 +108,13 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 	if response := request(http.MethodPost, "/r", "", ""); response.Code != http.StatusMethodNotAllowed {
 		t.Fatal("the frontend accepted a mutation")
 	}
+}
+
+// expectedCacheControl caches only scripts and stylesheets, which every page loads with Subresource Integrity (D119).
+func expectedCacheControl(path string, status int) string {
+	if status == http.StatusOK && strings.HasPrefix(path, "/assets/") &&
+		(strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css")) {
+		return "max-age=31536000, immutable"
+	}
+	return "no-store"
 }

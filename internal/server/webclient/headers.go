@@ -3,6 +3,7 @@ package webclient
 import (
 	"maps"
 	"net/http"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -15,6 +16,8 @@ const pagePolicyFormat = "default-src 'none'; script-src 'self'%s; style-src 'se
 const statusPolicyFormat = "default-src 'none'; script-src %s; style-src 'self'%s; img-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
 
 const robotsTag = "noindex, nofollow"
+
+const immutableAsset = "max-age=31536000, immutable"
 
 var securityHeaders = map[string]string{
 	"Referrer-Policy":              "no-referrer",
@@ -34,13 +37,21 @@ var previewAgents = []string{
 	"pinterestbot", "redditbot", "mastodon", "signal", "viber", "yahoo! slurp", "duckduckbot", "petalbot",
 }
 
-// SecurityHeaders lists the headers every response for path carries besides its Content-Security-Policy.
-func SecurityHeaders(path string) map[string]string {
+// SecurityHeaders lists the headers every response for requestPath carries besides its Content-Security-Policy.
+func SecurityHeaders(requestPath string) map[string]string {
 	headers := maps.Clone(securityHeaders)
-	if !IsHomePath(path) {
+	if !IsHomePath(requestPath) {
 		headers["X-Robots-Tag"] = robotsTag
 	}
+	if name, ok := strings.CutPrefix(requestPath, "/assets/"); ok && cachedForever(assetTypes[path.Ext(name)]) {
+		headers["Cache-Control"] = immutableAsset
+	}
 	return headers
+}
+
+// cachedForever holds for the types every page loads with Subresource Integrity under a content-hashed name.
+func cachedForever(contentType string) bool {
+	return contentType == assetTypes[".js"] || contentType == assetTypes[".css"]
 }
 
 func SetSecurityHeaders(header http.Header, indexable bool) {

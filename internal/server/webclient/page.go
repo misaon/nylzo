@@ -200,6 +200,9 @@ func (a Asset) Serve(w http.ResponseWriter, r *http.Request) {
 	header := w.Header()
 	header.Set("Content-Type", a.ContentType)
 	header.Set("Vary", "Accept-Encoding")
+	if cachedForever(a.ContentType) {
+		header.Set("Cache-Control", immutableAsset)
+	}
 	if len(a.Gzip) > 0 && AcceptsGzip(r.Header.Get("Accept-Encoding")) {
 		header.Set("Content-Encoding", EncodingGzip)
 		w.Write(a.Gzip)
