@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { objectAt } from '../../source-dependency-gate/json-values.ts';
 import { compareSnapshots, emptyReview, placeholder, quote, snapshot } from './file-review.ts';
 import type { DependencyValue, FileReview, FileRule, Snapshot } from './file-review.ts';
-import { packageManifest } from './manifests.ts';
+import { packageManifest, revertOverrideUpdates } from './manifests.ts';
 
 const deprecation = /^ +deprecated: /u;
 const integrityResolution = /^ +resolution: \{integrity: sha(?:256|384|512)-[\d+/A-Za-z]+=*\}$/u;
@@ -65,9 +65,10 @@ export function bunLock(allowedWorkspaces: readonly string[]): FileRule {
     try {
       const previous = lockObject(Bun.JSON5.parse(before));
       const next = lockObject(Bun.JSON5.parse(after));
-      const { packages: oldPackages, workspaces: oldWorkspaces, ...oldPolicy } = previous;
-      const { packages, workspaces, ...policy } = next;
-      if (!isDeepStrictEqual(oldPolicy, policy)) {
+      const { overrides: oldOverrides, packages: oldPackages, workspaces: oldWorkspaces, ...oldPolicy } = previous;
+      const { overrides, packages, workspaces, ...policy } = next;
+      const unchangedOverrides = revertOverrideUpdates(path, oldOverrides, overrides, review);
+      if (!isDeepStrictEqual(oldPolicy, policy) || !isDeepStrictEqual(oldOverrides, unchangedOverrides)) {
         review.findings.push(`${path}: lockfile settings, overrides, trust or patches changed`);
       }
       if (![2, 3].includes(Number(next['lockfileVersion'])) || next['configVersion'] !== 1) {
