@@ -720,6 +720,20 @@
   }
 }
 
+@keyframes layer-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -6px;
+  }
+}
+
+@theme inline {
+  --animate-layer-float: layer-float 7s ease-in-out calc(var(--reveal-index, 0) * -7s / 4) infinite;
+}
+
 @utility glow-source {
   @variant motion-safe {
     position: relative;

@@ -51,7 +51,7 @@
       >
         {translate('host.sub')}
       </p>
-      <ul role="list" class="mt-8 grid gap-3 text-body text-ink-soft">
+      <ul role="list" class="mt-8 grid gap-4 text-body text-ink-soft">
         {#each points as point (point.key)}
           <li class={['flex reveal-focus items-center gap-3 leading-7 [--reveal-blur:5px]', point.revealIndex]}>
             <IconTile icon="check" tone="neutral" size="small" />

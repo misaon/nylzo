@@ -54,7 +54,7 @@
     <div class="flex shrink-0 items-center gap-1.5">
       {#if variant === 'home' || variant === 'page'}
         <Button
-          variant="tint"
+          variant="tint-soft"
           href="/sent"
           id="nav-sent"
           class="max-sm:px-3"

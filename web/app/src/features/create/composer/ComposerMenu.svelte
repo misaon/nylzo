@@ -72,7 +72,7 @@
     <Icon
       name="chevronDown"
       stroke={2}
-      class={['size-3.5 shrink-0 opacity-70 transition-transform', open ? 'rotate-180' : 'rotate-0']}
+      class={['ml-auto size-3.5 shrink-0 opacity-70 transition-transform', open ? 'rotate-180' : 'rotate-0']}
     />
   </button>
   <Popover

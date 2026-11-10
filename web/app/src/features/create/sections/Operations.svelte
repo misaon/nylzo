@@ -8,21 +8,28 @@
 
   const { translate } = getTranslator();
 
-  const safeguards = [
-    { key: 'operations.watch', icon: 'refresh', border: 'border-b md:col-span-2' },
-    { key: 'operations.tls', icon: 'lock', border: 'border-b md:border-r' },
-    { key: 'operations.host', icon: 'server', border: 'border-b' },
-    { key: 'operations.access', icon: 'keyhole', border: 'max-md:border-b md:border-r' },
-    { key: 'operations.updates', icon: 'update', border: '' },
-  ] as const;
+  const NODE_GLOW = 'shadow-[0_0_24px_-6px_oklch(0.56_0.19_258/0.7)]';
   const nodes = [
-    { label: 'operations.release', zone: 'operations.signed', icon: 'shieldCheck', delay: '[--reveal-delay:900ms]' },
-    { label: 'operations.instance', zone: 'operations.compared', icon: 'server', delay: '[--reveal-delay:420ms]' },
-    { label: 'operations.check', zone: 'operations.every', icon: 'check', delay: '[--reveal-delay:900ms]' },
+    { label: 'operations.release', zone: 'operations.signed', icon: 'shieldCheck', focus: false },
+    { label: 'operations.check', zone: 'operations.every', icon: 'refresh', focus: true },
+    { label: 'operations.instance', zone: 'operations.compared', icon: 'server', focus: false },
   ] as const;
-  const LABEL = 'reveal-focus mt-3 text-center text-caption text-balance text-ink [--reveal-blur:4px] [--reveal-y:6px]';
+  const safeguards = [
+    { key: 'operations.tls', icon: 'atom' },
+    { key: 'operations.host', icon: 'server' },
+    { key: 'operations.access', icon: 'keyhole' },
+    { key: 'operations.updates', icon: 'update' },
+  ] as const;
+  const LINE =
+    'absolute top-6 h-px reveal-draw bg-aegis-400/50 shadow-glow max-sm:hidden [--reveal-delay:450ms] [--reveal-duration:0.8s]';
+  const COMET =
+    'absolute inset-y-[-1px] left-0 w-1/3 bg-linear-to-r from-transparent via-aegis-200 to-transparent motion-safe:animate-beam motion-reduce:hidden';
+  const LABEL =
+    'reveal-focus block text-caption text-balance text-ink [--reveal-blur:4px] [--reveal-y:6px] [--reveal-delay:1000ms] sm:mt-3';
   const ZONE =
-    'reveal-focus mt-0.5 text-center text-eyebrow text-balance text-aegis-300 uppercase [--reveal-blur:4px] [--reveal-y:6px]';
+    'reveal-focus mt-0.5 block text-eyebrow text-balance text-aegis-300 uppercase [--reveal-blur:4px] [--reveal-y:6px] [--reveal-delay:1120ms]';
+  const FACT =
+    'mt-auto inline-flex items-center gap-1.5 self-start rounded-full bg-aegis-500/12 px-3 py-1.5 text-caption text-aegis-200 tabular-nums ring-1 ring-aegis-400/35';
 </script>
 
 <span id="hranice" class="block" aria-hidden="true"></span>
@@ -51,65 +58,88 @@
           {translate('operations.sub')}
         </p>
       </div>
-      <div
-        class="rounded-pane px-4 py-6 well md:px-8 md:py-8"
-        role="img"
-        aria-label={translate('operations.diagram')}
-        {@attach reveal}
-      >
-        <div class="relative grid grid-cols-3 gap-x-1.5" aria-hidden="true">
-          <span
-            class="absolute inset-x-[16%] top-6 h-px origin-left reveal-draw bg-aegis-400/60 shadow-glow [--reveal-delay:250ms] [--reveal-duration:1.1s]"
-          ></span>
-          {#each nodes as node (node.label)}
-            <div class="relative flex flex-col items-center">
-              <IconTile
-                icon={node.icon}
-                tone="current"
-                class={['reveal-pop shadow-[0_0_24px_-6px_oklch(0.56_0.19_258/0.7)]', node.delay]}
-              />
-              <span class={[LABEL, '[--reveal-delay:1000ms]']}>{translate(node.label)}</span>
-              <span class={[ZONE, '[--reveal-delay:1120ms]']}>{translate(node.zone)}</span>
-            </div>
-          {/each}
+      <div class="overflow-hidden rounded-pane well" {@attach reveal}>
+        <div class="px-5 py-7 md:px-8 md:py-9" role="img" aria-label={translate('operations.diagram')}>
+          <div class="relative grid gap-y-5 sm:grid-cols-3 sm:gap-x-1.5 sm:gap-y-0" aria-hidden="true">
+            <span class={[LINE, 'right-1/2 left-[16.67%] origin-right']}>
+              <span class="absolute inset-0 overflow-visible"><span class={COMET}></span></span>
+            </span>
+            <span class={[LINE, 'right-[16.67%] left-1/2 origin-left']}>
+              <span class="absolute inset-0 -scale-x-100 overflow-visible"><span class={COMET}></span></span>
+            </span>
+            <span class="absolute inset-y-6 left-6 w-px bg-aegis-400/50 shadow-glow sm:hidden"></span>
+            {#each nodes as node (node.label)}
+              <div class="relative flex items-center gap-4 sm:flex-col sm:gap-0">
+                <span class="relative shrink-0 rounded-pane bg-void-950">
+                  <IconTile
+                    icon={node.icon}
+                    tone={node.focus ? 'current' : 'neutral'}
+                    class={[
+                      'relative reveal-pop',
+                      node.focus
+                        ? 'shadow-[0_0_0_6px_oklch(0.56_0.19_258/0.14),0_0_30px_-4px_oklch(0.56_0.19_258/0.85)] [--reveal-delay:300ms]'
+                        : [NODE_GLOW, '[--reveal-delay:900ms]'],
+                    ]}
+                  />
+                  {#if node.focus}
+                    <span
+                      class="pointer-events-none absolute -inset-1.5 rounded-[18px] ring-1 ring-aegis-300/35 motion-safe:animate-pulse-core"
+                    ></span>
+                  {/if}
+                </span>
+                <span class="min-w-0 sm:text-center">
+                  <span class={LABEL}>{translate(node.label)}</span>
+                  <span class={ZONE}>{translate(node.zone)}</span>
+                </span>
+              </div>
+            {/each}
+          </div>
         </div>
       </div>
     </div>
-    <div class="relative mt-8 overflow-hidden rounded-pane well md:mt-10" {@attach reveal}>
+    <div class="relative mt-10 overflow-hidden rounded-pane well md:mt-12" {@attach reveal}>
       <ul role="list" class="grid md:grid-cols-2">
         {#each safeguards as safeguard, index (safeguard.key)}
           <li
             class={[
-              'grid reveal-focus grid-cols-[auto_minmax(0,1fr)] content-start items-center gap-x-4 border-white/8 p-5 [--reveal-blur:5px] [--reveal-step:90ms] md:p-6',
-              safeguard.border,
+              'flex reveal-focus flex-col gap-5 border-white/8 p-6 [--reveal-blur:5px] [--reveal-step:90ms] max-md:not-first:border-t md:p-8 md:odd:border-r md:nth-[-n+2]:border-b',
               REVEAL_INDEXES[index],
             ]}
           >
-            <IconTile
-              icon={safeguard.icon}
-              tone="current"
-              size="medium"
-              class={[
-                'row-span-2 reveal-pop self-center [--reveal-delay:150ms] [--reveal-step:90ms]',
-                REVEAL_INDEXES[index],
-              ]}
-            />
-            <h3 class="col-start-2 text-title-sm text-balance text-ink">
-              {translate(`${safeguard.key}.title`)}
-            </h3>
-            <p class="col-start-2 mt-1 text-caption text-pretty text-ink-soft">{translate(`${safeguard.key}.text`)}</p>
+            <div class="flex items-center gap-3.5">
+              <IconTile
+                icon={safeguard.icon}
+                tone="current"
+                size="medium"
+                class={['reveal-pop [--reveal-delay:150ms] [--reveal-step:90ms]', REVEAL_INDEXES[index]]}
+              />
+              <h3 class="text-title-sm text-balance text-ink">{translate(`${safeguard.key}.title`)}</h3>
+            </div>
+            <p class="text-ui text-pretty text-ink-soft">{translate(`${safeguard.key}.text`)}</p>
+            <p class={FACT}>
+              <Icon name="check" class="size-3.5 shrink-0" stroke={2} />
+              {translate(`${safeguard.key}.fact`)}
+            </p>
           </li>
         {/each}
       </ul>
-      <div
-        class="flex reveal-focus flex-col gap-3 border-t border-white/8 bg-white/4 px-5 py-4 [--reveal-blur:4px] [--reveal-index:4] [--reveal-step:90ms] sm:flex-row sm:items-center sm:justify-between sm:gap-6 md:px-6"
-      >
+    </div>
+    <div
+      class="relative mt-3 flex reveal-focus flex-col gap-3 rounded-pane px-5 py-4 well [--reveal-blur:4px] [--reveal-index:4] [--reveal-step:90ms] sm:flex-row sm:items-center sm:justify-between sm:gap-6 md:mt-4 md:px-7 md:py-5"
+      {@attach reveal}
+    >
+      <div class="flex items-center gap-3">
+        <IconTile icon="terminal" tone="neutral" size="small" />
         <p class="max-w-[640px] text-caption text-pretty text-ink-soft">{translate('operations.apps')}</p>
-        <a href={VERIFIED_CLIENTS_URL} rel="noreferrer" class={[ARROW_LINK, '-my-2.5 min-h-11 shrink-0 text-caption']}>
-          {translate('operations.apps.link')}
-          <Icon name="arrowRight" class="size-3.5" stroke={2} animated />
-        </a>
       </div>
+      <a
+        href={VERIFIED_CLIENTS_URL}
+        rel="noreferrer"
+        class={[ARROW_LINK, '-my-2.5 min-h-11 shrink-0 text-caption max-sm:ml-11']}
+      >
+        {translate('operations.apps.link')}
+        <Icon name="arrowRight" class="size-3.5" stroke={2} animated />
+      </a>
     </div>
   </div>
 </section>
