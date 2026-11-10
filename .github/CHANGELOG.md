@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.13.0](https://github.com/misaon/nylzo/compare/v0.12.0...v0.13.0) (2026-11-10)
+
+
+### Features
+
+* **web:** count home page visits on nylzo.com with Cloudflare Web Analytics ([#313](https://github.com/misaon/nylzo/issues/313)) ([2dc3820](https://github.com/misaon/nylzo/commit/2dc3820c98fdbe66fdfaef8d285810071a70ec99))
+* **web:** lead with verified strengths and keep limits on Transparency ([#311](https://github.com/misaon/nylzo/issues/311)) ([34acb45](https://github.com/misaon/nylzo/commit/34acb459b1b9e5796507b33fb146cb0525f10cc2))
+* **web:** redesign the home page sections and show the real tool logos ([#314](https://github.com/misaon/nylzo/issues/314)) ([d2f7ac1](https://github.com/misaon/nylzo/commit/d2f7ac131e3313bf2cd27d77892ae3d79ddc9278))
+
+
+### Fixes
+
+* **automation:** one Renovate group per area and accept a dropped toolchain line ([#303](https://github.com/misaon/nylzo/issues/303)) ([db8728e](https://github.com/misaon/nylzo/commit/db8728e0aa3d1b4a8a08e73a5a2651cf31b797b8))
+
+
+### Refactoring
+
+* **web:** simplify the Svelte client ([#309](https://github.com/misaon/nylzo/issues/309)) ([a70c593](https://github.com/misaon/nylzo/commit/a70c5936e37a5c63c5c3489b6347c6588d4630d6))
+
+
+### CI
+
+* **deps:** update ci dependencies (main) ([#306](https://github.com/misaon/nylzo/issues/306)) ([35467aa](https://github.com/misaon/nylzo/commit/35467aa7f48943e7edf563874c0308e319d5b997))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.224.2 (main) ([#310](https://github.com/misaon/nylzo/issues/310)) ([14cfd7c](https://github.com/misaon/nylzo/commit/14cfd7c4117acdae643927c25a134d5d935e73be))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.226.0 (main) ([#312](https://github.com/misaon/nylzo/issues/312)) ([a3c8ff7](https://github.com/misaon/nylzo/commit/a3c8ff724ae6953ca1afb10da410629d6183d5d6))
+
 ## [0.12.0](https://github.com/misaon/nylzo/compare/v0.11.0...v0.12.0) (2026-11-09)
 
 
