@@ -372,7 +372,7 @@ export const messages: Catalog = {
     'Kto by ovládol bežiaci server, videl by len záznamy správ, ktoré sa práve otvárajú, nikdy ich obsah. Na nylzo.com preto kód webu každých 30\u{A0}minút porovnávame s\u{A0}podpísaným vydaním a\u{A0}pri odchýlke sa služba sama odpojí. Stránku podvrhnutú cielene jednému človeku by kontrola rozpoznať nemusela, a\u{A0}preto pre najcitlivejšie dáta ponúkame overené aplikácie (nylzo web, nylzo open a\u{A0}nástroj nylzo pre príkazový riadok), ktoré spúšťajú kód z\u{A0}podpísaného vydania.',
   'transparency.others.analytics.title': 'Meranie návštevnosti',
   'transparency.others.analytics':
-    'Úvodné stránky nylzo.com načítavajú Cloudflare Web Analytics, aby sme vedeli, koľko ľudí prichádza a\u{A0}ako rýchlo sa stránka načíta. Cloudflare dostane adresu stránky bez parametrov, stránku, z\u{A0}ktorej ste prišli, verziu prehliadača a\u{A0}systému, časy načítania a\u{A0}ako každý server aj vašu IP adresu. Skript nepoužíva cookies ani úložisko prehliadača. Má pevný odtlačok SHA-384, takže prehliadač spustí len verziu, ktorú sme preverili. Ostatné stránky ho nenačítavajú.',
+    'Úvodné stránky nylzo.com načítavajú Cloudflare Web Analytics, aby sme vedeli, koľko ľudí prichádza a\u{A0}ako rýchlo sa stránka načíta. Cloudflare dostane adresu stránky bez parametrov, stránku, z\u{A0}ktorej ste prišli, verziu prehliadača a\u{A0}systému, časy načítania a\u{A0}ako každý server aj vašu IP adresu. Skript nepoužíva cookies ani úložisko prehliadača. Dodáva ho Cloudflare a\u{A0}načíta sa až po zobrazení stránky. Ostatné stránky ho nenačítavajú.',
   'transparency.personal.title': 'Osobné údaje',
   'transparency.personal.controller.title': 'Prevádzkovateľ',
   'transparency.personal.controller':
@@ -788,7 +788,7 @@ export const messages: Catalog = {
   'tech.web.title': 'Web',
   'tech.web.1': 'Svelte\u{A0}5 kompiluje komponenty do čistého JavaScriptu bez virtuálneho DOM',
   'tech.web.2': 'TypeScript a\u{A0}moderný JavaScript, zostavenie a\u{A0}testy v\u{A0}Bune',
-  'tech.web.3': 'Každý skript a\u{A0}štýl nesie odtlačok SHA-384, zmenený súbor prehliadač odmietne',
+  'tech.web.3': 'Každý náš skript a\u{A0}štýl nesie odtlačok SHA-384, zmenený súbor prehliadač odmietne',
   'tech.web.4': 'Kľúče drží Web Crypto tak, aby sa nedali exportovať, k\u{A0}tomu Trusted Types a\u{A0}prísna CSP',
   'tech.web.5': 'Bez cookies a\u{A0}reklám, stránky so správou nenačítajú nič z\u{A0}cudzích serverov',
   'tech.release.title': 'Vývoj a\u{A0}vydania',
@@ -916,7 +916,7 @@ export const messages: Catalog = {
     'Pri správe na jedno otvorenie ju uvidí on a\u{A0}príjemca už nie. Príjemca to zistí, pretože namiesto správy uvidí, že už bola otvorená. Citlivé veci preto chráňte heslom.',
   'faq.free.question': 'Prečo je Nylzo zadarmo?',
   'faq.free.answer':
-    'Je to otvorený projekt bez reklám a\u{A0}bez platených funkcií. Prevádzku platí autor. Dáta o\u{A0}návštevníkoch nepredávame. Návštevnosť úvodnej stránky meriame len v\u{A0}súhrnných číslach, aby sme vedeli, kedy posilniť server.',
+    'Je to otvorený projekt bez reklám a\u{A0}bez platených funkcií. Prevádzku platí autor. Dáta o\u{A0}návštevníkoch nepredávame. Návštevnosť úvodnej stránky nylzo.com meriame bez cookies cez Cloudflare Web Analytics, aby sme mohli zlepšovať obsah a\u{A0}rýchlosť webu. Stránky so správou nemeriame.',
   'faq.verify.question': 'Ako si overím, že Nylzo robí, čo sľubuje?',
   'faq.verify.answer':
     'Kód, špecifikácia protokolu aj testovacie vektory sú verejné. Každú zmenu preveria testy protokolu, statická analýza, kontrola závislostí a\u{A0}test dát z\u{A0}ukradnutého servera. Vydania sú podpísané a\u{A0}reprodukovateľné. Výsledky kontrol ukazuje stránka Transparentnosť.',

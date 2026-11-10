@@ -410,7 +410,7 @@ export const messages: Catalog = {
     'Kto przejąłby działający serwer, zobaczyłby tylko rekordy wiadomości, które są właśnie otwierane, nigdy ich treści. Dlatego na nylzo.com co 30\u{A0}minut porównujemy kod strony z\u{A0}podpisanym wydaniem, a\u{A0}przy rozbieżności usługa sama się odłącza. Strony podstawionej celowo jednej osobie kontrola mogłaby nie wykryć, dlatego do najbardziej wrażliwych danych oferujemy zweryfikowane aplikacje (nylzo web, nylzo open i\u{A0}narzędzie nylzo do wiersza poleceń), które uruchamiają kod z\u{A0}podpisanego wydania.',
   'transparency.others.analytics.title': 'Statystyki odwiedzin',
   'transparency.others.analytics':
-    'Strony główne nylzo.com wczytują Cloudflare Web Analytics, żebyśmy wiedzieli, ile osób nas odwiedza i\u{A0}jak szybko ładuje się strona. Cloudflare otrzymuje adres strony bez parametrów, stronę, z\u{A0}której przychodzisz, wersje przeglądarki i\u{A0}systemu, czasy ładowania oraz, jak każdy serwer, Twój adres IP. Skrypt nie używa plików cookie ani pamięci przeglądarki. Ma stały odcisk SHA-384, więc przeglądarka uruchamia tylko wersję, którą sprawdziliśmy. Inne strony go nie wczytują.',
+    'Strony główne nylzo.com wczytują Cloudflare Web Analytics, żebyśmy wiedzieli, ile osób nas odwiedza i\u{A0}jak szybko ładuje się strona. Cloudflare otrzymuje adres strony bez parametrów, stronę, z\u{A0}której przychodzisz, wersje przeglądarki i\u{A0}systemu, czasy ładowania oraz, jak każdy serwer, Twój adres IP. Skrypt nie używa plików cookie ani pamięci przeglądarki. Dostarcza go Cloudflare, a\u{A0}wczytuje się dopiero po wyświetleniu strony. Inne strony go nie wczytują.',
   'transparency.personal.title': 'Dane osobowe',
   'transparency.personal.controller.title': 'Administrator',
   'transparency.personal.controller': 'Administratorem danych jest operator wskazany na górze tej strony.',
@@ -834,7 +834,7 @@ export const messages: Catalog = {
   'tech.web.title': 'Klient webowy',
   'tech.web.1': 'Svelte\u{A0}5 kompiluje komponenty do czystego JavaScriptu bez wirtualnego DOM',
   'tech.web.2': 'TypeScript i\u{A0}nowoczesny JavaScript, budowanie i\u{A0}testy w\u{A0}środowisku Bun',
-  'tech.web.3': 'Każdy skrypt i\u{A0}arkusz stylów ma odcisk SHA-384, a\u{A0}zmieniony plik przeglądarka odrzuci',
+  'tech.web.3': 'Każdy nasz skrypt i\u{A0}arkusz stylów ma odcisk SHA-384, a\u{A0}zmieniony plik przeglądarka odrzuci',
   'tech.web.4':
     'Web Crypto przechowuje klucze tak, by nie dało się ich wyeksportować, do tego Trusted Types i\u{A0}ścisła polityka CSP',
   'tech.web.5':
@@ -965,7 +965,7 @@ export const messages: Catalog = {
     'Przy wiadomości na jedno otwarcie zobaczy ją ta osoba, a\u{A0}odbiorca już nie. Odbiorca to zauważy, bo zamiast wiadomości zobaczy informację, że została już otwarta. Dlatego wrażliwe rzeczy chroń hasłem.',
   'faq.free.question': 'Dlaczego Nylzo jest bezpłatne?',
   'faq.free.answer':
-    'To otwarty projekt bez reklam i\u{A0}bez płatnych funkcji. Utrzymanie opłaca autor. Nie sprzedajemy danych o\u{A0}odwiedzających. Ruch na stronie głównej mierzymy tylko w\u{A0}liczbach zbiorczych, aby wiedzieć, kiedy wzmocnić serwer.',
+    'To otwarty projekt bez reklam i\u{A0}bez płatnych funkcji. Utrzymanie opłaca autor. Nie sprzedajemy danych o\u{A0}odwiedzających. Ruch na stronie głównej nylzo.com mierzymy bez plików cookie za pomocą Cloudflare Web Analytics, aby ulepszać treść i\u{A0}szybkość strony. Stron z\u{A0}wiadomościami nie mierzymy.',
   'faq.verify.question': 'Jak sprawdzić, czy Nylzo robi to, co obiecuje?',
   'faq.verify.answer':
     'Kod, specyfikacja protokołu i\u{A0}wektory testowe są publiczne. Każdą zmianę sprawdzają testy protokołu, analiza statyczna, kontrola zależności i\u{A0}test danych ze skradzionego serwera. Wydania są podpisane i\u{A0}odtwarzalne. Wyniki kontroli pokazuje strona Przejrzystość.',

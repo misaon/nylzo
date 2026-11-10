@@ -4,9 +4,18 @@ import (
 	"crypto/sha512"
 	"encoding/base64"
 	"fmt"
+	"maps"
+	"net/url"
 	"regexp"
 	"slices"
 	"strings"
+)
+
+const (
+	officialHost      = "nylzo.com"
+	analyticsScript   = "https://static.cloudflareinsights.com/beacon.min.js"
+	analyticsEndpoint = "https://cloudflareinsights.com/cdn-cgi/rum"
+	analyticsPolicy   = "nylzo-analytics"
 )
 
 var (
@@ -15,6 +24,27 @@ var (
 	sourceAttribute = regexp.MustCompile(`(?i)\ssrc\s*=`)
 	dataBlockType   = regexp.MustCompile(`(?i)\stype\s*=\s*"application/ld\+json"`)
 )
+
+// countsVisits holds for the home pages of nylzo.com, the only pages that load Cloudflare Web Analytics (D125).
+func countsVisits(publicURL, template string) bool {
+	return official(publicURL) && slices.Contains(slices.Collect(maps.Values(homeTemplates)), template)
+}
+
+// official compares origins as the browser does, so https://nylzo.com:443 is nylzo.com too.
+func official(publicURL string) bool {
+	parsed, err := url.Parse(publicURL)
+	return err == nil && parsed.Scheme == "https" && strings.EqualFold(parsed.Hostname(), officialHost) &&
+		(parsed.Port() == "" || parsed.Port() == "443")
+}
+
+// AnalyticsConnections lists what the home pages of an instance send visit counts to, which a front that adds its own
+// connect-src must admit as well.
+func AnalyticsConnections(publicURL string) []string {
+	if !official(publicURL) {
+		return nil
+	}
+	return []string{analyticsEndpoint}
+}
 
 // pagePolicy allows the inline scripts and styles of html by hash, so every response carries the same header.
 func pagePolicy(html string, analytics bool) string {

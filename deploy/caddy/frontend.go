@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/caddyserver/caddy/v2"
@@ -75,12 +76,7 @@ func (f *Frontend) Provision(_ caddy.Context) error {
 			return errBuildWithoutVersion
 		}
 	}
-	f.classicalPolicy = "connect-src " + strings.Join([]string{
-		f.PublicURL + "/assets/",
-		f.PublicURL + api.InstancePath,
-		f.PublicURL + api.TransparencyPath,
-		f.PublicURL + webclient.ManifestPath,
-	}, " ")
+	f.classicalPolicy = classicalPolicy(f.PublicURL)
 	if f.pages, err = build.Render(f.PublicURL, f.Contact); err != nil {
 		return err
 	}
@@ -162,6 +158,17 @@ func carriesProtocolHeader(header http.Header) bool {
 		}
 	}
 	return false
+}
+
+// classicalPolicy admits what the public pages load and the visit counts of the nylzo.com home pages, no message route.
+func classicalPolicy(publicURL string) string {
+	sources := slices.Concat([]string{
+		publicURL + "/assets/",
+		publicURL + api.InstancePath,
+		publicURL + api.TransparencyPath,
+		publicURL + webclient.ManifestPath,
+	}, webclient.AnalyticsConnections(publicURL))
+	return "connect-src " + strings.Join(sources, " ")
 }
 
 // classicalResponse adds a second policy, which the browser enforces too, so the page reaches no message route.

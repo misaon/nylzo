@@ -204,6 +204,7 @@ func (p Page) SecurityHeaders(requestPath string) map[string]string {
 	headers := SecurityHeaders(requestPath)
 	if p.ownHeaders().analytics {
 		headers["Permissions-Policy"] = analyticsPermissionsPolicy
+		delete(headers, integrityPolicyHeader)
 	}
 	return headers
 }
@@ -229,6 +230,8 @@ func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	header.Set(connectionAllowlistHeader, headers.allowlist)
 	if headers.analytics {
 		header.Set("Permissions-Policy", analyticsPermissionsPolicy)
+		// Cloudflare ships the beacon without a version a hash could pin, and Integrity-Policy refuses a script without one.
+		header.Del(integrityPolicyHeader)
 	}
 	header.Set("Content-Type", htmlContentType)
 	header.Add("Vary", "Accept-Encoding")
@@ -241,7 +244,7 @@ func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	w.Write(body)
 }
 
-// securityHeaders keeps a page the build lacks from going out without a policy.
+// ownHeaders keeps a page the build lacks from going out without a policy.
 func (p Page) ownHeaders() pageHeaders {
 	if p.headers == nil {
 		return pageHeaders{policy: NonHTMLCSP, allowlist: "(response-origin)"}

@@ -17,11 +17,13 @@ const statusPolicyFormat = "default-src 'none'; script-src %s; style-src 'self'%
 
 const robotsTag = "noindex, nofollow"
 
+const integrityPolicyHeader = "Integrity-Policy"
+
 const immutableAsset = "max-age=31536000, immutable"
 
 var securityHeaders = map[string]string{
 	"Referrer-Policy":              "no-referrer",
-	"Integrity-Policy":             "blocked-destinations=(script)",
+	integrityPolicyHeader:          "blocked-destinations=(script)",
 	"Cache-Control":                "no-store",
 	"X-Content-Type-Options":       "nosniff",
 	"Cross-Origin-Opener-Policy":   "same-origin",

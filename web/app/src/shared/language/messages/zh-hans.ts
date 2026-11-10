@@ -351,7 +351,7 @@ export const messages: Catalog = {
     '控制了正在运行的服务器的人，只能看到当前正被打开的消息的记录，永远看不到内容。因此，nylzo.com 每 30 分钟将网站代码与已签名发行版比对一次，一旦出现偏差，服务会自行下线。专门针对某一个人替换的页面，这项检查未必能发现，因此对于最敏感的数据，我们提供已验证应用（nylzo web、nylzo open 和 nylzo 命令行工具），它们运行已签名发行版中的代码。',
   'transparency.others.analytics.title': '访问统计',
   'transparency.others.analytics':
-    'nylzo.com 的首页会加载 Cloudflare Web Analytics，以便我们了解访问人数和页面加载速度。Cloudflare 会收到不含参数的页面地址、你来自哪个页面、浏览器和系统版本、加载时间，并且与任何服务器一样，也会收到你的 IP 地址。该脚本不使用 Cookie，也不使用浏览器存储。它有固定的 SHA-384 指纹，因此你的浏览器只会运行我们审核过的版本。其他页面不会加载它。',
+    'nylzo.com 的首页会加载 Cloudflare Web Analytics，以便我们了解访问人数和页面加载速度。Cloudflare 会收到不含参数的页面地址、你来自哪个页面、浏览器和系统版本、加载时间，并且与任何服务器一样，也会收到你的 IP 地址。该脚本不使用 Cookie，也不使用浏览器存储。它由 Cloudflare 提供，并在页面显示后才加载。其他页面不会加载它。',
   'transparency.personal.title': '个人数据',
   'transparency.personal.controller.title': '控制者',
   'transparency.personal.controller': '数据控制者是本页顶部列出的运营者。',
@@ -740,7 +740,7 @@ export const messages: Catalog = {
   'tech.web.title': '网页端',
   'tech.web.1': 'Svelte 5 将组件编译为纯 JavaScript，不使用虚拟 DOM',
   'tech.web.2': 'TypeScript 和现代 JavaScript，用 Bun 构建和测试',
-  'tech.web.3': '每个脚本和样式表都带有 SHA-384 哈希，被改动的文件会被浏览器拒绝',
+  'tech.web.3': '我们的每个脚本和样式表都带有 SHA-384 哈希，被改动的文件会被浏览器拒绝',
   'tech.web.4': '密钥由 Web Crypto 以不可导出的方式保存，另有 Trusted Types 和严格的 CSP',
   'tech.web.5': '不使用 Cookie 和广告，消息页面不从其他服务器加载任何内容',
   'tech.release.title': '开发与发布',
@@ -860,7 +860,7 @@ export const messages: Catalog = {
     '对于只能打开一次的消息，对方会看到内容，接收者就看不到了。接收者会发现这一点，因为他看到的不是消息，而是“消息已被打开”。因此，请用密码保护敏感内容。',
   'faq.free.question': 'Nylzo 为什么免费？',
   'faq.free.answer':
-    '这是一个没有广告、没有付费功能的开源项目。运营费用由作者承担。我们不出售访客数据。首页访问量只按汇总数字统计，用来判断何时需要升级服务器。',
+    '这是一个没有广告、没有付费功能的开源项目。运营费用由作者承担。我们不出售访客数据。我们用 Cloudflare Web Analytics 在不使用 Cookie 的情况下统计 nylzo.com 首页的访问量，用来改进网站内容和速度。消息页面不计入统计。',
   'faq.verify.question': '如何验证 Nylzo 确实做到了它承诺的事？',
   'faq.verify.answer':
     '代码、协议规范和测试向量都是公开的。每次变更都要经过协议测试、静态分析、依赖项检查和被盗服务器数据测试。发行版经过签名，并且可复现。检查结果见“透明度”页面。',

@@ -34,7 +34,7 @@ async function servedAsNylzoCom(page: Page): Promise<string[]> {
 }
 
 test(
-  'only the home pages of nylzo.com load the pinned Cloudflare beacon, under the policy of spec section 9 (D125)',
+  'only the home pages of nylzo.com load the Cloudflare beacon, under the policy of spec section 9 (D125)',
   { tag: '@cross-browser' },
   async ({ newPage }) => {
     expect(
@@ -46,37 +46,65 @@ test(
     const beaconRequests = await servedAsNylzoCom(page);
 
     const response = await openApp(page, `${OFFICIAL}/cs/`);
-    const policy = (response?.headers()['content-security-policy'] ?? '').replaceAll(/ 'sha384-[^']+'/gu, '');
-    expect(policy).toBe(
+    const headers = response?.headers() ?? {};
+    expect((headers['content-security-policy'] ?? '').replaceAll(/ 'sha384-[^']+'/gu, '')).toBe(
       htmlPolicy
         .replace(' {script hashes};', ` ${script};`)
         .replace(' {style hashes};', ';')
         .replace("connect-src 'self';", `connect-src 'self' ${endpoint};`)
         .replace('trusted-types nylzo-kdf', `trusted-types nylzo-kdf ${policyName}`),
     );
-    expect(response?.headers()['connection-allowlist']?.endsWith(` ${allowlist})`)).toBe(true);
-    expect(response?.headers()['permissions-policy']?.split(', ')).toContain(clientHints);
+    expect(headers['connection-allowlist']?.endsWith(` ${allowlist})`)).toBe(true);
+    expect(headers['permissions-policy']?.split(', ')).toContain(clientHints);
+    expect(headers['integrity-policy']).toBeUndefined();
     const beacon = page.locator('script[data-cf-beacon]');
     await expect(beacon).toHaveAttribute('src', script);
     await expect(beacon).toHaveAttribute('type', 'module');
-    await expect(beacon).toHaveAttribute('integrity', /^sha384-[A-Za-z0-9+/]{64}$/u);
-    await expect(beacon).toHaveAttribute('crossorigin', 'anonymous');
-    await expect(beacon).toHaveAttribute('referrerpolicy', 'no-referrer');
     await expect(beacon).toHaveAttribute('fetchpriority', 'low');
+    await expect(beacon).not.toHaveAttribute('integrity');
     expect(JSON.parse((await beacon.getAttribute('data-cf-beacon')) ?? '{}')).toEqual({
       token: expect.stringMatching(/^[0-9a-f]{32}$/u),
-      spa: false,
     });
     await expect.poll(() => beaconRequests).toEqual([script]);
     expect(await violations()).toEqual([]);
 
     for (const path of ['/sent', '/transparency']) {
-      const other = await openApp(page, `${OFFICIAL}${path}`);
-      expect(other?.headers()['content-security-policy'], path).not.toContain('cloudflare');
-      expect(other?.headers()['permissions-policy'], path).toContain('ch-ua-high-entropy-values=(),');
+      const otherResponse = await openApp(page, `${OFFICIAL}${path}`);
+      const other = otherResponse?.headers() ?? {};
+      expect(other['content-security-policy'], path).not.toContain('cloudflare');
+      expect(other['permissions-policy'], path).toContain('ch-ua-high-entropy-values=(),');
+      expect(other['integrity-policy'], path).toBe('blocked-destinations=(script)');
       await expect(page.locator('script[data-cf-beacon]'), path).toHaveCount(0);
     }
     expect(beaconRequests).toEqual([script]);
     expect(await violations()).toEqual([]);
+  },
+);
+
+test(
+  'the entry module claims the analytics policy name before the rest of the client loads on nylzo.com (W2-10, D125)',
+  { tag: '@cross-browser' },
+  async ({ newPage }) => {
+    const page = await newPage();
+    await servedAsNylzoCom(page);
+    const held: string[] = [];
+    await page.route(/\/assets\/start-[\w-]+\.js$/u, (route) => {
+      held.push(route.request().url());
+    });
+    await page.goto(`${OFFICIAL}/cs/`, { waitUntil: 'commit' });
+    await expect.poll(() => held.length).toBe(1);
+    const claimed = await page.evaluate((name) => {
+      const factory = Reflect.get(globalThis, 'trustedTypes') as {
+        createPolicy: (policy: string, rules: Record<string, never>) => unknown;
+      };
+      try {
+        factory.createPolicy(name, {});
+        return 'free';
+      } catch {
+        return 'taken';
+      }
+    }, policyName);
+    expect(claimed).toBe('taken');
+    await page.unrouteAll({ behavior: 'ignoreErrors' });
   },
 );

@@ -71,7 +71,7 @@
     'transparency.summary.addresses',
     'transparency.summary.ended',
   ] as const;
-  const official = instanceOrigin() === OFFICIAL_ORIGIN;
+  const official = new URL(instanceOrigin()).origin === OFFICIAL_ORIGIN;
   const CHECKS = official
     ? (['changes', 'ai', 'watch', 'ratings', 'audit'] as const)
     : (['changes', 'ai', 'ratings', 'audit'] as const);

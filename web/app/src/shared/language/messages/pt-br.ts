@@ -378,7 +378,7 @@ export const messages: Catalog = {
     'Quem tomasse o controle do servidor em execução veria só os registros das mensagens que estão sendo abertas naquele momento, nunca o conteúdo delas. Por isso, no nylzo.com, comparamos o código do site com a versão assinada a cada 30\u{A0}minutos e, se houver diferença, o serviço sai do ar sozinho. A verificação pode não perceber uma página trocada de propósito para uma pessoa específica; então, para os dados mais sensíveis, oferecemos aplicativos verificados (nylzo web, nylzo open e a ferramenta de linha de comando nylzo), que executam código da versão assinada.',
   'transparency.others.analytics.title': 'Estatísticas de visitas',
   'transparency.others.analytics':
-    'As páginas iniciais de nylzo.com carregam o Cloudflare Web Analytics para sabermos quantas pessoas visitam e com que rapidez a página carrega. A Cloudflare recebe o endereço da página sem parâmetros, a página de onde você veio, as versões do seu navegador e do seu sistema, os tempos de carregamento e, como qualquer servidor, o seu endereço IP. O script não usa cookies nem o armazenamento do navegador. Ele tem uma impressão digital SHA-384 fixa, então o seu navegador só executa a versão que revisamos. As outras páginas não o carregam.',
+    'As páginas iniciais de nylzo.com carregam o Cloudflare Web Analytics para sabermos quantas pessoas visitam e com que rapidez a página carrega. A Cloudflare recebe o endereço da página sem parâmetros, a página de onde você veio, as versões do seu navegador e do seu sistema, os tempos de carregamento e, como qualquer servidor, o seu endereço IP. O script não usa cookies nem o armazenamento do navegador. A Cloudflare o fornece, e ele só carrega depois que a página aparece. As outras páginas não o carregam.',
   'transparency.personal.title': 'Dados pessoais',
   'transparency.personal.controller.title': 'Controlador',
   'transparency.personal.controller': 'O controlador dos dados é o operador indicado no topo desta página.',
@@ -792,7 +792,7 @@ export const messages: Catalog = {
   'tech.web.1': 'O Svelte 5 compila os componentes para JavaScript puro, sem DOM virtual',
   'tech.web.2': 'TypeScript e JavaScript moderno, com build e testes no Bun',
   'tech.web.3':
-    'Cada script e folha de estilo leva uma impressão digital SHA-384, e o navegador recusa o arquivo se ele for alterado',
+    'Cada um dos nossos scripts e folhas de estilo leva uma impressão digital SHA-384, e o navegador recusa o arquivo se ele for alterado',
   'tech.web.4': 'As chaves ficam no Web Crypto sem poder ser exportadas, com Trusted Types e uma CSP rigorosa',
   'tech.web.5': 'Sem cookies nem anúncios, e as páginas de mensagens não carregam nada de outros servidores',
   'tech.release.title': 'Desenvolvimento e publicação',
@@ -922,7 +922,7 @@ export const messages: Catalog = {
     'Numa mensagem de uma só abertura, essa pessoa a verá, e o destinatário não. O destinatário vai perceber, porque, em vez da mensagem, verá que ela já foi aberta. Por isso, proteja assuntos sensíveis com senha.',
   'faq.free.question': 'Por que o Nylzo é gratuito?',
   'faq.free.answer':
-    'É um projeto aberto, sem anúncios e sem funções pagas. O autor paga os custos de operação. Não vendemos dados sobre os visitantes. Medimos o tráfego da página inicial só em números totais, para saber quando reforçar o servidor.',
+    'É um projeto aberto, sem anúncios e sem funções pagas. O autor paga os custos de operação. Não vendemos dados sobre os visitantes. Medimos o tráfego da página inicial de nylzo.com com o Cloudflare Web Analytics, sem cookies, para melhorar o conteúdo e a velocidade do site. As páginas de mensagens não são medidas.',
   'faq.verify.question': 'Como posso conferir se o Nylzo faz o que promete?',
   'faq.verify.answer':
     'O código, a especificação do protocolo e os vetores de teste são públicos. Cada mudança passa por testes do protocolo, análise estática, verificação de dependências e um teste dos dados de um servidor roubado. As versões são assinadas e reproduzíveis. A página Transparência mostra os resultados das verificações.',

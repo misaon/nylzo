@@ -340,6 +340,20 @@ func TestFrontendTakesTheOperatorContactForItsAllowlist(t *testing.T) {
 	}
 }
 
+func TestClassicalPolicyAdmitsOnlyTheVisitCountsOfNylzoCom(t *testing.T) {
+	t.Parallel()
+	const published = "https://nylzo.com/assets/ https://nylzo.com/api/v1/instance " +
+		"https://nylzo.com/.well-known/nylzo/transparency.json https://nylzo.com/.well-known/nylzo/client.json"
+	for publicURL, want := range map[string]string{
+		"https://nylzo.com":     "connect-src " + published + " https://cloudflareinsights.com/cdn-cgi/rum",
+		"https://nylzo.example": "connect-src " + strings.ReplaceAll(published, "nylzo.com", "nylzo.example"),
+	} {
+		if got := classicalPolicy(publicURL); got != want {
+			t.Errorf("%s: %q, want %q", publicURL, got, want)
+		}
+	}
+}
+
 func TestCrawlersReachOnlyPublicDocumentsOverClassicalTLS(t *testing.T) {
 	for _, configuration := range []string{
 		filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),

@@ -7,7 +7,6 @@
   "scripts": {
     "build": "bun run --bun vite build && bun run --bun vite build --ssr src/app/prerender.ts --outDir .prerender && bun scripts/prerender.ts",
     "check": "bun scripts/check-sources.ts",
-    "check:beacon": "bun scripts/web-analytics-beacon.ts",
     "test": "bun run --bun vitest run",
     "typecheck": "bun run --bun svelte-check --tsgo --tsconfig ./tsconfig.json --fail-on-warnings && bun ./node_modules/@typescript/native/bin/tsc -p scripts",
     "test:coverage": "bun run --bun vitest run --coverage"

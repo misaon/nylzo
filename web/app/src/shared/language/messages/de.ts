@@ -389,7 +389,7 @@ export const messages: Catalog = {
     'Wer den laufenden Server kontrollieren würde, sähe nur die Datensätze der Nachrichten, die gerade geöffnet werden, nie ihren Inhalt. Deshalb vergleichen wir auf nylzo.com den Code der Website alle 30\u{A0}Minuten mit dem signierten Release, und bei einer Abweichung geht der Dienst von selbst vom Netz. Wird einer einzelnen Person gezielt eine andere Seite untergeschoben, bemerkt die Prüfung das womöglich nicht. Für die sensibelsten Daten bieten wir daher verifizierte Apps an (nylzo web, nylzo open und das Kommandozeilenprogramm nylzo), die Code aus dem signierten Release ausführen.',
   'transparency.others.analytics.title': 'Besucherstatistik',
   'transparency.others.analytics':
-    'Die Startseiten von nylzo.com laden Cloudflare Web Analytics, damit wir wissen, wie viele Menschen kommen und wie schnell die Seite lädt. Cloudflare erhält die Seitenadresse ohne Parameter, die Seite, von der Sie kommen, die Versionen von Browser und Betriebssystem, die Ladezeiten und, wie jeder Server, Ihre IP-Adresse. Das Skript verwendet weder Cookies noch Browserspeicher. Es hat einen festen SHA-384-Fingerabdruck, sodass Ihr Browser nur die von uns geprüfte Version ausführt. Andere Seiten laden es nicht.',
+    'Die Startseiten von nylzo.com laden Cloudflare Web Analytics, damit wir wissen, wie viele Menschen kommen und wie schnell die Seite lädt. Cloudflare erhält die Seitenadresse ohne Parameter, die Seite, von der Sie kommen, die Versionen von Browser und Betriebssystem, die Ladezeiten und, wie jeder Server, Ihre IP-Adresse. Das Skript verwendet weder Cookies noch Browserspeicher. Cloudflare liefert es, und es lädt erst, nachdem die Seite angezeigt wurde. Andere Seiten laden es nicht.',
   'transparency.personal.title': 'Personenbezogene Daten',
   'transparency.personal.controller.title': 'Verantwortlicher',
   'transparency.personal.controller': 'Verantwortlicher ist der oben auf dieser Seite genannte Betreiber.',
@@ -807,7 +807,7 @@ export const messages: Catalog = {
   'tech.web.1': 'Svelte\u{A0}5 kompiliert Komponenten zu reinem JavaScript ohne virtuelles DOM',
   'tech.web.2': 'TypeScript und modernes JavaScript, Build und Tests mit Bun',
   'tech.web.3':
-    'Jedes Skript und Stylesheet trägt einen SHA-384-Fingerabdruck, eine veränderte Datei lehnt der Browser ab',
+    'Jedes unserer Skripte und Stylesheets trägt einen SHA-384-Fingerabdruck, eine veränderte Datei lehnt der Browser ab',
   'tech.web.4':
     'Web Crypto hält die Schlüssel so, dass sie sich nicht exportieren lassen, dazu Trusted Types und eine strenge CSP',
   'tech.web.5': 'Ohne Cookies und Werbung, Nachrichtenseiten laden nichts von fremden Servern',
@@ -938,7 +938,7 @@ export const messages: Catalog = {
     'Bei einer Nachricht mit nur einem Aufruf sieht diese Person sie, der Empfänger dann nicht mehr. Der Empfänger merkt es, weil er statt der Nachricht den Hinweis sieht, dass sie bereits geöffnet wurde. Schützen Sie vertrauliche Inhalte deshalb mit einem Passwort.',
   'faq.free.question': 'Warum ist Nylzo kostenlos?',
   'faq.free.answer':
-    'Es ist ein offenes Projekt ohne Werbung und ohne kostenpflichtige Funktionen. Den Betrieb bezahlt der Autor. Daten über Besucher verkaufen wir nicht. Die Besuche der Startseite zählen wir nur als Gesamtzahlen, damit wir wissen, wann der Server mehr Kapazität braucht.',
+    'Es ist ein offenes Projekt ohne Werbung und ohne kostenpflichtige Funktionen. Den Betrieb bezahlt der Autor. Daten über Besucher verkaufen wir nicht. Die Besuche der Startseite von nylzo.com messen wir ohne Cookies mit Cloudflare Web Analytics, damit wir Inhalt und Geschwindigkeit der Website verbessern können. Seiten mit Nachrichten messen wir nicht.',
   'faq.verify.question': 'Wie prüfe ich, ob Nylzo hält, was es verspricht?',
   'faq.verify.answer':
     'Code, Protokollspezifikation und Testvektoren sind öffentlich. Jede Änderung durchläuft Protokolltests, statische Analyse, eine Prüfung der Abhängigkeiten und einen Test der Daten eines gestohlenen Servers. Releases sind signiert und reproduzierbar. Die Ergebnisse der Prüfungen zeigt die Seite Transparenz.',
