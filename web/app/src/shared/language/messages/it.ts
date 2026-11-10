@@ -334,9 +334,6 @@ export const messages: Catalog = {
   'transparency.stores.counters.title': 'Contatori senza indirizzi',
   'transparency.stores.counters':
     'Conserva i conteggi giornalieri dei messaggi creati ancora per {days} dopo la fine della giornata, le sfide monouso già usate solo per pochi minuti.',
-  'transparency.stores.visits.title': 'Visite alla pagina iniziale',
-  'transparency.stores.visits':
-    'Totali orari delle visualizzazioni della pagina iniziale, senza cookie e senza indirizzi IP. Ci aiutano a migliorare il servizio e a potenziare il server in tempo. Le pagine dei messaggi non rientrano nella misurazione.',
   'transparency.stores.addresses.title': 'Indirizzi IP',
   'transparency.stores.addresses':
     'Non li salva. I limiti per indirizzo sono tenuti solo in una memoria che non viene mai trasferita su disco e vengono dimenticati al riavvio.',
@@ -383,12 +380,18 @@ export const messages: Catalog = {
   'transparency.others.client.title': 'Codice del sito',
   'transparency.others.client':
     'Chi prendesse il controllo del server in esecuzione vedrebbe solo i record dei messaggi che si stanno aprendo in quel momento, mai il loro contenuto. Per questo su nylzo.com confrontiamo ogni 30\u{A0}minuti il codice del sito con la release firmata e, in caso di differenza, il servizio si mette offline da solo. Una pagina sostituita apposta per una sola persona potrebbe sfuggire al controllo, quindi per i dati più sensibili offriamo app verificate (nylzo web, nylzo open e lo strumento a riga di comando nylzo), che eseguono codice dalla release firmata.',
+  'transparency.others.analytics.title': 'Statistiche delle visite',
+  'transparency.others.analytics':
+    'Le pagine iniziali di nylzo.com caricano Cloudflare Web Analytics, così sappiamo quante persone arrivano e quanto velocemente si carica la pagina. Cloudflare riceve l’indirizzo della pagina senza parametri, la pagina da cui arrivi, le versioni del browser e del sistema, i tempi di caricamento e, come ogni server, il tuo indirizzo IP. Lo script non usa cookie né la memoria del browser. Lo fornisce Cloudflare e si carica solo dopo che la pagina è stata mostrata. Le altre pagine non lo caricano.',
   'transparency.personal.title': 'Dati personali',
   'transparency.personal.controller.title': 'Titolare del trattamento',
   'transparency.personal.controller': 'Il titolare del trattamento è il gestore indicato in cima a questa pagina.',
   'transparency.personal.basis.title': 'Perché e su quale base giuridica',
   'transparency.personal.basis':
     'Salviamo il messaggio, lo consegniamo al destinatario e lo eliminiamo perché lo ha chiesto il mittente. Limiti, log e totali delle visite ci servono per la sicurezza e lo sviluppo del servizio (art.\u{A0}6, par.\u{A0}1, lett.\u{A0}b) e\u{A0}f), del GDPR).',
+  'transparency.personal.processor.title': 'Responsabile del trattamento',
+  'transparency.personal.processor':
+    'Cloudflare, Inc. (USA) tratta le statistiche della pagina iniziale per conto del gestore ed è certificata secondo l’EU-US Data Privacy Framework.',
   'transparency.personal.browser.title': 'Nel tuo browser',
   'transparency.personal.browser':
     'La lingua scelta, un dato temporaneo durante l’apertura di un messaggio e l’elenco Inviati, se segui un messaggio. Sono necessari per funzioni che hai richiesto e per questo non richiedono il consenso.',
@@ -453,7 +456,7 @@ export const messages: Catalog = {
   'footer.agents': 'Per agenti AI',
   'footer.about': 'Chi c’è dietro Nylzo',
   'footer.terms': 'Termini d’uso',
-  'footer.note': 'Senza cookie, pubblicità né script di terze parti.',
+  'footer.note': 'Senza cookie né pubblicità.',
   'footer.version': 'Versione del client web {version}',
 
   'hero.title': 'Un segreto che si apre {accent}',
@@ -793,10 +796,10 @@ export const messages: Catalog = {
   'tech.web.title': 'Web',
   'tech.web.1': 'Svelte\u{A0}5 compila i componenti in JavaScript puro, senza DOM virtuale',
   'tech.web.2': 'TypeScript e JavaScript moderno, build e test con Bun',
-  'tech.web.3': 'Ogni script e foglio di stile ha un’impronta SHA-384, il browser rifiuta un file modificato',
+  'tech.web.3': 'Ogni nostro script e foglio di stile ha un’impronta SHA-384, il browser rifiuta un file modificato',
   'tech.web.4':
     'Web Crypto custodisce le chiavi in modo che non si possano esportare, in più Trusted Types e una CSP rigorosa',
-  'tech.web.5': 'Senza cookie, pubblicità né script da server di terze parti',
+  'tech.web.5': 'Senza cookie né pubblicità, e le pagine dei messaggi non caricano nulla da server di terze parti',
   'tech.release.title': 'Sviluppo e rilasci',
   'tech.release.1': 'Ogni commit nel branch principale è firmato',
   'tech.release.2': 'CodeQL, govulncheck, OSV-Scanner, Grype e golangci-lint controllano ogni modifica',
@@ -923,7 +926,7 @@ export const messages: Catalog = {
     'Con un messaggio a un’unica apertura, lo vedrà lui e il destinatario non più. Il destinatario se ne accorge, perché al posto del messaggio vedrà che è già stato aperto. Per questo proteggi le cose sensibili con una password.',
   'faq.free.question': 'Perché Nylzo è gratuito?',
   'faq.free.answer':
-    'È un progetto aperto senza pubblicità e senza funzioni a pagamento. La gestione la paga l’autore. Non vendiamo dati sui visitatori. Le visite alla pagina iniziale le misuriamo solo come totali, per sapere quando potenziare il server.',
+    'È un progetto aperto senza pubblicità e senza funzioni a pagamento. La gestione la paga l’autore. Non vendiamo dati sui visitatori. Le visite alla pagina iniziale di nylzo.com le misuriamo con Cloudflare Web Analytics, senza cookie, per migliorare contenuti e velocità del sito. Le pagine dei messaggi non vengono misurate.',
   'faq.verify.question': 'Come verifico che Nylzo faccia ciò che promette?',
   'faq.verify.answer':
     'Il codice, la specifica del protocollo e i vettori di test sono pubblici. Ogni modifica passa per i test del protocollo, l’analisi statica, il controllo delle dipendenze e il test dei dati di un server rubato. Le release sono firmate e riproducibili. I risultati dei controlli sono nella pagina Trasparenza.',

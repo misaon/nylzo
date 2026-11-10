@@ -323,9 +323,6 @@ export const messages: Catalog = {
   'transparency.stores.counters.title': 'Counters without addresses',
   'transparency.stores.counters':
     'Daily totals of created messages for {days} after the day ends, and used one-time challenges for a few minutes.',
-  'transparency.stores.visits.title': 'Home page traffic',
-  'transparency.stores.visits':
-    'Hourly totals of home page views, without cookies and without IP addresses. They help us improve the service and add server capacity in time. Message pages are never counted.',
   'transparency.stores.addresses.title': 'IP addresses',
   'transparency.stores.addresses':
     'It does not store them. Per-address limits live only in memory that is never swapped to disk, and are forgotten on restart.',
@@ -372,12 +369,18 @@ export const messages: Catalog = {
   'transparency.others.client.title': 'Site code',
   'transparency.others.client':
     'Whoever took over the running server would see only the records of messages being opened at that moment, never their content. That is why nylzo.com compares its site code with the signed release every 30 minutes and takes itself offline on any difference. The check might not notice a page swapped for one specific person, so for the most sensitive data we offer verified apps (nylzo web, nylzo open and the nylzo command-line tool), which run code from the signed release.',
+  'transparency.others.analytics.title': 'Visitor statistics',
+  'transparency.others.analytics':
+    'The nylzo.com home pages load Cloudflare Web Analytics so we know how many people visit and how fast the page loads. Cloudflare receives the page address without parameters, the page you came from, your browser and system versions, load times and, like any server, your IP address. The script uses no cookies or browser storage. Cloudflare supplies it, and it loads only after the page is shown. Other pages do not load it.',
   'transparency.personal.title': 'Personal data',
   'transparency.personal.controller.title': 'Controller',
   'transparency.personal.controller': 'The controller is the operator named at the top of this page.',
   'transparency.personal.basis.title': 'Why and on what basis',
   'transparency.personal.basis':
     'We store the message, hand it to the recipient and delete it because the sender asked us to. We need the limits, logs and traffic totals for the security and development of the service (Art. 6(1)(b) and (f) GDPR).',
+  'transparency.personal.processor.title': 'Processor',
+  'transparency.personal.processor':
+    'Cloudflare, Inc. (USA) processes the home page statistics for the operator and is certified under the EU-US Data Privacy Framework.',
   'transparency.personal.browser.title': 'In your browser',
   'transparency.personal.browser':
     'The language you chose, a temporary item while a message opens, and the Sent list if you track a message. They are needed for features you ask for, so they need no consent.',
@@ -442,7 +445,7 @@ export const messages: Catalog = {
   'footer.agents': 'For AI agents',
   'footer.about': 'Who is behind Nylzo',
   'footer.terms': 'Terms of use',
-  'footer.note': 'No cookies, ads or third-party scripts.',
+  'footer.note': 'No cookies or ads.',
   'footer.version': 'Web client version {version}',
 
   'hero.title': 'A secret that {accent}',
@@ -776,9 +779,9 @@ export const messages: Catalog = {
   'tech.web.title': 'Web',
   'tech.web.1': 'Svelte 5 compiles components to plain JavaScript without a virtual DOM',
   'tech.web.2': 'TypeScript and modern JavaScript, built and tested with Bun',
-  'tech.web.3': 'Every script and stylesheet carries a SHA-384 hash, and the browser rejects a changed file',
+  'tech.web.3': 'Each of our scripts and stylesheets carries a SHA-384 hash, and the browser rejects a changed file',
   'tech.web.4': 'Web Crypto holds keys so they cannot be exported, backed by Trusted Types and a strict CSP',
-  'tech.web.5': 'No cookies, ads or scripts from other servers',
+  'tech.web.5': 'No cookies or ads, and message pages load nothing from other servers',
   'tech.release.title': 'Development and releases',
   'tech.release.1': 'Every commit on the main branch is signed',
   'tech.release.2': 'CodeQL, govulncheck, OSV-Scanner, Grype and golangci-lint check every change',
@@ -904,7 +907,7 @@ export const messages: Catalog = {
     'For a one-time message, they see it and the recipient no longer does. The recipient notices, because instead of the message they see that it was already opened. So protect sensitive things with a passphrase.',
   'faq.free.question': 'Why is Nylzo free?',
   'faq.free.answer':
-    'It is an open project with no ads and no paid features. The author pays for hosting. We do not sell data about visitors. We measure home page traffic only as totals, so we know when the server needs more capacity.',
+    'It is an open project with no ads and no paid features. The author pays for hosting. We do not sell data about visitors. We measure traffic on the nylzo.com home page with Cloudflare Web Analytics, without cookies, so we can improve the content and speed of the site. Message pages are not measured.',
   'faq.verify.question': 'How can I check that Nylzo does what it promises?',
   'faq.verify.answer':
     'The code, the protocol specification and the test vectors are public. Every change goes through protocol tests, static analysis, dependency checks and a stolen-server data test. Releases are signed and reproducible. The Transparency page shows the results of the checks.',

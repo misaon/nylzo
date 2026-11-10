@@ -12,6 +12,7 @@ const binary = path.join(binaryDirectory, 'nylzo');
 const profiles: Record<string, Record<string, string>> = {
   default: {},
   pow: { NYLZO_GLOBAL_DAILY_CREATES: '8', NYLZO_POW_DIFFICULTY: '4' },
+  official: { NYLZO_PUBLIC_URL: 'https://nylzo.com' },
 };
 
 mkdirSync(binaryDirectory, { recursive: true });

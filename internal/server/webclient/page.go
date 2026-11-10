@@ -89,23 +89,34 @@ func templateFor(path string) string {
 
 type Pages map[string]Page
 
-// Render fills the templates for an instance; every page may reach only the addresses ConnectionAllowlist names.
+// Render fills the templates for an instance; every page may reach only the addresses ConnectionAllowlist names,
+// and the home pages of nylzo.com also Cloudflare Web Analytics.
 func (b Build) Render(publicURL, contact string) (Pages, error) {
+	return b.renderPages(publicURL, contact, true)
+}
+
+// RenderLocal fills the templates for the local client, whose pages load nothing from another origin.
+func (b Build) RenderLocal(instance, contact string) (Pages, error) {
+	return b.renderPages(instance, contact, false)
+}
+
+func (b Build) renderPages(publicURL, contact string, analyticsAllowed bool) (Pages, error) {
 	if err := operatoraddress.CheckContact(contact); err != nil {
 		return nil, fmt.Errorf("server: operator contact: %w", err)
 	}
-	allowlist := ConnectionAllowlist(contact)
 	pages := Pages{}
 	for name, template := range b.Templates {
 		html, err := render(template, publicURL)
 		if err != nil {
 			return nil, fmt.Errorf("server: web client %s: %w", name, err)
 		}
-		policy := pagePolicy(html)
+		analytics := analyticsAllowed && countsVisits(publicURL, name)
+		policy := pagePolicy(html, analytics)
 		if isStatusTemplate(name) {
 			policy = StatusPolicy(html)
 		}
-		if pages[name], err = newPage(html, policy, allowlist); err != nil {
+		headers := &pageHeaders{policy: policy, allowlist: pageAllowlist(contact, analytics), analytics: analytics}
+		if pages[name], err = newPage(html, headers); err != nil {
 			return nil, err
 		}
 	}
@@ -158,10 +169,11 @@ type Page struct {
 type pageHeaders struct {
 	policy    string
 	allowlist string
+	analytics bool
 }
 
-func newPage(html, policy, allowlist string) (Page, error) {
-	page := Page{body: []byte(html), headers: &pageHeaders{policy: policy, allowlist: allowlist}}
+func newPage(html string, headers *pageHeaders) (Page, error) {
+	page := Page{body: []byte(html), headers: headers}
 	var buffer bytes.Buffer
 	writer, err := gzip.NewWriterLevel(&buffer, gzip.BestCompression)
 	if err != nil {
@@ -180,11 +192,26 @@ func (p Page) Body() []byte {
 }
 
 func (p Page) Policy() string {
-	return p.securityHeaders().policy
+	return p.ownHeaders().policy
 }
 
 func (p Page) Allowlist() string {
-	return p.securityHeaders().allowlist
+	return p.ownHeaders().allowlist
+}
+
+// SecurityHeaders lists the headers the page carries at requestPath besides its policy and allowlist.
+func (p Page) SecurityHeaders(requestPath string) map[string]string {
+	headers := SecurityHeaders(requestPath)
+	if p.ownHeaders().analytics {
+		headers["Permissions-Policy"] = analyticsPermissionsPolicy
+		delete(headers, integrityPolicyHeader)
+	}
+	return headers
+}
+
+// ContactlessAllowlist is the page's Connection-Allowlist from a front that was not given the operator's contact.
+func (p Page) ContactlessAllowlist() string {
+	return pageAllowlist("", p.ownHeaders().analytics)
 }
 
 func (p Page) SHA256() string {
@@ -198,9 +225,14 @@ func (p Page) Serve(w http.ResponseWriter, r *http.Request) {
 
 func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	header := w.Header()
-	headers := p.securityHeaders()
+	headers := p.ownHeaders()
 	header.Set("Content-Security-Policy", headers.policy)
 	header.Set(connectionAllowlistHeader, headers.allowlist)
+	if headers.analytics {
+		header.Set("Permissions-Policy", analyticsPermissionsPolicy)
+		// Cloudflare ships the beacon without a version a hash could pin, and Integrity-Policy refuses a script without one.
+		header.Del(integrityPolicyHeader)
+	}
 	header.Set("Content-Type", htmlContentType)
 	header.Add("Vary", "Accept-Encoding")
 	body := p.body
@@ -212,8 +244,8 @@ func (p Page) ServeStatus(w http.ResponseWriter, r *http.Request, status int) {
 	w.Write(body)
 }
 
-// securityHeaders keeps a page the build lacks from going out without a policy.
-func (p Page) securityHeaders() pageHeaders {
+// ownHeaders keeps a page the build lacks from going out without a policy.
+func (p Page) ownHeaders() pageHeaders {
 	if p.headers == nil {
 		return pageHeaders{policy: NonHTMLCSP, allowlist: "(response-origin)"}
 	}

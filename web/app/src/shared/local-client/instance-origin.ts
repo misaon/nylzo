@@ -1,3 +1,4 @@
+export const OFFICIAL_ORIGIN = 'https://nylzo.com';
 const INSTANCE = 'meta[name="nylzo-instance"]';
 const ORIGIN =
   /^(?:https:\/\/(?:[a-z0-9.-]+|\[[0-9a-f:.]+\])|http:\/\/(?:localhost|127(?:\.\d{1,3}){3}|\[::1\]))(?::\d{1,5})?$/u;

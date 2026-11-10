@@ -7,7 +7,7 @@
   import type { MessageKey } from '../../shared/language/catalog.ts';
   import { formatBytes, formatDuration } from '../../shared/language/format.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import { instanceOrigin } from '../../shared/local-client/instance-origin.ts';
+  import { instanceOrigin, OFFICIAL_ORIGIN } from '../../shared/local-client/instance-origin.ts';
   import GithubMark from '../../shared/shell/GithubMark.svelte';
   import { REPOSITORY_URL, VERIFIED_CLIENTS_URL } from '../../shared/shell/repository.ts';
   import { SECONDS_PER_DAY } from '../../shared/ttl/ttl-choices.ts';
@@ -18,7 +18,7 @@
   import { INLINE_TARGET, TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
   import StateCard from '../../shared/ui/notice/StateCard.svelte';
   import IconTile from '../../shared/ui/tile/IconTile.svelte';
-  import { contactHref, contactLabel, OFFICIAL_ORIGIN } from './transparency.ts';
+  import { contactHref, contactLabel } from './transparency.ts';
 
   type View =
     | { readonly view: 'loading' }
@@ -71,11 +71,13 @@
     'transparency.summary.addresses',
     'transparency.summary.ended',
   ] as const;
-  const official = instanceOrigin() === OFFICIAL_ORIGIN;
+  const official = new URL(instanceOrigin()).origin === OFFICIAL_ORIGIN;
   const CHECKS = official
     ? (['changes', 'ai', 'watch', 'ratings', 'audit'] as const)
     : (['changes', 'ai', 'ratings', 'audit'] as const);
-  const PERSONAL = ['controller', 'basis', 'browser'] as const;
+  const PERSONAL = official
+    ? (['controller', 'basis', 'processor', 'browser'] as const)
+    : (['controller', 'basis', 'browser'] as const);
 
   const translator = getTranslator();
   const { translate } = translator;
@@ -92,7 +94,7 @@
 
   function stored({ retention }: Transparency): readonly Entry[] {
     const entry = (
-      name: 'content' | 'metadata' | 'keys' | 'ended' | 'enforced' | 'reports' | 'counters' | 'visits' | 'addresses',
+      name: 'content' | 'metadata' | 'keys' | 'ended' | 'enforced' | 'reports' | 'counters' | 'addresses',
       text: string,
     ) => ({ title: translate(`transparency.stores.${name}.title`), text });
     return [
@@ -105,7 +107,6 @@
         ? []
         : [entry('reports', translate('transparency.stores.reports', { days: days(retention.abuseReportSeconds) }))]),
       entry('counters', translate('transparency.stores.counters', { days: days(retention.dailyCounterSeconds) })),
-      ...(official ? [entry('visits', translate('transparency.stores.visits'))] : []),
       entry('addresses', translate('transparency.stores.addresses')),
     ];
   }
@@ -339,6 +340,14 @@
           title: translate('transparency.others.client.title'),
           text: translate('transparency.others.client'),
         },
+        ...(official
+          ? [
+              {
+                title: translate('transparency.others.analytics.title'),
+                text: translate('transparency.others.analytics'),
+              },
+            ]
+          : []),
       ])}
     </section>
 

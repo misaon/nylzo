@@ -224,9 +224,11 @@ func TestVerifyClientAcceptsTheSameClient(t *testing.T) {
 		result.stdout != "the server sends the web client of nylzo test unchanged: 18 pages and 5 files checked\n" {
 		t.Fatalf("%+v", result)
 	}
-	public := runVerify(t, newPublicWebTestServer(t, files, "test", "https://nylzo.example:8443", nil), files)
-	if public.code != command.ExitOK {
-		t.Fatalf("a server with a public URL: %+v", public)
+	for _, publicURL := range []string{"https://nylzo.example:8443", "https://nylzo.com"} {
+		public := runVerify(t, newPublicWebTestServer(t, files, "test", publicURL, nil), files)
+		if public.code != command.ExitOK {
+			t.Fatalf("a server with the public URL %s: %+v", publicURL, public)
+		}
 	}
 	if !strings.Contains(result.stderr, "a server can recognise it") {
 		t.Fatalf("the result must say what it cannot see: %q", result.stderr)
@@ -396,13 +398,19 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 func TestVerifyClientExplainsAnAllowlistWithoutTheOperatorContact(t *testing.T) {
 	t.Parallel()
 	files := webFiles(t)
-	strict := rewrite(pathIs("/transparency"), func(response *served) {
-		response.header.Set("Connection-Allowlist", webclient.ConnectionAllowlist(""))
-	})
-	result := runVerify(t, newWebTestServer(t, files, "test", strict), files)
-	if result.code != command.ExitError ||
-		!strings.Contains(result.stderr, "a Caddy front needs the same NYLZO_CONTACT as the server") {
-		t.Fatalf("a stricter allowlist is a misconfiguration, not a changed client: %+v", result)
+	for _, publicURL := range []string{"", "https://nylzo.com"} {
+		strict := rewrite(pathIs("/"), func(response *served) {
+			allowlist := response.header.Get("Connection-Allowlist")
+			response.header.Set(
+				"Connection-Allowlist",
+				strings.Replace(allowlist, ` "mailto\\:security@example.org?#"`, "", 1),
+			)
+		})
+		result := runVerify(t, newPublicWebTestServer(t, files, "test", publicURL, strict), files)
+		if result.code != command.ExitError ||
+			!strings.Contains(result.stderr, "a Caddy front needs the same NYLZO_CONTACT as the server") {
+			t.Fatalf("%q: a stricter allowlist is a misconfiguration, not a changed client: %+v", publicURL, result)
+		}
 	}
 }
 
