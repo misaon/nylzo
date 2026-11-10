@@ -12,6 +12,7 @@ import {
 } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { takeHandoff } from '../shared/local-client/handoff.ts';
+import { countVisit } from '../shared/web-analytics/web-analytics.ts';
 import { homeLanguage, screenOf } from './pages.ts';
 
 const FONT_WAIT_MS = 1500;
@@ -90,6 +91,7 @@ async function boot(): Promise<void> {
   }
   document.documentElement.dataset['ready'] = '';
   void tidy();
+  void countVisit();
 }
 
 // oxlint-disable-next-line unicorn/prefer-top-level-await -- WebKit font readiness must not wait for this module to finish evaluating.

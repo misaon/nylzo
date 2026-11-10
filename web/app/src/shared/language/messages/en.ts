@@ -323,9 +323,6 @@ export const messages: Catalog = {
   'transparency.stores.counters.title': 'Counters without addresses',
   'transparency.stores.counters':
     'Daily totals of created messages for {days} after the day ends, and used one-time challenges for a few minutes.',
-  'transparency.stores.visits.title': 'Home page traffic',
-  'transparency.stores.visits':
-    'Hourly totals of home page views, without cookies and without IP addresses. They help us improve the service and add server capacity in time. Message pages are never counted.',
   'transparency.stores.addresses.title': 'IP addresses',
   'transparency.stores.addresses':
     'It does not store them. Per-address limits live only in memory that is never swapped to disk, and are forgotten on restart.',
@@ -372,12 +369,18 @@ export const messages: Catalog = {
   'transparency.others.client.title': 'Site code',
   'transparency.others.client':
     'Whoever took over the running server would see only the records of messages being opened at that moment, never their content. That is why nylzo.com compares its site code with the signed release every 30 minutes and takes itself offline on any difference. The check might not notice a page swapped for one specific person, so for the most sensitive data we offer verified apps (nylzo web, nylzo open and the nylzo command-line tool), which run code from the signed release.',
+  'transparency.others.analytics.title': 'Visitor statistics',
+  'transparency.others.analytics':
+    'The nylzo.com home pages load Cloudflare Web Analytics so we know how many people visit and how fast the page loads. Cloudflare receives the page address without parameters, the page you came from, your browser and system versions, load times and, like any server, your IP address. The script uses no cookies or browser storage. It has a fixed SHA-384 fingerprint, so your browser runs only the version we reviewed. Other pages do not load it.',
   'transparency.personal.title': 'Personal data',
   'transparency.personal.controller.title': 'Controller',
   'transparency.personal.controller': 'The controller is the operator named at the top of this page.',
   'transparency.personal.basis.title': 'Why and on what basis',
   'transparency.personal.basis':
     'We store the message, hand it to the recipient and delete it because the sender asked us to. We need the limits, logs and traffic totals for the security and development of the service (Art. 6(1)(b) and (f) GDPR).',
+  'transparency.personal.processor.title': 'Processor',
+  'transparency.personal.processor':
+    'Cloudflare, Inc. (USA) processes the home page statistics for the operator and is certified under the EU-US Data Privacy Framework.',
   'transparency.personal.browser.title': 'In your browser',
   'transparency.personal.browser':
     'The language you chose, a temporary item while a message opens, and the Sent list if you track a message. They are needed for features you ask for, so they need no consent.',
@@ -442,7 +445,7 @@ export const messages: Catalog = {
   'footer.agents': 'For AI agents',
   'footer.about': 'Who is behind Nylzo',
   'footer.terms': 'Terms of use',
-  'footer.note': 'No cookies, ads or third-party scripts.',
+  'footer.note': 'No cookies or ads.',
   'footer.version': 'Web client version {version}',
 
   'hero.title': 'A secret that {accent}',
@@ -778,7 +781,7 @@ export const messages: Catalog = {
   'tech.web.2': 'TypeScript and modern JavaScript, built and tested with Bun',
   'tech.web.3': 'Every script and stylesheet carries a SHA-384 hash, and the browser rejects a changed file',
   'tech.web.4': 'Web Crypto holds keys so they cannot be exported, backed by Trusted Types and a strict CSP',
-  'tech.web.5': 'No cookies, ads or scripts from other servers',
+  'tech.web.5': 'No cookies or ads, and message pages load nothing from other servers',
   'tech.release.title': 'Development and releases',
   'tech.release.1': 'Every commit on the main branch is signed',
   'tech.release.2': 'CodeQL, govulncheck, OSV-Scanner, Grype and golangci-lint check every change',

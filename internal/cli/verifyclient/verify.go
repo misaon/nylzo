@@ -294,7 +294,7 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	if err != nil {
 		return fetchFailed(where, err)
 	}
-	headersErr := v.headers(fetched.Header, "text/html; charset=utf-8", path, where)
+	headersErr := v.headers(fetched.Header, expected.SecurityHeaders(path), "text/html; charset=utf-8", where)
 	if isDifference(headersErr) {
 		return headersErr
 	}
@@ -303,7 +303,7 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	}
 	var allowlistErr error
 	if v.contactKnown {
-		allowlistErr = allowlist(fetched.Header.Values("Connection-Allowlist"), expected.Allowlist(), where)
+		allowlistErr = allowlist(fetched.Header.Values("Connection-Allowlist"), expected, where)
 	}
 	if isDifference(allowlistErr) {
 		return allowlistErr
@@ -318,11 +318,11 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	return cmp.Or(headersErr, allowlistErr)
 }
 
-func allowlist(values []string, expected, where string) error {
+func allowlist(values []string, expected webclient.Page, where string) error {
 	switch {
-	case len(values) == 1 && values[0] == expected:
+	case len(values) == 1 && values[0] == expected.Allowlist():
 		return nil
-	case len(values) == 1 && values[0] == webclient.ConnectionAllowlist(""):
+	case len(values) == 1 && values[0] == expected.ContactlessAllowlist():
 		return fmt.Errorf("%s: %w", where, errContactLeftOut)
 	default:
 		return differs("%s: the Connection-Allowlist differs from this nylzo", where)
@@ -337,7 +337,7 @@ func (v *verifier) asset(ctx context.Context, name string, asset *webclient.Asse
 	if err != nil {
 		return fetchFailed(where, err)
 	}
-	headersErr := v.headers(fetched.Header, asset.ContentType, path, where)
+	headersErr := v.headers(fetched.Header, webclient.SecurityHeaders(path), asset.ContentType, where)
 	if isDifference(headersErr) {
 		return headersErr
 	}
@@ -356,8 +356,7 @@ func (v *verifier) asset(ctx context.Context, name string, asset *webclient.Asse
 
 // headers requires every header this version sends exactly once and refuses any other unless it is allowed;
 // a difference wins over a header that is merely unexpected.
-func (v *verifier) headers(header http.Header, contentType, path, where string) error {
-	expected := webclient.SecurityHeaders(path)
+func (v *verifier) headers(header http.Header, expected map[string]string, contentType, where string) error {
 	expected["Content-Type"] = contentType
 	expected["Vary"] = "Accept-Encoding"
 	for name, value := range expected {

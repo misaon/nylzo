@@ -335,9 +335,6 @@ export const messages: Catalog = {
   'transparency.stores.counters.title': 'Penghitung tanpa alamat',
   'transparency.stores.counters':
     'Jumlah harian pesan yang dibuat disimpan selama {days} setelah hari itu berakhir, sedangkan tantangan sekali pakai yang sudah digunakan hanya beberapa menit.',
-  'transparency.stores.visits.title': 'Kunjungan ke halaman utama',
-  'transparency.stores.visits':
-    'Jumlah total tampilan halaman utama per jam, tanpa cookie dan tanpa alamat IP. Angka ini membantu kami meningkatkan layanan dan menambah kapasitas server tepat waktu. Halaman pesan tidak ikut dihitung.',
   'transparency.stores.addresses.title': 'Alamat IP',
   'transparency.stores.addresses':
     'Tidak disimpan. Batas per alamat hanya disimpan di memori yang tidak pernah dipindahkan ke disk, dan dilupakan saat server dimulai ulang.',
@@ -384,12 +381,18 @@ export const messages: Catalog = {
   'transparency.others.client.title': 'Kode situs',
   'transparency.others.client':
     'Siapa pun yang mengambil alih server yang sedang berjalan hanya akan melihat catatan pesan yang sedang dibuka, tidak pernah isinya. Karena itu, di nylzo.com kami membandingkan kode situs dengan rilis yang ditandatangani setiap 30\u{A0}menit, dan jika ada perbedaan, layanan otomatis offline. Pemeriksaan ini mungkin tidak mendeteksi halaman yang ditukar khusus untuk satu orang, sehingga untuk data yang paling sensitif kami menyediakan aplikasi terverifikasi (nylzo web, nylzo open, dan alat baris perintah nylzo) yang menjalankan kode dari rilis yang ditandatangani.',
+  'transparency.others.analytics.title': 'Statistik pengunjung',
+  'transparency.others.analytics':
+    'Halaman utama nylzo.com memuat Cloudflare Web Analytics agar kami tahu berapa banyak orang yang berkunjung dan seberapa cepat halaman dimuat. Cloudflare menerima alamat halaman tanpa parameter, halaman asal Anda, versi browser dan sistem Anda, waktu muat, dan, seperti server mana pun, alamat IP Anda. Skrip ini tidak memakai cookie atau penyimpanan browser. Skrip ini punya sidik SHA-384 yang tetap, sehingga browser Anda hanya menjalankan versi yang sudah kami periksa. Halaman lain tidak memuatnya.',
   'transparency.personal.title': 'Data pribadi',
   'transparency.personal.controller.title': 'Pengendali data',
   'transparency.personal.controller': 'Pengendali data adalah operator yang disebutkan di bagian atas halaman ini.',
   'transparency.personal.basis.title': 'Mengapa dan atas dasar apa',
   'transparency.personal.basis':
     'Kami menyimpan pesan, menyerahkannya kepada penerima, dan menghapusnya karena pengirim memintanya. Batas, log, dan angka total kunjungan kami perlukan demi keamanan dan pengembangan layanan (Pasal\u{A0}6 ayat\u{A0}(1) huruf\u{A0}b dan\u{A0}f\u{A0}GDPR).',
+  'transparency.personal.processor.title': 'Pemroses data',
+  'transparency.personal.processor':
+    'Cloudflare, Inc. (AS) memproses statistik halaman utama atas nama operator dan tersertifikasi dalam EU-US Data Privacy Framework.',
   'transparency.personal.browser.title': 'Di browser Anda',
   'transparency.personal.browser':
     'Bahasa yang Anda pilih, data sementara selama pesan sedang dibuka, dan daftar Terkirim jika Anda memantau pesan. Semua itu diperlukan untuk fitur yang Anda minta, sehingga tidak memerlukan persetujuan.',
@@ -454,7 +457,7 @@ export const messages: Catalog = {
   'footer.agents': 'Untuk agen AI',
   'footer.about': 'Siapa di balik Nylzo',
   'footer.terms': 'Ketentuan Penggunaan',
-  'footer.note': 'Tanpa cookie, iklan, atau skrip pihak ketiga.',
+  'footer.note': 'Tanpa cookie atau iklan.',
   'footer.version': 'Versi klien web {version}',
 
   'hero.title': 'Rahasia yang {accent}',
@@ -798,7 +801,7 @@ export const messages: Catalog = {
   'tech.web.2': 'TypeScript dan JavaScript modern, di-build dan diuji dengan Bun',
   'tech.web.3': 'Setiap skrip dan stylesheet membawa sidik jari SHA-384, dan browser menolak file yang diubah',
   'tech.web.4': 'Web Crypto menyimpan kunci sehingga tidak bisa diekspor, ditambah Trusted Types dan CSP yang ketat',
-  'tech.web.5': 'Tanpa cookie, iklan, atau skrip dari server lain',
+  'tech.web.5': 'Tanpa cookie atau iklan, dan halaman pesan tidak memuat apa pun dari server lain',
   'tech.release.title': 'Pengembangan dan rilis',
   'tech.release.1': 'Setiap commit di branch utama ditandatangani',
   'tech.release.2': 'CodeQL, govulncheck, OSV-Scanner, Grype, dan golangci-lint memeriksa setiap perubahan',

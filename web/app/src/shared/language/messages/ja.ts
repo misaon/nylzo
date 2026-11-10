@@ -327,9 +327,6 @@ export const messages: Catalog = {
   'transparency.stores.counters.title': 'アドレスを含まないカウンター',
   'transparency.stores.counters':
     '作成されたメッセージの1日ごとの件数はその日の終了後{days}間、使用済みのワンタイムチャレンジは数分間だけ保持します。',
-  'transparency.stores.visits.title': 'トップページのアクセス数',
-  'transparency.stores.visits':
-    'トップページの表示回数を1時間ごとに合計したもので、Cookieを使わず、IPアドレスも含みません。サービスの改善と、サーバーを早めに増強するために役立てています。メッセージのページは計測の対象外です。',
   'transparency.stores.addresses.title': 'IPアドレス',
   'transparency.stores.addresses':
     '保存しません。アドレスごとの制限は、ディスクに書き出されることのないメモリ上にのみ保持し、再起動すると忘れます。',
@@ -376,12 +373,18 @@ export const messages: Catalog = {
   'transparency.others.client.title': 'サイトのコード',
   'transparency.others.client':
     '稼働中のサーバーを制御した人に見えるのは、その時点で開封中のメッセージの記録だけで、内容は決して見えません。そのためnylzo.comでは、サイトのコードを30分ごとに署名されたリリースと比較し、違いがあればサービスが自動的にオフラインになります。特定の1人だけを狙ってすり替えたページは、このチェックでは見抜けない可能性があります。そのため最も機密性の高いデータ向けに、署名されたリリースのコードを実行する検証済みアプリ（nylzo web、nylzo open、nylzoコマンドラインツール）を提供しています。',
+  'transparency.others.analytics.title': 'アクセス解析',
+  'transparency.others.analytics':
+    'nylzo.comのトップページは、訪問者数と表示速度を把握するためにCloudflare Web Analyticsを読み込みます。Cloudflareが受け取るのは、パラメーターを除いたページのアドレス、移動元のページ、ブラウザとOSのバージョン、読み込み時間、そしてほかのサーバーと同じくIPアドレスです。このスクリプトはCookieもブラウザのストレージも使いません。SHA-384の固定ハッシュで指定しているため、ブラウザは私たちが確認したバージョンしか実行しません。ほかのページでは読み込みません。',
   'transparency.personal.title': '個人データ',
   'transparency.personal.controller.title': '管理者',
   'transparency.personal.controller': 'データの管理者は、このページの上部に記載された運営者です。',
   'transparency.personal.basis.title': '目的と法的根拠',
   'transparency.personal.basis':
     '送信者の依頼に基づき、メッセージを保存し、受信者に渡し、削除します。制限、ログ、アクセス数の合計は、サービスの安全確保と発展のために必要です（GDPR第6条第1項(b)および(f)）。',
+  'transparency.personal.processor.title': '委託先',
+  'transparency.personal.processor':
+    'トップページのアクセス解析は、運営者の委託を受けてCloudflare, Inc.（米国）が処理します。CloudflareはEU-US Data Privacy Frameworkの認証を受けています。',
   'transparency.personal.browser.title': 'お使いのブラウザ内',
   'transparency.personal.browser':
     '選択した言語、メッセージの開封中に使う一時的なデータ、そしてメッセージを追跡している場合は「送信済み」の一覧。いずれもあなたが求める機能に必要なものであるため、同意は不要です。',
@@ -446,7 +449,7 @@ export const messages: Catalog = {
   'footer.agents': 'AIエージェント向け',
   'footer.about': 'Nylzoの開発者',
   'footer.terms': '利用規約',
-  'footer.note': 'Cookie、広告、外部のスクリプトは使いません。',
+  'footer.note': 'Cookieや広告は使いません。',
   'footer.version': 'Webクライアントのバージョン{version}',
 
   'hero.title': '{accent}秘密',
@@ -785,7 +788,7 @@ export const messages: Catalog = {
   'tech.web.2': 'TypeScriptとモダンなJavaScript、ビルドとテストはBun',
   'tech.web.3': 'すべてのスクリプトとスタイルシートにSHA-384ハッシュを付与し、改変されたファイルはブラウザが拒否',
   'tech.web.4': '鍵はWeb Cryptoがエクスポート不可の形で保持。さらにTrusted Typesと厳格なCSP',
-  'tech.web.5': 'Cookie、広告、外部サーバーのスクリプトは不使用',
+  'tech.web.5': 'Cookieと広告は不使用、メッセージのページは外部サーバーから何も読み込まない',
   'tech.release.title': '開発とリリース',
   'tech.release.1': 'メインブランチのコミットはすべて署名済み',
   'tech.release.2': 'すべての変更をCodeQL、govulncheck、OSV-Scanner、Grype、golangci-lintでチェック',

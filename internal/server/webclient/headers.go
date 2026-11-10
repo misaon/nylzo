@@ -11,7 +11,7 @@ import (
 
 const NonHTMLCSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; sandbox"
 
-const pagePolicyFormat = "default-src 'none'; script-src 'self'%s; style-src 'self'%s; connect-src 'self'; img-src 'self'; font-src 'self'; worker-src blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types nylzo-kdf"
+const pagePolicyFormat = "default-src 'none'; script-src 'self'%s; style-src 'self'%s; connect-src 'self'%s; img-src 'self'; font-src 'self'; worker-src blob:; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types nylzo-kdf%s"
 
 const statusPolicyFormat = "default-src 'none'; script-src %s; style-src 'self'%s; img-src 'self'; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'; require-trusted-types-for 'script'; trusted-types 'none'"
 
@@ -63,6 +63,14 @@ func SetSecurityHeaders(header http.Header, indexable bool) {
 	}
 	header.Set("Content-Security-Policy", NonHTMLCSP)
 }
+
+// The Cloudflare beacon asks for the platform version, and a denial would log a console error on every visit (D125).
+var analyticsPermissionsPolicy = strings.Replace(
+	securityHeaders["Permissions-Policy"],
+	"ch-ua-high-entropy-values=()",
+	"ch-ua-high-entropy-values=(self)",
+	1,
+)
 
 func isPreviewAgent(userAgent string) bool {
 	userAgent = strings.ToLower(userAgent)

@@ -49,7 +49,7 @@ Paste the link at the hidden prompt and press Enter. You can also pipe it in (`p
 
 ## What the local client does
 
-- It serves the web client embedded in the binary, with the same security headers and Content-Security-Policy as the instance.
+- It serves the web client embedded in the binary, with the same security headers and Content-Security-Policy as the instance, except the visit counting of the nylzo.com home pages: it loads nothing from another origin.
 - It listens on `127.0.0.1` and `[::1]` on a random port, under a new random name ending in `.localhost` for every session, and answers only requests for that exact name. A program that held the port earlier, and left a page or a service worker in the browser for it, cannot take the link, and a web page that rebinds its DNS name to your computer reaches nothing.
 - Chrome, Edge and Firefox keep names under `localhost` on your computer. Safari does so from macOS 26; on an older macOS the commands open no browser and ask you to use one of the others.
 - It sends only API calls to the instance, the way the command line does: without cookies, the page address or browser details. It accepts them only from its own pages.

@@ -341,9 +341,6 @@ export const messages: Catalog = {
   'transparency.stores.counters.title': 'Zähler ohne Adressen',
   'transparency.stores.counters':
     'Die täglichen Zahlen erstellter Nachrichten bewahrt er noch {days} nach Ende des Tages auf, verbrauchte Einmal-Aufgaben nur wenige Minuten.',
-  'transparency.stores.visits.title': 'Besuche der Startseite',
-  'transparency.stores.visits':
-    'Stündliche Gesamtzahlen der Aufrufe der Startseite, ohne Cookies und ohne IP-Adressen. Die Zahlen helfen uns, den Dienst zu verbessern und den Server rechtzeitig auszubauen. Seiten mit Nachrichten zählen wir nicht mit.',
   'transparency.stores.addresses.title': 'IP-Adressen',
   'transparency.stores.addresses':
     'Er speichert sie nicht. Limits pro Adresse hält er nur im Arbeitsspeicher, der nie auf den Datenträger ausgelagert wird, und vergisst sie beim Neustart.',
@@ -390,12 +387,18 @@ export const messages: Catalog = {
   'transparency.others.client.title': 'Code der Website',
   'transparency.others.client':
     'Wer den laufenden Server kontrollieren würde, sähe nur die Datensätze der Nachrichten, die gerade geöffnet werden, nie ihren Inhalt. Deshalb vergleichen wir auf nylzo.com den Code der Website alle 30\u{A0}Minuten mit dem signierten Release, und bei einer Abweichung geht der Dienst von selbst vom Netz. Wird einer einzelnen Person gezielt eine andere Seite untergeschoben, bemerkt die Prüfung das womöglich nicht. Für die sensibelsten Daten bieten wir daher verifizierte Apps an (nylzo web, nylzo open und das Kommandozeilenprogramm nylzo), die Code aus dem signierten Release ausführen.',
+  'transparency.others.analytics.title': 'Besucherstatistik',
+  'transparency.others.analytics':
+    'Die Startseiten von nylzo.com laden Cloudflare Web Analytics, damit wir wissen, wie viele Menschen kommen und wie schnell die Seite lädt. Cloudflare erhält die Seitenadresse ohne Parameter, die Seite, von der Sie kommen, die Versionen von Browser und Betriebssystem, die Ladezeiten und, wie jeder Server, Ihre IP-Adresse. Das Skript verwendet weder Cookies noch Browserspeicher. Es hat einen festen SHA-384-Fingerabdruck, sodass Ihr Browser nur die von uns geprüfte Version ausführt. Andere Seiten laden es nicht.',
   'transparency.personal.title': 'Personenbezogene Daten',
   'transparency.personal.controller.title': 'Verantwortlicher',
   'transparency.personal.controller': 'Verantwortlicher ist der oben auf dieser Seite genannte Betreiber.',
   'transparency.personal.basis.title': 'Wozu und auf welcher Grundlage',
   'transparency.personal.basis':
     'Wir speichern eine Nachricht, übergeben sie dem Empfänger und löschen sie, weil der Absender darum gebeten hat. Limits, Logs und die Gesamtzahlen der Besuche brauchen wir für die Sicherheit und die Weiterentwicklung des Dienstes (Art.\u{A0}6 Abs.\u{A0}1 lit.\u{A0}b und f DSGVO).',
+  'transparency.personal.processor.title': 'Auftragsverarbeiter',
+  'transparency.personal.processor':
+    'Die Besucherstatistik der Startseite verarbeitet Cloudflare, Inc. (USA) im Auftrag des Betreibers. Cloudflare ist nach dem EU-US Data Privacy Framework zertifiziert.',
   'transparency.personal.browser.title': 'In Ihrem Browser',
   'transparency.personal.browser':
     'Die gewählte Sprache, eine vorübergehende Angabe während des Öffnens einer Nachricht und die Liste unter Gesendet, wenn Sie eine Nachricht verfolgen. Das ist für Funktionen erforderlich, die Sie anfordern, und bedarf daher keiner Einwilligung.',
@@ -460,7 +463,7 @@ export const messages: Catalog = {
   'footer.agents': 'Für KI-Agenten',
   'footer.about': 'Wer hinter Nylzo steht',
   'footer.terms': 'Nutzungsbedingungen',
-  'footer.note': 'Ohne Cookies, Werbung und fremde Skripte.',
+  'footer.note': 'Ohne Cookies und Werbung.',
   'footer.version': 'Version des Web-Clients {version}',
 
   'hero.title': 'Ein Geheimnis, das sich {accent}',
@@ -807,7 +810,7 @@ export const messages: Catalog = {
     'Jedes Skript und Stylesheet trägt einen SHA-384-Fingerabdruck, eine veränderte Datei lehnt der Browser ab',
   'tech.web.4':
     'Web Crypto hält die Schlüssel so, dass sie sich nicht exportieren lassen, dazu Trusted Types und eine strenge CSP',
-  'tech.web.5': 'Ohne Cookies, Werbung und Skripte von fremden Servern',
+  'tech.web.5': 'Ohne Cookies und Werbung, Nachrichtenseiten laden nichts von fremden Servern',
   'tech.release.title': 'Entwicklung und Releases',
   'tech.release.1': 'Jeder Commit im Hauptzweig ist signiert',
   'tech.release.2': 'CodeQL, govulncheck, OSV-Scanner, Grype und golangci-lint prüfen jede Änderung',

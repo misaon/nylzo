@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-import { BASE_URL, POW_BASE_URL } from './tests/support/servers.ts';
+import { BASE_URL, OFFICIAL_BASE_URL, POW_BASE_URL } from './tests/support/servers.ts';
 
 const ci = Boolean(process.env['CI']);
 const crossBrowser = /@cross-browser/u;
@@ -29,5 +29,5 @@ export default defineConfig({
     { name: 'firefox', use: devices['Desktop Firefox'], grep: crossBrowser },
     { name: 'webkit', use: devices['Desktop Safari'], grep: crossBrowser },
   ],
-  webServer: [server(BASE_URL, 'default'), server(POW_BASE_URL, 'pow')],
+  webServer: [server(BASE_URL, 'default'), server(POW_BASE_URL, 'pow'), server(OFFICIAL_BASE_URL, 'official')],
 });

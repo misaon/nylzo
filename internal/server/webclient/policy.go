@@ -17,9 +17,20 @@ var (
 )
 
 // pagePolicy allows the inline scripts and styles of html by hash, so every response carries the same header.
-func pagePolicy(html string) string {
+func pagePolicy(html string, analytics bool) string {
 	hashes := inlineHashes(html)
-	return fmt.Sprintf(pagePolicyFormat, sourceList(hashes.scripts), sourceList(hashes.styles))
+	var connections, trustedTypes []string
+	if analytics {
+		hashes.scripts = append(hashes.scripts, analyticsScript)
+		connections, trustedTypes = []string{analyticsEndpoint}, []string{analyticsPolicy}
+	}
+	return fmt.Sprintf(
+		pagePolicyFormat,
+		sourceList(hashes.scripts),
+		sourceList(hashes.styles),
+		sourceList(connections),
+		sourceList(trustedTypes),
+	)
 }
 
 // StatusPolicy admits only the inline code of a status page, which loads no module, opens no connection and starts no worker.
