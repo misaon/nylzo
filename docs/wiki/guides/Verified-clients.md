@@ -23,7 +23,7 @@ Your browser does not send the part of the link after `#` to the server. The pag
 - WEBCAT works only in Firefox with its alpha extension ([WEBCAT FAQ](https://docs.webcat.tech/faq.html)).
 - Isolated Web Apps install only on managed ChromeOS devices ([Chrome for Developers](https://developer.chrome.com/docs/iwa/introduction)).
 
-`nylzo verify-client`, the hourly monitor and the signed release manifest find a changed client that the server sends to everyone. They cannot see what one browser received. The website serves the same bytes and the same Content-Security-Policy on every response, so it can join WEBCAT or WAICT once a browser enforces them.
+`nylzo verify-client`, the hourly monitor and the signed release manifest find a changed client that the server sends to everyone. They cannot see what one browser received. The website serves the same bytes and the same Content-Security-Policy on every response, so it can join WEBCAT or WAICT once a browser enforces them, except the nylzo.com home pages, which run Cloudflare's unpinned analytics beacon.
 
 ## Use the local client
 
