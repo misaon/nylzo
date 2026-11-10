@@ -8,7 +8,6 @@ interface LinkPart {
   readonly body: MessageKey;
   readonly tone: string;
   readonly bar: string;
-  readonly glow: string;
   readonly delays: { readonly text: string; readonly bar: string; readonly title: string; readonly meta: string };
 }
 
@@ -21,7 +20,6 @@ export const LINK_PARTS: readonly LinkPart[] = [
     body: 'how.link.host.body',
     tone: 'text-ink-soft',
     bar: 'bg-ink-soft/35',
-    glow: 'shadow-[0_0_8px_oklch(0.86_0.014_255/0.6)]',
     delays: {
       text: '[--reveal-delay:320ms]',
       bar: '[--reveal-delay:400ms]',
@@ -37,7 +35,6 @@ export const LINK_PARTS: readonly LinkPart[] = [
     body: 'how.link.meta.body',
     tone: 'text-solar-300',
     bar: 'bg-solar-300/35',
-    glow: 'shadow-[0_0_8px_oklch(0.86_0.12_85/0.7)]',
     delays: {
       text: '[--reveal-delay:470ms]',
       bar: '[--reveal-delay:550ms]',
@@ -53,7 +50,6 @@ export const LINK_PARTS: readonly LinkPart[] = [
     body: 'how.link.id.body',
     tone: 'text-rose-300',
     bar: 'bg-rose-400/35',
-    glow: 'shadow-[0_0_8px_oklch(0.8_0.08_350/0.8)]',
     delays: {
       text: '[--reveal-delay:620ms]',
       bar: '[--reveal-delay:700ms]',
@@ -69,7 +65,6 @@ export const LINK_PARTS: readonly LinkPart[] = [
     body: 'how.link.key.body',
     tone: 'text-aegis-300',
     bar: 'bg-aegis-300/35',
-    glow: 'shadow-[0_0_8px_oklch(0.77_0.115_249/0.7)]',
     delays: {
       text: '[--reveal-delay:770ms]',
       bar: '[--reveal-delay:850ms]',

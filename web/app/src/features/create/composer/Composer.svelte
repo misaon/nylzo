@@ -30,7 +30,12 @@
       before: 'before:bg-linear-to-r before:from-aegis-300/45 before:to-nebula-300/10',
     },
   ] as const;
-  const HERO_PROOFS = ['hero.proof.encrypted', 'hero.proof.cipher', 'hero.proof.tls', 'hero.proof.open'] as const;
+  const HERO_PROOFS = [
+    { key: 'hero.proof.encrypted', icon: 'lock' },
+    { key: 'hero.proof.cipher', icon: 'key' },
+    { key: 'hero.proof.tls', icon: 'atom' },
+    { key: 'hero.proof.open', icon: 'code' },
+  ] as const;
 </script>
 
 <svelte:window
@@ -126,14 +131,14 @@
   <ul
     role="list"
     aria-label={translate('hero.proof.label')}
-    class="mx-auto mt-6 flex max-w-column animate-rise flex-wrap justify-center gap-2 [animation-delay:280ms]"
+    class="glass-soft mx-auto mt-6 hidden w-fit animate-rise overflow-hidden rounded-full shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] [animation-delay:280ms] md:flex"
   >
-    {#each HERO_PROOFS as proof (proof)}
+    {#each HERO_PROOFS as proof (proof.key)}
       <li
-        class="inline-flex items-center gap-2 rounded-full bg-white/4 px-3 py-1.5 text-caption text-ink-soft ring-1 ring-white/10"
+        class="flex items-center gap-2.5 border-white/8 px-4 py-2 text-caption whitespace-nowrap text-ink-soft not-first:border-l"
       >
-        <Icon name="check" class="size-3.5 shrink-0 text-aegis-300" stroke={2} />
-        {translate(proof)}
+        <Icon name={proof.icon} class="size-4 shrink-0 text-aegis-300" />
+        <span>{translate(proof.key)}</span>
       </li>
     {/each}
   </ul>

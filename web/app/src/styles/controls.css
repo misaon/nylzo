@@ -218,6 +218,22 @@
   }
 }
 
+@utility button-tint-soft {
+  @apply button-tint;
+  background-color: oklch(0.56 0.19 258 / 0.14);
+  box-shadow:
+    inset 0 1px 0 oklch(1 0 0 / 0.09),
+    0 8px 18px -12px oklch(0.56 0.19 258 / 0.48);
+  &::before {
+    background: linear-gradient(
+      160deg,
+      oklch(0.86 0.06 246 / 0.4),
+      oklch(0.67 0.16 252 / 0.12) 55%,
+      oklch(0.8 0.1 305 / 0.24)
+    );
+  }
+}
+
 @utility button-danger {
   position: relative;
   isolation: isolate;

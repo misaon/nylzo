@@ -25,10 +25,6 @@ export const ICONS = {
     { path: 'M8 3.5v2M3.5 8h2M16 20.5v-2M20.5 16h-2' },
   ],
   burst: [{ path: 'M12 4v3M12 17v3M4 12h3M17 12h3M6.5 6.5l2 2M15.5 15.5l2 2M6.5 17.5l2-2M15.5 8.5l2-2' }],
-  camera: [
-    { path: 'M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z' },
-    { circle: [12, 13, 3.5] },
-  ],
   cancel: [clockFace, { path: 'M9 9l6 6M15 9l-6 6' }],
   caretDown: [{ path: 'M7 10l5 5 5-5' }],
   caution: [{ path: 'M12 4.5 3 19.5h18z' }, { path: 'M12 10v4M12 16.8h.01' }],
@@ -98,7 +94,6 @@ export const ICONS = {
     { rect: [18, 4, 3.5, 14.5, 1] },
     { path: 'M19.75 7.5h.01' },
   ],
-  heart: [{ path: 'M12 20s-7.5-4.4-7.5-10A4.3 4.3 0 0 1 12 7.2 4.3 4.3 0 0 1 19.5 10c0 5.6-7.5 10-7.5 10z' }],
   hash: [{ path: 'M5 9h14M5 15h14M10 4 8 20M16 4l-2 16' }],
   inbox: [
     { path: 'M3.5 13.5 6 5.5h12l2.5 8v5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z' },

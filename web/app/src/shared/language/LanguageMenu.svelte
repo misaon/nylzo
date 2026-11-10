@@ -103,7 +103,7 @@
     <ul
       role="listbox"
       aria-label={translate('language.list')}
-      class="-mx-0.5 grid max-h-[min(32rem,calc(100dvh-8rem))] gap-0.5 overflow-y-auto overscroll-contain px-0.5 py-0.5"
+      class="-mx-0.5 grid max-h-[min(32rem,calc(100dvh-8rem))] gap-1 overflow-y-auto overscroll-contain px-0.5 py-0.5"
     >
       {#each ORDER as language (language)}
         {const selected = $derived(language === current)}

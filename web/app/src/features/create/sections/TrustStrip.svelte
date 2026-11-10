@@ -3,7 +3,7 @@
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import type { IconName } from '../../../shared/ui/icon/icons.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
-  import { TRUST_LOGOS } from './trust-logos.ts';
+  import { TRUST_LOGO_GRID, TRUST_LOGOS } from './trust-logos.ts';
 
   const { translate } = getTranslator();
 
@@ -15,14 +15,13 @@
     { icon: 'key', name: 'HKDF-SHA-256' },
     { icon: 'pen', name: 'Ed25519' },
   ];
-  const tools: readonly { readonly icon: IconName; readonly name: string }[] = [
-    { icon: 'server', name: 'Flatcar' },
-    { icon: 'lock', name: "Let's Encrypt" },
-    { icon: 'shieldCheck', name: 'Sigstore' },
-    { icon: 'gauge', name: 'OpenSSF' },
-    { icon: 'download', name: 'Scoop' },
-    { icon: 'terminal', name: 'mise' },
-  ];
+  const TONE_STOPS = [
+    ['#98D5FF', '#7AA7F4', '#B4A0F2'],
+    ['#77A7CA', '#6083C1', '#8D7EC0'],
+    ['#597D99', '#486393', '#695E92'],
+    ['#3E586E', '#324569', '#494269'],
+  ] as const;
+  const STOP_OFFSETS = [0, 0.52, 1] as const;
   const license: { readonly icon: IconName; readonly name: string } = $derived({
     icon: 'document',
     name: translate('trust.license'),
@@ -45,10 +44,31 @@
   <svg class="absolute size-0" aria-hidden="true" focusable="false">
     <defs>
       <linearGradient id="trust-tone" x1="0" y1="0" x2="1" y2="1">
-        <stop stop-color="#98D5FF"></stop>
-        <stop offset=".52" stop-color="#7AA7F4"></stop>
-        <stop offset="1" stop-color="#B4A0F2"></stop>
+        {#each TONE_STOPS[0] as color, index (color)}
+          <stop offset={STOP_OFFSETS[index]} stop-color={color}></stop>
+        {/each}
       </linearGradient>
+      {#each TONE_STOPS as stops, tone (stops)}
+        <linearGradient
+          id={`trust-logo-tone-${tone}`}
+          gradientUnits="userSpaceOnUse"
+          x1="0"
+          y1="0"
+          x2={TRUST_LOGO_GRID}
+          y2={TRUST_LOGO_GRID}
+        >
+          {#each stops as color, index (color)}
+            <stop offset={STOP_OFFSETS[index]} stop-color={color}></stop>
+          {/each}
+        </linearGradient>
+      {/each}
+      {#each TRUST_LOGOS as logo (logo.id)}
+        <g id={`trust-logo-${logo.id}`}>
+          {#each logo.shapes as shape (shape.path)}
+            <path d={shape.path} fill={`url(#trust-logo-tone-${shape.tone ?? 0})`}></path>
+          {/each}
+        </g>
+      {/each}
     </defs>
   </svg>
   <p class="reveal-focus text-center text-caption text-balance text-ink-mute">{translate('trust.title')}</p>
@@ -69,20 +89,16 @@
             <li class="flex items-center gap-3 text-title whitespace-nowrap text-ink-soft">
               <svg
                 class={[logo.size, 'shrink-0']}
-                viewBox="0 0 24 24"
-                fill="url(#trust-tone)"
+                viewBox={`0 0 ${TRUST_LOGO_GRID} ${TRUST_LOGO_GRID}`}
                 role={logo.labelOnly ? 'img' : undefined}
                 aria-label={logo.labelOnly ? logo.name : undefined}
                 aria-hidden={logo.labelOnly ? undefined : 'true'}
                 focusable="false"
               >
-                <path d={logo.path}></path>
+                <use href={`#trust-logo-${logo.id}`}></use>
               </svg>
               {#if !logo.labelOnly}{logo.name}{/if}
             </li>
-          {/each}
-          {#each tools as item (item.name)}
-            {@render glyph(item)}
           {/each}
           {@render glyph(license)}
         </ul>

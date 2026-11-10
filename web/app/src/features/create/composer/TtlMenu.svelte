@@ -30,7 +30,7 @@
   class="sm:w-64"
 >
   <p class="px-3 pt-1.5 pb-1 text-caption text-ink-mute">{title}</p>
-  <div class="grid gap-0.5">
+  <div class="grid gap-1">
     {#each composer.ttlOptions as seconds, index (seconds)}
       {const selected = $derived(composer.ttlSeconds === seconds)}
       <button
