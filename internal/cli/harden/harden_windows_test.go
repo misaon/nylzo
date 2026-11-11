@@ -10,6 +10,7 @@ import (
 // TestProtectHidesTheProcessFromTheSameUser covers F07: another process of the same user can still wait for and end
 // a protected process, but can neither read its memory nor change its DACL to grant itself that right.
 func TestProtectHidesTheProcessFromTheSameUser(t *testing.T) {
+	dropPrivileges(t)
 	plain, _ := startChild(t, "plain")
 	if err := open(plain.Process.Pid, windows.PROCESS_VM_READ); err != nil {
 		t.Skipf("this host denies memory reads of an unprotected child already: %v", err)
@@ -35,6 +36,36 @@ func TestProtectHidesTheProcessFromTheSameUser(t *testing.T) {
 			t.Errorf("access %#x to the protected child: want access denied, got %v", access, err)
 		}
 	}
+	if t.Failed() {
+		t.Log("DACL of the protected child:", dacl(child.Process.Pid))
+	}
+}
+
+// dropPrivileges disables every privilege of the test process: the runner's administrator token enables
+// SeDebugPrivilege, which opens any process whatever its DACL, and the test must see what a normal process sees.
+func dropPrivileges(t *testing.T) {
+	t.Helper()
+	var token windows.Token
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_ADJUST_PRIVILEGES, &token); err != nil {
+		t.Fatal(err)
+	}
+	defer token.Close()
+	if err := windows.AdjustTokenPrivileges(token, true, nil, 0, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func dacl(pid int) string {
+	handle, err := windows.OpenProcess(windows.READ_CONTROL, false, uint32(pid))
+	if err != nil {
+		return err.Error()
+	}
+	defer windows.CloseHandle(handle)
+	descriptor, err := windows.GetSecurityInfo(handle, windows.SE_KERNEL_OBJECT, windows.DACL_SECURITY_INFORMATION)
+	if err != nil {
+		return err.Error()
+	}
+	return descriptor.String()
 }
 
 func open(pid int, access uint32) error {
