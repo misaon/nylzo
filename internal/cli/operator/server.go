@@ -297,6 +297,11 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	if err != nil {
 		return err
 	}
+	release, err := datadir.Hold(settings.DataDirectory)
+	if err != nil {
+		return err
+	}
+	defer release()
 	if prepareErr := prepareProcess(&settings, logger); prepareErr != nil {
 		return prepareErr
 	}

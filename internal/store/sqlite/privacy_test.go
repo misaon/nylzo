@@ -180,7 +180,7 @@ func TestTheLogKeepsNoOlderRowVersionAfterAWrite(t *testing.T) {
 	}
 	hits := make([]store.RateHit, 0, 300)
 	for i := range cap(hits) {
-		hits = append(hits, store.RateHit{Key: fmt.Sprintf("challenge:%03d", i), PurgeAt: testNow.Add(time.Hour)})
+		hits = append(hits, store.RateHit{Key: fmt.Sprintf("counter:%03d", i), PurgeAt: testNow.Add(time.Hour)})
 	}
 	if _, err := storage.RateHit(t.Context(), hits); err != nil {
 		t.Fatal(err)
@@ -291,8 +291,6 @@ func TestPreparedStatementsReleaseTheLog(t *testing.T) {
 	_, err = storage.RateHit(ctx, []store.RateHit{hit})
 	errs = append(errs, err)
 	_, err = storage.RateReserve(ctx, hit)
-	errs = append(errs, err)
-	_, err = storage.RateReserveBatch(ctx, []store.RateHit{hit})
 	errs = append(errs, err)
 	if err = errors.Join(errs...); err != nil {
 		t.Fatal(err)

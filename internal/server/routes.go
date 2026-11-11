@@ -58,7 +58,7 @@ func (s *Server) routes() http.Handler {
 		s.noticeForwarded(securityHeaders(crossorigin.Guard(
 			s.settings.PublicURL,
 			http.HandlerFunc(refuseCrossOrigin),
-			s.spendChallenges(prefetchGuard(s.throttle(routed))),
+			s.seeChallenges(prefetchGuard(s.throttle(routed))),
 		))),
 	)),
 	)
@@ -114,20 +114,12 @@ func (s *Server) noticeForwarded(next http.Handler) http.Handler {
 
 type spentKey struct{}
 
-// spendChallenges spends a signed request's challenge before any other check, whatever the answer will be.
-func (s *Server) spendChallenges(next http.Handler) http.Handler {
+// seeChallenges uses up a signed request's challenge after the cross-origin gate and before any other check, so no
+// answer leaves it usable.
+func (s *Server) seeChallenges(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
-		if !isAPI(r) || err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		spent, err := s.challenges.Spend(r.Context(), signature.Challenge, time.Now())
-		if err != nil {
-			s.writeInternal(w, r, err)
-			return
-		}
-		if spent {
+		if isAPI(r) && err == nil && s.challenges.See(signature.Challenge, time.Now()) {
 			r = r.WithContext(context.WithValue(r.Context(), spentKey{}, &signature.Challenge))
 		}
 		next.ServeHTTP(w, r)

@@ -47,7 +47,6 @@ var contracts = []contract{
 	{"SweepPurgesInBatches", (*fixture).sweepPurgesInBatches},
 	{"Reconcile", (*fixture).reconcile},
 	{"RateReserveIsAtomic", (*fixture).rateReserveIsAtomic},
-	{"RateReserveBatch", (*fixture).rateReserveBatch},
 	{"RateHitIsAtomic", (*fixture).rateHitIsAtomic},
 	{"CreateCountsWithTheRow", (*fixture).createCountsWithTheRow},
 	{"BlobsPutOpenDelete", (*fixture).blobsPutOpenDelete},

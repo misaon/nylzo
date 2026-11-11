@@ -39,7 +39,7 @@ func (f *Fair) Allow(addressRange Bucket, now time.Time) bool {
 	unpressed := f.tokens >= max(1, f.burst/2)
 	state, tracked := f.ranges[addressRange]
 	if !tracked && len(f.ranges) >= maxTableEntries {
-		Trim(f.ranges, maxTableEntries, func(state paced) bool { return !counts(state, now) })
+		trim(f.ranges, maxTableEntries, func(state paced) bool { return !counts(state, now) })
 	}
 	state.seen = now
 	f.ranges[addressRange] = state
@@ -55,14 +55,14 @@ func (f *Fair) Allow(addressRange Bucket, now time.Time) bool {
 func (f *Fair) Purge(now time.Time) {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
-	f.ranges = rebuilt(f.ranges, func(state paced) bool { return counts(state, now) })
+	f.ranges = Rebuilt(f.ranges, func(state paced) bool { return counts(state, now) })
 	f.pruned = now
 }
 
 func (f *Fair) Reset() {
 	f.mutex.Lock()
 	defer f.mutex.Unlock()
-	f.ranges = rebuilt(f.ranges, func(paced) bool { return false })
+	f.ranges = Rebuilt(f.ranges, func(paced) bool { return false })
 }
 
 func (f *Fair) take(allowed bool) bool {

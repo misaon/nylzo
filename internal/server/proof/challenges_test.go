@@ -1,238 +1,117 @@
 package proof
 
 import (
-	"context"
-	"encoding/hex"
-	"errors"
-	"slices"
-	"strconv"
-	"sync"
-	"sync/atomic"
+	"math"
 	"testing"
-	"testing/synctest"
 	"time"
-
-	"github.com/misaon/nylzo/internal/store"
 )
 
-func spendHit(key string) store.RateHit {
-	return store.RateHit{
-		Key:         challengeSpentKey + key,
-		WindowStart: time.Unix(0, 0),
-		PurgeAt:     time.Unix(4102444800, 0),
-		Limit:       1,
-	}
-}
-
-type failingSpends struct {
-	store.Store
-
-	fail atomic.Bool
-}
-
-func (s *failingSpends) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
-	if s.fail.Load() {
-		return nil, errors.New("test: the store is down")
-	}
-	return s.Store.RateReserveBatch(ctx, hits)
-}
-
-type panicOnce struct {
-	store.Store
-
-	panicked atomic.Bool
-}
-
-func (p *panicOnce) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
-	if !p.panicked.Swap(true) {
-		panic("test: the store driver panicked")
-	}
-	return p.Store.RateReserveBatch(ctx, hits)
-}
-
-type gatedSpends struct {
-	store.Store
-
-	gate    chan struct{}
-	mutex   sync.Mutex
-	batches []int
-}
-
-func (s *gatedSpends) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
-	s.mutex.Lock()
-	first := len(s.batches) == 0
-	s.batches = append(s.batches, len(hits))
-	s.mutex.Unlock()
-	if first {
-		<-s.gate
-	}
-	return s.Store.RateReserveBatch(ctx, hits)
-}
-
-func (s *gatedSpends) calls() []int {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return slices.Clone(s.batches)
-}
-
-func TestChallengesAreSpentOnceWithinTheirWindow(t *testing.T) {
+func TestChallengesAreUsedOnceWithinTheirWindow(t *testing.T) {
 	t.Parallel()
-	challenges := NewChallenges(testRing(t), openStore(t))
 	now := time.Now()
+	challenges := NewChallenges(testRing(t), MinCapacity)
 	for _, testCase := range []struct {
-		issued time.Time
-		spent  bool
+		issued   time.Time
+		accepted bool
 	}{
 		{now, true},
 		{now.Add(5 * time.Second), true},
 		{now.Add(6 * time.Second), false},
 		{now.Add(-challengeTTL - time.Second), false},
 	} {
-		challenge, _ := challenges.Issue(testCase.issued)
-		if spent, err := challenges.Spend(t.Context(), challenge, now); err != nil || spent != testCase.spent {
-			t.Fatalf("a challenge issued %v from now: spent %v %v", testCase.issued.Sub(now), spent, err)
+		challenge, _, _ := challenges.Issue(testCase.issued)
+		if accepted := challenges.See(challenge, now); accepted != testCase.accepted {
+			t.Fatalf("a challenge issued %v from now: accepted %v", testCase.issued.Sub(now), accepted)
 		}
 	}
-	challenge, _ := challenges.Issue(now)
-	challenge[len(challenge)-1] ^= 1
-	if spent, err := challenges.Spend(t.Context(), challenge, now); err != nil || spent {
-		t.Fatalf("a challenge with a wrong tag was spent: %v", err)
+	challenge, _, _ := challenges.Issue(now)
+	forged := challenge
+	forged[len(forged)-1] ^= 1
+	if challenges.See(forged, now) {
+		t.Fatal("a challenge with a wrong tag was accepted")
 	}
-	other := NewChallenges(testRing(t), challenges.batches.counters)
-	repeated, _ := challenges.Issue(now)
-	if spent, err := challenges.Spend(t.Context(), repeated, now); err != nil || !spent {
-		t.Fatalf("first spend: %v", err)
+	if !challenges.See(challenge, now) {
+		t.Fatal("a forged copy used up the genuine challenge")
 	}
-	if spent, err := other.Spend(t.Context(), repeated, now); err != nil || spent {
-		t.Fatalf("another instance spent the same challenge again: %v", err)
+	if challenges.See(challenge, now) {
+		t.Fatal("the process accepted a challenge it had seen")
+	}
+	early, _, _ := challenges.Issue(now.Add(6 * time.Second))
+	challenges.See(early, now)
+	if challenges.See(early, now.Add(time.Second)) {
+		t.Fatal("a challenge refused for its window was accepted once the clock caught up")
 	}
 }
 
-func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
+func TestAProcessAcceptsOnlyChallengesItIssuedAndStillHolds(t *testing.T) {
 	t.Parallel()
-	storage := openStore(t)
-	failing := &failingSpends{Store: storage}
-	failing.fail.Store(true)
-	challenges := NewChallenges(testRing(t), failing)
 	now := time.Now()
-	challenge, _ := challenges.Issue(now)
-	if _, err := challenges.Spend(t.Context(), challenge, now); err == nil {
-		t.Fatal("a spend the store could not record succeeded")
+	earlier := NewChallenges(testRing(t), MinCapacity)
+	challenges := NewChallenges(testRing(t), MinCapacity)
+	fromEarlier, _, _ := earlier.Issue(now)
+	if challenges.See(fromEarlier, now) {
+		t.Fatal("a process accepted a challenge that another process issued")
 	}
-	failing.fail.Store(false)
-	if spent, err := challenges.Spend(t.Context(), challenge, now); err != nil || spent {
-		t.Fatalf("the same process accepted the challenge after a failed spend: %v %v", spent, err)
+	behind := now.Add(-10 * time.Second)
+	own, _, _ := challenges.Issue(behind)
+	if !challenges.See(own, behind) {
+		t.Fatal("a process refused its own challenge after its clock stepped back")
 	}
-	key := challengeSpentKey + hex.EncodeToString(challenge[4:challengeSignedEnd])
-	if counter, err := storage.RateGet(t.Context(), key, time.Unix(0, 0)); err != nil || counter.Count != 0 {
-		t.Fatal("the repeat reached the store although the process had seen the nonce")
+	expired, _, _ := challenges.Issue(now)
+	ahead, _, _ := challenges.Issue(now.Add(time.Hour))
+	live, _, _ := challenges.Issue(now.Add(challengeTTL))
+	challenges.Purge(now.Add(challengeTTL + clockSkew + time.Second))
+	if challenges.See(expired, now) {
+		t.Fatal("a challenge the purge dropped was accepted after the clock stepped back")
 	}
-}
-
-func TestSeenNoncesStayBounded(t *testing.T) {
-	t.Parallel()
-	seen := newSeenNonces()
-	seen.maxEntries = 64
-	for i := range seen.maxEntries {
-		seen.remember(nonce{byte(i)}, 100, 100)
+	if challenges.See(ahead, now.Add(time.Hour)) {
+		t.Fatal("a challenge issued by a clock that later stepped back was kept by the purge")
 	}
-	if !seen.remember(nonce{1}, 100, 100) {
-		t.Fatal("a remembered nonce was not reported as seen")
-	}
-	seen.remember(nonce{0xff, 1}, 1000, 1000)
-	if len(seen.expires) != 1 {
-		t.Fatalf("expired nonces were kept: %d", len(seen.expires))
-	}
-	for i := range 4 * seen.maxEntries {
-		seen.remember(nonce{byte(i), byte(i >> 8), 2}, 2000, 1000)
-	}
-	if len(seen.expires) > seen.maxEntries {
-		t.Fatalf("the nonce memory grew past its bound: %d", len(seen.expires))
+	if !challenges.See(live, now.Add(challengeTTL)) {
+		t.Fatal("the purge dropped a challenge whose window was open")
 	}
 }
 
-func TestASpendPanicFailsOnlyItsBatch(t *testing.T) {
+func TestAFullTableMakesRoomForNewChallenges(t *testing.T) {
 	t.Parallel()
-	batcher := newSpendBatcher(&panicOnce{Store: openStore(t)})
-	if _, err := batcher.reserve(t.Context(), new(spendHit("a"))); !errors.Is(err, errSpendAborted) {
-		t.Fatalf("a batch whose write panicked: %v", err)
+	now := time.Now()
+	challenges := NewChallenges(testRing(t), 2)
+	challenges.Issue(now)
+	challenges.Issue(now)
+	if _, _, issued := challenges.Issue(now); issued {
+		t.Fatal("a process issued more challenges than it may hold")
 	}
-	if _, err := batcher.reserve(t.Context(), new(spendHit("b"))); err != nil {
-		t.Fatalf("the next batch failed: %v", err)
+	later := now.Add(challengeTTL + clockSkew + time.Second)
+	if _, _, issued := challenges.Issue(later); !issued {
+		t.Fatal("a full table of expired challenges refused a new one")
+	}
+	used, _, _ := challenges.Issue(later)
+	if !challenges.See(used, later) {
+		t.Fatal("a held challenge was refused")
+	}
+	if _, _, issued := challenges.Issue(later); !issued {
+		t.Fatal("a used challenge kept its place in the table")
 	}
 }
 
-func TestConcurrentSpendsShareATransaction(t *testing.T) {
+func TestCapacityHoldsTwiceWhatTheInstanceBucketCanIssue(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		gated := &gatedSpends{Store: openStore(t), gate: make(chan struct{})}
-		batcher := newSpendBatcher(gated)
-		var spends sync.WaitGroup
-		var granted atomic.Int64
-		reserve := func(key string) {
-			spends.Go(func() {
-				reserved, err := batcher.reserve(t.Context(), new(spendHit(key)))
-				if err != nil {
-					t.Error(err)
-				}
-				if reserved {
-					granted.Add(1)
-				}
-			})
+	for _, testCase := range []struct {
+		perSecond, burst float64
+		capacity         int
+	}{
+		{500, 1000, MinCapacity},
+		{2000, 2000, 2 * (2000*126 + 2000)},
+		{1e300, 1e300, math.MaxInt32},
+	} {
+		if capacity := Capacity(testCase.perSecond, testCase.burst); capacity != testCase.capacity {
+			t.Errorf(
+				"rate %g burst %g: capacity %d, want %d",
+				testCase.perSecond,
+				testCase.burst,
+				capacity,
+				testCase.capacity,
+			)
 		}
-		reserve("first")
-		synctest.Wait()
-		if calls := gated.calls(); len(calls) != 1 {
-			t.Fatalf("the first spend did not start writing: %v", calls)
-		}
-		const pairs = 300
-		for i := range 2 * pairs {
-			reserve(strconv.Itoa(i % pairs))
-		}
-		synctest.Wait()
-		close(gated.gate)
-		spends.Wait()
-		if granted.Load() != pairs+1 {
-			t.Fatalf("%d spends succeeded, want one per distinct nonce (%d)", granted.Load(), pairs+1)
-		}
-		want := []int{1, maxSpendBatch, maxSpendBatch, 2*pairs - 2*maxSpendBatch}
-		if calls := gated.calls(); !slices.Equal(calls, want) {
-			t.Fatalf("spends written as transactions of %v", calls)
-		}
-	})
-}
-
-func TestSpendWaitersStopWhenTheirClientLeaves(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		gated := &gatedSpends{Store: openStore(t), gate: make(chan struct{})}
-		batcher := newSpendBatcher(gated)
-		go batcher.reserve(t.Context(), new(spendHit("writing")))
-		synctest.Wait()
-		go batcher.reserve(t.Context(), new(spendHit("next")))
-		synctest.Wait()
-		ctx, cancel := context.WithCancel(t.Context())
-		result := make(chan error, 1)
-		go func() {
-			_, err := batcher.reserve(ctx, new(spendHit("follower")))
-			result <- err
-		}()
-		synctest.Wait()
-		cancel()
-		synctest.Wait()
-		select {
-		case err := <-result:
-			if !errors.Is(err, context.Canceled) {
-				t.Fatalf("a waiter whose client left: %v", err)
-			}
-		default:
-			t.Fatal("a waiter whose client left kept waiting for a stalled write")
-		}
-		close(gated.gate)
-		synctest.Wait()
-		counter, err := gated.RateGet(t.Context(), challengeSpentKey+"follower", time.Unix(0, 0))
-		if err != nil || counter.Count != 1 {
-			t.Fatalf("the spend of a client that left was not written: %+v %v", counter, err)
-		}
-	})
+	}
 }

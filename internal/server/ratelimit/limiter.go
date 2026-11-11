@@ -61,7 +61,7 @@ func (l *Limiter) Purge(now time.Time) {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 	second := l.second(now)
-	l.buckets = rebuilt(l.buckets, func(bucket tokenBucket) bool {
+	l.buckets = Rebuilt(l.buckets, func(bucket tokenBucket) bool {
 		return l.refilled(bucket, second).tokens < l.burst
 	})
 }
@@ -69,7 +69,7 @@ func (l *Limiter) Purge(now time.Time) {
 func (l *Limiter) Reset() {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
-	l.buckets = rebuilt(l.buckets, func(tokenBucket) bool { return false })
+	l.buckets = Rebuilt(l.buckets, func(tokenBucket) bool { return false })
 }
 
 func (l *Limiter) second(now time.Time) int64 {
@@ -85,12 +85,12 @@ func (l *Limiter) refilled(bucket tokenBucket, second int64) tokenBucket {
 }
 
 func (l *Limiter) trim(second int64) {
-	Trim(l.buckets, l.maxEntries, func(bucket tokenBucket) bool { return l.refilled(bucket, second).tokens >= l.burst })
+	trim(l.buckets, l.maxEntries, func(bucket tokenBucket) bool { return l.refilled(bucket, second).tokens >= l.burst })
 }
 
-// rebuilt copies the entries to keep into a new map and drops the old one, because a deleted slot keeps its key
+// Rebuilt copies the entries to keep into a new map and drops the old one, because a deleted slot keeps its key
 // bytes in the map's memory; under secret mode the dropped map is erased once the collector finds it unreachable.
-func rebuilt[K comparable, V any](table map[K]V, keep func(V) bool) map[K]V {
+func Rebuilt[K comparable, V any](table map[K]V, keep func(V) bool) map[K]V {
 	kept := make(map[K]V, len(table))
 	for key, value := range table {
 		if keep(value) {
@@ -101,7 +101,7 @@ func rebuilt[K comparable, V any](table map[K]V, keep func(V) bool) map[K]V {
 	return kept
 }
 
-func Trim[K comparable, V any](table map[K]V, limit int, expired func(V) bool) {
+func trim[K comparable, V any](table map[K]V, limit int, expired func(V) bool) {
 	maps.DeleteFunc(table, func(_ K, value V) bool { return expired(value) })
 	// Map iteration order picks the dropped entries at random.
 	for key := range table {

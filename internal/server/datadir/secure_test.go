@@ -56,3 +56,21 @@ func TestSecureNarrowsWiderModesAndRefusesSymlinks(t *testing.T) {
 		t.Fatalf("a symbolic link in blobs: %v", err)
 	}
 }
+
+func TestHoldLetsOneProcessServeADataDirectory(t *testing.T) {
+	t.Parallel()
+	directory := filepath.Join(t.TempDir(), "data")
+	release, err := Hold(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = Hold(directory); !errors.Is(err, ErrServed) {
+		t.Fatalf("a second hold on a served data directory: %v", err)
+	}
+	release()
+	release, err = Hold(directory)
+	if err != nil {
+		t.Fatalf("a hold after the release: %v", err)
+	}
+	release()
+}

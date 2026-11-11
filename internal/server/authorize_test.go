@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -26,6 +25,7 @@ import (
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -266,16 +266,6 @@ func badSignature(seed *[core.SeedLen]byte, purpose, method, path string, challe
 	signature := signing.SignRequest(seed, purpose, method, path, challenge, nil, signing.Components{})
 	signature.Value[0] ^= 1
 	return signature.Authorization()
-}
-
-func openDB(t *testing.T, harness *testHarness) *sql.DB {
-	t.Helper()
-	database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.directory, "nylzo.db"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { database.Close() })
-	return database
 }
 
 func abuseLines(t *testing.T, harness *testHarness, id core.ID) int {
@@ -588,6 +578,31 @@ func TestChallengeWindowAndRotation(t *testing.T) {
 	})
 }
 
+func TestAFullChallengeTableAnswers503(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		harness.server.challenges = proof.NewChallenges(harness.server.ring, 1)
+		request := &testRequest{method: http.MethodGet, path: "/api/v1/challenge"}
+		if response, _ := harness.do(request); response.StatusCode != http.StatusOK {
+			t.Fatalf("the first challenge: %d", response.StatusCode)
+		}
+		if response, body := harness.do(request); response.StatusCode != http.StatusServiceUnavailable ||
+			response.Header.Get("Retry-After") != "60" || decodeJSON(t, body)["error"] != "unavailable" {
+			t.Fatalf(
+				"a challenge beyond the capacity: %d %q %s",
+				response.StatusCode,
+				response.Header.Get("Retry-After"),
+				body,
+			)
+		}
+		synctest.Sleep(time.Minute + 6*time.Second)
+		if response, _ := harness.do(request); response.StatusCode != http.StatusOK {
+			t.Fatalf("a challenge after the held one expired: %d", response.StatusCode)
+		}
+	})
+}
+
 func TestSignedEndpointsRequireAnEmptyBody(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -621,49 +636,6 @@ func TestSignedEndpointsRequireAnEmptyBody(t *testing.T) {
 		}
 		if _, status := harness.status(message); status["state"] != "available" || status["opens_used"] != 0.0 {
 			t.Fatalf("requests with a body changed the message: %v", status)
-		}
-	})
-}
-
-func TestSpentChallengesExpire(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		message := newMessage(t, core.KDFNone, "", 1, 3600, "sweep")
-		harness.mustCreate(message)
-		path := "/api/v1/messages/" + message.id.String()
-		challenge := harness.challenge()
-		if response, _ := harness.do(
-			signedRequest(&message.link.R, signing.PurposeRead, "GET", path, challenge, nil),
-		); response.StatusCode != http.StatusOK {
-			t.Fatalf("metadata: %d", response.StatusCode)
-		}
-		spentRows := func() int {
-			t.Helper()
-			database := openDB(t, harness)
-			var rows int
-			if err := database.QueryRow(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%'`).
-				Scan(&rows); err != nil {
-				t.Fatal(err)
-			}
-			return rows
-		}
-		if spentRows() != 1 {
-			t.Fatal("a passed request must record its challenge")
-		}
-		synctest.Sleep(time.Minute)
-		if _, err := harness.server.sweepOnce(t.Context()); err != nil {
-			t.Fatal(err)
-		}
-		if spentRows() != 1 {
-			t.Fatal("a sweep dropped a challenge that could still be replayed by a slower instance")
-		}
-		synctest.Sleep(2 * time.Minute)
-		if _, err := harness.server.sweepOnce(t.Context()); err != nil {
-			t.Fatal(err)
-		}
-		if spentRows() != 0 {
-			t.Fatal("the sweep kept a spent challenge after it expired")
 		}
 	})
 }
@@ -740,6 +712,13 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 				claim.address = observer
 				if response, _ := harness.do(claim); response.StatusCode != http.StatusNotFound {
 					t.Fatalf("a recorded claim that the server turned away was accepted later: %d", response.StatusCode)
+				}
+				harness.reopen(&harness.settings)
+				if response, _ := harness.do(claim); response.StatusCode != http.StatusNotFound {
+					t.Fatalf(
+						"a recorded claim that the server turned away was accepted after a restart: %d",
+						response.StatusCode,
+					)
 				}
 				if record, err := harness.record(message); err != nil || record.Message.OpensRemaining != 1 {
 					t.Fatalf("the replay spent an open: %+v %v", record.Message, err)
@@ -998,7 +977,7 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 		}
 	}
 	testRequest := func(publicKey *[signing.PublicKeyLen]byte) *http.Request {
-		challenge, _ := server.challenges.Issue(time.Now())
+		challenge, _, _ := server.challenges.Issue(time.Now())
 		signature := signing.SignRequest(
 			core.NewSecret(),
 			signing.PurposeRead,
@@ -1045,46 +1024,6 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 	// uniform work for every failed key is the contract under test (spec §5.5)
 	if wrongMedian, offCurveMedian := median(wrong), median(off); offCurveMedian*130 < wrongMedian*100 {
 		t.Fatalf("a key that fails the key check is answered in %s, a wrong key in %s", offCurveMedian, wrongMedian)
-	}
-}
-
-type failingSpends struct {
-	store.Store
-
-	fail bool
-}
-
-func (s *failingSpends) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
-	if s.fail {
-		return nil, errors.New("test: the store is down")
-	}
-	return s.Store.RateReserveBatch(ctx, hits)
-}
-
-func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
-	t.Parallel()
-	harness := newHarness(t, baseSettings(pepperA, nil))
-	failing := &failingSpends{Store: harness.store, fail: true}
-	harness.store = failing
-	harness.reopen(&harness.settings)
-	server := harness.server
-	path := "/api/v1/messages/" + core.NewID().String()
-	challenge, _ := server.challenges.Issue(time.Now())
-	authorization := signing.SignRequest(core.NewSecret(), signing.PurposeRead, "GET", path, challenge, nil, signing.Components{}).
-		Authorization()
-	send := func() int {
-		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
-		r.Header.Set("Authorization", authorization)
-		recorder := httptest.NewRecorder()
-		server.handler.ServeHTTP(recorder, r)
-		return recorder.Code
-	}
-	if code := send(); code != http.StatusInternalServerError {
-		t.Fatalf("a spend the store could not record: %d", code)
-	}
-	failing.fail = false
-	if code := send(); code != http.StatusNotFound {
-		t.Fatalf("the same process accepted the challenge after a failed spend: %d", code)
 	}
 }
 
