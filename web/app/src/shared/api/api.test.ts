@@ -219,9 +219,10 @@ describe('api client', () => {
     expect(request.headers.get('X-Nylzo-Verifier')).toBeNull();
   });
 
-  it('burns with R and cancels and reads the status with M, each without a body', async () => {
+  it('burns with R and V and cancels and reads the status with M, each without a body', async () => {
     const id = randomId();
     const readKey = await requestKey(new Uint8Array(32).fill(7));
+    const verifierKey = await requestKey(new Uint8Array(32).fill(8));
     const manageKey = await requestKey(new Uint8Array(32).fill(9));
     const server = fakeServer((request) =>
       new URL(request.url).pathname.endsWith('/status')
@@ -234,7 +235,7 @@ describe('api client', () => {
           })
         : new Response(null, { status: 204 }),
     );
-    await server.api.burn(id, readKey);
+    await server.api.burn(id, readKey, verifierKey);
     await server.api.cancel(id, manageKey);
     expect(await server.api.status(id, manageKey)).toEqual({
       state: 'cancelled',
@@ -246,17 +247,19 @@ describe('api client', () => {
     const signed = server.seen.filter((request) => !request.url.endsWith('/challenge'));
     const base = `/api/v1/messages/${idToString(id)}`;
     const expected = [
-      ['POST', `${base}/burn`, 'read', readKey],
-      ['POST', `${base}/cancel`, 'manage', manageKey],
-      ['GET', `${base}/status`, 'manage', manageKey],
+      ['POST', `${base}/burn`, 'read', readKey, verifierKey],
+      ['POST', `${base}/cancel`, 'manage', manageKey, undefined],
+      ['GET', `${base}/status`, 'manage', manageKey, undefined],
     ] as const;
     expect(signed).toHaveLength(expected.length);
-    for (const [index, [method, path, purpose, key]] of expected.entries()) {
+    for (const [index, [method, path, purpose, key, verifier]] of expected.entries()) {
       const request = requestAt(signed, index);
       expect([request.method, new URL(request.url).pathname]).toEqual([method, path]);
       const parts = authorizationParts(request.headers.get('Authorization') ?? '');
       expect(parts[0]).toBe(encodeBase64url(key.publicKey));
       expect(await verifies(...parts, purpose, method, path)).toBe(true);
+      const [verifierPublicKey = null] = request.headers.get('X-Nylzo-Verifier')?.split('.') ?? [];
+      expect(verifierPublicKey).toBe(verifier ? encodeBase64url(verifier.publicKey) : null);
       expect(await request.arrayBuffer()).toHaveProperty('byteLength', 0);
     }
   });
@@ -574,7 +577,7 @@ describe('api client', () => {
     await server.api.claim(id, readKey, { verifierKey: readKey, shareKeys });
     await server.api.blob(id, readKey, LEASE, shareKeys);
     await server.api.ack(id, readKey, LEASE);
-    await server.api.burn(id, readKey);
+    await server.api.burn(id, readKey, readKey);
     expect(new Set(server.seen.map((request) => new URL(request.url).pathname)).size).toBe(7);
     expect(
       server.seenOptions.map((request) => ({

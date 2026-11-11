@@ -44,7 +44,7 @@
         page.burnNote ? 'opacity-100' : 'invisible opacity-0',
       ]}
     >
-      <Icon name={page.burnFailed ? 'alert' : 'check'} stroke={1.7} class={NOTE_ICON} />
+      <Icon name={page.burnFailed ? 'alert' : page.deleting ? 'key' : 'check'} stroke={1.7} class={NOTE_ICON} />
       {burnNote}
     </p>
   </div>

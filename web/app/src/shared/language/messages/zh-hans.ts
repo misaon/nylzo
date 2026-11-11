@@ -245,6 +245,9 @@ export const messages: Catalog = {
   'read.delete.no': '不删除',
   'read.deleted_rest': '剩余的打开次数已删除。',
   'read.delete.failed': '无法删除消息。请重试。',
+  'read.delete.wait': '由于多次输入错误的密码，现在无法删除消息。请在 {time}后重试。',
+  'read.delete.locked': '由于多次输入错误的密码，消息在有效期结束前已被锁定。任何人都无法打开它，但发送者仍可撤销。',
+  'read.delete.passphrase': '请输入发送者提供的密码，然后选择“不打开直接删除”。',
 
   'busy.deriving': '正在根据密码生成密钥…',
   'busy.claiming': '正在打开消息…',

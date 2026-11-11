@@ -175,18 +175,7 @@ func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 		"",
 		"read the link from this file (or "+command.EnvironmentLink+", or stdin)",
 	)
-	flags.StringVar(
-		&options.passphrase.file,
-		"passphrase-file",
-		"",
-		"read the passphrase from the first line of this file (or "+command.EnvironmentPassphrase+")",
-	)
-	flags.BoolVar(
-		&options.passphrase.ask,
-		"ask-passphrase",
-		false,
-		"ask for the passphrase on the terminal without echo",
-	)
+	passphraseFlags(flags, &options.passphrase)
 	flags.StringVar(
 		&options.out,
 		"out",
@@ -195,6 +184,16 @@ func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 	)
 	flags.BoolVar(&options.stdout, "stdout", false, "print the text to stdout and write nothing to disk")
 	return flags, options
+}
+
+func passphraseFlags(flags *flag.FlagSet, source *passphraseSource) {
+	flags.StringVar(
+		&source.file,
+		"passphrase-file",
+		"",
+		"read the passphrase from the first line of this file (or "+command.EnvironmentPassphrase+")",
+	)
+	flags.BoolVar(&source.ask, "ask-passphrase", false, "ask for the passphrase on the terminal without echo")
 }
 
 // RunRead creates the output directory before the claim, so a write problem never spends an open.
@@ -311,6 +310,18 @@ func readMessage(
 func checkMetadata(link *openLink, metadata *api.Metadata) error {
 	if metadata.State != api.StateAvailable {
 		return &client.APIError{Status: http.StatusGone, Kind: api.ErrorGone, State: metadata.State}
+	}
+	if err := core.AssertProfile(link.kdf, metadata.KDFID); err != nil {
+		return errLinkMismatch
+	}
+	return nil
+}
+
+// checkBurnable refuses an ended message before the passphrase prompt; an opened one may still have its last open in
+// flight, which a burn cuts off, so the server decides.
+func checkBurnable(link *openLink, metadata *api.Metadata) error {
+	if metadata.State != api.StateOpened || metadata.EndedAt != "" {
+		return checkMetadata(link, metadata)
 	}
 	if err := core.AssertProfile(link.kdf, metadata.KDFID); err != nil {
 		return errLinkMismatch

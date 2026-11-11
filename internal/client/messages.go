@@ -197,11 +197,25 @@ func (c *Client) Status(ctx context.Context, id core.ID, manage *[core.SeedLen]b
 }
 
 func (c *Client) Cancel(ctx context.Context, id core.ID, manage *[core.SeedLen]byte) error {
-	return c.end(ctx, api.MessagePath(id.String())+api.CancelAction, signing.PurposeManage, manage)
+	request := signedRequest{
+		method:  http.MethodPost,
+		path:    api.MessagePath(id.String()) + api.CancelAction,
+		purpose: signing.PurposeManage,
+		seed:    manage,
+	}
+	return c.finish(ctx, &request)
 }
 
-func (c *Client) Burn(ctx context.Context, id core.ID, read *[core.SeedLen]byte) error {
-	return c.end(ctx, api.MessagePath(id.String())+api.BurnAction, signing.PurposeRead, read)
+// Burn always sends a verifier, which the server needs for a message with a passphrase and ignores otherwise.
+func (c *Client) Burn(ctx context.Context, id core.ID, read, verifier *[core.SeedLen]byte) error {
+	request := signedRequest{
+		method:   http.MethodPost,
+		path:     api.MessagePath(id.String()) + api.BurnAction,
+		purpose:  signing.PurposeRead,
+		seed:     read,
+		verifier: verifier,
+	}
+	return c.finish(ctx, &request)
 }
 
 func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byte, submitted *Report) error {
@@ -251,9 +265,8 @@ func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byt
 	}
 }
 
-func (c *Client) end(ctx context.Context, path, purpose string, seed *[core.SeedLen]byte) error {
-	request := signedRequest{method: http.MethodPost, path: path, purpose: purpose, seed: seed}
-	response, err := c.signed(ctx, &request, shortTimeout)
+func (c *Client) finish(ctx context.Context, request *signedRequest) error {
+	response, err := c.signed(ctx, request, shortTimeout)
 	if err != nil {
 		return err
 	}
