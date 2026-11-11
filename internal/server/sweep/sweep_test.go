@@ -61,6 +61,7 @@ func (f fixture) createExpiring(t *testing.T, now time.Time) string {
 		Size:           1,
 	}
 	record := store.NewRecord(
+		seal.NewKey(),
 		seal.LocatorOf(id[:]),
 		message,
 		core.NewSecret()[:],

@@ -20,13 +20,16 @@ const (
 	nonceLen     = 12
 	tagLen       = 16
 	WrapLen      = nonceLen + KeyLen + tagLen
-	RecordBlock  = 512
+	// SealedWrapLen is the length of a read or manage wrap with its pepper layer.
+	SealedWrapLen = nonceLen + WrapLen + tagLen
+	RecordBlock   = 512
 
 	labelLocator = "nylzo/v1/locator"
 	infoRecord   = "nylzo/v1/record/"
 	infoBlob     = "nylzo/v1/blob"
 	infoFields   = "nylzo/v2/record/fields"
 	infoBlobWrap = "nylzo/v2/record/blob"
+	infoPepper   = "nylzo/v2/record/pepper"
 )
 
 type (
@@ -43,6 +46,7 @@ const (
 
 	labelRecord label = "record"
 	labelBlob   label = "blob"
+	labelPepper label = "pepper-"
 )
 
 var (
@@ -60,8 +64,55 @@ func NewKey() Key {
 	return key
 }
 
-// KeyFor derives the key that unwraps a record key from a public key the server never stores.
-func KeyFor(publicKey []byte, locator Locator, purpose Purpose) Key {
+// WrapRecordKey wraps the record key under a key from the public key and seals that wrap under a key from the pepper,
+// so opening it takes both: a public key travels in every signed request, the pepper never enters the database.
+func WrapRecordKey(pepperKey Key, publicKey []byte, recordKey Key, locator Locator, purpose Purpose) []byte {
+	wrapping := keyFor(publicKey, locator, purpose)
+	defer clear(wrapping[:])
+	wrapped := seal(wrapping, recordKey[:], locator, label(purpose))
+	defer clear(wrapped)
+	return sealWrap(pepperKey, wrapped, locator, purpose)
+}
+
+// UnwrapRecordKey opens both layers even after the first one failed, so a wrong pepper key costs what a wrong public
+// key does.
+func UnwrapRecordKey(pepperKey Key, publicKey, sealed []byte, locator Locator, purpose Purpose) (Key, error) {
+	wrapped, pepperErr := openSealedWrap(pepperKey, sealed, locator, purpose)
+	defer clear(wrapped)
+	wrapping := keyFor(publicKey, locator, purpose)
+	defer clear(wrapping[:])
+	opened, err := open(wrapping, wrapped, locator, label(purpose))
+	defer clear(opened)
+	if pepperErr != nil || err != nil || len(opened) != KeyLen {
+		return Key{}, ErrOpen
+	}
+	return Key(opened), nil
+}
+
+// ResealWrap puts a stored wrap under the current pepper key. A wrap of an earlier release has no pepper layer and is
+// WrapLen bytes long; one sealed under an earlier pepper key opens with it. Both are sealed again in place, and a wrap
+// that no key opens stays as it is and is reported as ErrOpen.
+func ResealWrap(current Key, earlier []Key, wrap *[]byte, locator Locator, purpose Purpose) (bool, error) {
+	if len(*wrap) == WrapLen {
+		*wrap = sealWrap(current, *wrap, locator, purpose)
+		return true, nil
+	}
+	if inner, err := openSealedWrap(current, *wrap, locator, purpose); err == nil {
+		clear(inner)
+		return false, nil
+	}
+	for _, key := range earlier {
+		if inner, err := openSealedWrap(key, *wrap, locator, purpose); err == nil {
+			*wrap = sealWrap(current, inner, locator, purpose)
+			clear(inner)
+			return true, nil
+		}
+	}
+	return false, ErrOpen
+}
+
+// keyFor derives the key of the inner wrap from a public key the server never stores.
+func keyFor(publicKey []byte, locator Locator, purpose Purpose) Key {
 	derived, err := hkdf.Key(sha256.New, publicKey, locator[:], infoRecord+string(purpose), KeyLen)
 	if err != nil {
 		panic(err)
@@ -70,17 +121,23 @@ func KeyFor(publicKey []byte, locator Locator, purpose Purpose) Key {
 	return Key(derived)
 }
 
-func Wrap(wrapping, key Key, locator Locator, purpose Purpose) []byte {
-	return seal(wrapping, key[:], locator, label(purpose))
+func sealWrap(pepperKey Key, wrapped []byte, locator Locator, purpose Purpose) []byte {
+	layer := subkey(pepperKey, locator, infoPepper)
+	defer clear(layer[:])
+	return seal(layer, wrapped, locator, labelPepper+label(purpose))
 }
 
-func Unwrap(wrapping Key, wrapped []byte, locator Locator, purpose Purpose) (Key, error) {
-	opened, err := open(wrapping, wrapped, locator, label(purpose))
-	defer clear(opened)
-	if err != nil || len(opened) != KeyLen {
-		return Key{}, ErrOpen
+// openSealedWrap gives zeros of a wrap's length when the pepper layer does not open, so the inner wrap is opened all
+// the same.
+func openSealedWrap(pepperKey Key, sealed []byte, locator Locator, purpose Purpose) ([]byte, error) {
+	layer := subkey(pepperKey, locator, infoPepper)
+	defer clear(layer[:])
+	wrapped, err := open(layer, sealed, locator, labelPepper+label(purpose))
+	if err != nil || len(wrapped) != WrapLen {
+		clear(wrapped)
+		return make([]byte, WrapLen), ErrOpen
 	}
-	return Key(opened), nil
+	return wrapped, nil
 }
 
 func WrapBlobKey(recordKey, blobKey Key, locator Locator) []byte {
@@ -108,9 +165,9 @@ func OpenRecord(key Key, locator Locator, sealed []byte) ([]byte, error) {
 	return open(subkey(key, locator, infoFields), sealed, locator, labelRecord)
 }
 
-// subkey gives each use of the record key its own key (spec section 5.2).
-func subkey(recordKey Key, locator Locator, info string) Key {
-	derived, err := hkdf.Key(sha256.New, recordKey[:], locator[:], info, KeyLen)
+// subkey gives each use of a key its own key for one locator (spec section 5.2).
+func subkey(key Key, locator Locator, info string) Key {
+	derived, err := hkdf.Key(sha256.New, key[:], locator[:], info, KeyLen)
 	if err != nil {
 		panic(err)
 	}

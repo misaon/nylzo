@@ -83,6 +83,7 @@ func newRecord(opens uint16, passphrase bool) *store.Record {
 		message.VerifierPepperID = 7
 	}
 	record := store.NewRecord(
+		seal.NewKey(),
 		seal.LocatorOf(id[:]),
 		message,
 		core.NewSecret()[:],

@@ -23,6 +23,7 @@ type contract struct {
 var contracts = []contract{
 	{"CreateLoadConflict", (*fixture).createLoadConflict},
 	{"OnlyThePresentedKeyOpensARecord", (*fixture).onlyThePresentedKeyOpens},
+	{"ResealWrapsVisitsEveryRow", (*fixture).resealWrapsVisitsEveryRow},
 	{"AK3MetadataDoesNotConsume", (*fixture).metadataDoesNotConsume},
 	{"AK4ConcurrentClaims", (*fixture).concurrentClaims},
 	{"AK5PassphraseBackoff", (*fixture).passphraseBackoff},
@@ -56,6 +57,9 @@ var contracts = []contract{
 }
 
 var baseTime = time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
+
+// recordsKey stands in for the key that the server derives from its pepper.
+var recordsKey = seal.NewKey()
 
 const (
 	oneMinute uint32 = 60
@@ -117,6 +121,7 @@ func (f *fixture) createRow(opens uint16, ttlSeconds uint32, passphrase bool) *m
 	readKey, manageKey := core.NewSecret()[:], core.NewSecret()[:]
 	blobReference := core.NewID()
 	record := store.NewRecord(
+		recordsKey,
 		seal.LocatorOf(id[:]),
 		newMessage(opens, ttlSeconds, passphrase),
 		readKey,

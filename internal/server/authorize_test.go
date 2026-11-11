@@ -769,7 +769,7 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 		defer database.Close()
 		rewrap := func(record *store.Record, column string, purpose seal.Purpose) {
 			locator := record.Row.Locator
-			wrapped := seal.Wrap(seal.KeyFor(identity[:], locator, purpose), record.Key, locator, purpose)
+			wrapped := seal.WrapRecordKey(harness.server.recordsKey, identity[:], record.Key, locator, purpose)
 			if _, execErr := database.Exec(
 				`UPDATE messages SET `+column+` = ? WHERE locator = ?`,
 				wrapped,
@@ -898,7 +898,7 @@ func TestAK27PepperRotation(t *testing.T) {
 			t.Fatal("new message must verify with the new pepper alone")
 		}
 		if got, _ := harness.metadata(old); got.StatusCode != http.StatusOK {
-			t.Fatalf("a record opens with the read key, whatever the pepper: %d", got.StatusCode)
+			t.Fatalf("serve sealed the old record under the new pepper at the rotation: %d", got.StatusCode)
 		}
 		if got, body := harness.claim(old, old.verifier, ""); got.StatusCode != http.StatusForbidden {
 			t.Fatalf("a verifier mac under a dropped pepper must not verify: %d %s", got.StatusCode, body)

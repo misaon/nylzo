@@ -16,10 +16,12 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
+	"github.com/misaon/nylzo/internal/store"
 
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -337,5 +339,51 @@ func TestSweepOnceRefusesAnotherSchemaVersion(t *testing.T) {
 	if result = run(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, RunSweepOnce); result.code != 1 ||
 		!strings.Contains(result.stderr, "newer nylzo") {
 		t.Fatalf("sweep-once on a newer schema: exit %d, %s", result.code, result.stderr)
+	}
+}
+
+func TestServeSealsTheWrapsOfAnEarlierReleaseBeforeItListens(t *testing.T) {
+	directory := t.TempDir()
+	id := storeMessage(t, directory)
+	locator := seal.LocatorOf(id[:])
+	database, blobs, err := openStore(
+		t.Context(),
+		directory,
+		testDevelopment,
+		testPool,
+		sqlite.Open,
+		slog.New(slog.DiscardHandler),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	err = database.Update(t.Context(), locator, func(row *store.Row) error {
+		row.ReadWrap, row.ManageWrap = make([]byte, seal.WrapLen), make([]byte, seal.WrapLen)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	variables := map[string]string{
+		"NYLZO_PEPPER_FILE": pepperFile(t),
+		"NYLZO_REPORT_KEY":  testReportKeyText,
+		"NYLZO_DATA_DIR":    directory,
+		"GOMEMLIMIT":        "1GiB",
+	}
+	settings, err := serveSettings(&command.Environment{Getenv: getenvFrom(variables)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.Development = testDevelopment
+	instance, err := startInstance(t.Context(), &settings, database, blobs, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance.Close()
+	row, err := database.Load(t.Context(), locator)
+	if err != nil || len(row.ReadWrap) != seal.SealedWrapLen || len(row.ManageWrap) != seal.SealedWrapLen {
+		t.Fatalf("serve left the wraps of an earlier release unsealed: %d and %d bytes, %v",
+			len(row.ReadWrap), len(row.ManageWrap), err)
 	}
 }

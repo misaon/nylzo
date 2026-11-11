@@ -46,6 +46,7 @@ func storeMessage(t *testing.T, directory string) core.ID {
 		Size:           storedBlobBytes,
 	}
 	record := store.NewRecord(
+		seal.NewKey(),
 		seal.LocatorOf(id[:]),
 		message,
 		core.NewSecret()[:],

@@ -125,6 +125,10 @@ func TestACorruptRowLeavesTheRestOfItsPageToTheSweep(t *testing.T) {
 	if _, err = storage.Load(ctx, seal.Locator(good)); err != nil {
 		t.Fatal(err)
 	}
+	visited := 0
+	if err = storage.ResealWraps(ctx, func(*store.Row) bool { visited++; return false }); err != nil || visited != 2 {
+		t.Fatalf("resealing must pass over a corrupt row and visit the good and the dummy row: %d %v", visited, err)
+	}
 	if purged, purgeErr := storage.PurgeRows(ctx, now, store.SweepBatch); purgeErr != nil || purged != 2 {
 		t.Fatalf("the purge must remove a corrupt row too: %d %v", purged, purgeErr)
 	}

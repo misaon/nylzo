@@ -128,3 +128,19 @@ func TestServerVectors(t *testing.T) {
 		}
 	}
 }
+
+func TestTheRecordsKeyOfThePreviousPepperCanBeForgotten(t *testing.T) {
+	ring := newRing(t, secret(1), secret(2))
+	if _, ok := ring.PreviousRecordsKey(); !ok || ring.RecordsKey() == newRing(t, secret(2), nil).RecordsKey() {
+		t.Fatal("each pepper needs a records key of its own")
+	}
+	previous := newRing(t, secret(2), nil)
+	tag := previous.MAC(pepper.Lease, []byte("lease"))
+	ring.ForgetPreviousRecordsKey()
+	if _, ok := ring.PreviousRecordsKey(); ok {
+		t.Fatal("the forgotten records key is still there")
+	}
+	if !ring.Verify(pepper.Lease, []byte("lease"), tag.MAC[:], tag.PepperID) {
+		t.Fatal("forgetting the records key must keep the macs of the previous pepper")
+	}
+}

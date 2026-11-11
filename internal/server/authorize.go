@@ -45,7 +45,7 @@ func (s *Server) authorize(
 		}
 		row, granted.known = found, known
 	}
-	opened := openWithSignature(r, &granted, &row, purpose, body)
+	opened := s.openWithSignature(r, &granted, &row, purpose, body)
 	if !granted.known || !parsed || !fresh || !opened {
 		return granted, false, nil
 	}
@@ -71,7 +71,7 @@ func parseSignature(r *http.Request) (signing.Signature, bool) {
 	return signature, true
 }
 
-func openWithSignature(
+func (s *Server) openWithSignature(
 	r *http.Request,
 	granted *access,
 	row *store.Row,
@@ -83,7 +83,7 @@ func openWithSignature(
 	if !keyOK {
 		signature.PublicKey = dummyPublicKey
 	}
-	record, openErr := openRow(row, purpose, signature.PublicKey[:])
+	record, openErr := s.openRow(row, purpose, signature.PublicKey[:])
 	components, single := requestComponents(r)
 	signatureOK := signature.Verify(signedPurpose(purpose), r.Method, r.URL.EscapedPath(), body, components)
 	granted.record = record
@@ -99,7 +99,7 @@ func requestComponents(r *http.Request) (signing.Components, bool) {
 }
 
 // openRow opens the record with a zero key after a failed unwrap, so a wrong key costs the same work as a right one.
-func openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Record, error) {
+func (s *Server) openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Record, error) {
 	wrapped := row.ReadWrap
 	if purpose == seal.Manage {
 		wrapped = row.ManageWrap
@@ -107,11 +107,9 @@ func openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Reco
 	var record store.Record
 	var err error
 	secretmode.Do(func() {
-		wrapping := seal.KeyFor(publicKey, row.Locator, purpose)
-		key, unwrapErr := seal.Unwrap(wrapping, wrapped, row.Locator, purpose)
+		key, unwrapErr := seal.UnwrapRecordKey(s.recordsKey, publicKey, wrapped, row.Locator, purpose)
 		var openErr error
 		record, openErr = store.OpenRecord(row, key)
-		clear(wrapping[:])
 		clear(key[:])
 		err = errors.Join(unwrapErr, openErr)
 	})
@@ -284,10 +282,11 @@ func validPathID(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // newDummyRow is opened instead of a missing row; random wrapping keys make sure no public key opens it.
-func newDummyRow() store.Row {
+func newDummyRow(recordsKey seal.Key) store.Row {
 	id := core.NewID()
 	message := &store.Message{Version: 1, OpensMax: 1, OpensRemaining: 1}
 	record := store.NewRecord(
+		recordsKey,
 		seal.LocatorOf(id[:]),
 		message,
 		core.NewSecret()[:],

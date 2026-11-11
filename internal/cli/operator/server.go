@@ -322,9 +322,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 			"notice", "another process had the database open, so the log headers still count earlier writes",
 		)
 	}
-	instance, err := server.New(&settings, database, blobs, server.WithLogger(logger))
-	clear(settings.Pepper)
-	clear(settings.PepperPrevious)
+	instance, err := startInstance(ctx, &settings, database, blobs, logger)
 	if err != nil {
 		return err
 	}
@@ -368,6 +366,27 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	waitFor(ctx, &sweeper, shutdownTimeout, logger)
 	instance.Close()
 	return err
+}
+
+// startInstance seals the stored rows with the pepper before the server takes a request (spec §5.2).
+func startInstance(
+	ctx context.Context,
+	settings *config.Server,
+	database *sqlite.Store,
+	blobs *disk.Blobs,
+	logger *slog.Logger,
+) (*server.Server, error) {
+	instance, err := server.New(settings, database, blobs, server.WithLogger(logger))
+	clear(settings.Pepper)
+	clear(settings.PepperPrevious)
+	if err != nil {
+		return nil, err
+	}
+	if err = instance.SealRows(ctx); err != nil {
+		instance.Close()
+		return nil, err
+	}
+	return instance, nil
 }
 
 func logListening(ctx context.Context, logger *slog.Logger, address net.Addr, settings *config.Server) {
