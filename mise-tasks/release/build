@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Only a disposable registry bound to loopback receives build output. No GHCR login or signing credentials.
+config="$RUNNER_TEMP/goreleaser-build.yaml"
+yq '.release.disable = true | .kos[] |= (.repositories = ["127.0.0.1:5000/" + .id])' .goreleaser.yaml > "$config"
+yq -r '.release.header' .goreleaser.yaml > "$RUNNER_TEMP/release-header.md"
+yq -r '.release.footer' .goreleaser.yaml > "$RUNNER_TEMP/release-footer.md"
+goreleaser release --clean --skip=sign --config "$config" \
+  --release-header-tmpl "$RUNNER_TEMP/release-header.md" \
+  --release-footer-tmpl "$RUNNER_TEMP/release-footer.md" "$@"
+
+mkdir -p "$RUNNER_TEMP/release-build/images"
+for id in nylzo caddy; do
+  digest=$(jq -er --arg id "$id" '[.[] | select(.type == "Docker Manifest" and .extra.ID == $id) | .extra.Digest] | unique | if length == 1 then .[0] else error("expected one image digest") end' dist/artifacts.json)
+  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+  regctl --host 'reg=127.0.0.1:5000,tls=disabled' image copy --digest-tags --referrers \
+    "127.0.0.1:5000/${id}@${digest}" "ocidir://$RUNNER_TEMP/release-build/images/$id:build"
+  test "$(regctl image digest "ocidir://$RUNNER_TEMP/release-build/images/$id:build")" = "$digest"
+done

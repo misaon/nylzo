@@ -474,6 +474,35 @@ checksum_source = "mise-versions"
 url = "https://github.com/google/osv-scanner/releases/download/v2.7.1/osv-scanner_darwin_amd64"
 url_api = "https://api.github.com/repos/google/osv-scanner/releases/assets/726165293"
 
+[[tools.regctl]]
+version = "0.11.7"
+backend = "aqua:regclient/regclient/regctl"
+specifiers = ["0.11.7"]
+
+[tools.regctl."platforms.linux-arm64"]
+checksum = "sha256:9f349bab5c407ac04f3dabf99c7c7a6b0f9e9723c23f2775380e804d02c6dbb9"
+url = "https://github.com/regclient/regclient/releases/download/v0.11.7/regctl-linux-arm64"
+url_api = "https://api.github.com/repos/regclient/regclient/releases/assets/660897956"
+provenance = "cosign"
+
+[tools.regctl."platforms.linux-x64"]
+checksum = "sha256:3737fbbdd791e04e7a831640b681f3397a376498e80e2ad9b1b2d27296f239bc"
+url = "https://github.com/regclient/regclient/releases/download/v0.11.7/regctl-linux-amd64"
+url_api = "https://api.github.com/repos/regclient/regclient/releases/assets/660897960"
+provenance = "cosign"
+
+[tools.regctl."platforms.macos-arm64"]
+checksum = "sha256:8ac077a1eeb834d3053714e86ccbd838d0da46567df8cd7c2695d1a19135bf60"
+url = "https://github.com/regclient/regclient/releases/download/v0.11.7/regctl-darwin-arm64"
+url_api = "https://api.github.com/repos/regclient/regclient/releases/assets/660897975"
+provenance = "cosign"
+
+[tools.regctl."platforms.macos-x64"]
+checksum = "sha256:20029e87c51ce621275a9438cd441bd7ba5ebdda0c3b649c6c010d57fd99049d"
+url = "https://github.com/regclient/regclient/releases/download/v0.11.7/regctl-darwin-amd64"
+url_api = "https://api.github.com/repos/regclient/regclient/releases/assets/660897978"
+provenance = "cosign"
+
 [[tools.shellcheck]]
 version = "0.11.0"
 backend = "aqua:koalaman/shellcheck"
@@ -498,6 +527,35 @@ url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/2790
 checksum = "sha256:3c89db4edcab7cf1c27bff178882e0f6f27f7afdf54e859fa041fca10febe4c6"
 url = "https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.x86_64.tar.xz"
 url_api = "https://api.github.com/repos/koalaman/shellcheck/releases/assets/279056930"
+
+[[tools.yq]]
+version = "4.54.3"
+backend = "aqua:mikefarah/yq"
+specifiers = ["4.54.3"]
+
+[tools.yq."platforms.linux-arm64"]
+checksum = "sha256:89f69310b61b68d1245065a1241d1fc843f7a36cd6103ffd77ad987613bd1b67"
+url = "https://github.com/mikefarah/yq/releases/download/v4.54.3/yq_linux_arm64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/726219924"
+provenance = "cosign"
+
+[tools.yq."platforms.linux-x64"]
+checksum = "sha256:129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973"
+url = "https://github.com/mikefarah/yq/releases/download/v4.54.3/yq_linux_amd64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/726219936"
+provenance = "cosign"
+
+[tools.yq."platforms.macos-arm64"]
+checksum = "sha256:a2aebb93b5bdcb61bb76f630e42a0ef6a3ee10842a6516cd7b9e4080786ec593"
+url = "https://github.com/mikefarah/yq/releases/download/v4.54.3/yq_darwin_arm64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/726219940"
+provenance = "cosign"
+
+[tools.yq."platforms.macos-x64"]
+checksum = "sha256:96d5105ffd693d6845c54fbd825b2d1bbdb8619e0a2ce6af95e5654e841e0984"
+url = "https://github.com/mikefarah/yq/releases/download/v4.54.3/yq_darwin_amd64"
+url_api = "https://api.github.com/repos/mikefarah/yq/releases/assets/726219934"
+provenance = "cosign"
 
 [[tools.zizmor]]
 version = "1.32.0"
