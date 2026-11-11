@@ -77,7 +77,7 @@ References: [CryptoKey extraction rules](https://developer.mozilla.org/en-US/doc
 
 ## A link grants capabilities
 
-Anyone holding the link can delete a message or exhaust its passphrase attempts, even when a passphrase protects the content. Someone with both the link and a copy of the server's data, taken before the message expired, can guess a weak passphrase offline. A passphrase you choose needs at least 15 characters; the clients offer a generated one by default. Send it through a different channel than the link.
+Anyone holding the link can use up a message's passphrase attempts without knowing the passphrase. Readers then have to wait, and so does anyone who wants to delete the message. Deleting a message that has a passphrase also needs the passphrase; a message without one can be deleted by anyone with the link. Only the sender's cancel is sure to end a message before it expires. Someone with both the link and a copy of the server's data, taken before the message expired, can guess a weak passphrase offline. A passphrase you choose needs at least 15 characters; the clients offer a generated one by default. Send it through a different channel than the link.
 
 The link also carries a hash of the encrypted message. The reader checks it before decrypting, so a server cannot hand a later reader other content, and every reader loads the same page, `/r`, which names no message.
 

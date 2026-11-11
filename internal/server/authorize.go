@@ -10,6 +10,7 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/store"
@@ -125,6 +126,67 @@ func (a *access) forget() {
 // verifierInput binds the verifier mac to the erase salt, so once the blob is erased no copy of a record tests a passphrase.
 func verifierInput(salt seal.EraseSalt, verifierKey []byte) []byte {
 	return append(salt[:len(salt):len(salt)], verifierKey...)
+}
+
+func parseVerifier(w http.ResponseWriter, r *http.Request) (signing.Signature, bool, bool) {
+	header := r.Header.Get(api.VerifierHeaderName)
+	if header == "" {
+		return signing.Signature{PublicKey: dummyPublicKey}, false, true
+	}
+	verifier, err := signing.ParseVerifierHeader(header, [signing.ChallengeLen]byte{})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errBadRequest)
+		return verifier, true, false
+	}
+	return verifier, true, true
+}
+
+// verifierProof checks the verifier signature over the challenge of the request; the store compares the mac in its
+// transaction, under the erase salt that the caller clears.
+func (s *Server) verifierProof(
+	r *http.Request,
+	presented *signing.Signature,
+	sent bool,
+	challenge [signing.ChallengeLen]byte,
+	salt *seal.EraseSalt,
+) store.Verifier {
+	verifier := *presented
+	verifier.Challenge = challenge
+	keyOK := signing.ValidPublicKey(verifier.PublicKey[:])
+	if !keyOK {
+		verifier.PublicKey = dummyPublicKey
+	}
+	components, _ := requestComponents(r)
+	signed := verifier.Verify(signing.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil, components) && keyOK
+	return store.Verifier{Sent: sent, Check: func(pepperID byte, stored []byte) bool {
+		macOK := s.ring.Verify(pepper.Verifier, verifierInput(*salt, verifier.PublicKey[:]), stored, pepperID)
+		return macOK && signed
+	}}
+}
+
+// readEraseSalt reads the salt that the verifier mac covers, and answers a blob that is gone as a claim does.
+func (s *Server) readEraseSalt(
+	w http.ResponseWriter,
+	r *http.Request,
+	record *store.Record,
+	salt *seal.EraseSalt,
+) bool {
+	file, read, ok := s.openOrFinishBlob(w, r, record)
+	defer clear(read[:])
+	if !ok {
+		return false
+	}
+	file.Close()
+	*salt = read
+	return true
+}
+
+func writePassphraseRefusal(w http.ResponseWriter, refusal *store.PassphraseError) {
+	writeJSON(w, http.StatusForbidden, api.PassphraseResponse{
+		Error:        api.ErrorPassphrase,
+		RetryAfter:   ceilSeconds(refusal.RetryAfter),
+		AttemptsLeft: refusal.AttemptsLeft,
+	})
 }
 
 func signedPurpose(purpose seal.Purpose) string {

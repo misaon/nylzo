@@ -273,6 +273,12 @@ export const messages: Catalog = {
   'read.delete.no': 'Ne pas supprimer',
   'read.deleted_rest': 'Les ouvertures restantes sont supprimées.',
   'read.delete.failed': 'Impossible de supprimer le message. Réessayez.',
+  'read.delete.wait':
+    'Après de nombreuses saisies d’un mot de passe erroné, le message ne peut pas être supprimé pour l’instant. Réessayez dans {time}.',
+  'read.delete.locked':
+    'Après de nombreuses saisies d’un mot de passe erroné, le message est verrouillé jusqu’à la fin de sa validité. Personne ne peut l’ouvrir, mais l’expéditeur peut encore l’annuler.',
+  'read.delete.passphrase':
+    'Saisissez le mot de passe de l’expéditeur, puis choisissez «\u{A0}Supprimer sans ouvrir\u{A0}».',
 
   'busy.deriving': 'Préparation de la clé à partir du mot de passe…',
   'busy.claiming': 'Ouverture du message…',

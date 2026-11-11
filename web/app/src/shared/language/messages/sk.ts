@@ -261,6 +261,10 @@ export const messages: Catalog = {
   'read.delete.no': 'Nevymazať',
   'read.deleted_rest': 'Zostávajúce otvorenia sú vymazané.',
   'read.delete.failed': 'Správu sa nepodarilo vymazať. Skúste to znova.',
+  'read.delete.wait': 'Po mnohých zadaniach chybného hesla teraz správu vymazať nejde. Skúste to znova o\u{A0}{time}.',
+  'read.delete.locked':
+    'Po mnohých zadaniach chybného hesla je správa do konca platnosti zamknutá. Nikto ju neotvorí, ale odosielateľ ju ešte môže zrušiť.',
+  'read.delete.passphrase': 'Zadajte heslo od odosielateľa a\u{A0}potom zvoľte „Vymazať bez otvorenia“.',
 
   'busy.deriving': 'Pripravujeme kľúč z\u{A0}hesla…',
   'busy.claiming': 'Otvárame správu…',

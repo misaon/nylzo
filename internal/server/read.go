@@ -14,7 +14,6 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/share"
-	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
@@ -91,14 +90,6 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if !ok || !s.allowReadBytes(w, r, granted.record.Message.Size) {
 		return
 	}
-	verifier.Challenge = granted.signature.Challenge
-	verifierKeyOK := signing.ValidPublicKey(verifier.PublicKey[:])
-	if !verifierKeyOK {
-		verifier.PublicKey = dummyPublicKey
-	}
-	components, _ := requestComponents(r)
-	verifierSigned := verifier.Verify(signing.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil, components) &&
-		verifierKeyOK
 	wrappedShare, ok := s.wrappedShare(w, r, &granted.record)
 	if !ok {
 		return
@@ -112,13 +103,8 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	lease := core.NewSecret()
 	leaseTag := s.ring.MAC(pepper.Lease, lease[:])
 	result, err := store.Claim(r.Context(), s.store, &granted.record, store.ClaimParameters{
-		Clock:        time.Now,
-		VerifierSent: verifierSent,
-		VerifyMAC: func(pepperID byte, stored []byte) bool {
-			input := verifierInput(blob.salt, verifier.PublicKey[:])
-			macOK := s.ring.Verify(pepper.Verifier, input, stored, pepperID)
-			return macOK && verifierSigned
-		},
+		Clock:         time.Now,
+		Verifier:      s.verifierProof(r, &verifier, verifierSent, granted.signature.Challenge, &blob.salt),
 		LeaseMAC:      leaseTag.MAC[:],
 		LeasePepperID: leaseTag.PepperID,
 	})
@@ -169,30 +155,13 @@ func (s *Server) endLostShare(w http.ResponseWriter, r *http.Request, record *st
 	writeGone(w, string(final))
 }
 
-func parseVerifier(w http.ResponseWriter, r *http.Request) (signing.Signature, bool, bool) {
-	header := r.Header.Get(api.VerifierHeaderName)
-	if header == "" {
-		return signing.Signature{PublicKey: dummyPublicKey}, false, true
-	}
-	verifier, err := signing.ParseVerifierHeader(header, [signing.ChallengeLen]byte{})
-	if err != nil {
-		writeError(w, http.StatusBadRequest, errBadRequest)
-		return verifier, true, false
-	}
-	return verifier, true, true
-}
-
 func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err error) {
 	if goneErr, isGone := errors.AsType[*store.GoneError](err); isGone {
 		writeGone(w, string(goneErr.State))
 		return
 	}
-	if passphraseErr, isPassphrase := errors.AsType[*store.PassphraseError](err); isPassphrase {
-		writeJSON(w, http.StatusForbidden, api.PassphraseResponse{
-			Error:        api.ErrorPassphrase,
-			RetryAfter:   ceilSeconds(passphraseErr.RetryAfter),
-			AttemptsLeft: passphraseErr.AttemptsLeft,
-		})
+	if refusal, refused := errors.AsType[*store.PassphraseError](err); refused {
+		writePassphraseRefusal(w, refusal)
 		return
 	}
 	if busyErr, isBusy := errors.AsType[*store.BusyError](err); isBusy {

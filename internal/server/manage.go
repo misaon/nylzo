@@ -31,32 +31,67 @@ type abuseRequest struct {
 	GoodFaith bool   `json:"good_faith"`
 }
 
+// handleBurn deletes a message with a passphrase only with its verifier, checked and counted as for a claim (F05).
 func (s *Server) handleBurn(w http.ResponseWriter, r *http.Request) {
-	s.end(w, r, seal.Read, store.StateDeleted)
-}
-
-func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
-	s.end(w, r, seal.Manage, store.StateCancelled)
-}
-
-// end answers 204 to the request that recorded the first ending, even when a concurrent release finishes it.
-func (s *Server) end(w http.ResponseWriter, r *http.Request, purpose seal.Purpose, state store.State) {
 	if !validPathID(w, r) || !s.allowRead(w, r) {
 		return
 	}
-	granted, ok := s.authorizedLive(w, r, purpose)
+	verifier, verifierSent, ok := parseVerifier(w, r)
+	if !ok {
+		return
+	}
+	granted, ok := s.authorizedLive(w, r, seal.Read)
 	defer granted.forget()
 	if !ok {
 		return
 	}
-	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, state, time.Now())
-	s.leaseTimers.Cancel(granted.record.Row.Locator)
+	record := &granted.record
+	if record.Message.PassphraseRequired() && !verifierSent {
+		writeError(w, http.StatusBadRequest, errClientOutdated)
+		return
+	}
+	var salt seal.EraseSalt
+	defer clear(salt[:])
+	if record.Message.PassphraseRequired() && !s.readEraseSalt(w, r, record, &salt) {
+		return
+	}
+	proof := s.verifierProof(r, &verifier, verifierSent, granted.signature.Challenge, &salt)
+	final, err := store.Burn(r.Context(), s.store, s.blobs, record, proof, time.Now())
+	s.answerEnding(w, r, record, store.StateDeleted, final, err)
+}
+
+func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
+	if !validPathID(w, r) || !s.allowRead(w, r) {
+		return
+	}
+	granted, ok := s.authorizedLive(w, r, seal.Manage)
+	defer granted.forget()
+	if !ok {
+		return
+	}
+	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, store.StateCancelled, time.Now())
+	s.answerEnding(w, r, &granted.record, store.StateCancelled, final, err)
+}
+
+// answerEnding answers 204 to the request that recorded the first ending, even when a concurrent release finishes it.
+func (s *Server) answerEnding(
+	w http.ResponseWriter,
+	r *http.Request,
+	record *store.Record,
+	requested, final store.State,
+	err error,
+) {
+	if refusal, refused := errors.AsType[*store.PassphraseError](err); refused {
+		writePassphraseRefusal(w, refusal)
+		return
+	}
+	s.leaseTimers.Cancel(record.Row.Locator)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		s.writeCurrentGone(w, r, &granted.record)
+		s.writeCurrentGone(w, r, record)
 	case err != nil:
 		s.writeInternal(w, r, err)
-	case final != state:
+	case final != requested:
 		writeGone(w, string(final))
 	default:
 		w.WriteHeader(http.StatusNoContent)

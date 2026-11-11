@@ -954,6 +954,34 @@ describe('deleting from the read page (D40)', () => {
     expect(await reader.burn()).toEqual({ outcome: 'ignored' });
   });
 
+  it('deletes a message with a passphrase only with that passphrase, without showing a reveal (F05)', async () => {
+    const api = fakeApi();
+    const passphrase = 'tři slova a ještě čtvrté';
+    const created = await createMessage(input({ passphrase }), createDependencies(api));
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(await reader.burn('špatná passphrase tady')).toEqual({ outcome: 'rejected' });
+    expect(reader.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong', attemptsLeft: 4 } });
+    expect(storedOf(api, created.link)).toMatchObject({ state: 'available', failures: 1 });
+    expect(await reader.burn(passphrase)).toEqual({ outcome: 'deleted' });
+    expect(reader.last()).toMatchObject({ view: 'ended', state: 'deleted' });
+    expect(reader.views.some((view) => view.view === 'busy')).toBe(false);
+  });
+
+  it('deletes the remaining opens of a message with a passphrase with the verifier of its reveal (F05)', async () => {
+    const api = fakeApi({ failBurn: [new ApiError(403, 'passphrase', { retryAfter: 60, attemptsLeft: 0 })] });
+    const passphrase = 'tři slova a ještě čtvrté';
+    const created = await createMessage(input({ opensMax: 3, passphrase }), createDependencies(api));
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal(passphrase);
+    expect(reader.last()).toMatchObject({ view: 'revealed', burnable: true });
+    expect(await reader.burn()).toEqual({ outcome: 'waiting', retryAfter: 60, locked: false });
+    expect(reader.last()).toMatchObject({ view: 'revealed', burnable: true });
+    expect(await reader.burn()).toEqual({ outcome: 'deleted' });
+    expect(storedOf(api, created.link)).toMatchObject({ state: 'deleted', failures: 0 });
+  });
+
   it('offers no deletion after the last open was shown', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));

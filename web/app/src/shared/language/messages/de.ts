@@ -276,6 +276,11 @@ export const messages: Catalog = {
   'read.delete.no': 'Nicht löschen',
   'read.deleted_rest': 'Die verbleibenden Aufrufe sind gelöscht.',
   'read.delete.failed': 'Die Nachricht konnte nicht gelöscht werden. Versuchen Sie es erneut.',
+  'read.delete.wait':
+    'Nach vielen falschen Passworteingaben lässt sich die Nachricht gerade nicht löschen. Versuchen Sie es in {time} erneut.',
+  'read.delete.locked':
+    'Nach vielen falschen Passworteingaben ist die Nachricht bis zum Ablauf der Gültigkeit gesperrt. Niemand kann sie öffnen, aber der Absender kann sie noch widerrufen.',
+  'read.delete.passphrase': 'Geben Sie das Passwort vom Absender ein und wählen Sie dann „Ohne Öffnen löschen“.',
 
   'busy.deriving': 'Schlüssel wird aus dem Passwort erzeugt…',
   'busy.claiming': 'Nachricht wird geöffnet…',

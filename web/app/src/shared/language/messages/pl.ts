@@ -300,6 +300,11 @@ export const messages: Catalog = {
   'read.delete.no': 'Nie usuwaj',
   'read.deleted_rest': 'Pozostałe otwarcia zostały usunięte.',
   'read.delete.failed': 'Nie udało się usunąć wiadomości. Spróbuj ponownie.',
+  'read.delete.wait':
+    'Po wielu próbach z\u{A0}błędnym hasłem nie można teraz usunąć wiadomości. Spróbuj ponownie za {time}.',
+  'read.delete.locked':
+    'Po wielu próbach z\u{A0}błędnym hasłem wiadomość jest zablokowana aż do końca ważności. Nikt jej nie otworzy, ale nadawca nadal może ją anulować.',
+  'read.delete.passphrase': 'Wpisz hasło od nadawcy, a\u{A0}potem wybierz „Usuń bez otwierania”.',
 
   'busy.deriving': 'Przygotowujemy klucz z\u{A0}hasła…',
   'busy.claiming': 'Otwieramy wiadomość…',

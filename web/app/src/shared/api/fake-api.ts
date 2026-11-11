@@ -93,8 +93,24 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     return message;
   }
 
+  function checkVerifier(message: Stored, verifierKey: RequestKey): void {
+    if (message.request.kdfId === 0 || sameBytes(message.request.verifierKey, verifierKey.publicKey)) {
+      return;
+    }
+    message.failures++;
+    const locked = message.failures >= (options.lockAfter ?? 100);
+    throw new ApiError(403, 'passphrase', {
+      retryAfter: locked ? 3600 : 0,
+      attemptsLeft: locked ? 0 : Math.max(0, 5 - message.failures),
+    });
+  }
+
+  function live(message: Stored): boolean {
+    return message.state === 'available' || (message.state === 'opened' && message.leases.size > 0);
+  }
+
   function end(message: Stored, state: MessageState): void {
-    if (message.state !== 'available' && !(message.state === 'opened' && message.leases.size > 0)) {
+    if (!live(message)) {
       throw new ApiError(410, 'gone', { state: message.state });
     }
     message.state = state;
@@ -204,14 +220,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       if (message.state !== 'available') {
         throw new ApiError(410, 'gone', { state: message.state });
       }
-      if (message.request.kdfId !== 0 && !sameBytes(message.request.verifierKey, claimOptions.verifierKey.publicKey)) {
-        message.failures++;
-        const locked = message.failures >= (options.lockAfter ?? 100);
-        throw new ApiError(403, 'passphrase', {
-          retryAfter: locked ? 3600 : 0,
-          attemptsLeft: locked ? 0 : Math.max(0, 5 - message.failures),
-        });
-      }
+      checkVerifier(message, claimOptions.verifierKey);
       message.opensRemaining--;
       if (message.opensRemaining === 0) {
         message.state = 'opened';
@@ -239,13 +248,17 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       calls.push('ack');
       find(id, readKey).leases.delete(lease);
     },
-    async burn(id, readKey) {
+    async burn(id, readKey, verifierKey) {
       calls.push('burn');
       const failure = failBurn.shift();
       if (failure) {
         throw failure;
       }
-      end(find(id, readKey), 'deleted');
+      const message = find(id, readKey);
+      if (live(message)) {
+        checkVerifier(message, verifierKey);
+      }
+      end(message, 'deleted');
     },
     async cancel(id, manageKey) {
       calls.push('cancel');

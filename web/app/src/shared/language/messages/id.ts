@@ -272,6 +272,11 @@ export const messages: Catalog = {
   'read.delete.no': 'Jangan hapus',
   'read.deleted_rest': 'Pesan sudah dihapus dan tidak bisa dibuka lagi.',
   'read.delete.failed': 'Pesan tidak dapat dihapus. Coba lagi.',
+  'read.delete.wait':
+    'Setelah terlalu banyak kata sandi salah dimasukkan, pesan ini belum bisa dihapus. Coba lagi dalam {time}.',
+  'read.delete.locked':
+    'Setelah terlalu banyak kata sandi salah dimasukkan, pesan ini terkunci sampai masa berlakunya habis. Tidak ada yang bisa membukanya, tetapi pengirim masih bisa membatalkannya.',
+  'read.delete.passphrase': 'Masukkan kata sandi dari pengirim, lalu pilih “Hapus tanpa membuka”.',
 
   'busy.deriving': 'Menyiapkan kunci dari kata sandi…',
   'busy.claiming': 'Membuka pesan…',

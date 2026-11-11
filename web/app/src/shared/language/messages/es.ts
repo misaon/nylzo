@@ -269,6 +269,11 @@ export const messages: Catalog = {
   'read.delete.no': 'No borrar',
   'read.deleted_rest': 'Las aperturas restantes se han borrado.',
   'read.delete.failed': 'No se pudo borrar el mensaje. Inténtalo de nuevo.',
+  'read.delete.wait':
+    'Tras muchos intentos con contraseñas incorrectas, ahora no se puede borrar el mensaje. Inténtalo de nuevo en {time}.',
+  'read.delete.locked':
+    'Tras muchos intentos con contraseñas incorrectas, el mensaje está bloqueado hasta que caduque. Nadie puede abrirlo, pero el remitente aún puede anularlo.',
+  'read.delete.passphrase': 'Escribe la contraseña del remitente y luego elige «Borrar sin abrir».',
 
   'busy.deriving': 'Preparando la clave a partir de la contraseña…',
   'busy.claiming': 'Abriendo el mensaje…',
