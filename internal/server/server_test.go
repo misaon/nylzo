@@ -875,7 +875,7 @@ func TestBrowserMutationGuardPrecedesChallengeSpendAndBodyReads(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/messages", &unreadableBody{t: t})
-		challenge, _ := harness.server.challenges.Issue(time.Now())
+		challenge, _, _ := harness.server.challenges.Issue(time.Now())
 		seed := [core.SeedLen]byte{1}
 		signature := signing.SignRequest(
 			&seed,
@@ -895,9 +895,8 @@ func TestBrowserMutationGuardPrecedesChallengeSpendAndBodyReads(t *testing.T) {
 			strings.TrimSpace(response.Body.String()) != `{"error":"cross_origin"}` {
 			t.Fatalf("unexpected denial: %d %s", response.Code, response.Body.String())
 		}
-		spent, err := harness.server.challenges.Spend(t.Context(), challenge, time.Now())
-		if err != nil || !spent {
-			t.Fatalf("cross-origin request consumed a challenge: first spend=%v, err=%v", spent, err)
+		if !harness.server.challenges.See(challenge, time.Now()) {
+			t.Fatal("a cross-origin request used up a challenge")
 		}
 	})
 }
@@ -1472,14 +1471,12 @@ func checkStolenDatabase(t *testing.T, harness *testHarness, created int) {
 	), count(
 		`SELECT COUNT(*) FROM messages WHERE blob_wrap IS NULL`,
 	)
-	spent := count(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'challenge:%' AND window_start = 0`)
 	nonces := count(`SELECT COUNT(*) FROM rate_counters WHERE key LIKE 'pow:%' AND window_start = 0`)
-	if rows != int64(created)+1 || ended != 6 || spent == 0 || nonces != 1 {
+	if rows != int64(created)+1 || ended != 6 || nonces != 1 {
 		t.Fatalf(
-			"the flows did not leave the expected rows: %d rows, %d without a blob key, %d spent challenges, %d PoW nonces",
+			"the flows did not leave the expected rows: %d rows, %d without a blob key, %d PoW nonces",
 			rows,
 			ended,
-			spent,
 			nonces,
 		)
 	}
@@ -1490,7 +1487,7 @@ func checkStolenDatabase(t *testing.T, harness *testHarness, created int) {
 	}
 	for _, key := range column[string](t, database, `SELECT key FROM rate_counters`) {
 		if !slices.ContainsFunc(
-			[]string{"global:", "pow:", "challenge:", "sweep:reconcile:"},
+			[]string{"global:", "pow:", "sweep:reconcile:"},
 			func(prefix string) bool { return strings.HasPrefix(key, prefix) },
 		) {
 			t.Errorf("counter %q is not one of the address-free keys", key)

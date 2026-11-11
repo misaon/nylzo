@@ -19,6 +19,7 @@ import (
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/datadir"
 
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -190,6 +191,35 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 	if result.code != 1 || strings.Contains(result.stderr, `"msg":"sweep`) ||
 		strings.Contains(result.stderr, `"msg":"listening"`) {
 		t.Fatalf("a taken port: exit %d, %s", result.code, result.stderr)
+	}
+}
+
+func TestServeRefusesADataDirectoryThatAnotherServeHolds(t *testing.T) {
+	directory := t.TempDir()
+	release, err := datadir.Hold(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer taken.Close()
+	result := run(
+		t,
+		"",
+		map[string]string{
+			"NYLZO_DATA_DIR":    directory,
+			"NYLZO_PEPPER_FILE": pepperFile(t),
+			"NYLZO_REPORT_KEY":  testReportKeyText,
+			"NYLZO_LISTEN":      taken.Addr().String(),
+		},
+		nil,
+		RunServe,
+	)
+	if result.code != 1 || !strings.Contains(result.stderr, datadir.ErrServed.Error()) {
+		t.Fatalf("a held data directory: exit %d, %s", result.code, result.stderr)
 	}
 }
 

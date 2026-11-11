@@ -46,25 +46,6 @@ func (s *Store) RateReserve(ctx context.Context, hit store.RateHit) (int64, erro
 	return count, err
 }
 
-func (s *Store) RateReserveBatch(ctx context.Context, hits []store.RateHit) ([]bool, error) {
-	reserved := make([]bool, len(hits))
-	err := s.transaction(ctx, func(tx *sql.Tx) error {
-		statement := tx.StmtContext(ctx, s.statements.reserveCounter)
-		for i := range hits {
-			count, err := reserveHit(ctx, statement, &hits[i])
-			if err != nil {
-				return err
-			}
-			reserved[i] = count > 0
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return reserved, nil
-}
-
 func (s *Store) RateRelease(ctx context.Context, key string, windowStart time.Time) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
 		_, err := execIn(ctx, tx, s.statements.releaseCounter, key, milliseconds(windowStart))

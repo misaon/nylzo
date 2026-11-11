@@ -20,8 +20,12 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-// storeSlack covers rounding expires_at up to the minute and writing the arrived upload (spec section 5.6).
-const storeSlack = 2 * time.Minute
+const (
+	// storeSlack covers rounding expires_at up to the minute and writing the arrived upload (spec section 5.6).
+	storeSlack = 2 * time.Minute
+	// challengesFullRetry waits for the minute purge, which frees the challenges that expired.
+	challengesFullRetry = time.Minute
+)
 
 type instanceResponse struct {
 	Limits   api.InstanceLimits  `json:"limits"`
@@ -158,7 +162,12 @@ func (s *Server) issueID(creation *creationRequest, now time.Time) (api.Instance
 }
 
 func (s *Server) handleChallenge(w http.ResponseWriter, _ *http.Request) {
-	challenge, expires := s.challenges.Issue(time.Now())
+	challenge, expires, issued := s.challenges.Issue(time.Now())
+	if !issued {
+		setRetryAfter(w, challengesFullRetry)
+		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		return
+	}
 	writeJSON(w, http.StatusOK, api.Challenge{Challenge: core.Encode(challenge[:]), ExpiresAt: formatTime(expires)})
 }
 

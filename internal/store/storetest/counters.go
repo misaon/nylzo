@@ -2,7 +2,6 @@ package storetest
 
 import (
 	"errors"
-	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -41,45 +40,6 @@ func (f *fixture) rateReserveIsAtomic() {
 	}
 	if count, _ := f.store.RateGet(ctx, hit.Key, hit.WindowStart); count.Count != 10 {
 		t.Fatalf("count: %+v", count)
-	}
-}
-
-func (f *fixture) rateReserveBatch() {
-	t, ctx := f.t, f.t.Context()
-	spend := func(key string) store.RateHit {
-		return store.RateHit{Key: key, WindowStart: time.Unix(0, 0), PurgeAt: baseTime.Add(time.Hour), Limit: 1}
-	}
-	reserved, err := f.store.RateReserveBatch(ctx, []store.RateHit{spend("a"), spend("b"), spend("a")})
-	if err != nil || !slices.Equal(reserved, []bool{true, true, false}) {
-		t.Fatalf("first batch: %v %v", reserved, err)
-	}
-	reserved, err = f.store.RateReserveBatch(ctx, []store.RateHit{spend("c"), spend("b")})
-	if err != nil || !slices.Equal(reserved, []bool{true, false}) {
-		t.Fatalf("second batch: %v %v", reserved, err)
-	}
-	if count, _ := f.store.RateGet(ctx, "a", time.Unix(0, 0)); count.Count != 1 {
-		t.Fatalf("a refused hit still counted: %+v", count)
-	}
-	var granted atomic.Int64
-	var wait sync.WaitGroup
-	for range 20 {
-		wait.Go(func() {
-			batch, batchErr := f.store.RateReserveBatch(
-				ctx,
-				[]store.RateHit{spend("shared"), spend(core.NewID().String())},
-			)
-			if batchErr != nil || !batch[1] {
-				t.Errorf("concurrent batch: %v %v", batch, batchErr)
-				return
-			}
-			if batch[0] {
-				granted.Add(1)
-			}
-		})
-	}
-	wait.Wait()
-	if granted.Load() != 1 {
-		t.Fatalf("concurrent batches reserved one key %d times", granted.Load())
 	}
 }
 

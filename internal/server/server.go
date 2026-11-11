@@ -127,7 +127,10 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		return nil, ratchetErr
 	}
 	server.setUpLimits()
-	server.challenges = proof.NewChallenges(ring, storage)
+	server.challenges = proof.NewChallenges(
+		ring,
+		proof.Capacity(settings.Rates.BucketPerSecond, settings.Rates.BucketBurst),
+	)
 	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency)
 	server.idTokens = proof.NewIDTokens(ring)
 	server.reports = abuse.NewReports(
@@ -221,8 +224,8 @@ func (s *Server) RunSweeper(ctx context.Context) {
 }
 
 // RunHousekeeping works at every minute boundary: it writes the request counts and events of a window that ended,
-// drops rate-limit entries that no longer limit anything and draws a new address key when a UTC day begins (spec
-// §5.3, §10). It drops the counts of the last window at shutdown, which would end that window early.
+// drops rate-limit entries that no longer limit anything and request challenges that can no longer be used, and draws
+// a new address key when a UTC day begins (spec §5.3, §5.5, §10). It drops the counts of the last window at shutdown, which would end that window early.
 func (s *Server) RunHousekeeping(ctx context.Context) {
 	day := ratelimit.Day(time.Now()).Start
 	window := logging.StartWindow(time.Now())
@@ -245,6 +248,7 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 		} else {
 			s.purgeRateTables(now)
 		}
+		s.purgeChallenges(now)
 		eraseUnreachableSecrets()
 	}
 }
@@ -304,6 +308,11 @@ func (s *Server) purgeRateTables(now time.Time) {
 		s.instance.Purge(now)
 		s.streams.Purge()
 	})
+}
+
+// purgeChallenges runs in secret mode, so the runtime erases the replaced table of challenges once it is unreachable.
+func (s *Server) purgeChallenges(now time.Time) {
+	secretmode.Do(func() { s.challenges.Purge(now) })
 }
 
 func (s *Server) forgetAddresses() {

@@ -218,7 +218,7 @@ func (h *testHarness) challenge() [signing.ChallengeLen]byte {
 }
 
 func (h *testHarness) challengeAt(now time.Time) [signing.ChallengeLen]byte {
-	challenge, _ := h.server.challenges.Issue(now)
+	challenge, _, _ := h.server.challenges.Issue(now)
 	return challenge
 }
 
