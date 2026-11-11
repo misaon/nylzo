@@ -7,7 +7,6 @@ import (
 	"math"
 	"net/netip"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -220,7 +219,7 @@ func readSecretFile(path string) ([]byte, error) {
 	defer file.Close()
 	if info, statErr := file.Stat(); statErr != nil {
 		return nil, statErr
-	} else if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+	} else if info.Mode().Perm()&0o077 != 0 {
 		return nil, errSecretFileShared
 	}
 	raw, err := io.ReadAll(io.LimitReader(file, maxSecretFileBytes+1))

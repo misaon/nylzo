@@ -2,11 +2,11 @@ package epoch
 
 import "io/fs"
 
-// Windows runs only development servers and has no POSIX owner or mode to check.
+// The server refuses Windows (D54); every entry counts as foreign and exposed, so nothing vouches for a Windows file.
 func ownedByProcess(fs.FileInfo) bool {
-	return true
+	return false
 }
 
 func shared(fs.FileInfo) bool {
-	return false
+	return true
 }

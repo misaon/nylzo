@@ -32,7 +32,7 @@ mise run e2e:browsers
 mise run e2e
 ```
 
-`test` runs the Go race tests, the TypeScript suites and the repository tool tests. `lint` runs the dependency gate and the Go, TypeScript, workflow and shell checks. golangci-lint runs every linter on both Go modules, the server and the Caddy module, except the few that `.golangci.yml` turns off, each with its reason. CI jobs call the same `lint:*` and `test:*` tasks, and the developer setup job fails if CI skips one, so both run one list of checks. `mise tasks` lists all tasks.
+`test` runs the Go race tests, the TypeScript suites and the repository tool tests. `lint` runs the dependency gate and the Go, TypeScript, workflow and shell checks. golangci-lint runs every linter on both Go modules, the server and the Caddy module, except the few that `.golangci.yml` turns off, each with its reason. It lints the server module a second time for Windows, whose own files the other runs never compile. CI jobs call the same `lint:*` and `test:*` tasks, and the developer setup job fails if CI skips one, so both run one list of checks. `mise tasks` lists all tasks.
 
 `mise run build` embeds the production web client in `bin/nylzo` and injects the same build identity into Go and Vite. Untagged and modified checkouts identify themselves as development builds. See [versioning](../maintainers/Releasing.md#one-source-of-version-identity).
 
@@ -42,13 +42,13 @@ mise run e2e
 
 CI selects test and build jobs from changed paths on pull requests and pushes to `main`. `tools/ci-plan.mts` reads the Git diff against the base commit, including deleted paths and both sides of renames; an unknown base selects full verification. Every run validates the Wiki links and the routing rules, then reports its selected jobs in the Actions summary.
 
-| Change                                                                                                   | Checks                                                                          |
-| -------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
-| Wiki, README, community Markdown, README artwork                                                         | Wiki validation and routing regression tests                                    |
-| Go server, CLI, or storage                                                                               | Go checks, race tests, timing tests, fuzzing, Go CodeQL, integration and builds |
-| Web app, browser tests, or embedded web assets                                                           | Web checks, JavaScript/TypeScript CodeQL, integration and builds                |
-| Deployment configuration                                                                                 | Workflow/script checks, integration and builds                                  |
-| Protocol, vectors, either cryptographic core, dependencies, CI, toolchain, build tools, or unknown paths | Full verification                                                               |
+| Change                                                                                                   | Checks                                                                                              |
+| -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Wiki, README, community Markdown, README artwork                                                         | Wiki validation and routing regression tests                                                        |
+| Go server, CLI, or storage                                                                               | Go checks, race tests, timing tests, fuzzing, Windows file tests, Go CodeQL, integration and builds |
+| Web app, browser tests, or embedded web assets                                                           | Web checks, JavaScript/TypeScript CodeQL, integration and builds                                    |
+| Deployment configuration                                                                                 | Workflow/script checks, integration and builds                                                      |
+| Protocol, vectors, either cryptographic core, dependencies, CI, toolchain, build tools, or unknown paths | Full verification                                                                                   |
 
 Code, build, configuration, and dependency changes also run the required SCA job against both lockfiles, including known-malware and license checks. It retains raw findings and import evidence; exact non-affected findings have a bounded VEX assessment. See [security control policies](../maintainers/Security-controls.md).
 

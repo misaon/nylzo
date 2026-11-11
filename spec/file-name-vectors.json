@@ -1,5 +1,5 @@
 {
-  "description": "Shared cases for both clients: a sanitised file name loses control, format and default-ignorable characters, keeps at most 255 bytes of UTF-8 and keeps its extension only when the extension is at most 16 bytes. A name is its parts joined, each part a text repeated count times.",
+  "description": "Shared cases for both clients: a sanitised file name loses control, format and default-ignorable characters, keeps at most 255 bytes of UTF-8 and keeps its extension only when the extension is at most 16 bytes, and loses the dots and spaces a cut leaves at its end. A name is its parts joined, each part a text repeated count times.",
   "cases": [
     {
       "name": "an astral extension longer than 16 bytes is cut with the stem",
@@ -45,6 +45,11 @@
       "name": "a three-byte stem is cut at a whole character",
       "input": [["\u20ac", 100], [".txt", 1]],
       "sanitized": [["\u20ac", 83], [".txt", 1]]
+    },
+    {
+      "name": "a cut that ends in a dot and a space loses both",
+      "input": [["e", 253], [". ", 1], ["x", 30]],
+      "sanitized": [["e", 253]]
     },
     {
       "name": "a name of 255 bytes stays whole",

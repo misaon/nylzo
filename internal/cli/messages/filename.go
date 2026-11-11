@@ -54,7 +54,8 @@ func attachmentName(name string) string {
 	if before, after, found := strings.CutLast(clean, "."); found && before != "" && len(after) <= maxExtensionBytes {
 		stem, extension = before, "."+after
 	}
-	return strings.ToValidUTF8(stem[:min(maxNameBytes-len(extension), len(stem))], "") + extension
+	cut := strings.ToValidUTF8(stem[:min(maxNameBytes-len(extension), len(stem))], "") + extension
+	return strings.TrimRightFunc(cut, dotOrSpace)
 }
 
 func sameFileName(first, second string) bool {

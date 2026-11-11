@@ -93,6 +93,52 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  windows-build:
+    name: Build the Windows tests
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: $/.github/actions/setup
+        with:
+          tools: go
+      - name: Cross-compile the private file tests for Windows
+        run: GOOS=windows GOARCH=amd64 go test -c -o "$RUNNER_TEMP/windows-tests/privatefile.test.exe" ./internal/privatefile/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: windows-tests
+          path: ${{ runner.temp }}/windows-tests/
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Private files on Windows
+    needs: [changes, windows-build]
+    if: needs.changes.outputs.go == 'true'
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        env:
+          # The bundled unzip stream still calls the deprecated Buffer(); actions/download-artifact issue 484.
+          NODE_OPTIONS: --no-deprecation
+        with:
+          name: windows-tests
+          path: ${{ runner.temp }}/windows-tests
+          digest-mismatch: error
+      - name: Files and directories get an owner-only access list in a directory everyone can read
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP/windows-tests/privatefile.test.exe" '-test.v' '-test.count=1'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   sca:
     name: Dependency vulnerabilities, malware, and licenses
     needs: changes
@@ -764,6 +810,8 @@ jobs:
         changes,
         sca,
         go,
+        windows-build,
+        windows,
         repository,
         deployment,
         fuzz,
