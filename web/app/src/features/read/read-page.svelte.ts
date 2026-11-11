@@ -5,7 +5,7 @@ import { prefersReducedMotion } from 'svelte/motion';
 import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
 import { clearClipboard } from '../../shared/clipboard/clear-clipboard.ts';
-import { revokeSavedFiles, saveFile } from '../../shared/files/save-file.ts';
+import { revokeSavedFiles } from '../../shared/files/save-file.ts';
 import { scryptInWorker, stopRunningWorkers } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
 import { formatClock, formatMoment } from '../../shared/language/format.ts';
@@ -20,7 +20,8 @@ import { burnText, noticeOf } from './read-notice.ts';
 import type { Burned, Notice } from './read-notice.ts';
 import { readerSession } from './reader-session.ts';
 import { createReader } from './reader.ts';
-import type { BurnOutcome, BusyStep, ClosedView, Reader, ReadView, RevealedFile } from './reader.ts';
+import type { BurnOutcome, BusyStep, ClosedView, Reader, ReadView } from './reader.ts';
+import { DownloadConfirmation } from './revealed/download-confirmation.svelte.ts';
 import { markHiddenCharacters } from './revealed/hidden-characters.ts';
 import type { MarkedText } from './revealed/hidden-characters.ts';
 
@@ -71,7 +72,6 @@ const NOISE_CHARACTERS = 260;
 const NOISE_GROWTH = 900;
 const SETTLE_WAIT_MS = 700;
 const COUNTDOWN_TICK_MS = 1000;
-const CONFIRM_DELAY_MS = 1000;
 export const SHOWN_SECONDS = 15 * 60;
 const FAILED_BURNS: ReadonlySet<BurnOutcome['outcome']> = new Set(['failed', 'retry_later', 'unknown', 'waiting']);
 const UNSENT_BURNS: ReadonlySet<BurnOutcome['outcome']> = new Set(['failed', 'ignored', 'retry_later']);
@@ -97,7 +97,6 @@ export class ReadPage {
   #markShown: (() => void) | undefined;
   #revealTimer: ReturnType<typeof setInterval> | undefined;
   #countdownTimer: ReturnType<typeof setInterval> | undefined;
-  #confirmTimer: ReturnType<typeof setTimeout> | undefined;
   readonly #settleTimer: ReturnType<typeof setTimeout>;
   #shownUntil = 0;
   readonly #reader: Reader;
@@ -111,8 +110,6 @@ export class ReadPage {
   typedAgain = $state(false);
   passphraseRequired = $state(false);
   metadata = $state.raw<Metadata>();
-  confirmingDownload = $state(false);
-  downloadReady = $state(false);
   askingDelete = $state(false);
   deleteIntent = $state(false);
   restDeleted = $state(false);
@@ -130,6 +127,10 @@ export class ReadPage {
   readonly copied = new Flash(FLASH_MS);
   readonly downloaded = new Flash(FLASH_MS);
   readonly focus = new FocusTargets<FocusTarget>();
+  readonly download = new DownloadConfirmation(
+    async (target) => this.focus.focusAfterUpdate(target),
+    () => this.downloaded.show(),
+  );
   readonly steps = $derived(this.passphraseRequired ? STEPS : STEPS.slice(1));
 
   readonly minMs = $derived.by(() => {
@@ -239,19 +240,6 @@ export class ReadPage {
     await this.focus.focusAfterUpdate('keepMessage');
   };
 
-  readonly askDownload = async (event: MouseEvent): Promise<void> => {
-    if (event.detail > 1) {
-      return;
-    }
-    this.confirmingDownload = true;
-    this.downloadReady = false;
-    clearTimeout(this.#confirmTimer);
-    this.#confirmTimer = setTimeout(() => {
-      this.downloadReady = true;
-    }, CONFIRM_DELAY_MS);
-    await this.focus.focusAfterUpdate('keepFile');
-  };
-
   readonly burn = async (): Promise<void> => {
     this.askingDelete = false;
     if (this.#missingPassphrase()) {
@@ -280,24 +268,6 @@ export class ReadPage {
     this.askingDelete = false;
     this.deleteIntent = false;
     await this.focus.focusAfterUpdate(() => (this.revealed ? 'deleteRest' : 'deleteMessage'));
-  };
-
-  readonly cancelDownload = async (event: KeyboardEvent | MouseEvent): Promise<void> => {
-    if (event.detail > 1) {
-      return;
-    }
-    this.#closeDownload();
-    await this.focus.focusAfterUpdate('download');
-  };
-
-  readonly confirmDownload = async (event: MouseEvent, file: RevealedFile): Promise<void> => {
-    if (event.detail > 1 || !this.downloadReady) {
-      return;
-    }
-    saveFile(file.bytes, file.name);
-    this.#closeDownload();
-    this.downloaded.show();
-    await this.focus.focusAfterUpdate('download');
   };
 
   readonly askCopy = async (): Promise<void> => {
@@ -365,15 +335,6 @@ export class ReadPage {
 
     event.stopPropagation();
     void this.cancelDelete();
-  };
-
-  readonly onDownloadKeydown = (event: KeyboardEvent): void => {
-    if (event.key !== 'Escape') {
-      return;
-    }
-
-    event.stopPropagation();
-    void this.cancelDownload(event);
   };
 
   readonly retry = (): void => {
@@ -468,7 +429,6 @@ export class ReadPage {
       this.timeline.stop();
       clearInterval(this.#revealTimer);
       clearTimeout(this.#settleTimer);
-      clearTimeout(this.#confirmTimer);
       this.#stopCountdown();
       this.#reader.clear();
     });
@@ -555,17 +515,11 @@ export class ReadPage {
     this.#markShown = undefined;
   }
 
-  #closeDownload(): void {
-    clearTimeout(this.#confirmTimer);
-    this.confirmingDownload = false;
-    this.downloadReady = false;
-  }
-
   #close(closed: ClosedView): void {
     stopRunningWorkers();
     revokeSavedFiles();
     this.burned = undefined;
-    this.#closeDownload();
+    this.download.close();
     this.askingDelete = false;
     this.showPassphrase = false;
     this.passphrase = '';

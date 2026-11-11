@@ -33,9 +33,9 @@
       <div
         class={[
           'flex items-center gap-3.5 fade-swap',
-          page.confirmingDownload ? 'pointer-events-none opacity-0' : 'opacity-100',
+          page.download.shown ? 'pointer-events-none opacity-0' : 'opacity-100',
         ]}
-        inert={page.confirmingDownload}
+        inert={page.download.shown}
       >
         <span
           class="relative grid size-12 shrink-0 place-items-center rounded-pane text-white tile-current"
@@ -61,8 +61,8 @@
         <Button
           {@attach page.focus.attach('download')}
           variant="tint"
-          disabled={page.confirmingDownload}
-          onclick={(event: MouseEvent) => void page.askDownload(event)}
+          disabled={page.download.shown}
+          onclick={(event: MouseEvent) => void page.download.ask(event)}
           class="max-sm:w-11 max-sm:px-0"
           aria-label={translate('open.download.file')}
         >
@@ -75,12 +75,12 @@
         tabindex="-1"
         aria-labelledby="{id}-confirm-title"
         aria-describedby="{id}-confirm"
-        onkeydown={page.onDownloadKeydown}
+        onkeydown={page.download.onKeydown}
         class={[
           'flex flex-col gap-2.5 fade-swap sm:flex-row sm:items-center sm:justify-between',
-          page.confirmingDownload ? 'opacity-100' : 'pointer-events-none opacity-0',
+          page.download.shown ? 'opacity-100' : 'pointer-events-none opacity-0',
         ]}
-        inert={!page.confirmingDownload}
+        inert={!page.download.shown}
       >
         <div class="flex min-w-0 items-center gap-3.5">
           <span
@@ -103,15 +103,15 @@
           <Button
             {@attach page.focus.attach('keepFile')}
             variant="ghost"
-            onclick={(event: MouseEvent) => void page.cancelDownload(event)}
+            onclick={(event: MouseEvent) => void page.download.cancel(event)}
           >
             {translate('revealed.confirm.cancel')}
           </Button>
           <Button
             variant="danger"
-            disabled={!page.confirmingDownload}
-            aria-disabled={page.confirmingDownload && !page.downloadReady}
-            onclick={(event: MouseEvent) => void page.confirmDownload(event, file)}
+            disabled={!page.download.shown}
+            aria-disabled={page.download.shown && !page.download.ready}
+            onclick={(event: MouseEvent) => void page.download.confirm(event, file)}
           >
             <Icon name="download" class="size-4 shrink-0" animated />
             {translate('revealed.confirm.download')}
