@@ -16,7 +16,7 @@ export const PURPOSE_MANAGE = 'manage';
 export type Purpose = typeof PURPOSE_READ | typeof PURPOSE_VERIFIER | typeof PURPOSE_MANAGE;
 
 const AUTHORIZATION_SCHEME = 'Nylzo-Sig';
-const REQUEST_LABEL = 'nylzo/v1/request';
+const REQUEST_LABEL = 'nylzo/v2/request';
 const FIELD_SEPARATOR = new Uint8Array(1);
 const PKCS8_ED25519_PREFIX = decodeBase64urlExact('MC4CAQAwBQYDK2VwBCIEIA', 16);
 const GENERATE_ATTEMPTS = 8;
@@ -133,16 +133,35 @@ export async function newRequestKey(): Promise<RequestKey> {
   }
 }
 
+export interface RequestComponents {
+  readonly shareKey?: string;
+  readonly lease?: string;
+}
+
+function encodedComponent(value = ''): Uint8Array<ArrayBuffer> {
+  const bytes = utf8(value);
+  const size = new Uint8Array(8);
+  new DataView(size.buffer).setBigUint64(0, BigInt(bytes.length));
+  return concatenate(size, bytes);
+}
+
 export async function requestMessage(
   purpose: Purpose,
   method: string,
   path: string,
   challenge: Uint8Array,
   body: Uint8Array,
+  components: RequestComponents = {},
 ): Promise<Uint8Array<ArrayBuffer>> {
   assertLength(challenge, CHALLENGE_LENGTH, 'challenge');
   const fields = [REQUEST_LABEL, purpose, method, path].flatMap((field) => [utf8(field), FIELD_SEPARATOR]);
-  return concatenate(...fields, challenge, await hash(body));
+  return concatenate(
+    ...fields,
+    challenge,
+    await hash(body),
+    encodedComponent(components.shareKey),
+    encodedComponent(components.lease),
+  );
 }
 
 export async function signRequest(
@@ -152,11 +171,12 @@ export async function signRequest(
   path: string,
   challenge: Uint8Array,
   body: Uint8Array = new Uint8Array(0),
+  components: RequestComponents = {},
 ): Promise<RequestSignature> {
   if (revokedKeys.has(key.privateKey)) {
     throw new Error('the request key was released');
   }
-  const message = await requestMessage(purpose, method, path, challenge, body);
+  const message = await requestMessage(purpose, method, path, challenge, body, components);
   const signature = new Uint8Array(await crypto.subtle.sign('Ed25519', key.privateKey, message));
   return { publicKey: key.publicKey, challenge: arrayBufferBacked(challenge), signature };
 }

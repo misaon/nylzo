@@ -2,6 +2,8 @@ package signing_test
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -19,18 +21,26 @@ func TestRequestSignatureBindsEveryField(t *testing.T) {
 	var challenge [signing.ChallengeLen]byte
 	copy(challenge[:], bytes.Repeat([]byte{7}, signing.ChallengeLen))
 	body := []byte(`{"id":"x"}`)
-	signature := signing.SignRequest(core.NewSecret(), signing.PurposeRead, "POST", "/api/v1/abuse", challenge, body)
-	if !signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", body) {
+	signature := signing.SignRequest(
+		core.NewSecret(),
+		signing.PurposeRead,
+		"POST",
+		"/api/v1/abuse",
+		challenge,
+		body,
+		signing.Components{},
+	)
+	if !signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", body, signing.Components{}) {
 		t.Fatal("the signature does not verify")
 	}
-	otherChallenge := signature
+	otherChallenge := *signature
 	otherChallenge.Challenge[0] ^= 1
 	for field, verified := range map[string]bool{
-		"purpose":   signature.Verify(signing.PurposeManage, "POST", "/api/v1/abuse", body),
-		"method":    signature.Verify(signing.PurposeRead, "GET", "/api/v1/abuse", body),
-		"path":      signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuses", body),
-		"body":      signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", []byte(`{"id":"y"}`)),
-		"challenge": otherChallenge.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", body),
+		"purpose":   signature.Verify(signing.PurposeManage, "POST", "/api/v1/abuse", body, signing.Components{}),
+		"method":    signature.Verify(signing.PurposeRead, "GET", "/api/v1/abuse", body, signing.Components{}),
+		"path":      signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuses", body, signing.Components{}),
+		"body":      signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", []byte(`{"id":"y"}`), signing.Components{}),
+		"challenge": otherChallenge.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", body, signing.Components{}),
 	} {
 		if verified {
 			t.Fatalf("a signature verified with another %s", field)
@@ -118,4 +128,70 @@ func isPoint(key []byte) bool {
 func isSmallOrder(key []byte) bool {
 	point, err := new(edwards25519.Point).SetBytes(key)
 	return err == nil && new(edwards25519.Point).MultByCofactor(point).Equal(edwards25519.NewIdentityPoint()) == 1
+}
+
+func TestRequestSignatureBindsSecurityHeaders(t *testing.T) {
+	t.Parallel()
+	seed := core.NewSecret()
+	challenge := [signing.ChallengeLen]byte{7}
+	original := signing.Components{ShareKey: "share-key", Lease: "lease-token"}
+	for _, purpose := range []string{signing.PurposeRead, signing.PurposeManage, signing.PurposeVerifier} {
+		signature := signing.SignRequest(seed, purpose, "POST", "/claim", challenge, nil, original)
+		if !signature.Verify(purpose, "POST", "/claim", nil, original) {
+			t.Fatal("unchanged components did not verify")
+		}
+		for _, altered := range []signing.Components{
+			{ShareKey: "other", Lease: original.Lease},
+			{ShareKey: original.ShareKey, Lease: "other"},
+			{Lease: original.Lease},
+			{ShareKey: original.ShareKey},
+			{},
+			{ShareKey: original.Lease, Lease: original.ShareKey},
+		} {
+			if signature.Verify(purpose, "POST", "/claim", nil, altered) {
+				t.Fatalf("%s accepted altered components %+v", purpose, altered)
+			}
+		}
+		empty := signing.SignRequest(seed, purpose, "POST", "/claim", challenge, nil, signing.Components{})
+		if empty.Verify(purpose, "POST", "/claim", nil, original) {
+			t.Fatal("unsigned headers could be injected")
+		}
+	}
+	// Delimiters inside values cannot move bytes from one component to another.
+	one := signing.RequestMessage(
+		"read",
+		"GET",
+		"/",
+		&challenge,
+		nil,
+		signing.Components{ShareKey: "a\x00b", Lease: "c"},
+	)
+	two := signing.RequestMessage(
+		"read",
+		"GET",
+		"/",
+		&challenge,
+		nil,
+		signing.Components{ShareKey: "a", Lease: "b\x00c"},
+	)
+	if bytes.Equal(one, two) {
+		t.Fatal("ambiguous component framing")
+	}
+}
+
+func TestRequestSignatureRejectsLegacyTranscript(t *testing.T) {
+	t.Parallel()
+	seed := core.NewSecret()
+	challenge := [signing.ChallengeLen]byte{7}
+	bodyHash := sha256.Sum256(nil)
+	legacy := []byte("nylzo/v1/request\x00read\x00GET\x00/api/v1/messages/id\x00")
+	legacy = append(legacy, challenge[:]...)
+	legacy = append(legacy, bodyHash[:]...)
+	privateKey := ed25519.NewKeyFromSeed(seed[:])
+	defer clear(privateKey)
+	signature := signing.Signature{PublicKey: signing.PublicKey(seed), Challenge: challenge}
+	copy(signature.Value[:], ed25519.Sign(privateKey, legacy))
+	if signature.Verify("read", "GET", "/api/v1/messages/id", nil, signing.Components{}) {
+		t.Fatal("legacy transcript accepted")
+	}
 }

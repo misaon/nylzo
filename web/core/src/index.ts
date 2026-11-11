@@ -45,6 +45,7 @@ export {
   PURPOSE_MANAGE,
   PURPOSE_READ,
   PURPOSE_VERIFIER,
+  type RequestComponents,
   type RequestKey,
   requestKey,
   requestMessage,

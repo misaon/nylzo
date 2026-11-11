@@ -877,7 +877,15 @@ func TestBrowserMutationGuardPrecedesChallengeSpendAndBodyReads(t *testing.T) {
 		request := httptest.NewRequest(http.MethodPost, "/api/v1/messages", &unreadableBody{t: t})
 		challenge, _ := harness.server.challenges.Issue(time.Now())
 		seed := [core.SeedLen]byte{1}
-		signature := signing.SignRequest(&seed, signing.PurposeRead, request.Method, request.URL.Path, challenge, nil)
+		signature := signing.SignRequest(
+			&seed,
+			signing.PurposeRead,
+			request.Method,
+			request.URL.Path,
+			challenge,
+			nil,
+			signing.Components{},
+		)
 		request.Header.Set("Authorization", signature.Authorization())
 		request.Header.Set("Origin", "https://attacker.example")
 		request.Header.Set("X-Requested-With", "XMLHttpRequest")

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"strings"
 
@@ -22,7 +23,7 @@ const (
 	PurposeManage   = "manage"
 
 	AuthScheme   = "Nylzo-Sig"
-	requestLabel = "nylzo/v1/request"
+	requestLabel = "nylzo/v2/request"
 )
 
 var ErrAuthorization = errors.New("core: malformed request signature")
@@ -47,7 +48,19 @@ func ValidPublicKey(publicKey []byte) bool {
 	return new(edwards25519.Point).MultByCofactor(point).Equal(edwards25519.NewIdentityPoint()) == 0
 }
 
-func RequestMessage(purpose, method, path string, challenge *[ChallengeLen]byte, body []byte) []byte {
+// Components contains the security-relevant request headers, as sent on the wire.
+// Missing headers are represented by the empty string. Header order and casing do not matter.
+type Components struct {
+	ShareKey string `json:"share_key"`
+	Lease    string `json:"lease"`
+}
+
+func RequestMessage(
+	purpose, method, path string,
+	challenge *[ChallengeLen]byte,
+	body []byte,
+	components Components,
+) []byte {
 	bodyHash := sha256.Sum256(body)
 	message := make([]byte, 0, len(requestLabel)+len(purpose)+len(method)+len(path)+4+ChallengeLen+len(bodyHash))
 	for _, part := range []string{requestLabel, purpose, method, path} {
@@ -55,7 +68,13 @@ func RequestMessage(purpose, method, path string, challenge *[ChallengeLen]byte,
 		message = append(message, 0)
 	}
 	message = append(message, challenge[:]...)
-	return append(message, bodyHash[:]...)
+	message = append(message, bodyHash[:]...)
+	// Fixed order and length prefixes bind both values without delimiter ambiguities.
+	for _, value := range []string{components.ShareKey, components.Lease} {
+		message = binary.BigEndian.AppendUint64(message, uint64(len(value)))
+		message = append(message, value...)
+	}
+	return message
 }
 
 func SignRequest(
@@ -63,11 +82,15 @@ func SignRequest(
 	purpose, method, path string,
 	challenge [ChallengeLen]byte,
 	body []byte,
+	components Components,
 ) *Signature {
 	privateKey := ed25519.NewKeyFromSeed(seed[:])
 	defer clear(privateKey)
 	signature := &Signature{PublicKey: [PublicKeyLen]byte(privateKey[ed25519.SeedSize:]), Challenge: challenge}
-	copy(signature.Value[:], ed25519.Sign(privateKey, RequestMessage(purpose, method, path, &challenge, body)))
+	copy(
+		signature.Value[:],
+		ed25519.Sign(privateKey, RequestMessage(purpose, method, path, &challenge, body, components)),
+	)
 	return signature
 }
 
@@ -103,8 +126,12 @@ func ParseVerifierHeader(header string, challenge [ChallengeLen]byte) (Signature
 	return signature, nil
 }
 
-func (s *Signature) Verify(purpose, method, path string, body []byte) bool {
-	return ed25519.Verify(s.PublicKey[:], RequestMessage(purpose, method, path, &s.Challenge, body), s.Value[:])
+func (s *Signature) Verify(purpose, method, path string, body []byte, components Components) bool {
+	return ed25519.Verify(
+		s.PublicKey[:],
+		RequestMessage(purpose, method, path, &s.Challenge, body, components),
+		s.Value[:],
+	)
 }
 
 func (s *Signature) Authorization() string {

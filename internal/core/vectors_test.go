@@ -517,10 +517,10 @@ func TestRequestVectors(t *testing.T) {
 			vector.Method,
 			vector.Path,
 			(*[signing.ChallengeLen]byte)(challenge),
-			body,
+			body, vector.Components,
 		)
 		signature := signing.SignRequest(decode32(t, vector.Seed), vector.Purpose, vector.Method, vector.Path,
-			[signing.ChallengeLen]byte(challenge), body)
+			[signing.ChallengeLen]byte(challenge), body, vector.Components)
 		if hex.EncodeToString(message) != vector.Message || core.Encode(signature.PublicKey[:]) != vector.PublicKey ||
 			core.Encode(signature.Value[:]) != vector.Signature {
 			t.Fatalf("%s: message or signature differs", vector.Name)
@@ -537,11 +537,12 @@ func TestRequestVectors(t *testing.T) {
 			}
 			parsed, err = signing.ParseAuthorization(vector.Authorization)
 		}
-		if err != nil || parsed != *signature || !parsed.Verify(vector.Purpose, vector.Method, vector.Path, body) {
+		if err != nil || parsed != *signature ||
+			!parsed.Verify(vector.Purpose, vector.Method, vector.Path, body, vector.Components) {
 			t.Fatalf("%s: the header does not parse back and verify: %v", vector.Name, err)
 		}
-		if parsed.Verify(vector.Purpose, vector.Method, vector.Path+"x", body) ||
-			parsed.Verify(vector.Purpose, vector.Method, vector.Path, append(body, 'x')) {
+		if parsed.Verify(vector.Purpose, vector.Method, vector.Path+"x", body, vector.Components) ||
+			parsed.Verify(vector.Purpose, vector.Method, vector.Path, append(body, 'x'), vector.Components) {
 			t.Fatalf("%s: a signature verified for another path or body", vector.Name)
 		}
 	}

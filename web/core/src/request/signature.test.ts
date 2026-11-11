@@ -31,11 +31,12 @@ describe('AK9: request vectors', () => {
 
     const challenge = parseChallenge(vector.challenge);
     const body = hexToBytes(vector.body_hex);
-    const message = await requestMessage(vector.purpose, vector.method, vector.path, challenge, body);
+    const components = { shareKey: vector.components.share_key, lease: vector.components.lease };
+    const message = await requestMessage(vector.purpose, vector.method, vector.path, challenge, body, components);
     expect(message.toHex()).toBe(vector.message_hex);
 
     const sign = (signingKey: RequestKey) =>
-      signRequest(signingKey, vector.purpose, vector.method, vector.path, challenge, body);
+      signRequest(signingKey, vector.purpose, vector.method, vector.path, challenge, body, components);
     const signature = await sign(key);
     expect(encodeBase64url(signature.signature)).toBe(vector.signature);
     expect({ authorization: vector.authorization, verifier_header: vector.verifier_header }).toEqual(
@@ -47,6 +48,43 @@ describe('AK9: request vectors', () => {
 });
 
 describe('request signatures (spec 5.5)', () => {
+  it.each([PURPOSE_READ, PURPOSE_MANAGE, PURPOSE_VERIFIER] as const)(
+    'binds security headers for %s',
+    async (purpose) => {
+      const key = await requestKey(new Uint8Array(SEED_LENGTH).fill(7));
+      const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(3);
+      const original = { shareKey: 'share-key', lease: 'lease-token' };
+      const signature = await signRequest(key, purpose, 'POST', path, challenge, undefined, original);
+      const publicKey = await crypto.subtle.importKey('raw', key.publicKey, 'Ed25519', false, ['verify']);
+      for (const components of [
+        original,
+        { ...original, shareKey: 'other' },
+        { ...original, lease: 'other' },
+        { shareKey: original.shareKey },
+        { lease: original.lease },
+        {},
+        { shareKey: original.lease, lease: original.shareKey },
+      ]) {
+        const message = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), components);
+        expect(await crypto.subtle.verify('Ed25519', publicKey, signature.signature, message)).toBe(
+          components === original,
+        );
+      }
+      const unsigned = await signRequest(key, purpose, 'POST', path, challenge);
+      const injected = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), original);
+      expect(await crypto.subtle.verify('Ed25519', publicKey, unsigned.signature, injected)).toBe(false);
+      const one = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), {
+        shareKey: 'a\0b',
+        lease: 'c',
+      });
+      const two = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), {
+        shareKey: 'a',
+        lease: 'b\0c',
+      });
+      expect(one).not.toEqual(two);
+    },
+  );
+
   it('rejects a seed or challenge of the wrong length', async () => {
     await expect(requestKey(new Uint8Array(SEED_LENGTH - 1))).rejects.toBeInstanceOf(Error);
     const short = new Uint8Array(CHALLENGE_LENGTH - 1);
