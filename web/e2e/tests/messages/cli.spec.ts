@@ -63,8 +63,9 @@ test(
     const link = runCli(['create', '--server', BASE_URL, '--compress', '--from-file', file], '').trim();
     await showMessage(page, link);
     await expectMessageShown(page);
-    const downloading = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Download attachment' }).click();
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download anyway' }).click();
     const download = await downloading;
     expect(download.suggestedFilename()).toBe('rows.csv');
     const saved = await download.path();

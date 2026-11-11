@@ -293,9 +293,9 @@ export const messages: Catalog = {
     'Vérifiez toute demande d’argent, de connexion ou d’installation auprès de l’expéditeur par un autre moyen.',
   'revealed.file': 'Pièce jointe',
   'revealed.file.unchecked':
-    'La pièce jointe est chiffrée, Nylzo ne peut donc pas l’analyser avec un antivirus. N’ouvrez que des fichiers venant de personnes que vous connaissez.',
+    'La pièce jointe est chiffrée, Nylzo ne peut donc pas l’analyser avec un antivirus. Ne téléchargez que des fichiers d’expéditeurs de confiance.',
   'revealed.confirm.title':
-    'Ce type de fichier peut exécuter du code. Ne l’ouvrez que si vous faites confiance à l’expéditeur.',
+    'Tout fichier peut contenir un logiciel malveillant, même un PDF, un document ou une image. Ne le téléchargez que si vous faites confiance à l’expéditeur.',
   'revealed.confirm.extension': 'Extension du fichier\u{A0}:',
   'revealed.confirm.none': 'Le fichier n’a pas d’extension.',
   'revealed.confirm.download': 'Télécharger quand même',

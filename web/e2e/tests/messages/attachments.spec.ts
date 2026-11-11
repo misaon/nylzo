@@ -5,7 +5,14 @@ import { createMessageThroughApi } from '../support/messages.ts';
 import { expectMessageShown, notInert, showMessage } from '../support/pages.ts';
 import { watchDownloads } from '../support/watchers.ts';
 
-const RISKY_FILES = [
+const ATTACHMENTS = [
+  {
+    name: 'report.pdf',
+    shown: 'report.pdf',
+    extension: 'pdf',
+    mimeType: 'application/pdf',
+    body: '%PDF-1.4\n%nylzo\n',
+  },
   {
     name: 'drawing.svg',
     shown: 'drawing.svg',
@@ -83,9 +90,9 @@ for (const problem of ['checksum', 'expansion', 'trailing', 'multiple frames'] a
   );
 }
 
-for (const file of RISKY_FILES) {
+for (const file of ATTACHMENTS) {
   test(
-    `a risky attachment ${file.shown} downloads only after a warning, once per double click, under its sanitised name and as application/octet-stream (AK13, D35)`,
+    `the attachment ${file.shown} downloads only after a warning, once per double click, under its sanitised name and as application/octet-stream (AK13, D35, F09)`,
     { tag: '@cross-browser' },
     async ({ page }) => {
       const message = await createMessageThroughApi({
@@ -98,7 +105,7 @@ for (const file of RISKY_FILES) {
       const readPage = page.url();
       const download = page.getByRole('button', { name: 'Download attachment' });
       const cancel = page.getByRole('button', { name: 'Do not download' });
-      const warning = notInert(page, page.getByRole('alert')).filter({ hasText: /can run code/u });
+      const warning = notInert(page, page.getByRole('alertdialog')).filter({ hasText: /can carry malware/u });
 
       await download.dblclick();
       await expect(warning).toHaveCount(1);
@@ -132,27 +139,3 @@ for (const file of RISKY_FILES) {
     },
   );
 }
-
-test(
-  'a safe attachment downloads at once, once per double click, as application/octet-stream (AK13, D35)',
-  { tag: '@cross-browser' },
-  async ({ page }) => {
-    const message = await createMessageThroughApi({
-      file: { name: 'report.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4\n%nylzo\n') },
-    });
-    const downloads = await watchDownloads(page);
-    await showMessage(page, message.link);
-    await expectMessageShown(page);
-    await expect(page.locator('bdi').filter({ hasText: 'report.pdf' })).toHaveText('report.pdf');
-    const readPage = page.url();
-    const saving = page.waitForEvent('download');
-    await page.getByRole('button', { name: 'Download attachment' }).dblclick();
-    const saved = await saving;
-    expect(saved.suggestedFilename()).toBe('report.pdf');
-    await expect(page.getByText(/can run code/u)).toHaveCount(0);
-    expect(await downloads.blobTypes()).toEqual(['application/octet-stream']);
-    expect(downloads.names).toEqual(['report.pdf']);
-    expect(page.url()).toBe(readPage);
-    expect(page.context().pages()).toHaveLength(1);
-  },
-);

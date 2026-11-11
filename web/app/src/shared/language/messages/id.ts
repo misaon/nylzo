@@ -291,8 +291,9 @@ export const messages: Catalog = {
     'Jika ada permintaan uang, login, atau instalasi, pastikan dulu kepada pengirim melalui saluran lain.',
   'revealed.file': 'Lampiran',
   'revealed.file.unchecked':
-    'Lampiran ini terenkripsi, sehingga Nylzo tidak dapat memindainya dengan antivirus. Buka hanya file dari orang yang Anda kenal.',
-  'revealed.confirm.title': 'Jenis file ini dapat menjalankan kode. Buka hanya jika Anda memercayai pengirimnya.',
+    'Lampiran ini terenkripsi, sehingga Nylzo tidak dapat memindainya dengan antivirus. Unduh hanya file dari pengirim yang Anda percayai.',
+  'revealed.confirm.title':
+    'File apa pun bisa berisi kode berbahaya, termasuk PDF, dokumen, atau gambar. Unduh hanya jika Anda memercayai pengirimnya.',
   'revealed.confirm.extension': 'Ekstensi file:',
   'revealed.confirm.none': 'File ini tidak memiliki ekstensi.',
   'revealed.confirm.download': 'Tetap unduh',
