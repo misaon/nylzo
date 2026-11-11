@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/cli/harden"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/secretmode"
@@ -43,7 +44,7 @@ var (
 	errMemoryLock = errors.New(
 		"the server must lock its memory so no key reaches swap: raise the memlock limit " +
 			"(systemd LimitMEMLOCK=infinity, docker run --ulimit memlock=-1:-1, Compose ulimits memlock -1) " +
-			"or grant CAP_IPC_LOCK; NYLZO_ALLOW_SWAP=1 serves without the lock",
+			"or grant CAP_IPC_LOCK outside a user namespace; NYLZO_ALLOW_SWAP=1 serves without the lock",
 	)
 	errSecretMode = errors.New(
 		"this build leaves request keys in memory after use: build with GOEXPERIMENT=runtimesecret for " +
@@ -86,10 +87,7 @@ func runServer(
 		return code
 	}
 	logger := logging.New(environment.Stderr)
-	err := hardenProcess()
-	if err == nil {
-		err = run(ctx, logger)
-	}
+	err := run(ctx, logger)
 	switch {
 	case err == nil:
 		return command.ExitOK
@@ -110,7 +108,7 @@ func requireMemoryLock(development config.Development, logger *slog.Logger) erro
 		logger.Warn("memory-not-locked", "reason", "NYLZO_ALLOW_SWAP")
 		return nil
 	}
-	if err := lockMemory(); err != nil {
+	if err := harden.LockMemory(); err != nil {
 		return fmt.Errorf("%w: %w", errMemoryLock, err)
 	}
 	return nil

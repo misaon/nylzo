@@ -170,7 +170,7 @@ store_check() {
   fi
   docker run --rm --name nylzo-store-check --user 65532:65532 --network none \
     --read-only --cap-drop ALL --security-opt no-new-privileges:true "${label[@]}" \
-    --memory 256m --cpus 1 --pids-limit 64 --ulimit core=0:0 \
+    --memory 256m --cpus 1 --pids-limit 64 --ulimit memlock=-1:-1 --ulimit core=0:0 \
     --env NYLZO_DATA_DIR=/home/nonroot --env NYLZO_EPOCH_DIR=/run/nylzo-epoch \
     --volume "/var/lib/nylzo/data:/home/nonroot:$mode" \
     --volume "/run/nylzo-epoch:/run/nylzo-epoch:$mode" "$1" store-check
