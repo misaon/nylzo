@@ -37,31 +37,34 @@ func (f *fixture) createLoadConflict() {
 	}
 }
 
-// onlyThePresentedKeyOpens checks that a row opens with pk_R or pk_M for its own purpose and with nothing else.
+// onlyThePresentedKeyOpens checks that a row opens with pk_R or pk_M for its own purpose, together with the pepper
+// key, and with nothing else.
 func (f *fixture) onlyThePresentedKeyOpens() {
 	t := f.t
 	created := f.create(1, oneHour, false)
 	row := f.get(created).Row
-	open := func(publicKey []byte, purpose seal.Purpose) error {
+	open := func(pepperKey seal.Key, publicKey []byte, purpose seal.Purpose) error {
 		wrapped := row.ReadWrap
 		if purpose == seal.Manage {
 			wrapped = row.ManageWrap
 		}
-		key, err := seal.Unwrap(seal.KeyFor(publicKey, row.Locator, purpose), wrapped, row.Locator, purpose)
+		key, err := seal.UnwrapRecordKey(pepperKey, publicKey, wrapped, row.Locator, purpose)
 		if err != nil {
 			return err
 		}
 		_, err = store.OpenRecord(&row, key)
 		return err
 	}
-	if open(created.readKey, seal.Read) != nil || open(created.manageKey, seal.Manage) != nil {
+	if open(recordsKey, created.readKey, seal.Read) != nil || open(recordsKey, created.manageKey, seal.Manage) != nil {
 		t.Fatal("the read and manage keys must open the record")
 	}
 	other := core.NewSecret()[:]
 	for name, failure := range map[string]error{
-		"another public key":            open(other, seal.Read),
-		"the read key for managing":     open(created.readKey, seal.Manage),
-		"the manage key for reading":    open(created.manageKey, seal.Read),
+		"another public key":            open(recordsKey, other, seal.Read),
+		"the read key for managing":     open(recordsKey, created.readKey, seal.Manage),
+		"the manage key for reading":    open(recordsKey, created.manageKey, seal.Read),
+		"the read key without pepper":   open(seal.Key{}, created.readKey, seal.Read),
+		"the manage key without pepper": open(seal.NewKey(), created.manageKey, seal.Manage),
 		"a random record key":           func() error { _, err := store.OpenRecord(&row, seal.NewKey()); return err }(),
 		"the record of another locator": openElsewhere(&row, created.Key),
 	} {
@@ -69,8 +72,8 @@ func (f *fixture) onlyThePresentedKeyOpens() {
 			t.Fatalf("%s opened the record", name)
 		}
 	}
-	if len(row.Record)%seal.RecordBlock != 0 || len(row.ReadWrap) != seal.WrapLen ||
-		len(row.ManageWrap) != seal.WrapLen {
+	if len(row.Record)%seal.RecordBlock != 0 || len(row.ReadWrap) != seal.SealedWrapLen ||
+		len(row.ManageWrap) != seal.SealedWrapLen {
 		t.Fatalf("a sealed row must have fixed lengths: record %d, wraps %d and %d",
 			len(row.Record), len(row.ReadWrap), len(row.ManageWrap))
 	}

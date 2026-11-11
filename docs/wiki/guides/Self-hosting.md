@@ -34,7 +34,7 @@ sudo install -d -o 65533 -g 65533 -m 0700 caddy-state
 
 Neither UID may belong to an account on the host. Compose refuses to start when `caddy-state` is missing, rather than creating a directory Caddy cannot write.
 
-Run the pepper commands only for a new deployment; do not overwrite an existing pepper during an upgrade. Keep it outside the database. Losing the pepper makes existing tokens unverifiable and live messages inaccessible. A leaked pepper combined with server data enables additional guessing attacks; see the [protocol](../reference/Protocol.md).
+Run the pepper commands only for a new deployment; do not overwrite an existing pepper during an upgrade. Keep it outside the database. Losing the pepper makes existing tokens unverifiable and live messages inaccessible. A leaked pepper combined with server data enables additional guessing attacks, and together with a public key from a recorded request it opens that message's stored metadata; see the [protocol](../reference/Protocol.md).
 
 On your own workstation, create the abuse-reporting key with a verified CLI:
 
@@ -107,7 +107,7 @@ A deployment that still runs the official `caddy` image must also take the new `
 
 The Caddyfile requests ordinary 90-day certificates. To match the Hetzner profile, add `issuer acme { profile shortlived }` to the site's `tls` block for 160-hour certificates, and alert on certificate expiry. Publish CAA `issue "letsencrypt.org; validationmethods=http-01,tls-alpn-01; accounturi=…"` and `issuewild ";"` for your domain, and turn off any CDN-managed certificates for it.
 
-For pepper rotation, keep the previous pepper as a second Docker secret and configure `NYLZO_PEPPER_PREVIOUS_FILE`, then generate the new pepper. Retain the previous pepper for seven days so live messages remain accessible. See [Operations](Operations.md#configuration).
+For pepper rotation, keep the previous pepper as a second Docker secret and configure `NYLZO_PEPPER_PREVIOUS_FILE`, then generate the new pepper. The first start with both seals every stored message with the new pepper. Retain the previous pepper for seven days so passphrase checks and leases of live messages still verify. See [Operations](Operations.md#configuration).
 
 The example's retention policy does not back up message content. Keep configuration and pepper backups separate from message data, and keep the reporting private key on the workstation. Review your own retention policy before adding database, volume, or host-level backups. Such a backup must leave out the epoch seed (`epoch/` in the data volume): a copy of it, together with a link and a copy of the message, opens any message that expires after the backup was taken, at any later time. The same holds for a disk image or provider snapshot of the host. To keep the seed off the disk, bind-mount a host directory on tmpfs, such as `/run/nylzo-epoch` owned by UID 65532 with mode 0700, and set `NYLZO_EPOCH_DIR` to it; a host reboot then ends every live message. See [Expiry keys](Operations.md#expiry-keys).
 

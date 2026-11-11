@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
@@ -29,7 +30,8 @@ var endings = []State{"", StateDeleted, StateCancelled}
 // DummyLocator keys the row that a lookup of an unknown id reads; finding an id that hashes to it is a preimage.
 var DummyLocator seal.Locator = sha256.Sum256([]byte("nylzo/v1/dummy-row"))
 
-// NewDummyRow has the shape of a live row and random keys, so no public key opens it.
+// NewDummyRow has the shape of a live row and random keys, so no public key opens it. No pepper opens its wraps either
+// until serve seals them under its own when it starts (ResealRow).
 func NewDummyRow() Row {
 	var readKey, manageKey, reference [seal.KeyLen]byte
 	rand.Read(readKey[:])
@@ -38,7 +40,25 @@ func NewDummyRow() Row {
 	far := time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
 	message := &Message{Version: 2, OpensMax: 1, OpensRemaining: 1, CreatedAt: far, ExpiresAt: far}
 	blobReference := base64.RawURLEncoding.EncodeToString(reference[:BlobReferenceLen])
-	return NewRecord(DummyLocator, message, readKey[:], manageKey[:], blobReference, seal.NewKey()).Row
+	return NewRecord(seal.NewKey(), DummyLocator, message, readKey[:], manageKey[:], blobReference, seal.NewKey()).Row
+}
+
+// ResealRow puts both wraps of a row under the current pepper key (seal.ResealWrap). The dummy row gets new wraps when
+// no key opens it, so it costs what a live row does.
+func ResealRow(row *Row, current seal.Key, earlier []seal.Key) (bool, error) {
+	readChanged, readErr := seal.ResealWrap(current, earlier, &row.ReadWrap, row.Locator, seal.Read)
+	manageChanged, manageErr := seal.ResealWrap(current, earlier, &row.ManageWrap, row.Locator, seal.Manage)
+	err := errors.Join(readErr, manageErr)
+	if err != nil && row.Locator == DummyLocator {
+		row.ReadWrap, row.ManageWrap = dummyWrap(current, seal.Read), dummyWrap(current, seal.Manage)
+		return true, nil
+	}
+	return readChanged || manageChanged, err
+}
+
+func dummyWrap(pepperKey seal.Key, purpose seal.Purpose) []byte {
+	publicKey := seal.NewKey()
+	return seal.WrapRecordKey(pepperKey, publicKey[:], seal.NewKey(), DummyLocator, purpose)
 }
 
 // Record is a row opened with its record key, for the length of one request.
@@ -48,8 +68,10 @@ type Record struct {
 	Message *Message
 }
 
-// NewRecord seals a new message; the public keys only derive the wrapping keys and are never kept.
+// NewRecord seals a new message; the public keys only derive the wrapping keys and are never kept, and the pepper key
+// seals both wraps.
 func NewRecord(
+	pepperKey seal.Key,
 	locator seal.Locator,
 	message *Message,
 	readKey, manageKey []byte,
@@ -60,8 +82,8 @@ func NewRecord(
 	record := Record{
 		Row: Row{
 			Locator:       locator,
-			ReadWrap:      seal.Wrap(seal.KeyFor(readKey, locator, seal.Read), key, locator, seal.Read),
-			ManageWrap:    seal.Wrap(seal.KeyFor(manageKey, locator, seal.Manage), key, locator, seal.Manage),
+			ReadWrap:      seal.WrapRecordKey(pepperKey, readKey, key, locator, seal.Read),
+			ManageWrap:    seal.WrapRecordKey(pepperKey, manageKey, key, locator, seal.Manage),
 			BlobReference: blobReference,
 			BlobWrap:      seal.WrapBlobKey(key, blobKey, locator),
 			BlobPurgeAt:   BlobPurgeAt(message.ExpiresAt),

@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"cmp"
+	"context"
 	"crypto/hpke"
 	"crypto/sha256"
 	"encoding/base64"
@@ -159,6 +160,9 @@ func (h *testHarness) open() {
 		h.t.Fatal(err)
 	}
 	h.t.Cleanup(server.Close)
+	if err = server.SealRows(h.t.Context()); err != nil {
+		h.t.Fatal(err)
+	}
 	h.server = server
 	handler := server.handler
 	h.httpServer = httptest.NewTestServer(h.t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -209,7 +213,13 @@ func (h *testHarness) listen() string {
 		h.t.Fatal(err)
 	}
 	go httpServer.Serve(transport.SecureEarlyErrors(listener))
-	h.t.Cleanup(func() { httpServer.Close() })
+	h.t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(h.t.Context()), 10*time.Second)
+		defer cancel()
+		if httpServer.Shutdown(ctx) != nil {
+			httpServer.Close()
+		}
+	})
 	return listener.Addr().String()
 }
 
@@ -432,7 +442,7 @@ func (h *testHarness) recordFrom(storage store.Store, message *testMessage) (sto
 		return store.Record{}, err
 	}
 	readKey := signing.PublicKey(&message.link.R)
-	return openRow(&row, seal.Read, readKey[:])
+	return h.server.openRow(&row, seal.Read, readKey[:])
 }
 
 func (h *testHarness) mustRecord(message *testMessage) store.Record {
@@ -455,6 +465,7 @@ func (h *testHarness) rewrite(message *testMessage, change func(*store.Message))
 	change(record.Message)
 	readKey, manageKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.manage)
 	rebuilt := store.NewRecord(
+		h.server.recordsKey,
 		record.Row.Locator,
 		record.Message,
 		readKey[:],
