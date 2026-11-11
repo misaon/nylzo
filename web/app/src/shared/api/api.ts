@@ -283,10 +283,27 @@ export function createApi(options: ApiOptions = {}): Api {
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
     }
-    const signature = await signRequest(request.key, request.purpose, request.method, request.path, fresh, body);
+    const components = { shareKey: headers['X-Nylzo-Share-Key'] ?? '', lease: headers['X-Nylzo-Lease'] ?? '' };
+    const signature = await signRequest(
+      request.key,
+      request.purpose,
+      request.method,
+      request.path,
+      fresh,
+      body,
+      components,
+    );
     headers['Authorization'] = authorizationHeader(signature);
     if (request.verifier) {
-      const verifier = await signRequest(request.verifier, PURPOSE_VERIFIER, request.method, request.path, fresh);
+      const verifier = await signRequest(
+        request.verifier,
+        PURPOSE_VERIFIER,
+        request.method,
+        request.path,
+        fresh,
+        undefined,
+        components,
+      );
       headers['X-Nylzo-Verifier'] = verifierHeader(verifier);
     }
     if (request.proceed?.() === false) {

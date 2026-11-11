@@ -521,10 +521,11 @@ func (h *testHarness) sign(r *http.Request, token, verifier string, body []byte)
 		purpose = signing.PurposeManage
 	}
 	challenge := h.challenge()
+	components, _ := requestComponents(r)
 	if verifier != "" {
-		r.Header.Set("X-Nylzo-Verifier", verifierHeader(verifier, r.Method, path, challenge))
+		r.Header.Set("X-Nylzo-Verifier", verifierHeader(verifier, r.Method, path, challenge, components))
 	}
-	r.Header.Set("Authorization", signedHeader(token, purpose, r.Method, path, challenge, body))
+	r.Header.Set("Authorization", signedHeader(token, purpose, r.Method, path, challenge, body, components))
 }
 
 func (h *testHarness) withIDToken(header string) string {
@@ -886,20 +887,53 @@ func decodePolicy(header string) (envelope.Policy, error) {
 	return envelope.Policy{OpensMax: uint16(policy.OpensMax), TTLSeconds: uint32(policy.TTLSeconds)}, nil
 }
 
-func signedHeader(token, purpose, method, path string, challenge [signing.ChallengeLen]byte, body []byte) string {
+func testRequestComponents(path string) signing.Components {
+	if strings.HasSuffix(path, "/claim") || strings.HasSuffix(path, "/blob") {
+		return signing.Components{ShareKey: testShareKeyHeader}
+	}
+	return signing.Components{}
+}
+
+func signedHeader(
+	token, purpose, method, path string,
+	challenge [signing.ChallengeLen]byte,
+	body []byte,
+	fields ...signing.Components,
+) string {
+	components := testRequestComponents(path)
+	if len(fields) > 0 {
+		components = fields[0]
+	}
 	seed, err := core.DecodeExact(token, core.SeedLen)
 	if err != nil {
 		return signing.AuthScheme + " " + token
 	}
-	return signing.SignRequest((*[core.SeedLen]byte)(seed), purpose, method, path, challenge, body).Authorization()
+	return signing.SignRequest((*[core.SeedLen]byte)(seed), purpose, method, path, challenge, body, components).
+		Authorization()
 }
 
-func verifierHeader(verifier, method, path string, challenge [signing.ChallengeLen]byte) string {
+func verifierHeader(
+	verifier, method, path string,
+	challenge [signing.ChallengeLen]byte,
+	fields ...signing.Components,
+) string {
+	components := testRequestComponents(path)
+	if len(fields) > 0 {
+		components = fields[0]
+	}
 	seed, err := core.DecodeExact(verifier, core.SeedLen)
 	if err != nil {
 		return verifier
 	}
-	signature := signing.SignRequest((*[core.SeedLen]byte)(seed), signing.PurposeVerifier, method, path, challenge, nil)
+	signature := signing.SignRequest(
+		(*[core.SeedLen]byte)(seed),
+		signing.PurposeVerifier,
+		method,
+		path,
+		challenge,
+		nil,
+		components,
+	)
 	return signature.VerifierHeader()
 }
 
@@ -909,7 +943,7 @@ func signedRequest(
 	challenge [signing.ChallengeLen]byte,
 	body []byte,
 ) *testRequest {
-	signature := signing.SignRequest(seed, purpose, method, path, challenge, body)
+	signature := signing.SignRequest(seed, purpose, method, path, challenge, body, testRequestComponents(path))
 	return &testRequest{
 		method:  method,
 		path:    path,

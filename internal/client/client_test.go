@@ -2,10 +2,12 @@ package client
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -265,5 +267,56 @@ func TestRetriedClaimDrawsANewShareKeyAndReportsTheOneAnswered(t *testing.T) {
 	}
 	if claimed.ShareKey == nil || core.Encode(claimed.ShareKey.PublicKey().Bytes()) != sent[1] {
 		t.Fatal("the claim did not report the share key of the answered attempt")
+	}
+}
+
+func TestSignedRetryBindsFreshAttemptHeaders(t *testing.T) {
+	t.Parallel()
+	var attempts atomic.Int32
+	var drawn atomic.Int32
+	client := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == api.ChallengePath {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"challenge":%q}`, core.Encode(make([]byte, signing.ChallengeLen)))
+			return
+		}
+		components := signing.Components{
+			ShareKey: r.Header.Get(api.ShareKeyHeaderName),
+			Lease:    r.Header.Get(api.LeaseHeaderName),
+		}
+		if components.ShareKey != strconv.Itoa(int(attempts.Load()+1)) || components.Lease != "lease-token" {
+			t.Errorf("wrong attempt components: %+v", components)
+		}
+		signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
+		if err != nil || !signature.Verify(signing.PurposeRead, r.Method, r.URL.Path, nil, components) {
+			t.Error("read signature does not cover the attempt headers")
+		}
+		verifier, err := signing.ParseVerifierHeader(r.Header.Get(api.VerifierHeaderName), signature.Challenge)
+		if err != nil || !verifier.Verify(signing.PurposeVerifier, r.Method, r.URL.Path, nil, components) {
+			t.Error("verifier signature does not cover the attempt headers")
+		}
+		if attempts.Add(1) == 1 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error":"not_found"}`))
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	request := signedRequest{
+		method: http.MethodPost, path: "/claim", purpose: signing.PurposeRead,
+		seed: core.NewSecret(), verifier: core.NewSecret(),
+		headers: map[string]string{api.LeaseHeaderName: "lease-token"},
+		attemptHeaders: func() map[string]string {
+			return map[string]string{api.ShareKeyHeaderName: strconv.Itoa(int(drawn.Add(1)))}
+		},
+	}
+	response, err := client.signed(t.Context(), &request, shortTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if attempts.Load() != 2 || drawn.Load() != 2 {
+		t.Fatal("retry did not generate and sign fresh headers")
 	}
 }

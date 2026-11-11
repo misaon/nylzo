@@ -21,6 +21,7 @@ import (
 	"filippo.io/edwards25519"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
@@ -119,7 +120,15 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 			)
 		}},
 		{"off-curve", "metadata", func() *testRequest {
-			signature := signing.SignRequest(wrongSeed, signing.PurposeRead, "GET", livePath, harness.challenge(), nil)
+			signature := signing.SignRequest(
+				wrongSeed,
+				signing.PurposeRead,
+				"GET",
+				livePath,
+				harness.challenge(),
+				nil,
+				signing.Components{},
+			)
 			signature.PublicKey = offCurve
 			return rawAuth(&testRequest{method: http.MethodGet, path: livePath}, signature.Authorization())
 		}},
@@ -254,7 +263,7 @@ func measureUniformity(t *testing.T, harness *testHarness, classes []timingClass
 }
 
 func badSignature(seed *[core.SeedLen]byte, purpose, method, path string, challenge [signing.ChallengeLen]byte) string {
-	signature := signing.SignRequest(seed, purpose, method, path, challenge, nil)
+	signature := signing.SignRequest(seed, purpose, method, path, challenge, nil, signing.Components{})
 	signature.Value[0] ^= 1
 	return signature.Authorization()
 }
@@ -447,19 +456,27 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 			header func(challenge [signing.ChallengeLen]byte) string
 		}{
 			{"other challenge", func([signing.ChallengeLen]byte) string {
-				return signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path, harness.challenge(), nil).
+				return signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path, harness.challenge(), nil, testRequestComponents(path)).
 					VerifierHeader()
 			}},
 			{"read purpose", func(challenge [signing.ChallengeLen]byte) string {
-				return signing.SignRequest(message.verifierKey, signing.PurposeRead, "POST", path, challenge, nil).
+				return signing.SignRequest(message.verifierKey, signing.PurposeRead, "POST", path, challenge, nil, testRequestComponents(path)).
 					VerifierHeader()
 			}},
 			{"other path", func(challenge [signing.ChallengeLen]byte) string {
-				return signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path+"x", challenge, nil).
+				return signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path+"x", challenge, nil, testRequestComponents(path)).
 					VerifierHeader()
 			}},
 			{"right key, foreign signature", func(challenge [signing.ChallengeLen]byte) string {
-				signature := signing.SignRequest(stranger, signing.PurposeVerifier, "POST", path, challenge, nil)
+				signature := signing.SignRequest(
+					stranger,
+					signing.PurposeVerifier,
+					"POST",
+					path,
+					challenge,
+					nil,
+					testRequestComponents(path),
+				)
 				signature.PublicKey = pkV
 				return signature.VerifierHeader()
 			}},
@@ -479,7 +496,7 @@ func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
 		}
 		challenge := harness.challenge()
 		request := signedRequest(&message.link.R, signing.PurposeRead, "POST", path, challenge, nil)
-		request.headers["X-Nylzo-Verifier"] = signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path, challenge, nil).
+		request.headers["X-Nylzo-Verifier"] = signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path, challenge, nil, testRequestComponents(path)).
 			VerifierHeader()
 		if response, _ := harness.do(request); response.StatusCode != http.StatusOK {
 			t.Fatalf("correct verifier: %d", response.StatusCode)
@@ -758,7 +775,7 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 				Challenge: challenge,
 				Value:     [signing.SignatureLen]byte{1},
 			}
-			if !signature.Verify(purpose, method, path, nil) {
+			if !signature.Verify(purpose, method, path, nil, signing.Components{}) {
 				t.Fatal("the forged signature does not verify, so the test proves nothing")
 			}
 			return signature
@@ -982,7 +999,15 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 	}
 	testRequest := func(publicKey *[signing.PublicKeyLen]byte) *http.Request {
 		challenge, _ := server.challenges.Issue(time.Now())
-		signature := signing.SignRequest(core.NewSecret(), signing.PurposeRead, "GET", path, challenge, nil)
+		signature := signing.SignRequest(
+			core.NewSecret(),
+			signing.PurposeRead,
+			"GET",
+			path,
+			challenge,
+			nil,
+			signing.Components{},
+		)
 		if publicKey != nil {
 			signature.PublicKey = *publicKey
 		}
@@ -1045,7 +1070,7 @@ func TestAFailedSpendRefusesTheChallenge(t *testing.T) {
 	server := harness.server
 	path := "/api/v1/messages/" + core.NewID().String()
 	challenge, _ := server.challenges.Issue(time.Now())
-	authorization := signing.SignRequest(core.NewSecret(), signing.PurposeRead, "GET", path, challenge, nil).
+	authorization := signing.SignRequest(core.NewSecret(), signing.PurposeRead, "GET", path, challenge, nil, signing.Components{}).
 		Authorization()
 	send := func() int {
 		r := httptest.NewRequest(http.MethodGet, path, http.NoBody)
@@ -1145,4 +1170,151 @@ func TestARefusalTakesTheFloorAndSpendsTheReadBudget(t *testing.T) {
 	if response, _ := harness.do(request); response.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("status, burn and cancel must spend the hourly read budget: %d", response.StatusCode)
 	}
+}
+
+func TestSecurityHeaderTamperingFailsBeforeSideEffects(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 2, 3600, "signed headers")
+		harness.mustCreate(message)
+		claimed, _ := harness.claim(message, "", "")
+		if claimed.StatusCode != http.StatusOK {
+			t.Fatalf("initial claim: %d", claimed.StatusCode)
+		}
+		lease := claimed.Header.Get("X-Nylzo-Lease")
+		for _, route := range []struct{ method, action string }{
+			{"POST", "/claim"}, {"GET", "/blob"}, {"POST", "/ack"}, {"GET", ""},
+		} {
+			for _, name := range []string{"X-Nylzo-Share-Key", "X-Nylzo-Lease"} {
+				for _, mutation := range []string{"replace", "remove", "duplicate", "append other"} {
+					func() {
+						path := "/api/v1/messages/" + message.id.String() + route.action
+						r, _ := http.NewRequestWithContext(
+							t.Context(),
+							route.method,
+							harness.httpServer.URL+path,
+							http.NoBody,
+						)
+						if route.action == "/claim" || route.action == "/blob" {
+							r.Header.Set("X-Nylzo-Share-Key", testShareKeyHeader)
+						}
+						if route.action == "/blob" || route.action == "/ack" {
+							r.Header.Set("X-Nylzo-Lease", lease)
+						}
+						components, _ := requestComponents(r)
+						signature := signing.SignRequest(
+							&message.link.R,
+							signing.PurposeRead,
+							route.method,
+							path,
+							harness.challenge(),
+							nil,
+							components,
+						)
+						r.Header.Set("Authorization", signature.Authorization())
+						before := r.Header.Clone()
+						switch mutation {
+						case "replace":
+							value := core.Encode(core.NewSecret()[:])
+							if name == "X-Nylzo-Share-Key" {
+								value = core.Encode(share.NewKey().PublicKey().Bytes())
+							}
+							r.Header.Set(name, value)
+						case "remove":
+							if r.Header.Get(name) == "" {
+								return
+							}
+							r.Header.Del(name)
+						case "duplicate", "append other":
+							value := r.Header.Get(name)
+							if len(r.Header.Values(name)) == 0 {
+								r.Header.Add(name, value)
+							}
+							if mutation == "append other" {
+								value = "other"
+							}
+							r.Header.Add(name, value)
+						default:
+							t.Fatal("unknown mutation")
+						}
+						response, err := harness.client.Do(r)
+						if err != nil {
+							t.Fatal(err)
+						}
+						response.Body.Close()
+						if response.StatusCode != http.StatusNotFound || response.Header.Get("X-Nylzo-Share") != "" ||
+							response.Header.Get("X-Nylzo-Lease") != "" {
+							t.Fatalf("tampered headers: %d %v", response.StatusCode, response.Header)
+						}
+						// Even a refused mutation spends the challenge.
+						r.Header = before
+						replayed, err := harness.client.Do(r)
+						if err != nil {
+							t.Fatal(err)
+						}
+						replayed.Body.Close()
+						if replayed.StatusCode != http.StatusNotFound {
+							t.Fatalf("challenge was not spent: %d", replayed.StatusCode)
+						}
+					}()
+				}
+			}
+		}
+		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
+			t.Fatalf("tampering spent an open: %v", metadata)
+		}
+		if response, _ := harness.blob(message, lease); response.StatusCode != http.StatusOK {
+			t.Fatalf("tampering consumed the lease or download allowance: %d", response.StatusCode)
+		}
+		if response := harness.ack(message, lease); response.StatusCode != http.StatusNoContent {
+			t.Fatalf("signed ack: %d", response.StatusCode)
+		}
+	})
+}
+
+func TestVerifierSignatureBindsSecurityHeaders(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "verifier headers")
+		harness.mustCreate(message)
+		path := "/api/v1/messages/" + message.id.String() + "/claim"
+		current := signing.Components{ShareKey: testShareKeyHeader, Lease: core.Encode(core.NewSecret()[:])}
+		for _, altered := range []signing.Components{
+			{ShareKey: core.Encode(share.NewKey().PublicKey().Bytes()), Lease: current.Lease},
+			{ShareKey: current.ShareKey, Lease: core.Encode(core.NewSecret()[:])},
+			{Lease: current.Lease},
+			{ShareKey: current.ShareKey},
+		} {
+			challenge := harness.challenge()
+			read := signing.SignRequest(&message.link.R, signing.PurposeRead, "POST", path, challenge, nil, current)
+			verifier := signing.SignRequest(
+				message.verifierKey,
+				signing.PurposeVerifier,
+				"POST",
+				path,
+				challenge,
+				nil,
+				altered,
+			)
+			response, body := harness.do(&testRequest{
+				method: http.MethodPost, path: path,
+				headers: map[string]string{
+					"Authorization": read.Authorization(), "X-Nylzo-Verifier": verifier.VerifierHeader(),
+					"X-Nylzo-Share-Key": current.ShareKey, "X-Nylzo-Lease": current.Lease,
+				},
+			})
+			if response.StatusCode != http.StatusForbidden || decodeJSON(t, body)["error"] != "passphrase" ||
+				response.Header.Get("X-Nylzo-Share") != "" || response.Header.Get("X-Nylzo-Lease") != "" {
+				t.Fatalf("verifier with mismatched components: %d %s", response.StatusCode, body)
+			}
+		}
+		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
+			t.Fatalf("a mismatched verifier spent an open: %v", metadata)
+		}
+		if response, _ := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusOK {
+			t.Fatalf("matching read and verifier signatures: %d", response.StatusCode)
+		}
+	})
 }

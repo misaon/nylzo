@@ -96,7 +96,9 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if !verifierKeyOK {
 		verifier.PublicKey = dummyPublicKey
 	}
-	verifierSigned := verifier.Verify(signing.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil) && verifierKeyOK
+	components, _ := requestComponents(r)
+	verifierSigned := verifier.Verify(signing.PurposeVerifier, r.Method, r.URL.EscapedPath(), nil, components) &&
+		verifierKeyOK
 	wrappedShare, ok := s.wrappedShare(w, r, &granted.record)
 	if !ok {
 		return
