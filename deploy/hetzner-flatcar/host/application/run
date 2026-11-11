@@ -2,6 +2,12 @@
 set -euo pipefail
 digest=$(/opt/nylzo/bin/jq -er .digest /var/lib/nylzo-deploy/current.json)
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || exit 1
+# Docker would create a missing bind source as a directory, and prepare would then never write the pepper.
+[[ -f /var/lib/nylzo-secrets/pepper ]] || { echo 'No pepper; run /opt/nylzo/runtime/prepare.' >&2; exit 1; }
+previous=()
+if [[ -e /var/lib/nylzo-secrets/pepper.previous ]]; then
+  previous=(--env NYLZO_PEPPER_PREVIOUS_FILE=/run/nylzo-pepper-previous --volume "/var/lib/nylzo-secrets/pepper.previous:/run/nylzo-pepper-previous:ro,Z")
+fi
 exec docker run --rm --name nylzo --pull=never --user 65532:65532 \
   --network nylzo --ip 172.30.81.2 \
   --read-only --cap-drop ALL --security-opt no-new-privileges:true \
@@ -10,4 +16,5 @@ exec docker run --rm --name nylzo --pull=never --user 65532:65532 \
   --volume /var/lib/nylzo/data:/home/nonroot:Z \
   --volume /run/nylzo-epoch:/run/nylzo-epoch:Z \
   --volume /var/lib/nylzo-secrets/pepper:/run/nylzo-pepper:ro,Z \
+  "${previous[@]}" \
   "ghcr.io/misaon/nylzo@$digest" serve

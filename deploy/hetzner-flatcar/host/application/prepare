@@ -6,11 +6,29 @@ umask 077
 mkdir -p /var/lib/nylzo/data /var/lib/nylzo-secrets /var/lib/nylzo-deploy
 chown 165532:165532 /var/lib/nylzo/data
 chmod 0700 /var/lib/nylzo/data
-if [[ ! -e /var/lib/nylzo-secrets/pepper ]]; then
-  openssl rand -hex 32 > /var/lib/nylzo-secrets/pepper.new
-  chown 165532:165532 /var/lib/nylzo-secrets/pepper.new
-  chmod 0400 /var/lib/nylzo-secrets/pepper.new
-  mv /var/lib/nylzo-secrets/pepper.new /var/lib/nylzo-secrets/pepper
+pepper_id() {
+  local secret bytes='' index
+  secret=$(tr -d '[:space:]' < "$1")
+  [[ "$secret" =~ ^[0-9a-fA-F]{64}$ ]] || return 0
+  for ((index = 0; index < 64; index += 2)); do bytes+="\\x${secret:index:2}"; done
+  { printf %s nylzo/v1/pepper-id; printf '%b' "$bytes"; } | sha256sum | cut -c 1-2
+}
+secrets=/var/lib/nylzo-secrets
+if [[ ! -e "$secrets/pepper" ]]; then
+  previous=
+  [[ ! -e "$secrets/pepper.previous" ]] || previous=$(pepper_id "$secrets/pepper.previous")
+  openssl rand -hex 32 > "$secrets/pepper.new"
+  # serve refuses a previous pepper with the same pepper_id.
+  while [[ -n "$previous" && "$(pepper_id "$secrets/pepper.new")" = "$previous" ]]; do
+    openssl rand -hex 32 > "$secrets/pepper.new"
+  done
+  chown 165532:165532 "$secrets/pepper.new"
+  chmod 0400 "$secrets/pepper.new"
+  mv "$secrets/pepper.new" "$secrets/pepper"
+fi
+if [[ -e "$secrets/pepper.previous" ]]; then
+  chown 165532:165532 "$secrets/pepper.previous"
+  chmod 0400 "$secrets/pepper.previous"
 fi
 if ! docker network inspect nylzo >/dev/null 2>&1; then
   docker network create --driver bridge --internal --opt com.docker.network.bridge.name=nylzo0 --subnet 172.30.81.0/24 --gateway 172.30.81.1 nylzo >/dev/null
