@@ -8,10 +8,12 @@ import (
 	"os/signal"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/cli/harden"
 	"github.com/misaon/nylzo/internal/cli/messages"
 	"github.com/misaon/nylzo/internal/cli/operator"
 	"github.com/misaon/nylzo/internal/cli/verifyclient"
@@ -22,6 +24,7 @@ type subcommand struct {
 	name    string
 	summary string
 	run     func(context.Context, *command.Environment, []string) int
+	protect harden.Level
 }
 
 var (
@@ -37,26 +40,62 @@ var (
 
 func commands() []subcommand {
 	return []subcommand{
-		{"create", "encrypt text from stdin or a file and print its link", messages.RunCreate},
-		{"read", "read a link from stdin and decrypt the message into private files", messages.RunRead},
-		{"open", "open a link from stdin in the browser with the verified web client of this nylzo", runOpen},
-		{"web", "serve the verified web client of this nylzo on this computer for an instance", runWeb},
-		{"status", "show the state of a message from its manage token", messages.RunStatus},
-		{"cancel", "end a message with its manage token", messages.RunCancel},
-		{"report", "report a message for abuse from its link on stdin", messages.RunReport},
-		{"burn", "delete the remaining opens of a message from its link", messages.RunBurn},
-		{"serve", "run the server with the embedded web client", operator.RunServe},
-		{"sweep-once", "run one sweep of the server store and exit", operator.RunSweepOnce},
+		{"create", "encrypt text from stdin or a file and print its link", messages.RunCreate, harden.Full},
+		{
+			"read",
+			"read a link from stdin and decrypt the message into private files",
+			messages.RunRead,
+			harden.Full,
+		},
+		{
+			"open",
+			"open a link from stdin in the browser with the verified web client of this nylzo",
+			runOpen,
+			harden.Full,
+		},
+		{
+			"web",
+			"serve the verified web client of this nylzo on this computer for an instance",
+			runWeb,
+			harden.Full,
+		},
+		{"status", "show the state of a message from its manage token", messages.RunStatus, harden.Full},
+		{"cancel", "end a message with its manage token", messages.RunCancel, harden.Full},
+		{"report", "report a message for abuse from its link on stdin", messages.RunReport, harden.Full},
+		{"burn", "delete the remaining opens of a message from its link", messages.RunBurn, harden.Full},
+		{"serve", "run the server with the embedded web client", operator.RunServe, harden.ProcessOnly},
+		{"sweep-once", "run one sweep of the server store and exit", operator.RunSweepOnce, harden.Full},
 		{
 			"store-check",
 			"tell, without writing, whether this build can open the data directory",
 			operator.RunStoreCheck,
+			harden.Full,
 		},
-		{"takedown", "remove reported messages by id from stdin, on the server host", operator.RunTakedown},
-		{"report-key", "create the key pair that seals abuse reports for the operator", operator.RunReportKey},
-		{"reports", "open sealed abuse reports from stdin with the operator's private key", operator.RunReports},
-		{"verify-client", "check that a server sends the same web client as this nylzo", verifyclient.Run},
-		{"version", "print the version", runVersion},
+		{
+			"takedown",
+			"remove reported messages by id from stdin, on the server host",
+			operator.RunTakedown,
+			harden.Full,
+		},
+		{
+			"report-key",
+			"create the key pair that seals abuse reports for the operator",
+			operator.RunReportKey,
+			harden.Full,
+		},
+		{
+			"reports",
+			"open sealed abuse reports from stdin with the operator's private key",
+			operator.RunReports,
+			harden.Full,
+		},
+		{
+			"verify-client",
+			"check that a server sends the same web client as this nylzo",
+			verifyclient.Run,
+			harden.Off,
+		},
+		{"version", "print the version", runVersion, harden.Off},
 	}
 }
 
@@ -89,10 +128,32 @@ func Run(arguments []string, environment *command.Environment) int {
 		fmt.Fprintf(environment.Stderr, "%s: %s\n\n%s", command.Program, name, usage())
 		return command.ExitUsage
 	}
+	listed := commands()[index]
+	if code, ok := protect(environment, listed.protect); !ok {
+		return code
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	context.AfterFunc(ctx, stop)
-	return commands()[index].run(ctx, environment, arguments[1:])
+	return listed.run(ctx, environment, arguments[1:])
+}
+
+// protect hardens the process before the command reads anything secret, and fails closed without the hook (F07).
+func protect(environment *command.Environment, level harden.Level) (int, bool) {
+	if level == harden.Off {
+		return command.ExitOK, true
+	}
+	if environment.Harden == nil {
+		return command.Failf(environment, "this build cannot protect its process, so it reads no secret"), false
+	}
+	warning, err := environment.Harden(level)
+	if err != nil {
+		return command.Failf(environment, "could not protect the process before reading secrets: %s", err), false
+	}
+	if allowed, _ := strconv.ParseBool(environment.Getenv(command.EnvironmentAllowSwap)); warning != "" && !allowed {
+		command.Warnf(environment, "%s; %s=1 hides this warning", warning, command.EnvironmentAllowSwap)
+	}
+	return command.ExitOK, true
 }
 
 func usage() string {

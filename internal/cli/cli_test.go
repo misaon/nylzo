@@ -58,6 +58,7 @@ func TestMain(tests *testing.M) {
 					Stderr:   os.Stderr,
 					Getenv:   os.Getenv,
 					Terminal: noTerminal{},
+					Harden:   noHarden,
 				},
 			),
 		)
@@ -163,6 +164,7 @@ func runWith(
 			Getenv:   getenvFrom(variables),
 			Terminal: terminal,
 			Version:  "test",
+			Harden:   noHarden,
 		},
 	)
 	return commandResult{code: code, stdout: stdout.String(), stderr: stderr.String()}
