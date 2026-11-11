@@ -189,7 +189,7 @@ jobs:
         with:
           distribution: goreleaser
           # renovate: datasource=github-releases depName=goreleaser/goreleaser
-          version: v2.20.0
+          version: v2.20.1
           args: release --clean --skip=before
         env:
           GITHUB_TOKEN: ${{ github.token }}
