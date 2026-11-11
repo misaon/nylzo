@@ -6,12 +6,15 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"unicode"
 
 	"github.com/misaon/nylzo/internal/cli/command"
@@ -196,8 +199,40 @@ func passphraseFlags(flags *flag.FlagSet, source *passphraseSource) {
 	flags.BoolVar(&source.ask, "ask-passphrase", false, "ask for the passphrase on the terminal without echo")
 }
 
-// RunRead creates the output directory before the claim, so a write problem never spends an open.
+// RunRead turns a closed pipe on stdout or stderr into a failed write, so it cannot end read after the open is spent;
+// read exits with an error at the end instead. Notify, unlike Ignore, leaves the default for child processes.
 func RunRead(ctx context.Context, environment *command.Environment, arguments []string) int {
+	signal.Notify(make(chan os.Signal, 1), syscall.SIGPIPE)
+	var loss outputLoss
+	watched := *environment
+	watched.Stdout = &lossWatch{writer: environment.Stdout, loss: &loss}
+	watched.Stderr = &lossWatch{writer: environment.Stderr, loss: &loss}
+	code := read(ctx, &watched, arguments, &loss)
+	if code == command.ExitOK && loss.first != nil {
+		return command.ExitError
+	}
+	return code
+}
+
+type outputLoss struct {
+	first error
+}
+
+type lossWatch struct {
+	writer io.Writer
+	loss   *outputLoss
+}
+
+func (w *lossWatch) Write(data []byte) (int, error) {
+	written, err := w.writer.Write(data)
+	if err != nil && w.loss.first == nil {
+		w.loss.first = err
+	}
+	return written, err
+}
+
+// read creates the output directory before the claim, so a write problem never spends an open.
+func read(ctx context.Context, environment *command.Environment, arguments []string, loss *outputLoss) int {
 	flags, options := readFlags(environment)
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
@@ -238,17 +273,27 @@ func RunRead(ctx context.Context, environment *command.Environment, arguments []
 			command.Program,
 		)
 	}
-	for _, path := range paths {
-		fmt.Fprintln(environment.Stdout, path)
+	return finishRead(environment, paths, options.stdout, loss)
+}
+
+func finishRead(environment *command.Environment, paths []string, toStdout bool, loss *outputLoss) int {
+	if !toStdout {
+		for _, path := range paths {
+			fmt.Fprintln(environment.Stdout, path)
+		}
 	}
-	if len(paths) > 0 {
-		fmt.Fprintf(
-			environment.Stderr,
-			"%s: the files hold the plaintext; delete them when you no longer need them "+
-				"(on SSDs and in backups a deletion may not erase them)\n", command.Program,
-		)
+	if loss.first == nil {
+		return command.ExitOK
 	}
-	return command.ExitOK
+	if len(paths) == 0 {
+		return command.Failf(environment, "part of the output could not be written: %s", loss.first)
+	}
+	return command.Failf(
+		environment,
+		"part of the output could not be written (%s); the files are in %s",
+		loss.first,
+		filepath.Dir(paths[0]),
+	)
 }
 
 type openedMessage struct {
@@ -428,13 +473,22 @@ func saveMessage(
 	toStdout bool,
 	payload envelope.Payload,
 ) ([]string, error) {
+	files := outputFiles(payload, !toStdout)
+	defer wipeOutputFiles(files)
+	paths, err := writeOutput(environment, directory, base, files)
+	if err == nil {
+		printSaveNotices(environment, paths, toStdout, payload.Meta.File != nil)
+	}
+	if text := payload.Meta.Text; toStdout && text != nil {
+		printText(environment, *text)
+	}
+	return paths, err
+}
+
+func outputFiles(payload envelope.Payload, withText bool) []outputFile {
 	var files []outputFile
-	if text := payload.Meta.Text; text != nil {
-		if toStdout {
-			printText(environment, *text)
-		} else {
-			files = append(files, outputFile{textFileName, []byte(*text)})
-		}
+	if text := payload.Meta.Text; text != nil && withText {
+		files = append(files, outputFile{textFileName, []byte(*text)})
 	}
 	if payload.Meta.File != nil {
 		name := attachmentName(payload.Meta.File.Name)
@@ -443,24 +497,44 @@ func saveMessage(
 		}
 		files = append(files, outputFile{name, payload.File})
 	}
+	return files
+}
+
+func writeOutput(
+	environment *command.Environment,
+	directory *os.Root,
+	base string,
+	files []outputFile,
+) ([]string, error) {
 	if len(files) == 0 {
 		return nil, nil
 	}
 	if directory == nil {
 		return nil, errAttachmentDiscarded
 	}
-	defer wipeOutputFiles(files)
-	paths, err := writeWithFallback(environment, directory, base, files)
-	if err != nil {
-		return nil, err
-	}
+	return writeWithFallback(environment, directory, base, files)
+}
+
+func printSaveNotices(environment *command.Environment, paths []string, toStdout, attached bool) {
 	if toStdout {
 		for _, path := range paths {
 			fmt.Fprintf(environment.Stderr, "%s: the attachment is in %s\n", command.Program, path)
 		}
-		return nil, nil
 	}
-	return paths, nil
+	if len(paths) > 0 {
+		fmt.Fprintf(
+			environment.Stderr,
+			"%s: the files hold the plaintext; delete them when you no longer need them "+
+				"(on SSDs and in backups a deletion may not erase them)\n", command.Program,
+		)
+	}
+	if attached {
+		fmt.Fprintf(
+			environment.Stderr,
+			"%s: nylzo cannot scan attachments for malware; open this one only if you trust the sender\n",
+			command.Program,
+		)
+	}
 }
 
 func wipeOutputFiles(files []outputFile) {

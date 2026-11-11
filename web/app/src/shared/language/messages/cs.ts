@@ -276,8 +276,9 @@ export const messages = {
   'revealed.sender.text': 'Žádost o\u{A0}peníze, přihlášení nebo instalaci si ověřte u\u{A0}odesílatele jinou cestou.',
   'revealed.file': 'Příloha',
   'revealed.file.unchecked':
-    'Příloha je šifrovaná, takže ji Nylzo nemůže prověřit antivirem. Otevírejte jen soubory od lidí, které znáte.',
-  'revealed.confirm.title': 'Tento typ souboru může spustit kód. Otevřete ho, jen pokud odesílateli věříte.',
+    'Příloha je šifrovaná, takže ji Nylzo nemůže prověřit antivirem. Stahujte jen soubory od odesílatelů, kterým věříte.',
+  'revealed.confirm.title':
+    'Škodlivý kód může nést každý soubor, i\u{A0}PDF, dokument nebo obrázek. Stáhněte ho, jen pokud odesílateli věříte.',
   'revealed.confirm.extension': 'Přípona souboru:',
   'revealed.confirm.none': 'Soubor nemá příponu.',
   'revealed.confirm.download': 'Přesto stáhnout',

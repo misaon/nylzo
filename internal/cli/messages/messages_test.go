@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -105,6 +107,33 @@ func createText(t *testing.T, instance *testServer, text string) string {
 	}
 	link, _, _ := strings.Cut(result.stdout, "\n")
 	return link
+}
+
+func createWithFile(t *testing.T, instance *testServer, text, name string, data []byte) string {
+	t.Helper()
+	apiClient, err := client.New(instance.url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	message := content{
+		meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: name, Size: int64(len(data))}},
+		file: data,
+	}
+	created, err := createOnce(
+		t.Context(),
+		&command.Environment{Stderr: io.Discard},
+		apiClient,
+		&createInput{
+			options:   &createOptions{opens: 1},
+			message:   &message,
+			policy:    envelope.Policy{OpensMax: 1, TTLSeconds: 3600},
+			maxObject: envelope.ObjectLimit(envelope.MaxFileBytes),
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return created.link
 }
 
 func readPaths(t *testing.T, result commandResult) []string {
@@ -363,4 +392,198 @@ func TestFallbackStaysInsideOut(t *testing.T) {
 	if _, err = os.Stat(filepath.Join(partial, textFileName)); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("a failed set of files left the text behind")
 	}
+}
+
+type recordingStdout struct {
+	bytes.Buffer
+
+	beforeFirstWrite func()
+}
+
+func (r *recordingStdout) Write(data []byte) (int, error) {
+	if r.beforeFirstWrite != nil {
+		r.beforeFirstWrite()
+		r.beforeFirstWrite = nil
+	}
+	return r.Buffer.Write(data)
+}
+
+func notesPayload(text *string) envelope.Payload {
+	return envelope.Payload{
+		Meta: envelope.Meta{Text: text, File: &envelope.FileMeta{Name: "notes.bin", Size: 1}},
+		File: []byte{1},
+	}
+}
+
+func readWith(t *testing.T, link string, stdout, stderr io.Writer, arguments ...string) int {
+	t.Helper()
+	return RunRead(t.Context(), &command.Environment{
+		Stdin:    strings.NewReader(link),
+		Stdout:   stdout,
+		Stderr:   stderr,
+		Getenv:   func(string) string { return "" },
+		Terminal: noTerminal{},
+		Version:  "test",
+	}, arguments)
+}
+
+func savedAttachments(t *testing.T, out string) []string {
+	t.Helper()
+	saved, err := filepath.Glob(filepath.Join(out, outputDirectoryPrefix+"*", "notes.bin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return saved
+}
+
+func TestStdoutGetsOnlyTheTextAfterTheFileAndTheWarnings(t *testing.T) {
+	t.Parallel()
+	text := "beside a file"
+	link := createWithFile(t, newTestServer(t), text, "notes.bin", []byte{1})
+	out := t.TempDir()
+	var stderr bytes.Buffer
+	var warnedFirst string
+	var savedFirst []string
+	stdout := &recordingStdout{beforeFirstWrite: func() {
+		warnedFirst = stderr.String()
+		savedFirst = savedAttachments(t, out)
+	}}
+	code := readWith(t, link, stdout, &stderr, "--stdout", "--out", out)
+	if code != command.ExitOK || stdout.String() != text+"\n" {
+		t.Fatalf("read: exit %d, stdout %q, stderr %q", code, stdout.String(), stderr.String())
+	}
+	if len(savedFirst) != 1 {
+		t.Fatalf("the text reached stdout before the file was saved: %v", savedFirst)
+	}
+	for _, notice := range []string{"the attachment is in", "hold the plaintext", "cannot scan attachments"} {
+		if !strings.Contains(warnedFirst, notice) {
+			t.Fatalf("the text reached stdout before %q: %q", notice, warnedFirst)
+		}
+	}
+}
+
+func TestStdoutAloneStillPrintsTheTextBesideAFileItCannotSave(t *testing.T) {
+	t.Parallel()
+	text := "the file stays behind"
+	var stdout, stderr bytes.Buffer
+	_, err := saveMessage(
+		&command.Environment{Stdout: &stdout, Stderr: &stderr, Terminal: noTerminal{}},
+		nil,
+		"",
+		true,
+		notesPayload(&text),
+	)
+	if !errors.Is(err, errAttachmentDiscarded) || stdout.String() != text+"\n" ||
+		strings.Contains(stderr.String(), "scan") {
+		t.Fatalf("save: %v, stdout %q, stderr %q", err, stdout.String(), stderr.String())
+	}
+}
+
+type closedWriter struct{}
+
+func (closedWriter) Write([]byte) (int, error) {
+	return 0, errors.New("closed")
+}
+
+func TestAClosedOutputFailsTheReadButKeepsTheFile(t *testing.T) {
+	t.Parallel()
+	instance := newTestServer(t)
+	for _, test := range []struct {
+		closed    string
+		arguments []string
+		open      []string
+	}{
+		{"stdout", []string{"--stdout"}, []string{"cannot scan attachments", "the files are in"}},
+		{"stdout", nil, []string{"cannot scan attachments", "the files are in"}},
+		{"stderr", nil, []string{textFileName, "notes.bin"}},
+	} {
+		link := createWithFile(t, instance, "one stream is gone", "notes.bin", []byte{1})
+		out := t.TempDir()
+		var open bytes.Buffer
+		stdout, stderr := io.Writer(closedWriter{}), io.Writer(&open)
+		if test.closed == "stderr" {
+			stdout, stderr = &open, closedWriter{}
+		}
+		code := readWith(t, link, stdout, stderr, append(test.arguments, "--out", out)...)
+		if saved := savedAttachments(t, out); code != command.ExitError || len(saved) != 1 {
+			t.Fatalf("closed %s %v: exit %d, attachment %v", test.closed, test.arguments, code, saved)
+		}
+		for _, want := range test.open {
+			if !strings.Contains(open.String(), want) {
+				t.Fatalf(
+					"closed %s %v: the other stream lacks %q: %q",
+					test.closed,
+					test.arguments,
+					want,
+					open.String(),
+				)
+			}
+		}
+	}
+}
+
+func TestHelpIntoAClosedPipeFails(t *testing.T) {
+	t.Parallel()
+	if code := readWith(t, "", closedWriter{}, io.Discard, "-h"); code != command.ExitError {
+		t.Fatalf("help that went nowhere: exit %d", code)
+	}
+}
+
+const closedPipesChild = "NYLZO_TEST_CLOSED_PIPES"
+
+func TestReadOutlivesClosedOutputPipes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no SIGPIPE")
+	}
+	if os.Getenv(closedPipesChild) != "" {
+		readIntoClosedPipes(t)
+		return
+	}
+	t.Parallel()
+	report, reportWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer report.Close()
+	child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestReadOutlivesClosedOutputPipes$")
+	child.Env = append(os.Environ(), closedPipesChild+"=1")
+	child.Stdout, child.Stderr = closedPipe(t), closedPipe(t)
+	child.ExtraFiles = []*os.File{reportWriter}
+	err = child.Run()
+	reportWriter.Close()
+	exit, exited := errors.AsType[*exec.ExitError](err)
+	if err != nil && !exited {
+		t.Fatal(err)
+	}
+	if exited && exit.ExitCode() == -1 {
+		t.Fatalf("read died on its closed pipes: %v", err)
+	}
+	if reported, _ := io.ReadAll(report); string(reported) != "saved" {
+		t.Fatalf("the child reported %q", reported)
+	}
+}
+
+func readIntoClosedPipes(t *testing.T) {
+	t.Helper()
+	link := createWithFile(t, newTestServer(t), "into a closed pipe", "notes.bin", []byte{1})
+	out := t.TempDir()
+	code := readWith(t, link, os.Stdout, os.Stderr, "--stdout", "--out", out)
+	verdict := "saved"
+	if saved := savedAttachments(t, out); code != command.ExitError || len(saved) != 1 {
+		verdict = fmt.Sprintf("exit %d, attachment %v", code, saved)
+	}
+	if _, err := os.NewFile(3, "report").WriteString(verdict); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func closedPipe(t *testing.T) *os.File {
+	t.Helper()
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader.Close()
+	t.Cleanup(func() { writer.Close() })
+	return writer
 }

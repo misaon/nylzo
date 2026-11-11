@@ -135,6 +135,8 @@ A reader checks in this order and stops at the first failure, before it decrypts
 - Encoders MUST produce the canonical form so both cores emit identical bytes: UTF-8, no whitespace, keys in the order `v`, `text`, `file` (and `name`, `mime`, `size` inside `file`), absent keys omitted, integers in decimal without sign, exponent or fraction. String escaping: `"` → `\"`, `\` → `\\`, U+0008 → `\b`, U+0009 → `\t`, U+000A → `\n`, U+000C → `\f`, U+000D → `\r`, every other code point below U+0020 → `\u00XX` with lowercase hex, every other code point literal UTF-8 (including `/`, U+2028 and U+2029).
 - Decoders MUST accept any RFC 8259 JSON object that satisfies the constraints above, MUST ignore unknown keys, and take the last occurrence of a duplicated key. They MUST reject meta nested deeper than 32 levels; the top-level object is level 1 and brackets inside strings do not count.
 
+The sender chooses `file.name` and `file.mime`. A client MUST NOT treat a file as safe to open because of either, and MUST NOT render or run the file itself; a web client hands it to the browser only as a download and never shows it in a frame, object or image or navigates to it. A browser or operating system may still open a downloaded file because of its name, so the reference web client asks before every attachment download.
+
 ### 3.2 Compressed attachments
 
 Compression is the sender's decision and off by default. A client compresses an attachment only when its sender asked for it for this message (`nylzo create --compress`; the web client offers no such option and never compresses), never because of anything the server says, and never compresses text. The server stores opaque ciphertext and MUST NOT decompress it.

@@ -318,8 +318,9 @@ export const messages: Catalog = {
   'revealed.sender.text': 'Prośbę o\u{A0}pieniądze, logowanie lub instalację potwierdź u\u{A0}nadawcy inną drogą.',
   'revealed.file': 'Załącznik',
   'revealed.file.unchecked':
-    'Załącznik jest zaszyfrowany, więc Nylzo nie może sprawdzić go programem antywirusowym. Otwieraj tylko pliki od osób, które znasz.',
-  'revealed.confirm.title': 'Ten typ pliku może uruchomić kod. Otwórz go tylko wtedy, gdy ufasz nadawcy.',
+    'Załącznik jest zaszyfrowany, więc Nylzo nie może sprawdzić go programem antywirusowym. Pobieraj tylko pliki od nadawców, którym ufasz.',
+  'revealed.confirm.title':
+    'Każdy plik może zawierać złośliwy kod, także PDF, dokument czy obraz. Pobierz go tylko wtedy, gdy ufasz nadawcy.',
   'revealed.confirm.extension': 'Rozszerzenie pliku:',
   'revealed.confirm.none': 'Plik nie ma rozszerzenia.',
   'revealed.confirm.download': 'Pobierz mimo to',

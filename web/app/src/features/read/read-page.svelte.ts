@@ -5,8 +5,7 @@ import { prefersReducedMotion } from 'svelte/motion';
 import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
 import { clearClipboard } from '../../shared/clipboard/clear-clipboard.ts';
-import { isKnownSafeFile } from '../../shared/files/file-name.ts';
-import { revokeSavedFiles, saveFile } from '../../shared/files/save-file.ts';
+import { revokeSavedFiles } from '../../shared/files/save-file.ts';
 import { scryptInWorker, stopRunningWorkers } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
 import { formatClock, formatMoment } from '../../shared/language/format.ts';
@@ -21,7 +20,8 @@ import { burnText, noticeOf } from './read-notice.ts';
 import type { Burned, Notice } from './read-notice.ts';
 import { readerSession } from './reader-session.ts';
 import { createReader } from './reader.ts';
-import type { BurnOutcome, BusyStep, ClosedView, Reader, ReadView, RevealedFile } from './reader.ts';
+import type { BurnOutcome, BusyStep, ClosedView, Reader, ReadView } from './reader.ts';
+import { DownloadConfirmation } from './revealed/download-confirmation.svelte.ts';
 import { markHiddenCharacters } from './revealed/hidden-characters.ts';
 import type { MarkedText } from './revealed/hidden-characters.ts';
 
@@ -110,7 +110,6 @@ export class ReadPage {
   typedAgain = $state(false);
   passphraseRequired = $state(false);
   metadata = $state.raw<Metadata>();
-  confirmingDownload = $state(false);
   askingDelete = $state(false);
   deleteIntent = $state(false);
   restDeleted = $state(false);
@@ -128,6 +127,10 @@ export class ReadPage {
   readonly copied = new Flash(FLASH_MS);
   readonly downloaded = new Flash(FLASH_MS);
   readonly focus = new FocusTargets<FocusTarget>();
+  readonly download = new DownloadConfirmation(
+    async (target) => this.focus.focusAfterUpdate(target),
+    () => this.downloaded.show(),
+  );
   readonly steps = $derived(this.passphraseRequired ? STEPS : STEPS.slice(1));
 
   readonly minMs = $derived.by(() => {
@@ -237,18 +240,6 @@ export class ReadPage {
     await this.focus.focusAfterUpdate('keepMessage');
   };
 
-  readonly askDownload = async (event: MouseEvent, file: RevealedFile): Promise<void> => {
-    if (event.detail > 1) {
-      return;
-    }
-    if (isKnownSafeFile(file.name)) {
-      this.#save(file);
-      return;
-    }
-    this.confirmingDownload = true;
-    await this.focus.focusAfterUpdate('keepFile');
-  };
-
   readonly burn = async (): Promise<void> => {
     this.askingDelete = false;
     if (this.#missingPassphrase()) {
@@ -277,22 +268,6 @@ export class ReadPage {
     this.askingDelete = false;
     this.deleteIntent = false;
     await this.focus.focusAfterUpdate(() => (this.revealed ? 'deleteRest' : 'deleteMessage'));
-  };
-
-  readonly cancelDownload = async (event: MouseEvent): Promise<void> => {
-    if (event.detail > 1) {
-      return;
-    }
-    this.confirmingDownload = false;
-    await this.focus.focusAfterUpdate('download');
-  };
-
-  readonly confirmDownload = async (event: MouseEvent, file: RevealedFile): Promise<void> => {
-    if (event.detail > 1 || !this.confirmingDownload) {
-      return;
-    }
-    this.#save(file);
-    await this.focus.focusAfterUpdate('download');
   };
 
   readonly askCopy = async (): Promise<void> => {
@@ -535,12 +510,6 @@ export class ReadPage {
     }
   }
 
-  #save(file: RevealedFile): void {
-    this.confirmingDownload = false;
-    saveFile(file.bytes, file.name);
-    this.downloaded.show();
-  }
-
   #settleShown(): void {
     this.#markShown?.();
     this.#markShown = undefined;
@@ -550,7 +519,7 @@ export class ReadPage {
     stopRunningWorkers();
     revokeSavedFiles();
     this.burned = undefined;
-    this.confirmingDownload = false;
+    this.download.close();
     this.askingDelete = false;
     this.showPassphrase = false;
     this.passphrase = '';
