@@ -83,7 +83,7 @@ References: [`PR_SET_DUMPABLE`](https://man7.org/linux/man-pages/man2/pr_set_dum
 
 ## Attachments the CLI saves
 
-`nylzo read --out` gives every file it writes the mark a browser gives a download (F08): a `Zone.Identifier` stream on Windows and the `com.apple.quarantine` attribute on macOS, so SmartScreen, Office Protected View and Gatekeeper check an attachment when it is opened. Linux has no such mark. Nylzo cannot scan an encrypted attachment, so after saving one `read` warns on stderr to open it only if the sender is trusted. A closed pipe on stdout or stderr does not stop `read` before the files are saved. The [CLI guide](CLI.md#read-inspect-cancel-or-delete) describes the marks and how to clear them.
+`nylzo read --out` gives every file it writes the mark a browser gives a download (F08): a `Zone.Identifier` stream on Windows and the `com.apple.quarantine` attribute on macOS, so SmartScreen, Office Protected View and Gatekeeper check an attachment when it is opened. Linux has no such mark. Nylzo cannot scan an encrypted attachment, so after saving one `read` warns on stderr to open it only if the sender is trusted. From the claim, which spends the open, until `read` has saved the files, a closed pipe on stdout or stderr does not stop it, nor on Linux and macOS a hangup or a termination request, and a first Ctrl-C only warns. When a failed write leaves a file `read` cannot remove, `read` names it on stderr, since it may hold plaintext. The [CLI guide](CLI.md#read-inspect-cancel-or-delete) describes the marks and how to clear them.
 
 ## A link grants capabilities
 

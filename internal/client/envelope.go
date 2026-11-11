@@ -50,7 +50,7 @@ func (c *Client) Claim(
 		verifier:       verifier,
 		attemptHeaders: sent.headers,
 	}
-	response, err := c.signed(ctx, &request, transferTime(size))
+	response, err := c.signed(ctx, &request, TransferTime(size))
 	if err != nil {
 		return Claimed{}, err
 	}
@@ -86,7 +86,7 @@ func (c *Client) Blob(
 		headers:        map[string]string{api.LeaseHeaderName: lease},
 		attemptHeaders: sent.headers,
 	}
-	response, err := c.signed(ctx, &request, transferTime(size))
+	response, err := c.signed(ctx, &request, TransferTime(size))
 	if err != nil {
 		return Envelope{}, err
 	}
