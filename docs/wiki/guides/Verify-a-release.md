@@ -1,5 +1,7 @@
 # Verify a release
 
+Release builds run in a job with only `contents: read`, without a protected environment or signing credentials. Native archives, SBOMs and multi-platform images are built there; images go only to a disposable loopback registry and are exported as OCI layouts. A separate job in the protected release environment verifies the complete build's SHA-256 manifest, tag and source commit before uploading, signing and attesting the prebuilt artifacts. It does not compile source or install application dependencies. The release still passes vulnerability checks before its stable image tags and immutable GitHub release are published.
+
 Install the CLI with [Homebrew or Scoop](CLI.md#install). This page shows how to check what they installed, and how to verify the release archives and container images that servers run.
 
 Use only [misaon/homebrew-nylzo](https://github.com/misaon/homebrew-nylzo), [misaon/nylzo releases](https://github.com/misaon/nylzo/releases), `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. Published release tags and assets are immutable. The examples verify the latest release; set `tag` to another stable version from the releases page if you need one:

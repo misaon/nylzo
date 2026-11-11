@@ -111,24 +111,27 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  release:
-    name: Release
+  build:
+    name: Native binaries and images without write access
     needs: [guard, web]
     runs-on: ubuntu-26.04
     timeout-minutes: 60
-    environment: ${{ needs.guard.outputs.environment }}
     permissions:
-      contents: write # create the GitHub release and upload its files
-      packages: write # push the image to ghcr.io
-      id-token: write # keyless cosign signatures and provenance
-      attestations: write # build provenance attestations
+      contents: read
+    outputs:
+      manifest: ${{ steps.manifest.outputs.sha256 }}
+    services:
+      registry:
+        # renovate: datasource=docker depName=registry
+        image: registry:3@sha256:38907510915c3f1604c7e83d6ab602ab3020d092f73bdaed8696773693ff768c
+        ports: ["127.0.0.1:5000:5000"]
     steps:
       - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
         with:
           egress-policy: audit
       - uses: $/.github/actions/setup
         with:
-          tools: go grype bun
+          tools: go bun regctl yq
           cache: none
           fetch-depth: 0
       - name: The tag still names the commit the guard checked
@@ -180,20 +183,122 @@ jobs:
             --certificate-oidc-issuer https://accounts.google.com \
             --certificate-identity keyless@distroless.iam.gserviceaccount.com \
             > /dev/null
-      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
       - uses: goreleaser/goreleaser-action@a4f02ab5355a589de60d917a659ce617ed19b3de # v7.3.0
         with:
           distribution: goreleaser
           # renovate: datasource=github-releases depName=goreleaser/goreleaser
           version: v2.20.1
-          args: release --clean --skip=before
+          install-only: true
+      - name: Build archives, SBOMs and OCI images into the local registry
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+        run: bash mise-tasks/release/build --skip=before
+      - name: Bind every release file to this readonly build
+        id: manifest
+        run: |
+          cp -R dist "$RUNNER_TEMP/release-build/dist"
+          cp .host-bundle/*.tar "$RUNNER_TEMP/release-build/dist/"
+          cd "$RUNNER_TEMP/release-build"
+          find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum > ../release-build.sha256
+          echo "sha256=$(sha256sum < ../release-build.sha256 | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          mv ../release-build.sha256 .
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-build
+          path: ${{ runner.temp }}/release-build
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Sign and publish verified artifacts
+    needs: [guard, web, build]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    environment: ${{ needs.guard.outputs.environment }}
+    permissions:
+      contents: write # create the GitHub release and upload its files
+      packages: write # push the prebuilt images to ghcr.io
+      id-token: write # keyless cosign signatures and provenance
+      attestations: write # build provenance attestations
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - uses: $/.github/actions/setup
+        with:
+          tools: regctl grype
+          cache: none
+          fetch-depth: 0
+      - name: The tag still names the commit the guard checked
+        run: |
+          git fetch --force --no-tags origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+          test "$(git rev-parse "refs/tags/${GITHUB_REF_NAME}^{commit}")" = "${GITHUB_SHA}"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        env:
+          NODE_OPTIONS: --no-deprecation
+        with:
+          name: release-build
+          path: ${{ runner.temp }}/release-build
+          digest-mismatch: error
+      - name: Verify the complete readonly build before using any artifact
+        env:
+          EXPECTED_MANIFEST_SHA256: ${{ needs.build.outputs.manifest }}
+        run: |
+          cd "$RUNNER_TEMP/release-build"
+          test "$(sha256sum < release-build.sha256 | cut -d ' ' -f 1)" = "$EXPECTED_MANIFEST_SHA256"
+          find . -type f ! -path ./release-build.sha256 -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | cmp - release-build.sha256
+          test "$(jq -r .tag dist/metadata.json)" = "$GITHUB_REF_NAME"
+          test "$(jq -r .commit dist/metadata.json)" = "$GITHUB_SHA"
+          cp -R dist "$GITHUB_WORKSPACE/dist"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        env:
+          NODE_OPTIONS: --no-deprecation
+        with:
+          name: web-client
+          path: ${{ runner.temp }}/web-client
+          digest-mismatch: error
+      - name: The dependency evidence matches the readonly web job
+        env:
+          EXPECTED_EVIDENCE_SHA256: ${{ needs.web.outputs.evidence_manifest }}
+        run: |
+          cd "$RUNNER_TEMP/web-client"
+          test "$(sha256sum < evidence.sha256 | cut -d ' ' -f 1)" = "$EXPECTED_EVIDENCE_SHA256"
+          (cd evidence && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) | cmp - evidence.sha256
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          # renovate: datasource=github-releases depName=sigstore/cosign
+          cosign-release: v3.1.4
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Upload the exact prebuilt multi-platform images and sign their digests
+        run: |
+          for id in nylzo caddy; do
+            image="ghcr.io/$GITHUB_REPOSITORY"
+            if [ "$id" = caddy ]; then image="${image}-caddy"; fi
+            digest=$(jq -er --arg id "$id" '[.[] | select(.type == "Docker Manifest" and .extra.ID == $id) | .extra.Digest] | unique | if length == 1 then .[0] else error("expected one image digest") end' dist/artifacts.json)
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+            regctl image copy --digest-tags --referrers "ocidir://$RUNNER_TEMP/release-build/images/$id:build" "${image}:staging-${GITHUB_REF_NAME#v}"
+            test "$(regctl image digest "${image}:staging-${GITHUB_REF_NAME#v}")" = "$digest"
+            cosign sign "${image}@${digest}" --yes
+          done
+      - name: Sign the prebuilt checksums and create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cosign sign-blob dist/checksums.txt --bundle dist/checksums.txt.sigstore.json --yes
+          if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft); then
+            test "$draft" = true
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --title "Nylzo $GITHUB_REF_NAME" --notes-file dist/CHANGELOG.md
+          else
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --draft \
+              --title "Nylzo $GITHUB_REF_NAME" --notes-file dist/CHANGELOG.md
+          fi
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber \
+            dist/*.tar.gz dist/*.zip dist/*.sbom.json dist/checksums.txt dist/checksums.txt.sigstore.json dist/nylzo-host_*.tar
       - name: Digests of the published images
         id: image
         run: |
