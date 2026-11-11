@@ -38,6 +38,8 @@ var contracts = []contract{
 	{"RecordedEndingWins", (*fixture).recordedEndingWins},
 	{"ReleaseAfterExpiryRecordsNothing", (*fixture).releaseAfterExpiryRecordsNothing},
 	{"BurnAndCancel", (*fixture).burnAndCancel},
+	{"F05BurnNeedsThePassphrase", (*fixture).burnNeedsThePassphrase},
+	{"F05BurnWithoutAPassphrase", (*fixture).burnWithoutAPassphrase},
 	{"TakeDownWithoutTheKey", (*fixture).takeDownWithoutTheKey},
 	{"ReportsPerMessage", (*fixture).reportsPerMessage},
 	{"AK7Expiry", (*fixture).expiry},
@@ -155,11 +157,19 @@ func (f *fixture) claimWithVerifier(
 ) (store.ClaimResult, error) {
 	record := f.get(created)
 	parameters := claimParameters(record, now, seed)
-	parameters.VerifierSent = true
-	parameters.VerifyMAC = func(_ byte, stored []byte) bool {
-		return correct && bytes.Equal(stored, created.Message.VerifierMAC)
-	}
+	parameters.Verifier = verifierOf(created, correct)
 	return store.Claim(f.t.Context(), f.store, record, parameters)
+}
+
+func (f *fixture) burn(created *message, now time.Time, verifier store.Verifier) (store.State, error) {
+	record := f.get(created)
+	return store.Burn(f.t.Context(), f.store, f.blobs, record, verifier, now)
+}
+
+func verifierOf(created *message, correct bool) store.Verifier {
+	return store.Verifier{Sent: true, Check: func(_ byte, stored []byte) bool {
+		return correct && bytes.Equal(stored, created.Message.VerifierMAC)
+	}}
 }
 
 func (f *fixture) download(created *message, lease *store.Lease, now time.Time) error {

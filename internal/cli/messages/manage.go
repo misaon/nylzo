@@ -10,6 +10,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core/api"
+	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/report"
 )
 
@@ -93,9 +94,12 @@ func manageClient(environment *command.Environment, file string) (*manageToken, 
 	return &token, server, nil
 }
 
+// RunBurn checks the message before it asks for the passphrase, whose verifier the server needs to delete it (F05).
 func RunBurn(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "burn")
 	linkFile := flags.String("link-file", "", "read the link from this file (or "+command.EnvironmentLink+", or stdin)")
+	var source passphraseSource
+	passphraseFlags(flags, &source)
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
@@ -104,7 +108,24 @@ func RunBurn(ctx context.Context, environment *command.Environment, arguments []
 		return command.Failf(environment, "%s", err)
 	}
 	defer link.wipe()
-	if err = server.Burn(ctx, link.id, &link.keys.R); err != nil {
+	metadata, err := server.Metadata(ctx, link.id, &link.keys.R)
+	if err == nil {
+		err = checkBurnable(link, &metadata)
+	}
+	if err != nil {
+		return command.Failf(environment, "%s", command.Explain(err))
+	}
+	passphraseKey, err := passphraseKey(environment, link, source)
+	if err != nil {
+		return command.Failf(environment, "%s", command.Explain(err))
+	}
+	defer clear(passphraseKey)
+	verifier, err := keys.DeriveVerifier(link.id, &link.secret, passphraseKey)
+	if err != nil {
+		return command.Failf(environment, "%s", command.Explain(err))
+	}
+	defer clear(verifier[:])
+	if err = server.Burn(ctx, link.id, &link.keys.R, &verifier); err != nil {
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	fmt.Fprintln(environment.Stdout, "deleted")

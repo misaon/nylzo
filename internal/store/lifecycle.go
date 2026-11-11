@@ -10,7 +10,10 @@ import (
 	"github.com/misaon/nylzo/internal/seal"
 )
 
-var errClaimParameters = errors.New("store: claim needs a clock, and a verifier check when a verifier is sent")
+var (
+	errClaimParameters = errors.New("store: claim needs a clock, and a verifier check when a verifier is sent")
+	errVerifierCheck   = errors.New("store: a sent verifier needs a check")
+)
 
 type Removal int
 
@@ -52,7 +55,7 @@ func (r *Record) Lease(mac []byte) *Lease {
 }
 
 func Claim(ctx context.Context, messages Messages, record *Record, parameters ClaimParameters) (ClaimResult, error) {
-	if parameters.Clock == nil || (parameters.VerifierSent && parameters.VerifyMAC == nil) {
+	if parameters.Clock == nil || !parameters.Verifier.checkable() {
 		return ClaimResult{}, errClaimParameters
 	}
 	var result ClaimResult
@@ -68,7 +71,7 @@ func Claim(ctx context.Context, messages Messages, record *Record, parameters Cl
 			return &BusyError{RetryAfter: wait}
 		}
 		if current.Message.PassphraseRequired() {
-			if refusal, refused = checkPassphrase(current.Message, &parameters, now); refused {
+			if refusal, refused = checkPassphrase(current.Message, &parameters.Verifier, now); refused {
 				return nil
 			}
 		}
@@ -85,15 +88,19 @@ func Claim(ctx context.Context, messages Messages, record *Record, parameters Cl
 	}
 }
 
-// checkPassphrase commits a failed attempt with the claim transaction, so it reports a refusal instead of an error.
-func checkPassphrase(message *Message, parameters *ClaimParameters, now time.Time) (PassphraseError, bool) {
+func (v *Verifier) checkable() bool {
+	return !v.Sent || v.Check != nil
+}
+
+// checkPassphrase commits a failed attempt with the claim or burn transaction, so it reports a refusal, not an error.
+func checkPassphrase(message *Message, verifier *Verifier, now time.Time) (PassphraseError, bool) {
 	if message.FailCountTotal >= MaxFailedAttempts {
 		return PassphraseError{RetryAfter: message.ExpiresAt.Sub(now)}, true
 	}
 	if message.NextAttemptAt.After(now) {
 		return PassphraseError{RetryAfter: message.NextAttemptAt.Sub(now)}, true
 	}
-	if parameters.VerifierSent && parameters.VerifyMAC(message.VerifierPepperID, message.VerifierMAC) {
+	if verifier.Sent && verifier.Check(message.VerifierPepperID, message.VerifierMAC) {
 		return PassphraseError{}, false
 	}
 	message.FailCountTotal++
@@ -193,23 +200,44 @@ func Ack(ctx context.Context, messages Messages, blobs Blobs, record *Record, le
 	return deleteBlobOf(ctx, messages, blobs, record)
 }
 
-// MarkEnding records burn or cancel unless the message has already ended, and reports the state it ends in.
+// MarkEnding records an ending that needs no passphrase unless the message has already ended, and reports its state.
 func MarkEnding(ctx context.Context, messages Messages, record *Record, requested State, now time.Time) (State, error) {
+	final, _, err := recordEnding(ctx, messages, record, requested, now, nil)
+	return final, err
+}
+
+// recordEnding checks the passphrase first when a verifier comes with the request, and a refusal commits the failed
+// attempt instead of the ending.
+func recordEnding(
+	ctx context.Context,
+	messages Messages,
+	record *Record,
+	requested State,
+	now time.Time,
+	verifier *Verifier,
+) (State, *PassphraseError, error) {
 	var final State
+	var refusal *PassphraseError
 	err := record.update(ctx, messages, now, func(current *Record) error {
-		final = current.State(now)
+		final, refusal = current.State(now), nil
 		if current.Ended(now) {
 			return nil
+		}
+		if verifier != nil && current.Message.PassphraseRequired() {
+			if refused, ok := checkPassphrase(current.Message, verifier, now); ok {
+				refusal = &refused
+				return nil
+			}
 		}
 		final = requested
 		current.Message.Ending = requested
 		current.recordEnd(now)
 		return nil
 	})
-	return final, err
+	return final, refusal, err
 }
 
-// End records burn or cancel, then deletes the blob even when the caller has gone.
+// End records a cancel or another ending that needs no passphrase, then deletes the blob even when the caller has gone.
 func End(
 	ctx context.Context,
 	messages Messages,
@@ -218,15 +246,45 @@ func End(
 	requested State,
 	now time.Time,
 ) (State, error) {
+	return endMessage(ctx, messages, blobs, record, requested, now, nil)
+}
+
+// Burn ends a message with a passphrase only for a request that proves it, counting a mismatch as a claim does (F05).
+func Burn(
+	ctx context.Context,
+	messages Messages,
+	blobs Blobs,
+	record *Record,
+	verifier Verifier,
+	now time.Time,
+) (State, error) {
+	if !verifier.checkable() {
+		return "", errVerifierCheck
+	}
+	return endMessage(ctx, messages, blobs, record, StateDeleted, now, &verifier)
+}
+
+func endMessage(
+	ctx context.Context,
+	messages Messages,
+	blobs Blobs,
+	record *Record,
+	requested State,
+	now time.Time,
+	verifier *Verifier,
+) (State, error) {
 	ctx = context.WithoutCancel(ctx)
-	final, err := MarkEnding(ctx, messages, record, requested, now)
-	if err != nil {
+	final, refusal, err := recordEnding(ctx, messages, record, requested, now, verifier)
+	switch {
+	case err != nil:
 		return "", err
+	case refusal != nil:
+		return "", refusal
+	case record.Row.BlobReference == "":
+		return final, nil
+	default:
+		return final, deleteBlobOf(ctx, messages, blobs, record)
 	}
-	if record.Row.BlobReference != "" {
-		err = deleteBlobOf(ctx, messages, blobs, record)
-	}
-	return final, err
 }
 
 // Finish deletes the blob of a message that has ended or whose last lease is over; a release records its minute.

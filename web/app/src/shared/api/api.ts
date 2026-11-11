@@ -150,7 +150,7 @@ export interface Api {
   ) => Promise<Envelope>;
   challenge: () => Promise<Uint8Array<ArrayBuffer>>;
   ack: (id: Uint8Array, readKey: RequestKey, lease: string, challenge?: Uint8Array<ArrayBuffer>) => Promise<void>;
-  burn: (id: Uint8Array, readKey: RequestKey) => Promise<void>;
+  burn: (id: Uint8Array, readKey: RequestKey, verifierKey: RequestKey) => Promise<void>;
   cancel: (id: Uint8Array, manageKey: RequestKey) => Promise<void>;
   status: (id: Uint8Array, manageKey: RequestKey) => Promise<Status>;
 }
@@ -475,8 +475,14 @@ export function createApi(options: ApiOptions = {}): Api {
       });
     },
 
-    async burn(id, readKey) {
-      await signed({ method: 'POST', path: `${messagePath(id)}/burn`, purpose: PURPOSE_READ, key: readKey });
+    async burn(id, readKey, verifierKey) {
+      await signed({
+        method: 'POST',
+        path: `${messagePath(id)}/burn`,
+        purpose: PURPOSE_READ,
+        key: readKey,
+        verifier: verifierKey,
+      });
     },
 
     async cancel(id, manageKey) {

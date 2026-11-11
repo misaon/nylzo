@@ -261,6 +261,10 @@ export const messages: Catalog = {
   'read.delete.no': 'Do not delete',
   'read.deleted_rest': 'The remaining opens are deleted.',
   'read.delete.failed': 'The message could not be deleted. Try again.',
+  'read.delete.wait': 'After too many wrong passphrases, the message cannot be deleted right now. Try again in {time}.',
+  'read.delete.locked':
+    'After too many wrong passphrases, the message is locked until it expires. Nobody can open it, but the sender can still cancel it.',
+  'read.delete.passphrase': 'Enter the passphrase from the sender, then choose “Delete without opening”.',
 
   'busy.deriving': 'Preparing the key from the passphrase…',
   'busy.claiming': 'Opening the message…',

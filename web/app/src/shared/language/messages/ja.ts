@@ -264,6 +264,11 @@ export const messages: Catalog = {
   'read.delete.no': '削除しない',
   'read.deleted_rest': '残りの開封回数を削除しました。',
   'read.delete.failed': 'メッセージを削除できませんでした。もう一度お試しください。',
+  'read.delete.wait':
+    'パスワードの誤入力が多すぎたため、今はメッセージを削除できません。{time}後にもう一度お試しください。',
+  'read.delete.locked':
+    'パスワードの誤入力が多すぎたため、有効期限までメッセージはロックされています。誰も開封できませんが、送信者はまだ取り消せます。',
+  'read.delete.passphrase': '送信者から受け取ったパスワードを入力してから、「開封せずに削除」を選んでください。',
 
   'busy.deriving': 'パスワードから鍵を準備しています…',
   'busy.claiming': 'メッセージを開封しています…',

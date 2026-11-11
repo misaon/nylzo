@@ -17,11 +17,11 @@ Availability, expiry, and open counts depend on an honest running server and its
 | Actor or subsystem | Actions and authority | Boundary |
 | --- | --- | --- |
 | Sender browser or CLI | Creates keys, encrypts content, uploads an envelope, shares the read link, retains cancellation/status capability | Plaintext and private capabilities remain on the client |
-| Recipient browser or CLI | Uses the read capability to claim/download, decrypt, acknowledge, burn, or submit a sealed abuse report | Link possession grants protocol capabilities; a passphrase adds the documented read restriction |
+| Recipient browser or CLI | Uses the read capability to claim/download, decrypt, acknowledge, burn, or submit a sealed abuse report | Link possession grants protocol capabilities; a passphrase also restricts reading and burning |
 | Anonymous network client | Requests public metadata, creates messages subject to limits, requests challenges, attempts arbitrary API input | All input is untrusted; resource bounds and authorization apply before state changes |
 | Server and SQLite/file store | Enforces signatures, leases, expiry, attempt limits, open counts, deletion, and rate limits; stores ciphertext and operational state | Persistent-state transitions must be atomic; server data alone must not contain decryption secrets |
 | TLS proxy and hosting operator | Terminates TLS, forwards client addresses, serves the instance and web client, controls host data and availability | Trusted to serve the intended browser code and to supply correct forwarding metadata |
-| Link holder or malicious recipient | Can retain plaintext, delete a message, exhaust attempts, or share the capability | Possession is authorization; sender identity and non-repudiation are not provided |
+| Link holder or malicious recipient | Can retain plaintext, delete a message (one with a passphrase only with the passphrase), exhaust attempts, or share the capability | Possession is authorization; sender identity and non-repudiation are not provided |
 | Attacker with a server backup | Inspects SQLite/WAL, blobs, logs, configuration, and potentially the pepper | Ciphertext confidentiality remains; a stolen link enables the documented offline passphrase attack |
 | Abuse-report operator | Holds the reporting private key off-server and decrypts sealed reports | Report decryption authority is separate from application hosting |
 | Dependency publisher or compromised registry | Supplies code/tools consumed by builds | Locked versions, integrity verification, restricted build scripts, review, and scanning reduce supply-chain risk |

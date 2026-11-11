@@ -237,6 +237,7 @@ describe('read page interactions', () => {
     expect(focus).toHaveBeenCalledOnce();
     expect(page.phase).toBe('notice');
     expect(page.notice).toBe('locked');
+    expect(page.actions).toBe('off');
     page.reveal(new Event('submit') as SubmitEvent);
     expect(reader.reveal).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
@@ -312,6 +313,8 @@ describe('read page interactions', () => {
     { outcome: 'retry_later', retryAfter: 30 },
     { outcome: 'unknown' },
     { outcome: 'ignored' },
+    { outcome: 'waiting', retryAfter: 60, locked: false },
+    { outcome: 'waiting', retryAfter: 86_400, locked: true },
   ])('preserves the content and reports the result of deleting remaining opens: $outcome', async (outcome) => {
     const page = new ReadPage(new Translator('en'));
     notify({ view: 'revealed', text: 'keep on screen', burnable: true, opensRemaining: 1 });
@@ -324,9 +327,46 @@ describe('read page interactions', () => {
     expect(page.deleting).toBe(false);
     expect(page.revealed?.text).toBe('keep on screen');
     expect(page.restDeleted).toBe(outcome.outcome === 'deleted' || outcome.outcome === 'ended');
-    expect(page.burnFailed).toBe(['failed', 'retry_later', 'unknown'].includes(outcome.outcome));
+    expect(page.burnFailed).toBe(['failed', 'retry_later', 'unknown', 'waiting'].includes(outcome.outcome));
     expect(page.burnNote === '').toBe(outcome.outcome === 'ignored');
     expect(page.burned).toEqual({ outcome, afterReveal: true });
+  });
+
+  it('asks for the passphrase before deleting a message that has one and hands it to the reader (F05)', async () => {
+    const page = new ReadPage(new Translator('en'));
+    ready({ kdfId: KDF_SCRYPT });
+    const focus = focusTarget(page, 'passphrase');
+    await page.askDelete();
+    expect(page.emptyPassphrase).toBe(true);
+    expect(page.askingDelete).toBe(false);
+    expect(focus).toHaveBeenCalledOnce();
+    page.passphrase = 'correct horse battery staple';
+    page.typed();
+    page.reveal(new Event('submit', { cancelable: true }) as SubmitEvent);
+    expect(page.askingDelete).toBe(true);
+    const button = new Event('submit', { cancelable: true });
+    page.reveal(Object.assign(button, { submitter: {} as HTMLButtonElement }));
+    expect(reader.reveal).not.toHaveBeenCalled();
+    expect(page.deleteIntent).toBe(true);
+    page.passphrase = '';
+    await page.burn();
+    expect(reader.burn).not.toHaveBeenCalled();
+    expect(page.askingDelete).toBe(false);
+    page.passphrase = 'correct horse battery staple';
+    await page.askDelete();
+    const gate = Promise.withResolvers<BurnOutcome>();
+    reader.burn.mockReturnValueOnce(gate.promise);
+    const burning = page.burn();
+    expect(page.burnNote).toBe(new Translator('en').translate('busy.deriving'));
+    await page.askDelete();
+    expect(page.askingDelete).toBe(false);
+    gate.resolve({ outcome: 'rejected' });
+    await burning;
+    expect(reader.burn).toHaveBeenCalledExactlyOnceWith('correct horse battery staple');
+    expect(page.passphrase).toBe('');
+    expect(page.burnNote).toBe('');
+    expect(page.burnFailed).toBe(false);
+    expect(focus).toHaveBeenCalledTimes(3);
   });
 
   it('moves focus safely through deletion confirmation and restores actions when cancelled', async () => {

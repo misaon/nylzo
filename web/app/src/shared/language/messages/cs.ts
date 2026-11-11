@@ -259,6 +259,10 @@ export const messages = {
   'read.delete.no': 'Nemazat',
   'read.deleted_rest': 'Zbývající otevření jsou smazaná.',
   'read.delete.failed': 'Zprávu se nepodařilo smazat. Zkuste to znovu.',
+  'read.delete.wait': 'Po mnoha zadáních chybného hesla teď zprávu smazat nejde. Zkuste to za {time}.',
+  'read.delete.locked':
+    'Po mnoha zadáních chybného hesla je zpráva do konce platnosti zamčená. Nikdo ji neotevře, ale odesílatel ji ještě může zrušit.',
+  'read.delete.passphrase': 'Zadejte heslo od odesílatele a\u{A0}pak zvolte „Smazat bez otevření“.',
 
   'busy.deriving': 'Připravujeme klíč z\u{A0}hesla…',
   'busy.claiming': 'Otevíráme zprávu…',

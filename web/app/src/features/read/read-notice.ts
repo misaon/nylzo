@@ -1,3 +1,5 @@
+import { formatWait } from '../../shared/language/format.ts';
+import type { Translator } from '../../shared/language/translator.svelte.ts';
 import type { IconName } from '../../shared/ui/icon/icons.ts';
 import type { BurnOutcome, ReadView } from './reader.ts';
 
@@ -102,6 +104,35 @@ export function noticeOf(view: ReadView, burned: Burned | undefined): Notice {
     case 'loading':
     case 'revealed': {
       return 'loading';
+    }
+  }
+}
+
+export function burnText({ outcome, afterReveal }: Burned, { translate, plural }: Translator): string {
+  switch (outcome.outcome) {
+    case 'deleted': {
+      return afterReveal ? translate('read.deleted_rest') : '';
+    }
+    case 'ended': {
+      return afterReveal ? translate(`read.ended.${outcome.state}`) : '';
+    }
+    case 'retry_later': {
+      return translate('read.retry_later', { time: formatWait(outcome.retryAfter, plural) });
+    }
+    case 'unknown': {
+      return afterReveal ? translate('read.delete.failed') : '';
+    }
+    case 'failed': {
+      return translate('read.delete.failed');
+    }
+    case 'waiting': {
+      return outcome.locked
+        ? translate('read.delete.locked')
+        : translate('read.delete.wait', { time: formatWait(outcome.retryAfter, plural) });
+    }
+    case 'ignored':
+    case 'rejected': {
+      return '';
     }
   }
 }

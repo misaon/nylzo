@@ -165,10 +165,15 @@ type DueBlob struct {
 	Reference string
 }
 
+// Verifier is the passphrase proof of a claim or a burn; Check compares it with the verifier mac of the record.
+type Verifier struct {
+	Sent  bool
+	Check func(pepperID byte, storedMAC []byte) bool
+}
+
 type ClaimParameters struct {
 	Clock         func() time.Time
-	VerifierSent  bool
-	VerifyMAC     func(pepperID byte, storedMAC []byte) bool
+	Verifier      Verifier
 	LeaseMAC      []byte
 	LeasePepperID byte
 }

@@ -25,7 +25,7 @@
   );
   const passphraseError = $derived.by(() => {
     if (page.emptyPassphrase) {
-      return translate('open.passphrase.empty');
+      return translate(page.deleteIntent ? 'read.delete.passphrase' : 'open.passphrase.empty');
     }
     const rejected = page.typedAgain ? undefined : page.ready?.rejected;
     if (rejected === undefined) {

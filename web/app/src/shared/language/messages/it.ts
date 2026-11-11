@@ -271,6 +271,10 @@ export const messages: Catalog = {
   'read.delete.no': 'Non eliminare',
   'read.deleted_rest': 'Le aperture rimanenti sono state eliminate.',
   'read.delete.failed': 'Impossibile eliminare il messaggio. Riprova.',
+  'read.delete.wait': 'Dopo troppe password errate, ora non è possibile eliminare il messaggio. Riprova tra {time}.',
+  'read.delete.locked':
+    'Dopo troppe password errate il messaggio resta bloccato fino alla scadenza: nessuno può aprirlo, ma il mittente può ancora annullarlo.',
+  'read.delete.passphrase': 'Inserisci la password ricevuta dal mittente, poi scegli «Elimina senza aprire».',
 
   'busy.deriving': 'Preparazione della chiave dalla password…',
   'busy.claiming': 'Apertura del messaggio…',

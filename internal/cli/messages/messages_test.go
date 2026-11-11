@@ -17,6 +17,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/abuse"
@@ -138,6 +139,34 @@ func assertPrivate(t *testing.T, path, want string) {
 		}
 		if info.Mode().Perm()&0o077 != 0 {
 			t.Fatalf("%s is open to other users: %v", privatePath, info.Mode().Perm())
+		}
+	}
+}
+
+// F05: a burn leaves an opened message whose last open may still run to the server and refuses an ended one.
+func TestBurnChecksTheMessageFirst(t *testing.T) {
+	t.Parallel()
+	link := &openLink{kdf: core.KDFScrypt}
+	for _, testCase := range []struct {
+		metadata api.Metadata
+		want     error
+	}{
+		{api.Metadata{State: api.StateAvailable, KDFID: int(core.KDFScrypt)}, nil},
+		{api.Metadata{State: api.StateOpened, KDFID: int(core.KDFScrypt)}, nil},
+		{api.Metadata{State: api.StateOpened, KDFID: int(core.KDFNone)}, errLinkMismatch},
+		{api.Metadata{State: api.StateAvailable, KDFID: int(core.KDFNone)}, errLinkMismatch},
+	} {
+		if err := checkBurnable(link, &testCase.metadata); !errors.Is(err, testCase.want) {
+			t.Errorf("%+v: %v, want %v", testCase.metadata, err, testCase.want)
+		}
+	}
+	for _, ended := range []api.Metadata{
+		{State: api.StateOpened, EndedAt: "2026-11-11T10:00:00Z"},
+		{State: api.StateExpired},
+		{State: api.StateDeleted},
+	} {
+		if !client.IsKind(checkBurnable(link, &ended), api.ErrorGone) {
+			t.Errorf("%+v must be refused as gone", ended)
 		}
 	}
 }
