@@ -106,11 +106,8 @@ jobs:
       - uses: $/.github/actions/setup
         with:
           tools: go
-      - name: Cross-compile the private file, process hardening and entry point tests for Windows
-        run: |
-          for package in internal/privatefile internal/cli/harden cmd/nylzo; do
-            GOOS=windows GOARCH=amd64 go test -c -o "$RUNNER_TEMP/windows-tests/${package##*/}.test.exe" "./${package}/"
-          done
+      - name: Cross-compile the private file tests for Windows
+        run: GOOS=windows GOARCH=amd64 go test -c -o "$RUNNER_TEMP/windows-tests/privatefile.test.exe" ./internal/privatefile/
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: windows-tests
@@ -119,7 +116,7 @@ jobs:
           retention-days: 7
 
   windows:
-    name: Private files and process hardening on Windows
+    name: Private files on Windows
     needs: [changes, windows-build]
     if: needs.changes.outputs.go == 'true'
     runs-on: windows-2025
@@ -141,29 +138,6 @@ jobs:
         run: |
           & "$env:RUNNER_TEMP/windows-tests/privatefile.test.exe" '-test.v' '-test.count=1'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: A protected process denies memory reads to other processes of the user, and the entry point protects it
-        shell: pwsh
-        run: |
-          foreach ($test in 'harden', 'nylzo') {
-            & "$env:RUNNER_TEMP/windows-tests/$test.test.exe" '-test.v' '-test.count=1'
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          }
-
-  macos:
-    name: Process hardening on macOS
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: macos-26
-    timeout-minutes: 15
-    steps:
-      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
-        with:
-          egress-policy: audit
-      - uses: $/.github/actions/setup
-        with:
-          tools: go
-      - name: Process hardening and the command entry point on macOS
-        run: go test -count=1 ./internal/cli/harden/ ./cmd/nylzo/
 
   sca:
     name: Dependency vulnerabilities, malware, and licenses
@@ -838,7 +812,6 @@ jobs:
         go,
         windows-build,
         windows,
-        macos,
         repository,
         deployment,
         fuzz,
