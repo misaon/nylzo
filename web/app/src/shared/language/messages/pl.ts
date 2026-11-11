@@ -410,7 +410,7 @@ export const messages: Catalog = {
     'Kto przejąłby działający serwer, zobaczyłby tylko rekordy wiadomości, które są właśnie otwierane, nigdy ich treści. Dlatego na nylzo.com co 30\u{A0}minut porównujemy kod strony z\u{A0}podpisanym wydaniem, a\u{A0}przy rozbieżności usługa sama się odłącza. Strony podstawionej celowo jednej osobie kontrola mogłaby nie wykryć, dlatego do najbardziej wrażliwych danych oferujemy zweryfikowane aplikacje (nylzo web, nylzo open i\u{A0}narzędzie nylzo do wiersza poleceń), które uruchamiają kod z\u{A0}podpisanego wydania.',
   'transparency.others.analytics.title': 'Statystyki odwiedzin',
   'transparency.others.analytics':
-    'Strony główne nylzo.com wczytują Cloudflare Web Analytics, żebyśmy wiedzieli, ile osób nas odwiedza i\u{A0}jak szybko ładuje się strona. Cloudflare otrzymuje adres strony bez parametrów, stronę, z\u{A0}której przychodzisz, wersje przeglądarki i\u{A0}systemu, czasy ładowania oraz, jak każdy serwer, Twój adres IP. Skrypt nie używa plików cookie ani pamięci przeglądarki. Dostarcza go Cloudflare, a\u{A0}wczytuje się dopiero po wyświetleniu strony. Inne strony go nie wczytują.',
+    'Żadna strona nie wczytuje skryptów analitycznych innych firm, również strony główne nylzo.com.',
   'transparency.personal.title': 'Dane osobowe',
   'transparency.personal.controller.title': 'Administrator',
   'transparency.personal.controller': 'Administratorem danych jest operator wskazany na górze tej strony.',
@@ -418,8 +418,7 @@ export const messages: Catalog = {
   'transparency.personal.basis':
     'Wiadomość przechowujemy, przekazujemy odbiorcy i\u{A0}usuwamy, ponieważ poprosił o\u{A0}to nadawca. Limity, logi i\u{A0}zbiorcze dane o\u{A0}ruchu są nam potrzebne ze względu na bezpieczeństwo i\u{A0}rozwój usługi (art.\u{A0}6 ust.\u{A0}1 lit.\u{A0}b i\u{A0}f\u{A0}RODO).',
   'transparency.personal.processor.title': 'Podmiot przetwarzający',
-  'transparency.personal.processor':
-    'Cloudflare, Inc. (USA) przetwarza statystyki strony głównej w\u{A0}imieniu operatora i\u{A0}ma certyfikat EU-US Data Privacy Framework.',
+  'transparency.personal.processor': 'Nie korzystamy z zewnętrznej usługi do analizy odwiedzin.',
   'transparency.personal.browser.title': 'W\u{A0}twojej przeglądarce',
   'transparency.personal.browser':
     'Wybrany język, tymczasowa informacja podczas otwierania wiadomości i\u{A0}lista na stronie Wysłane, jeśli śledzisz wiadomość. Są niezbędne do działania funkcji, o\u{A0}które prosisz, dlatego nie wymagają zgody.',
@@ -934,7 +933,7 @@ export const messages: Catalog = {
     'Przy wiadomości na jedno otwarcie zobaczy ją ta osoba, a\u{A0}odbiorca już nie. Odbiorca to zauważy, bo zamiast wiadomości zobaczy informację, że została już otwarta. Dlatego wrażliwe rzeczy chroń hasłem.',
   'faq.free.question': 'Dlaczego Nylzo jest bezpłatne?',
   'faq.free.answer':
-    'To otwarty projekt bez reklam i\u{A0}bez płatnych funkcji. Utrzymanie opłaca autor. Nie sprzedajemy danych o\u{A0}odwiedzających. Ruch na stronie głównej nylzo.com mierzymy bez plików cookie za pomocą Cloudflare Web Analytics, aby ulepszać treść i\u{A0}szybkość strony. Stron z\u{A0}wiadomościami nie mierzymy.',
+    'To otwarty projekt bez reklam i bez płatnych funkcji. Utrzymanie opłaca autor. Nie sprzedajemy danych o odwiedzających ani nie korzystamy z analityki innych firm.',
   'faq.verify.question': 'Jak sprawdzić, czy Nylzo robi to, co obiecuje?',
   'faq.verify.answer':
     'Kod, specyfikacja protokołu i\u{A0}wektory testowe są publiczne. Każdą zmianę sprawdzają testy protokołu, analiza statyczna, kontrola zależności i\u{A0}test danych ze skradzionego serwera. Wydania są podpisane i\u{A0}odtwarzalne. Wyniki kontroli pokazuje strona Przejrzystość.',

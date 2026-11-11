@@ -18,25 +18,11 @@ var linkedAddresses = []string{`"https://github.com/misaon/nylzo"`, `"https://gi
 // ConnectionAllowlist lets a page reach only its origin, the repository and the operator's contact, so injected
 // code cannot carry a secret elsewhere by a navigation, a DNS prefetch, a redirect or WebRTC.
 func ConnectionAllowlist(contact string) string {
-	return pageAllowlist(contact, false)
-}
-
-func pageAllowlist(contact string, analytics bool) string {
 	patterns := append([]string{"response-origin"}, linkedAddresses...)
 	if pattern := contactPattern(contact); pattern != "" {
 		patterns = append(patterns, pattern)
 	}
-	if analytics {
-		patterns = append(patterns, exactPattern(analyticsScript), exactPattern(analyticsEndpoint))
-	}
 	return "(" + strings.Join(patterns, " ") + ")"
-}
-
-// exactPattern admits the https address with no query and no fragment.
-func exactPattern(address string) string {
-	path, _ := strings.CutPrefix(address, "https://")
-	host, path, _ := strings.Cut(path, "/")
-	return `"https://` + host + literalPattern("/"+path) + `?#"`
 }
 
 // contactPattern pins the exact address the transparency page links, with an empty or exact query and no fragment.

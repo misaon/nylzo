@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/caddyserver/caddy/v2"
@@ -160,14 +159,14 @@ func carriesProtocolHeader(header http.Header) bool {
 	return false
 }
 
-// classicalPolicy admits what the public pages load and the visit counts of the nylzo.com home pages, no message route.
+// classicalPolicy admits what the public pages load, no message route or external origin.
 func classicalPolicy(publicURL string) string {
-	sources := slices.Concat([]string{
+	sources := []string{
 		publicURL + "/assets/",
 		publicURL + api.InstancePath,
 		publicURL + api.TransparencyPath,
 		publicURL + webclient.ManifestPath,
-	}, webclient.AnalyticsConnections(publicURL))
+	}
 	return "connect-src " + strings.Join(sources, " ")
 }
 

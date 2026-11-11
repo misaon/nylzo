@@ -287,12 +287,6 @@ func encode(t *testing.T, value any) string {
 	return string(data)
 }
 
-const analyticsPatterns = ` "https://static.cloudflareinsights.com/beacon.min.js?#" "https://cloudflareinsights.com/cdn-cgi/rum?#")`
-
-func withAnalytics(allowlist string) string {
-	return strings.TrimSuffix(allowlist, ")") + analyticsPatterns
-}
-
 func directives(policy string) map[string]string {
 	parsed := map[string]string{}
 	for directive := range strings.SplitSeq(policy, "; ") {
@@ -302,48 +296,35 @@ func directives(policy string) map[string]string {
 	return parsed
 }
 
-func expectNoAnalytics(t *testing.T, where string, page webclient.Page, contact string) {
-	t.Helper()
-	if strings.Contains(page.Policy(), "cloudflare") || strings.Contains(page.Policy(), "nylzo-analytics") ||
-		page.Allowlist() != webclient.ConnectionAllowlist(contact) ||
-		!maps.Equal(page.SecurityHeaders("/"), webclient.SecurityHeaders("/")) {
-		t.Errorf("%s loads analytics: %q %q", where, page.Policy(), page.Allowlist())
-	}
-}
-
-func TestOnlyTheHomePagesOfNylzoComLoadWebAnalytics(t *testing.T) {
+func TestEveryPageRejectsThirdPartyScriptsAndAnalyticsConnections(t *testing.T) {
 	t.Parallel()
 	const contact = "security@example.org"
 	build := load(t, builtClient(t))
 	shared := webclient.SecurityHeaders("/")
-	analyticsHeaders := maps.Clone(shared)
-	analyticsHeaders["Permissions-Policy"] = strings.Replace(
-		shared["Permissions-Policy"], "ch-ua-high-entropy-values=()", "ch-ua-high-entropy-values=(self)", 1,
-	)
-	delete(analyticsHeaders, "Integrity-Policy")
-	for _, publicURL := range []string{"https://nylzo.com", "https://nylzo.com:443"} {
+	for _, publicURL := range []string{"https://nylzo.com", "https://nylzo.com:443", "https://nylzo.example", ""} {
 		pages, err := build.Render(publicURL, contact)
 		if err != nil {
 			t.Fatal(err)
 		}
 		homes := 0
 		for name, page := range pages {
-			if !strings.HasPrefix(name, "home.") {
-				expectNoAnalytics(t, publicURL+" "+name, page, contact)
-				continue
+			if strings.HasPrefix(name, "home.") {
+				homes++
 			}
-			homes++
 			policy := directives(page.Policy())
-			if !strings.HasSuffix(policy["script-src"], " https://static.cloudflareinsights.com/beacon.min.js") ||
-				policy["connect-src"] != "'self' https://cloudflareinsights.com/cdn-cgi/rum" ||
-				policy["trusted-types"] != "nylzo-kdf nylzo-analytics" {
+			for source := range strings.FieldsSeq(policy["script-src"]) {
+				if source != "'self'" && !strings.HasPrefix(source, "'sha384-") {
+					t.Errorf("%s %s admits a third-party script: %q", publicURL, name, source)
+				}
+			}
+			if policy["connect-src"] != "'self'" || policy["trusted-types"] != "nylzo-kdf" {
 				t.Errorf("%s %s policy %q", publicURL, name, page.Policy())
 			}
-			if page.Allowlist() != withAnalytics(webclient.ConnectionAllowlist(contact)) ||
-				page.ContactlessAllowlist() != withAnalytics(webclient.ConnectionAllowlist("")) {
+			if page.Allowlist() != webclient.ConnectionAllowlist(contact) ||
+				page.ContactlessAllowlist() != webclient.ConnectionAllowlist("") {
 				t.Errorf("%s %s allowlist %q", publicURL, name, page.Allowlist())
 			}
-			if !maps.Equal(page.SecurityHeaders("/"), analyticsHeaders) {
+			if !maps.Equal(page.SecurityHeaders("/"), shared) {
 				t.Errorf("%s %s headers %v", publicURL, name, page.SecurityHeaders("/"))
 			}
 			response := httptest.NewRecorder()
@@ -352,26 +333,13 @@ func TestOnlyTheHomePagesOfNylzoComLoadWebAnalytics(t *testing.T) {
 			served := response.Header()
 			if served.Get("Content-Security-Policy") != page.Policy() ||
 				served.Get("Connection-Allowlist") != page.Allowlist() ||
-				served.Get("Permissions-Policy") != analyticsHeaders["Permissions-Policy"] ||
-				served.Get("Integrity-Policy") != "" {
+				served.Get("Permissions-Policy") != shared["Permissions-Policy"] ||
+				served.Get("Integrity-Policy") != "blocked-destinations=(script)" {
 				t.Errorf("%s %s serves other headers: %v", publicURL, name, served)
 			}
 		}
 		if homes < 12 {
 			t.Fatalf("%s: checked %d home pages, want every language", publicURL, homes)
-		}
-	}
-	local, err := build.RenderLocal("https://nylzo.com", contact)
-	if err != nil {
-		t.Fatal(err)
-	}
-	other, err := build.Render("https://nylzo.example", contact)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for client, pages := range map[string]webclient.Pages{"the local client": local, "another instance": other} {
-		for name, page := range pages {
-			expectNoAnalytics(t, client+" "+name, page, contact)
 		}
 	}
 }

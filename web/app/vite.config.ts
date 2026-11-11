@@ -76,7 +76,7 @@ function preloadFonts(): Plugin {
   };
 }
 
-const TRUSTED_TYPES_POLICIES: ReadonlySet<string> = new Set(['nylzo-kdf', 'nylzo-analytics']);
+const TRUSTED_TYPES_POLICIES: ReadonlySet<string> = new Set(['nylzo-kdf']);
 
 // The page CSP admits only these policy names, so a chunk that creates another one stops the client from starting.
 function onlyApprovedTrustedTypesPolicies(): Plugin {
