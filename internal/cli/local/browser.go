@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/privatefile"
 )
 
 const handoffPage = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="referrer" content="no-referrer">` +
@@ -41,15 +42,16 @@ func openWithSystem(target string) error {
 
 // writeHandoffFile keeps the handoff address out of every process argument, where other accounts could read it.
 func writeHandoffFile(address string) (handoffFile, error) {
-	directory, err := os.MkdirTemp("", "nylzo-open-")
+	directory, err := privatefile.MkdirTemp("", "nylzo-open-")
 	if err != nil {
 		return handoffFile{}, err
 	}
 	written := handoffFile{
-		path:   filepath.Join(directory, "open.html"),
-		remove: func() { os.RemoveAll(directory) },
+		path:   filepath.Join(directory.Name(), "open.html"),
+		remove: func() { os.RemoveAll(directory.Name()) },
 	}
-	file, err := command.CreatePrivateFile(written.path)
+	file, err := privatefile.CreateIn(directory, "open.html")
+	directory.Close()
 	if err != nil {
 		written.remove()
 		return handoffFile{}, err

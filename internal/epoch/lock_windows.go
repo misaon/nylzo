@@ -1,10 +1,13 @@
 package epoch
 
-import "os"
+import (
+	"errors"
+	"os"
+)
 
-// Windows runs only development servers, one process per data directory.
+// The server refuses Windows (D54); refuse rather than use a seed file without a lock.
 func lock(*os.File) error {
-	return nil
+	return errors.ErrUnsupported
 }
 
 func unlock(*os.File) {}

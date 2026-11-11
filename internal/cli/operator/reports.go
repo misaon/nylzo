@@ -9,6 +9,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/privatefile"
 	"github.com/misaon/nylzo/internal/server/abuse"
 )
 
@@ -43,12 +44,12 @@ func RunReportKey(_ context.Context, environment *command.Environment, arguments
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
-	file, err := command.CreatePrivateFile(*keyFile)
+	file, err := privatefile.Create(*keyFile)
 	if err == nil {
 		err = command.WritePrivateFile(file, core.Encode(private)+"\n")
 	}
 	if err != nil {
-		return command.Failf(environment, "--key-file: the file already exists or cannot be written")
+		return command.Failf(environment, "--key-file: the file already exists or cannot be written as a private file")
 	}
 	fmt.Fprintf(environment.Stdout, "NYLZO_REPORT_KEY=%s\n", core.Encode(key.PublicKey().Bytes()))
 	return command.ExitOK

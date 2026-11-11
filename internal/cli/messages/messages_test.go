@@ -162,16 +162,26 @@ func TestManageTokenFormat(t *testing.T) {
 	}
 }
 
-func TestWritePrivateNeverOverwrites(t *testing.T) {
-	t.Parallel()
-	directory := t.TempDir()
-	if _, err := writePrivate(directory, "a.txt", []byte("one")); err != nil {
+func openRoot(t *testing.T, path string) *os.Root {
+	t.Helper()
+	root, err := os.OpenRoot(path)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := writePrivate(directory, "a.txt", []byte("two")); !errors.Is(err, os.ErrExist) {
+	t.Cleanup(func() { root.Close() })
+	return root
+}
+
+func TestWritePrivateNeverOverwrites(t *testing.T) {
+	t.Parallel()
+	directory := openRoot(t, t.TempDir())
+	if err := writePrivate(directory, "a.txt", []byte("one")); err != nil {
+		t.Fatal(err)
+	}
+	if err := writePrivate(directory, "a.txt", []byte("two")); !errors.Is(err, os.ErrExist) {
 		t.Fatalf("overwrote an existing file: %v", err)
 	}
-	if got := mustRead(t, filepath.Join(directory, "a.txt")); got != "one" {
+	if got := mustRead(t, filepath.Join(directory.Name(), "a.txt")); got != "one" {
 		t.Fatalf("file now holds %q", got)
 	}
 }
@@ -220,10 +230,10 @@ func TestReadNeverLosesAMessageToANameClash(t *testing.T) {
 
 func TestWritePrivateStaysInItsDirectory(t *testing.T) {
 	t.Parallel()
-	directory := t.TempDir()
+	directory := openRoot(t, t.TempDir())
 	for _, name := range []string{"../escape", "sub/../../escape"} {
-		if _, err := writePrivate(directory, name, []byte("x")); err == nil {
-			t.Fatalf("wrote %q outside %s", name, directory)
+		if err := writePrivate(directory, name, []byte("x")); err == nil {
+			t.Fatalf("wrote %q outside %s", name, directory.Name())
 		}
 	}
 }
@@ -265,7 +275,7 @@ func TestNamesThatFoldTogetherDoNotClash(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(directory, "taken.bin"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := writeAll(directory, []outputFile{{"taken.bin", []byte("new")}})
+	paths, err := writeAll(openRoot(t, directory), []outputFile{{"taken.bin", []byte("new")}})
 	if err != nil || filepath.Base(paths[0]) != attachmentPrefix+"taken.bin" {
 		t.Fatalf("an existing name was not avoided: %v %v", paths, err)
 	}
@@ -285,7 +295,7 @@ func TestFallbackStaysInsideOut(t *testing.T) {
 	var stderr bytes.Buffer
 	paths, err := saveMessage(
 		&command.Environment{Stdout: io.Discard, Stderr: &stderr, Terminal: noTerminal{}},
-		locked,
+		openRoot(t, locked),
 		base,
 		false,
 		envelope.Payload{Meta: envelope.Meta{Text: &text}},
@@ -301,7 +311,7 @@ func TestFallbackStaysInsideOut(t *testing.T) {
 	}
 	if _, err = saveMessage(
 		&command.Environment{Stdout: io.Discard, Stderr: io.Discard, Terminal: noTerminal{}},
-		full,
+		openRoot(t, full),
 		full,
 		false,
 		envelope.Payload{Meta: envelope.Meta{Text: &text}},
@@ -315,7 +325,10 @@ func TestFallbackStaysInsideOut(t *testing.T) {
 	if err = os.Mkdir(filepath.Join(partial, attachmentPrefix+"a.bin"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = writeAll(partial, []outputFile{{textFileName, []byte("x")}, {"a.bin", []byte("y")}}); err == nil {
+	if _, err = writeAll(
+		openRoot(t, partial),
+		[]outputFile{{textFileName, []byte("x")}, {"a.bin", []byte("y")}},
+	); err == nil {
 		t.Fatal("writeAll succeeded with nowhere to put the attachment")
 	}
 	if _, err = os.Stat(filepath.Join(partial, textFileName)); !errors.Is(err, os.ErrNotExist) {

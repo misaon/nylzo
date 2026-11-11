@@ -29,6 +29,7 @@ test("documentation skips application tests and builds while consumed protocol a
 test("Go and web changes retain integration coverage and their language security analysis", () => {
   const go = planChecks(["internal/server/router.go"], "pull_request");
   assert.equal(go.jobs.go, true);
+  assert.equal(go.jobs.windows, true);
   assert.equal(go.jobs["codeql-go"], true);
   assert.equal(go.jobs.e2e, true);
   assert.equal(go.jobs.web, false);

@@ -36,8 +36,6 @@ const (
 	ExitMismatch = 3
 
 	ExitInterrupted = 130
-
-	PrivateFileMode = 0o600
 )
 
 type Environment struct {
@@ -200,10 +198,6 @@ func ReadFileLimited(path string, limit int64) ([]byte, error) {
 		return nil, Unreadable(err)
 	}
 	return data, err
-}
-
-func CreatePrivateFile(path string) (*os.File, error) {
-	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, PrivateFileMode)
 }
 
 func WritePrivateFile(file *os.File, content string) error {

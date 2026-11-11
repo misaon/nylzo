@@ -99,6 +99,7 @@ run = [
   "GOOS=darwin go vet ./...",
   "go fix -diff ./...",
   "golangci-lint run ./...",
+  "GOOS=windows golangci-lint run ./...",
   "go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...",
   "go -C deploy/caddy mod verify",
   "go -C deploy/caddy mod tidy -diff",
