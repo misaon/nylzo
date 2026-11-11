@@ -115,7 +115,7 @@ func createEntry(root *os.Root, name string, kind entry) (windows.Handle, error)
 		return windows.InvalidHandle, err
 	}
 	defer directory.Close()
-	if !persistentACLs(windows.Handle(directory.Fd())) {
+	if !localVolume(windows.Handle(directory.Fd())) {
 		return windows.InvalidHandle, ErrNotPrivate
 	}
 	handle, err := createAt(windows.Handle(directory.Fd()), name, descriptor, kind)
@@ -128,11 +128,29 @@ func createEntry(root *os.Root, name string, kind entry) (windows.Handle, error)
 	return handle, nil
 }
 
-// persistentACLs refuses FAT, exFAT and other volumes that store no access list before anything is created there.
-func persistentACLs(directory windows.Handle) bool {
+// localVolume accepts only a local NTFS or ReFS volume before anything is created: FAT and exFAT store no access list,
+// and a share or a user-mode file system can return the list it was given while its server or helper decides access.
+func localVolume(directory windows.Handle) bool {
 	var flags uint32
-	err := windows.GetVolumeInformationByHandle(directory, nil, 0, nil, nil, &flags, nil, 0)
-	return err == nil && flags&windows.FILE_PERSISTENT_ACLS != 0
+	var name [windows.MAX_PATH + 1]uint16
+	if windows.GetVolumeInformationByHandle(directory, nil, 0, nil, nil, &flags, &name[0], uint32(len(name))) != nil {
+		return false
+	}
+	fileSystem := windows.UTF16ToString(name[:])
+	return flags&windows.FILE_PERSISTENT_ACLS != 0 && (fileSystem == "NTFS" || fileSystem == "ReFS") &&
+		!remote(directory)
+}
+
+// remote relies on FileRemoteProtocolInfo failing with ERROR_INVALID_PARAMETER for a local handle only.
+func remote(handle windows.Handle) bool {
+	var information [512]byte
+	err := windows.GetFileInformationByHandleEx(
+		handle,
+		windows.FileRemoteProtocolInfo,
+		&information[0],
+		uint32(len(information)),
+	)
+	return !errors.Is(err, windows.ERROR_INVALID_PARAMETER)
 }
 
 func createAt(

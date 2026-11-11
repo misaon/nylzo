@@ -46,3 +46,22 @@ func TestReadbackRefusesAnEntryOthersCanOpen(t *testing.T) {
 		t.Fatal("the readback accepted a file that group and others can read")
 	}
 }
+
+func TestMkdirTempRefusesADirectoryThatIsNotEmpty(t *testing.T) {
+	t.Parallel()
+	directory := filepath.Join(t.TempDir(), "taken")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "entry"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if private, checkErr := emptyPrivateDirectory(root); private || checkErr != nil {
+		t.Fatalf("a directory with an entry passed as the new one: %v %v", private, checkErr)
+	}
+}

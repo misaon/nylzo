@@ -1,28 +1,33 @@
 package privatefile
 
 import (
+	"errors"
 	"os"
 	"slices"
 
 	"golang.org/x/sys/unix"
 )
 
-const virtiofsMagic = 0x6a656a63
+const (
+	zfsMagic   = 0x2fc12fc1
+	nfs4ACLKey = "system.nfs4_acl"
+)
 
-// remoteFileSystems decide access on a server or in a helper process, whatever owner and mode they report here.
-var remoteFileSystems = []uint32{
-	unix.NFS_SUPER_MAGIC,
-	unix.CIFS_SUPER_MAGIC,
-	unix.SMB2_SUPER_MAGIC,
-	unix.SMB_SUPER_MAGIC,
-	unix.V9FS_MAGIC,
-	unix.FUSE_SUPER_MAGIC,
-	unix.CEPH_SUPER_MAGIC,
-	unix.AFS_SUPER_MAGIC,
-	unix.AFS_FS_MAGIC,
-	unix.CODA_SUPER_MAGIC,
-	unix.NCP_SUPER_MAGIC,
-	virtiofsMagic,
+// localFileSystems keep owner and mode on this machine and enforce them there; any other type is refused, since a
+// network, FUSE, shared-folder or FAT mount reports a mode that a server, helper or mount option decides.
+var localFileSystems = []uint32{
+	unix.EXT4_SUPER_MAGIC,
+	unix.XFS_SUPER_MAGIC,
+	unix.BTRFS_SUPER_MAGIC,
+	unix.TMPFS_MAGIC,
+	unix.RAMFS_MAGIC,
+	unix.OVERLAYFS_SUPER_MAGIC,
+	unix.ECRYPTFS_SUPER_MAGIC,
+	unix.F2FS_SUPER_MAGIC,
+	unix.BCACHEFS_SUPER_MAGIC,
+	unix.NILFS_SUPER_MAGIC,
+	unix.REISERFS_SUPER_MAGIC,
+	zfsMagic,
 }
 
 func createNew(path string) (*os.File, error) {
@@ -38,10 +43,12 @@ func enforcedLocally(file *os.File) bool {
 	if unix.Fstatfs(int(file.Fd()), &stat) != nil {
 		return false
 	}
-	return !slices.Contains(remoteFileSystems, uint32(stat.Type)) //nolint:gosec // G115: f_type is a 32-bit magic
+	return slices.Contains(localFileSystems, uint32(stat.Type)) //nolint:gosec // G115: f_type is a 32-bit magic
 }
 
-// withoutACL holds on Linux, where the group bits of a 0600 or 0700 mode set the ACL mask to no access.
-func withoutACL(*os.File) bool {
-	return true
+// withoutACL refuses an NFSv4 ACL, as ZFS keeps with acltype=nfsv4, whose entries the mode does not show. A POSIX ACL
+// needs no check: the group bits of a 0600 or 0700 mode set its mask to no access.
+func withoutACL(file *os.File) bool {
+	_, err := unix.Fgetxattr(int(file.Fd()), nfs4ACLKey, nil)
+	return errors.Is(err, unix.ENODATA) || errors.Is(err, unix.EOPNOTSUPP)
 }

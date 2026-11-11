@@ -101,5 +101,5 @@ Two variables, set before Claude Code starts: `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1
 
 - Anything you saw stays in the request to the model provider and in the local transcript: a pasted secret, a printed link, plaintext.
 - A link works until it is opened or expires. A short `--ttl` and `--opens 1` keep that window small.
-- The CLI refuses to write a private file where it cannot keep it private: on FAT or exFAT, on a network or FUSE mount, or on a macOS volume that ignores ownership. Use a directory on a local disk.
+- The CLI writes private files only to a local disk that keeps permissions itself. It refuses FAT, exFAT, network shares, FUSE mounts and macOS volumes that ignore ownership, so use a directory on a local disk.
 - This skill is guidance. The CLI defaults, permission rules and the sandbox are what enforce it.

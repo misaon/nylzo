@@ -44,6 +44,9 @@ var (
 	errPassphraseFileExists = errors.New(
 		"--generate-passphrase-file: the file already exists or cannot be created as a private file",
 	)
+	errPassphraseNotPrivate = errors.New(
+		"--generate-passphrase-file: the file system there cannot keep files private; choose a directory on a local disk",
+	)
 	errPassphraseNotWritten = errors.New("--generate-passphrase-file: the passphrase could not be written")
 	errTextNotUTF8          = errors.New("the text on stdin is not valid UTF-8; send binary data with --from-file")
 	errFromFileTooLarge     = errors.New("--from-file must be a regular file")
@@ -151,10 +154,7 @@ func RunCreate(ctx context.Context, environment *command.Environment, arguments 
 	manage, err := reserveManageFile(options.manageFile)
 	if err != nil {
 		generated.discard()
-		return command.Failf(
-			environment,
-			"--manage-token-file: the file already exists or cannot be created as a private file",
-		)
+		return command.Failf(environment, "--manage-token-file: %s", command.PrivateFileProblem(err))
 	}
 	created, err := createMessage(
 		ctx,
@@ -202,6 +202,9 @@ func writeGeneratedPassphrase(path string) (*generatedPassphrase, error) {
 	passphrase := keys.GeneratePassphrase()
 	file, err := privatefile.Create(path)
 	if err != nil {
+		if errors.Is(err, privatefile.ErrNotPrivate) {
+			return nil, errPassphraseNotPrivate
+		}
 		return nil, errPassphraseFileExists
 	}
 	if command.WritePrivateFile(file, passphrase+"\n") != nil {

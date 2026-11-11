@@ -31,6 +31,7 @@ const (
 	blobRetries           = 3
 	outputDirectoryPrefix = "nylzo-"
 	attachmentPrefix      = "attachment-"
+	probeFileName         = "probe"
 	releasesURL           = "https://github.com/misaon/nylzo/releases"
 )
 
@@ -523,6 +524,9 @@ func outputDirectory(base string) (*os.Root, error) {
 		return nil, errOutNotDirectory
 	}
 	directory, err := privatefile.MkdirTemp(base, outputDirectoryPrefix)
+	if err == nil {
+		err = probePrivateFile(directory)
+	}
 	if errors.Is(err, privatefile.ErrNotPrivate) {
 		return nil, errOutNotPrivate
 	}
@@ -530,6 +534,19 @@ func outputDirectory(base string) (*os.Root, error) {
 		return nil, errOutNotCreated
 	}
 	return directory, nil
+}
+
+// probePrivateFile proves a private file can be made there before the open is spent: FAT keeps one mask for
+// directories and another for files.
+func probePrivateFile(directory *os.Root) error {
+	file, err := privatefile.CreateIn(directory, probeFileName)
+	if err == nil {
+		err = errors.Join(file.Close(), directory.Remove(probeFileName))
+	}
+	if err != nil {
+		removeIfEmpty(directory)
+	}
+	return err
 }
 
 // removeIfEmpty closes the directory first, since Windows refuses to remove a directory that is still open.

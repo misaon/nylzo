@@ -1,6 +1,8 @@
 package privatefile
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -47,16 +49,20 @@ func aclEntries(t *testing.T, path string) []string {
 	return entries
 }
 
-func TestReadbackRefusesAnInheritedACL(t *testing.T) {
+func TestCreateInRefusesAndRemovesAFileThatInheritsAnACE(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	shareByACL(t, directory)
-	file, err := os.Open(filepath.Join(directory, "usual"))
+	root, err := os.OpenRoot(directory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
-	if privateEntry(file) {
-		t.Fatal("the readback accepted a 0600 file whose inherited ACE lets everyone read it")
+	defer root.Close()
+	if file, createErr := CreateIn(root, "new"); !errors.Is(createErr, ErrNotPrivate) {
+		file.Close()
+		t.Fatalf("CreateIn in a directory that passes an ACE on: %v", createErr)
+	}
+	if _, err = os.Lstat(filepath.Join(directory, "new")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the refused file was left behind: %v", err)
 	}
 }

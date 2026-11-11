@@ -49,7 +49,7 @@ func RunReportKey(_ context.Context, environment *command.Environment, arguments
 		err = command.WritePrivateFile(file, core.Encode(private)+"\n")
 	}
 	if err != nil {
-		return command.Failf(environment, "--key-file: the file already exists or cannot be written as a private file")
+		return command.Failf(environment, "--key-file: %s", command.PrivateFileProblem(err))
 	}
 	fmt.Fprintf(environment.Stdout, "NYLZO_REPORT_KEY=%s\n", core.Encode(key.PublicKey().Bytes()))
 	return command.ExitOK

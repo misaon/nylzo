@@ -111,16 +111,17 @@ func TestReadbackRefusesListsThatAreNotOwnerOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	sid := user.User.Sid.String()
-	for name, list := range map[string]string{
-		"everyone alone":     "(A;;FA;;;WD)",
-		"owner and everyone": "(A;;FA;;;" + sid + ")(A;;FR;;;WD)",
-		"owner reads only":   "(A;;FR;;;" + sid + ")",
+	for name, sddl := range map[string]string{
+		"everyone alone":     "O:" + sid + "D:P(A;;FA;;;WD)",
+		"owner and everyone": "O:" + sid + "D:P(A;;FA;;;" + sid + ")(A;;FR;;;WD)",
+		"owner reads only":   "O:" + sid + "D:P(A;;FR;;;" + sid + ")",
+		"another owner":      "O:BAD:P(A;;FA;;;" + sid + ")",
 	} {
 		path := filepath.Join(t.TempDir(), "entry")
 		if err = os.WriteFile(path, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		descriptor, descriptorErr := windows.SecurityDescriptorFromString("O:" + sid + "D:P" + list)
+		descriptor, descriptorErr := windows.SecurityDescriptorFromString(sddl)
 		if descriptorErr != nil {
 			t.Fatal(descriptorErr)
 		}

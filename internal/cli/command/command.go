@@ -17,6 +17,7 @@ import (
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/privatefile"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -198,6 +199,14 @@ func ReadFileLimited(path string, limit int64) ([]byte, error) {
 		return nil, Unreadable(err)
 	}
 	return data, err
+}
+
+// PrivateFileProblem tells a refused file system apart from a file that exists or cannot be created, without the path.
+func PrivateFileProblem(err error) string {
+	if errors.Is(err, privatefile.ErrNotPrivate) {
+		return "the file system there cannot keep files private; choose a directory on a local disk"
+	}
+	return "the file already exists or cannot be created as a private file"
 }
 
 func WritePrivateFile(file *os.File, content string) error {

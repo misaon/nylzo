@@ -75,11 +75,8 @@ func emptyPrivateDirectory(root *os.Root) (bool, error) {
 		return false, err
 	}
 	defer opened.Close()
-	entries, err := opened.ReadDir(1)
-	if len(entries) != 0 {
-		return false, nil
-	}
-	if !errors.Is(err, io.EOF) {
+	// The first read ends with io.EOF only in a directory without entries; with an entry err is nil.
+	if _, err = opened.ReadDir(1); !errors.Is(err, io.EOF) {
 		return false, err
 	}
 	return privateEntry(opened), nil
