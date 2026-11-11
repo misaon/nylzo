@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
@@ -82,9 +83,18 @@ func openWithSignature(
 		signature.PublicKey = dummyPublicKey
 	}
 	record, openErr := openRow(row, purpose, signature.PublicKey[:])
-	signatureOK := signature.Verify(signedPurpose(purpose), r.Method, r.URL.EscapedPath(), body)
+	components, single := requestComponents(r)
+	signatureOK := signature.Verify(signedPurpose(purpose), r.Method, r.URL.EscapedPath(), body, components)
 	granted.record = record
-	return keyOK && openErr == nil && signatureOK
+	return keyOK && openErr == nil && signatureOK && single
+}
+
+// requestComponents rejects repeated singleton fields so intermediaries cannot select a different value.
+func requestComponents(r *http.Request) (signing.Components, bool) {
+	return signing.Components{
+		ShareKey: r.Header.Get(api.ShareKeyHeaderName),
+		Lease:    r.Header.Get(api.LeaseHeaderName),
+	}, len(r.Header.Values(api.ShareKeyHeaderName)) <= 1 && len(r.Header.Values(api.LeaseHeaderName)) <= 1
 }
 
 // openRow opens the record with a zero key after a failed unwrap, so a wrong key costs the same work as a right one.

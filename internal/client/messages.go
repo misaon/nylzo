@@ -277,15 +277,21 @@ func (c *Client) signedOnce(
 	if err != nil {
 		return nil, err
 	}
+	headers := map[string]string{}
+	maps.Copy(headers, request.headers)
+	if request.attemptHeaders != nil {
+		maps.Copy(headers, request.attemptHeaders())
+	}
+	components := signing.Components{ShareKey: headers[api.ShareKeyHeaderName], Lease: headers[api.LeaseHeaderName]}
 	signature := signing.SignRequest(
 		request.seed,
 		request.purpose,
 		request.method,
 		request.path,
 		challenge,
-		request.body,
+		request.body, components,
 	)
-	headers := map[string]string{"Authorization": signature.Authorization()}
+	headers["Authorization"] = signature.Authorization()
 	if request.verifier != nil {
 		verifier := signing.SignRequest(
 			request.verifier,
@@ -293,13 +299,9 @@ func (c *Client) signedOnce(
 			request.method,
 			request.path,
 			challenge,
-			nil,
+			nil, components,
 		)
 		headers[api.VerifierHeaderName] = verifier.VerifierHeader()
-	}
-	maps.Copy(headers, request.headers)
-	if request.attemptHeaders != nil {
-		maps.Copy(headers, request.attemptHeaders())
 	}
 	return c.do(ctx, request.method, request.path, headers, request.body, timeout)
 }

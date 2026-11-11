@@ -8,7 +8,7 @@ import {
   transferSeconds,
   utf8,
 } from '@nylzo/core';
-import type { Purpose, ShareKey } from '@nylzo/core';
+import type { Purpose, RequestComponents, ShareKey } from '@nylzo/core';
 import { describe, expect, it } from 'vitest';
 
 import { ResponseError, StoppedError } from './api-errors.ts';
@@ -42,6 +42,7 @@ function fakeServer(handler: Handler) {
       const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(issued);
       return json(200, { challenge: encodeBase64url(challenge), expires_at: '2026-10-23T10:00:00Z' });
     }
+    await expectSignedRequest(request);
     return handler(request);
   };
   const last = () => seen.at(-1) ?? missing('the client sent no request');
@@ -64,15 +65,38 @@ async function verifies(
   method: string,
   path: string,
   body: Uint8Array = new Uint8Array(0),
+  components: RequestComponents = {},
 ): Promise<boolean> {
   const key = await crypto.subtle.importKey('raw', decode(publicKey), 'Ed25519', false, ['verify']);
-  const message = await requestMessage(purpose, method, path, decode(challenge), body);
+  const message = await requestMessage(purpose, method, path, decode(challenge), body, components);
   return crypto.subtle.verify('Ed25519', key, decode(signature), message);
 }
 
 function authorizationParts(header: string): [string, string, string] {
   const [publicKey = '', challenge = '', signature = ''] = header.replace(/^Nylzo-Sig /u, '').split('.', 3);
   return [publicKey, challenge, signature];
+}
+
+async function expectSignedRequest(request: Request): Promise<void> {
+  const authorization = request.headers.get('Authorization');
+  if (!authorization) {
+    return;
+  }
+  const parts = authorizationParts(authorization);
+  const path = new URL(request.url).pathname;
+  const purpose = path.endsWith('/status') || path.endsWith('/cancel') ? 'manage' : 'read';
+  const components = {
+    shareKey: request.headers.get('X-Nylzo-Share-Key') ?? '',
+    lease: request.headers.get('X-Nylzo-Lease') ?? '',
+  };
+  const body = new Uint8Array(await request.clone().arrayBuffer());
+  expect(await verifies(...parts, purpose, request.method, path, body, components)).toBe(true);
+  const verifier = request.headers.get('X-Nylzo-Verifier');
+  if (!verifier) {
+    return;
+  }
+  const [publicKey = '', signature = ''] = verifier.split('.');
+  expect(await verifies(publicKey, parts[1], signature, 'verifier', request.method, path, body, components)).toBe(true);
 }
 
 const policy = encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 3, flags: 0 })));
@@ -308,16 +332,13 @@ describe('api client', () => {
     expect(claimed.object).toEqual(object);
     expect(progress.at(-1)).toEqual([object.length, object.length]);
     const request = server.last();
-    const path = `/api/v1/messages/${idToString(id)}/claim`;
     const authorization = request.headers.get('Authorization') ?? '';
     const verifier = request.headers.get('X-Nylzo-Verifier') ?? '';
     expect(request.method).toBe('POST');
-    const [publicKey, challenge, signature] = authorizationParts(authorization);
-    const [verifierPublicKey = '', verifierSignature = '', ...rest] = verifier.split('.');
+    const [, challenge] = authorizationParts(authorization);
+    const [verifierPublicKey = '', , ...rest] = verifier.split('.');
     expect(rest).toEqual([]);
     expect(challenge).toBe(encodeBase64url(new Uint8Array(CHALLENGE_LENGTH).fill(1)));
-    expect(await verifies(publicKey, challenge, signature, 'read', 'POST', path)).toBe(true);
-    expect(await verifies(verifierPublicKey, challenge, verifierSignature, 'verifier', 'POST', path)).toBe(true);
     expect(verifierPublicKey).toBe(encodeBase64url(verifierKey.publicKey));
     expect(request.headers.get('X-Nylzo-Share-Key')).toBe(encodeBase64url(shareKey));
   });

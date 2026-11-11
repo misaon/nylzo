@@ -133,6 +133,7 @@ interface StrengthVector {
 }
 
 interface RequestVector {
+  readonly components: { readonly share_key: string; readonly lease: string };
   readonly name: string;
   readonly seed_hex: string;
   readonly public_key: string;

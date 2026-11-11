@@ -515,7 +515,7 @@ func TestClaimBodyVariants(t *testing.T) {
 		r, _ := http.NewRequest(http.MethodPost, harness.httpServer.URL+path, unfinished)
 		r.Header.Set(
 			"Authorization",
-			signing.SignRequest(&message.link.R, signing.PurposeRead, "POST", path, harness.challenge(), nil).
+			signing.SignRequest(&message.link.R, signing.PurposeRead, "POST", path, harness.challenge(), nil, signing.Components{}).
 				Authorization(),
 		)
 		r.Header.Set("X-Forwarded-For", "203.0.113.4")
@@ -1239,8 +1239,8 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		harness.sign(request, message.readToken, "", nil)
 		request.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
+		harness.sign(request, message.readToken, "", nil)
 		request.Header.Set("X-Forwarded-For", message.address)
 		claimed, err := harness.client.Do(request)
 		if err != nil {
@@ -1598,7 +1598,7 @@ func TestASignedRequestWithAnEmptyChunkedBodyIsServed(t *testing.T) {
 		r.TransferEncoding = []string{"chunked"}
 		r.Header.Set(
 			"Authorization",
-			signing.SignRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil).
+			signing.SignRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil, signing.Components{}).
 				Authorization(),
 		)
 		r.Header.Set("X-Forwarded-For", message.address)
