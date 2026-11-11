@@ -77,6 +77,7 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
     "dev-setup": groups.integration,
     compose: groups.integration,
     build: groups.integration,
+    "macos-release": groups.integration,
     "codeql-go": event === "pull_request" || groups.go,
     "codeql-web": event === "pull_request" || groups.web,
     "codeql-actions": event === "pull_request" || groups.actions,
