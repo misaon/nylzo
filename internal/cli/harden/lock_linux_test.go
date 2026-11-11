@@ -14,7 +14,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-const lockChildVariable = "NYLZO_TEST_LOCK_MEMORY_CHILD"
+const (
+	lockChildVariable   = "NYLZO_TEST_LOCK_MEMORY_CHILD"
+	finiteChildVariable = "NYLZO_TEST_FINITE_LOCK_CHILD"
+)
 
 // TestLockMemoryKeepsThePagesOutOfSwap covers A4-2; a child process locks itself, so the test binary stays unlocked.
 func TestLockMemoryKeepsThePagesOutOfSwap(t *testing.T) {
@@ -49,17 +52,40 @@ func TestLockMemoryKeepsThePagesOutOfSwap(t *testing.T) {
 }
 
 // TestAFiniteMemoryLockLimitIsRefused covers the final review's L5: mlockall accepts a finite limit while the heap is
-// small, and the server would stop once the runtime maps past it.
+// small, and the process would stop once the runtime maps past it. A child lowers its hard limit, which it cannot undo.
 func TestAFiniteMemoryLockLimitIsRefused(t *testing.T) {
-	var limit unix.Rlimit
-	if err := unix.Getrlimit(unix.RLIMIT_MEMLOCK, &limit); err != nil {
-		t.Fatal(err)
+	if os.Getenv(finiteChildVariable) == "1" {
+		var limit unix.Rlimit
+		if err := unix.Getrlimit(unix.RLIMIT_MEMLOCK, &limit); err != nil {
+			fmt.Fprintln(os.Stdout, "getrlimit:", err)
+			os.Exit(1)
+		}
+		finite := min(limit.Max, 64<<20)
+		if err := unix.Setrlimit(unix.RLIMIT_MEMLOCK, &unix.Rlimit{Cur: finite, Max: finite}); err != nil {
+			fmt.Fprintln(os.Stdout, "setrlimit:", err)
+			os.Exit(1)
+		}
+		err := LockMemory()
+		fmt.Fprintln(os.Stdout, "refused:", errors.Is(err, errFiniteMemoryLock), "locked:", err == nil)
+		os.Exit(0)
 	}
-	finite := unix.Rlimit{Cur: min(limit.Max, 64<<20), Max: limit.Max}
-	if err := unix.Setrlimit(unix.RLIMIT_MEMLOCK, &finite); err != nil {
-		t.Fatal(err)
+	child := exec.Command(os.Args[0], "-test.run=^TestAFiniteMemoryLockLimitIsRefused$")
+	child.Env = append(os.Environ(), finiteChildVariable+"=1")
+	output, err := child.CombinedOutput()
+	if err != nil {
+		t.Fatalf("the child failed: %v %s", err, output)
 	}
-	t.Cleanup(func() { unix.Setrlimit(unix.RLIMIT_MEMLOCK, &limit) })
+	want := "refused: true locked: false"
+	if hasInitialIPCLock(t) {
+		want = "refused: false locked: true"
+	}
+	if !bytes.Contains(output, []byte(want)) {
+		t.Fatalf("a finite memlock limit: want %q, got %s", want, output)
+	}
+}
+
+func hasInitialIPCLock(t *testing.T) bool {
+	t.Helper()
 	status, err := os.ReadFile("/proc/self/status")
 	if err != nil {
 		t.Fatal(err)
@@ -72,13 +98,7 @@ func TestAFiniteMemoryLockLimitIsRefused(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if capabilities&(1<<unix.CAP_IPC_LOCK) != 0 {
-		if err = requireUnlimitedLock(); err != nil {
-			t.Fatalf("CAP_IPC_LOCK ignores the limit, yet the lock was refused: %v", err)
-		}
-		return
-	}
-	if err = LockMemory(); !errors.Is(err, errFiniteMemoryLock) {
-		t.Fatalf("a finite memlock limit without CAP_IPC_LOCK must be refused before mlockall, got %v", err)
-	}
+	var namespace unix.Stat_t
+	return capabilities&(1<<unix.CAP_IPC_LOCK) != 0 &&
+		unix.Stat("/proc/self/ns/user", &namespace) == nil && namespace.Ino == initialUserNamespace
 }

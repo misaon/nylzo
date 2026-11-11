@@ -5,20 +5,30 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
-	"strings"
+	"path/filepath"
 
 	"golang.org/x/sys/unix"
 )
 
 const lockFlags = unix.MCL_CURRENT | unix.MCL_FUTURE | unix.MCL_ONFAULT
 
-var errFiniteMemoryLock = errors.New(
-	"the memlock limit is finite and the process lacks CAP_IPC_LOCK, so memory the runtime maps later could not be locked",
+const (
+	threadsDirectory = "/proc/self/task"
+	// initialUserNamespace is PROC_USER_INIT_INO, the inode of /proc/self/ns/user in the initial user namespace.
+	initialUserNamespace = 0xEFFFFFFD
+)
+
+var (
+	errFiniteMemoryLock = errors.New(
+		"the memlock limit is finite and the process lacks CAP_IPC_LOCK, so memory the runtime maps later could not be locked",
+	)
+	errTracerUnknown = errors.New("nylzo cannot see whether a tracer is attached")
+	errNoSwapTable   = errors.New("/proc/swaps cannot be read while swap is active")
 )
 
 // disableDumps also makes /proc/<pid> root-owned, so no other process of the user reads the memory or environment.
-// A tracer that attached before keeps its access, so the process refuses to go on under one.
+// A tracer that attached before keeps its access to the thread it traces, so the process refuses to go on while any
+// of its threads has one.
 func disableDumps() error {
 	if err := unix.Setrlimit(unix.RLIMIT_CORE, &unix.Rlimit{}); err != nil {
 		return err
@@ -26,11 +36,25 @@ func disableDumps() error {
 	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
 		return err
 	}
-	status, err := os.ReadFile("/proc/self/status")
+	return refuseTracers(threadsDirectory)
+}
+
+// refuseTracers fails closed when /proc cannot show the threads.
+func refuseTracers(threads string) error {
+	entries, err := os.ReadDir(threads)
 	if err != nil {
-		return nil //nolint:nilerr // without /proc no tracer can be seen; new ones are already shut out
+		return fmt.Errorf("%w: %w", errTracerUnknown, err)
 	}
-	return refuseTracer(status)
+	for _, entry := range entries {
+		status, readErr := os.ReadFile(filepath.Join(threads, entry.Name(), "status"))
+		if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+			return fmt.Errorf("%w: %w", errTracerUnknown, readErr)
+		}
+		if tracedErr := refuseTracer(status); tracedErr != nil {
+			return tracedErr
+		}
+	}
+	return nil
 }
 
 func refuseTracer(status []byte) error {
@@ -44,6 +68,7 @@ func refuseTracer(status []byte) error {
 
 // LockMemory keeps every page the process maps out of swap; MCL_ONFAULT locks a page only once it is used.
 func LockMemory() error {
+	raiseLockLimit()
 	if err := requireUnlimitedLock(); err != nil {
 		return err
 	}
@@ -53,13 +78,21 @@ func LockMemory() error {
 // keepFromSwap locks the memory when no later mapping can fail for it; otherwise it names the swap that would keep
 // the pages in clear.
 func keepFromSwap() string {
-	raiseLockLimit()
 	lockErr := LockMemory()
 	if lockErr == nil {
 		return ""
 	}
 	exposed, err := clearSwap(procSwaps, sysBlock, blockDevice)
+	if errors.Is(err, errNoSwapTable) && !swapActive() {
+		return ""
+	}
 	return swapWarning(exposed, err, lockErr)
+}
+
+// swapActive asks the kernel directly, since /proc/swaps can be hidden (ProcSubset=pid) or not mounted.
+func swapActive() bool {
+	var info unix.Sysinfo_t
+	return unix.Sysinfo(&info) != nil || info.Totalswap > 0
 }
 
 func raiseLockLimit() {
@@ -87,12 +120,9 @@ func requireUnlimitedLock() error {
 	}
 	const bitsPerWord = 32
 	held := capabilities[unix.CAP_IPC_LOCK/bitsPerWord].Effective&(1<<(unix.CAP_IPC_LOCK%bitsPerWord)) != 0
-	if uidMap, err := os.ReadFile("/proc/self/uid_map"); err == nil && held && identityMap(string(uidMap)) {
+	var namespace unix.Stat_t
+	if held && unix.Stat("/proc/self/ns/user", &namespace) == nil && namespace.Ino == initialUserNamespace {
 		return nil
 	}
 	return errFiniteMemoryLock
-}
-
-func identityMap(uidMap string) bool {
-	return slices.Equal(strings.Fields(uidMap), []string{"0", "0", "4294967295"})
 }

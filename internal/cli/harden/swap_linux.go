@@ -22,8 +22,6 @@ const (
 // cryptTypes are the libcryptsetup device types that encrypt; INTEGRITY, VERITY and SUBDEV devices do not.
 var cryptTypes = []string{"LUKS1", "LUKS2", "PLAIN", "LOOPAES", "TCRYPT", "BITLK", "FVAULT2"}
 
-var errNoProc = errors.New("/proc is not mounted")
-
 func swapWarning(areas []string, checkErr, lockErr error) string {
 	if checkErr == nil && len(areas) == 0 {
 		return ""
@@ -55,10 +53,7 @@ func swapWarning(areas []string, checkErr, lockErr error) string {
 func clearSwap(table, devices string, device func(string) (string, error)) ([]string, error) {
 	raw, err := os.ReadFile(table)
 	if errors.Is(err, os.ErrNotExist) {
-		if _, procErr := os.Stat(filepath.Join(filepath.Dir(table), "self")); procErr != nil {
-			return nil, errNoProc
-		}
-		return nil, nil
+		return nil, errNoSwapTable
 	}
 	if err != nil {
 		return nil, err

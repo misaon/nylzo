@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"testing"
@@ -53,26 +54,30 @@ func TestFullProtectionWarnsOnlyWithoutTheLock(t *testing.T) {
 	}
 }
 
+// TestAProcessUnderATracerIsRefused covers the F07 review: a tracer may hold any thread, not just the first, and
+// without /proc nylzo cannot tell.
 func TestAProcessUnderATracerIsRefused(t *testing.T) {
-	for status, traced := range map[string]bool{
-		"Name:\tnylzo\nTracerPid:\t0\nUid:\t1000\n":    false,
-		"Name:\tnylzo\nTracerPid:\t4242\nUid:\t1000\n": true,
-	} {
-		if err := refuseTracer([]byte(status)); errors.Is(err, errTraced) != traced {
-			t.Errorf("%q: got %v", status, err)
+	threads := t.TempDir()
+	for thread, tracer := range map[string]string{"100": "0", "101": "0"} {
+		if err := os.MkdirAll(filepath.Join(threads, thread), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		status := "Name:\tnylzo\nTracerPid:\t" + tracer + "\nUid:\t1000\n"
+		if err := os.WriteFile(filepath.Join(threads, thread, "status"), []byte(status), 0o600); err != nil {
+			t.Fatal(err)
 		}
 	}
-}
-
-func TestOnlyTheInitialUserNamespaceLiftsTheLockLimit(t *testing.T) {
-	for uidMap, initial := range map[string]bool{
-		"         0          0 4294967295\n": true,
-		"         0     100000      65536\n": false,
-		"      1000       1000          1\n": false,
-	} {
-		if identityMap(uidMap) != initial {
-			t.Errorf("%q: want initial %t", uidMap, initial)
-		}
+	if err := refuseTracers(threads); err != nil {
+		t.Fatalf("no thread is traced, got %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(threads, "101", "status"), []byte("TracerPid:\t4242\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := refuseTracers(threads); !errors.Is(err, errTraced) {
+		t.Fatalf("a traced second thread must be refused, got %v", err)
+	}
+	if err := refuseTracers(filepath.Join(threads, "missing")); !errors.Is(err, errTracerUnknown) {
+		t.Fatalf("without /proc the process must not go on, got %v", err)
 	}
 }
 

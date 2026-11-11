@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -149,7 +150,7 @@ func protect(environment *command.Environment, level harden.Level) (int, bool) {
 	if err != nil {
 		return command.Failf(environment, "could not protect the process before reading secrets: %s", err), false
 	}
-	if warning != "" && environment.Getenv(command.EnvironmentAllowSwap) != "1" {
+	if allowed, _ := strconv.ParseBool(environment.Getenv(command.EnvironmentAllowSwap)); warning != "" && !allowed {
 		command.Warnf(environment, "%s; %s=1 hides this warning", warning, command.EnvironmentAllowSwap)
 	}
 	return command.ExitOK, true

@@ -124,7 +124,6 @@ func TestClearSwapNamesOnlyAreasThatReachADiskInClear(t *testing.T) {
 		}
 	}
 	tree.write("proc/swaps", table.String())
-	tree.write("proc/self/status", "")
 	exposed, err := clearSwap(
 		filepath.Join(tree.root, "proc", "swaps"),
 		tree.devices(),
@@ -146,14 +145,14 @@ func TestClearSwapNamesOnlyAreasThatReachADiskInClear(t *testing.T) {
 }
 
 func TestClearSwapWithoutTheSwapTable(t *testing.T) {
-	proc := t.TempDir()
-	if _, err := clearSwap(filepath.Join(proc, "swaps"), t.TempDir(), blockDevice); !errors.Is(err, errNoProc) {
-		t.Fatalf("without /proc nylzo cannot tell, got %v", err)
-	}
-	if err := os.Mkdir(filepath.Join(proc, "self"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if exposed, err := clearSwap(filepath.Join(proc, "swaps"), t.TempDir(), blockDevice); exposed != nil || err != nil {
-		t.Fatalf("a kernel without /proc/swaps has no swap, got %q, %v", exposed, err)
+	if _, err := clearSwap(
+		filepath.Join(t.TempDir(), "swaps"),
+		t.TempDir(),
+		blockDevice,
+	); !errors.Is(
+		err,
+		errNoSwapTable,
+	) {
+		t.Fatalf("a hidden /proc/swaps must not read as no swap, got %v", err)
 	}
 }

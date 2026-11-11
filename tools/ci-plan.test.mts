@@ -31,6 +31,7 @@ test("Go and web changes retain integration coverage and their language security
   assert.equal(go.jobs.go, true);
   assert.equal(go.jobs["windows-build"], true);
   assert.equal(go.jobs.windows, true);
+  assert.equal(go.jobs.macos, true);
   assert.equal(go.jobs["codeql-go"], true);
   assert.equal(go.jobs.e2e, true);
   assert.equal(go.jobs.web, false);

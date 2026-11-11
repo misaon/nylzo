@@ -44,7 +44,7 @@ var (
 	errMemoryLock = errors.New(
 		"the server must lock its memory so no key reaches swap: raise the memlock limit " +
 			"(systemd LimitMEMLOCK=infinity, docker run --ulimit memlock=-1:-1, Compose ulimits memlock -1) " +
-			"or grant CAP_IPC_LOCK; NYLZO_ALLOW_SWAP=1 serves without the lock",
+			"or grant CAP_IPC_LOCK outside a user namespace; NYLZO_ALLOW_SWAP=1 serves without the lock",
 	)
 	errSecretMode = errors.New(
 		"this build leaves request keys in memory after use: build with GOEXPERIMENT=runtimesecret for " +

@@ -41,17 +41,28 @@ func TestProtectHidesTheProcessFromTheSameUser(t *testing.T) {
 	}
 }
 
-// dropPrivileges disables every privilege of the test process: the runner's administrator token enables
-// SeDebugPrivilege, which opens any process whatever its DACL, and the test must see what a normal process sees.
+// dropPrivileges disables SeDebugPrivilege and SeTakeOwnershipPrivilege of the test process: the runner's
+// administrator token enables them, and either opens a process whatever its DACL.
 func dropPrivileges(t *testing.T) {
 	t.Helper()
 	var token windows.Token
-	if err := windows.OpenProcessToken(windows.CurrentProcess(), windows.TOKEN_ADJUST_PRIVILEGES, &token); err != nil {
+	access := uint32(windows.TOKEN_ADJUST_PRIVILEGES | windows.TOKEN_QUERY)
+	if err := windows.OpenProcessToken(windows.CurrentProcess(), access, &token); err != nil {
 		t.Fatal(err)
 	}
 	defer token.Close()
-	if err := windows.AdjustTokenPrivileges(token, true, nil, 0, nil, nil); err != nil {
-		t.Fatal(err)
+	for _, name := range []string{"SeDebugPrivilege", "SeTakeOwnershipPrivilege"} {
+		privileges := windows.Tokenprivileges{PrivilegeCount: 1}
+		if err := windows.LookupPrivilegeValue(
+			nil,
+			windows.StringToUTF16Ptr(name),
+			&privileges.Privileges[0].Luid,
+		); err != nil {
+			t.Fatal(err)
+		}
+		if err := windows.AdjustTokenPrivileges(token, false, &privileges, 0, nil, nil); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
