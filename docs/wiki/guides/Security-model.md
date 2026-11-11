@@ -73,6 +73,12 @@ Mutable secret buffers are overwritten after use, including error paths, and ref
 
 References: [CryptoKey extraction rules](https://developer.mozilla.org/en-US/docs/Web/API/CryptoKey/extractable), [Web Crypto algorithms](https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto#supported_algorithms), [structured cloning](https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm), [Web Crypto security considerations](https://www.w3.org/TR/webcrypto-2/#security-developers) (working draft).
 
+## CLI keys and memory
+
+Before a CLI command reads a link, passphrase, manage token or key, it hardens its process (F07). It writes no core file, it refuses to run under an attached debugger, and debuggers that run as the same user cannot attach later: Linux marks the process non-dumpable, macOS sets `PT_DENY_ATTACH`, and Windows gives the process a DACL that denies memory reads to anyone who opens it by its id. OpenSSH's `ssh-agent` and KeePassXC make the same calls. Linux keeps the memory and environment from every other process of the user. macOS and Windows do not separate processes of one user that far: on macOS the environment stays readable and a tool with Developer Tools access can read the memory, and on Windows a process of the user can reach nylzo through the handle its shell holds or through its threads. On Linux the command also locks its memory against swap when the memlock limit allows it, and otherwise warns when a swap area is not encrypted. macOS encrypts swap itself; on Windows only BitLocker protects the page file. Root and administrators can still read the memory, and hibernation writes it to disk. The [CLI guide](CLI.md#process-protection) has the details.
+
+References: [`PR_SET_DUMPABLE`](https://man7.org/linux/man-pages/man2/pr_set_dumpable.2const.html), [`mlock(2)`](https://man7.org/linux/man-pages/man2/mlock.2.html), [OpenSSH `platform_disable_tracing`](https://github.com/openssh/openssh-portable/blob/master/platform-tracing.c), [KeePassXC `disableCoreDumps`](https://github.com/keepassxreboot/keepassxc/blob/develop/src/core/Bootstrap.cpp).
+
 ## A link grants capabilities
 
 Anyone holding the link can delete a message or exhaust its passphrase attempts, even when a passphrase protects the content. Someone with both the link and a copy of the server's data, taken before the message expired, can guess a weak passphrase offline. A passphrase you choose needs at least 15 characters; the clients offer a generated one by default. Send it through a different channel than the link.

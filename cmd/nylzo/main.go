@@ -6,6 +6,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli"
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
+	"github.com/misaon/nylzo/internal/cli/harden"
 )
 
 var (
@@ -26,5 +27,6 @@ func main() {
 		Commit:   commit,
 		Date:     date,
 		Dirty:    dirty,
+		Harden:   harden.Protect,
 	}))
 }

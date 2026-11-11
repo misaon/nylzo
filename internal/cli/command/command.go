@@ -16,6 +16,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/console"
+	"github.com/misaon/nylzo/internal/cli/harden"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -26,6 +27,7 @@ const (
 	EnvironmentLink        = "NYLZO_LINK"
 	EnvironmentPassphrase  = "NYLZO_PASSPHRASE_FILE"   //nolint:gosec // the name of a variable that names a file, not a credential
 	EnvironmentManageToken = "NYLZO_MANAGE_TOKEN_FILE" //nolint:gosec // the name of a variable that names a file, not a credential
+	EnvironmentAllowSwap   = "NYLZO_ALLOW_SWAP"
 )
 
 const (
@@ -52,6 +54,8 @@ type Environment struct {
 	Dirty     string
 	WebClient func() (webclient.Build, error)
 	Browser   func(target string) error
+	// Harden protects the process before a command reads a secret; main sets harden.Protect.
+	Harden func(harden.Level) (warning string, err error)
 }
 
 func (e *Environment) BuildInformation() buildinfo.Info {
@@ -158,6 +162,10 @@ func Failf(environment *Environment, format string, arguments ...any) int {
 func FailWith(environment *Environment, code int, format string, arguments ...any) int {
 	fmt.Fprintln(environment.Stderr, Program+": "+printable(fmt.Sprintf(format, arguments...)))
 	return code
+}
+
+func Warnf(environment *Environment, format string, arguments ...any) {
+	fmt.Fprintln(environment.Stderr, Program+": warning: "+printable(fmt.Sprintf(format, arguments...)))
 }
 
 func printable(text string) string {

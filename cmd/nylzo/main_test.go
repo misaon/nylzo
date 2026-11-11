@@ -22,6 +22,7 @@ func TestCommandEntrypoint(t *testing.T) {
 		{"version", "dev", false},
 		{"--help", "nylzo", false},
 		{"unknown-command", "unknown", true},
+		{"status", "manage token", true},
 	} {
 		t.Run(test.argument, func(t *testing.T) {
 			command := exec.Command(os.Args[0], "-test.run=^TestCommandEntrypoint$")

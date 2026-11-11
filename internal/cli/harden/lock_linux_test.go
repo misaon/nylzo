@@ -1,4 +1,4 @@
-package operator
+package harden
 
 import (
 	"bytes"
@@ -23,7 +23,7 @@ func TestLockMemoryKeepsThePagesOutOfSwap(t *testing.T) {
 		if unix.Getrlimit(unix.RLIMIT_MEMLOCK, &limit) == nil {
 			unix.Setrlimit(unix.RLIMIT_MEMLOCK, &unix.Rlimit{Cur: limit.Max, Max: limit.Max})
 		}
-		if err := lockMemory(); err != nil {
+		if err := LockMemory(); err != nil {
 			limited := errors.Is(err, syscall.ENOMEM) || errors.Is(err, syscall.EPERM) ||
 				errors.Is(err, errFiniteMemoryLock)
 			fmt.Fprintln(os.Stderr, "lock:", limited, err)
@@ -78,7 +78,7 @@ func TestAFiniteMemoryLockLimitIsRefused(t *testing.T) {
 		}
 		return
 	}
-	if err = lockMemory(); !errors.Is(err, errFiniteMemoryLock) {
+	if err = LockMemory(); !errors.Is(err, errFiniteMemoryLock) {
 		t.Fatalf("a finite memlock limit without CAP_IPC_LOCK must be refused before mlockall, got %v", err)
 	}
 }
