@@ -24,6 +24,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/privatefile"
 	"github.com/misaon/nylzo/internal/secretmode"
 )
 
@@ -40,7 +41,12 @@ var (
 	errNothingToSend        = errors.New("nothing to send: pipe text to stdin or use --from-file")
 	errTooLargeForInstance  = errors.New("the message is larger than this server accepts")
 	errPolicy               = errors.New("the message does not fit the limits of this server")
-	errPassphraseFileExists = errors.New("--generate-passphrase-file: the file already exists or cannot be created")
+	errPassphraseFileExists = errors.New(
+		"--generate-passphrase-file: the file already exists or cannot be created as a private file",
+	)
+	errPassphraseNotPrivate = errors.New(
+		"--generate-passphrase-file: the file system there cannot keep files private; choose a directory on a local disk",
+	)
 	errPassphraseNotWritten = errors.New("--generate-passphrase-file: the passphrase could not be written")
 	errTextNotUTF8          = errors.New("the text on stdin is not valid UTF-8; send binary data with --from-file")
 	errFromFileTooLarge     = errors.New("--from-file must be a regular file")
@@ -101,13 +107,13 @@ func createFlags(environment *command.Environment) (*flag.FlagSet, *createOption
 		&options.generate,
 		"generate-passphrase-file",
 		"",
-		"protect the message with a generated passphrase written to this new file (mode 0600)",
+		"protect the message with a generated passphrase written to this new file that only you can open",
 	)
 	flags.StringVar(
 		&options.manageFile,
 		"manage-token-file",
 		"",
-		"write the manage token for status and cancel to this new file (mode 0600)",
+		"write the manage token for status and cancel to this new file that only you can open",
 	)
 	flags.BoolVar(&options.printManage, "print-manage-token", false, "print the manage token after the link")
 	flags.BoolVar(
@@ -148,7 +154,7 @@ func RunCreate(ctx context.Context, environment *command.Environment, arguments 
 	manage, err := reserveManageFile(options.manageFile)
 	if err != nil {
 		generated.discard()
-		return command.Failf(environment, "--manage-token-file: the file already exists or cannot be created")
+		return command.Failf(environment, "--manage-token-file: %s", command.PrivateFileProblem(err))
 	}
 	created, err := createMessage(
 		ctx,
@@ -194,8 +200,11 @@ func (g *generatedPassphrase) discard() {
 
 func writeGeneratedPassphrase(path string) (*generatedPassphrase, error) {
 	passphrase := keys.GeneratePassphrase()
-	file, err := command.CreatePrivateFile(path)
+	file, err := privatefile.Create(path)
 	if err != nil {
+		if errors.Is(err, privatefile.ErrNotPrivate) {
+			return nil, errPassphraseNotPrivate
+		}
 		return nil, errPassphraseFileExists
 	}
 	if command.WritePrivateFile(file, passphrase+"\n") != nil {
@@ -530,7 +539,7 @@ func reserveManageFile(path string) (manageFile, error) {
 	if path == "" {
 		return manageFile{}, nil
 	}
-	file, err := command.CreatePrivateFile(path)
+	file, err := privatefile.Create(path)
 	if err != nil {
 		return manageFile{}, err
 	}

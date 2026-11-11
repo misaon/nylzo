@@ -77,7 +77,7 @@ export function sanitizeFileName(name: string): string {
     return clean;
   }
   const { stem, extension } = splitFileName(clean);
-  return truncateBytes(stem, MAX_NAME_BYTES - byteLength(extension)) + extension;
+  return (truncateBytes(stem, MAX_NAME_BYTES - byteLength(extension)) + extension).replace(/[.\s]+$/u, '');
 }
 
 export function fileExtension(name: string): string {

@@ -65,6 +65,8 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
   const jobs = {
     sca,
     go: groups.go,
+    "windows-build": groups.go,
+    windows: groups.go,
     fuzz: groups.go,
     web: groups.web,
     coverage: (groups.go || groups.web) && trustedCoverage,

@@ -21,7 +21,7 @@ func TestReportKeyAndReportsOpenOnlyWithTheOperatorsKey(t *testing.T) {
 	if created.code != command.ExitOK || !found {
 		t.Fatalf("report-key: %+v", created)
 	}
-	if info, err := os.Stat(keyFile); err != nil || info.Mode().Perm() != command.PrivateFileMode {
+	if info, err := os.Stat(keyFile); err != nil || info.Mode().Perm() != 0o600 {
 		t.Fatalf("the private key file must be private: %v %v", info, err)
 	}
 	if again := run(t, "", nil, nil, RunReportKey, "--key-file", keyFile); again.code == command.ExitOK {

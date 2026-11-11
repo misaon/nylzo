@@ -22,6 +22,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/share"
+	"github.com/misaon/nylzo/internal/privatefile"
 	"github.com/misaon/nylzo/internal/secretmode"
 )
 
@@ -30,6 +31,7 @@ const (
 	blobRetries           = 3
 	outputDirectoryPrefix = "nylzo-"
 	attachmentPrefix      = "attachment-"
+	probeFileName         = "probe"
 	releasesURL           = "https://github.com/misaon/nylzo/releases"
 )
 
@@ -69,6 +71,9 @@ var (
 	)
 	errOutNotDirectory = errors.New("--out must name an existing directory")
 	errOutNotCreated   = errors.New("--out: cannot create a private directory there")
+	errOutNotPrivate   = errors.New(
+		"--out: the file system there cannot keep files private; choose a directory on a local disk",
+	)
 )
 
 type readOptions struct {
@@ -206,7 +211,7 @@ func RunRead(ctx context.Context, environment *command.Environment, arguments []
 	if err != nil {
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
-	directory := ""
+	var directory *os.Root
 	if options.out != "" {
 		if directory, err = outputDirectory(options.out); err != nil {
 			return command.Failf(environment, "%s", err)
@@ -402,7 +407,8 @@ type outputFile struct {
 
 func saveMessage(
 	environment *command.Environment,
-	directory, base string,
+	directory *os.Root,
+	base string,
 	toStdout bool,
 	payload envelope.Payload,
 ) ([]string, error) {
@@ -424,7 +430,7 @@ func saveMessage(
 	if len(files) == 0 {
 		return nil, nil
 	}
-	if directory == "" {
+	if directory == nil {
 		return nil, errAttachmentDiscarded
 	}
 	defer wipeOutputFiles(files)
@@ -464,76 +470,104 @@ func printText(environment *command.Environment, text string) {
 }
 
 // writeWithFallback tries a second new directory next to the first, so a failed write does not lose the message.
-func writeWithFallback(environment *command.Environment, directory, base string, files []outputFile) ([]string, error) {
+func writeWithFallback(
+	environment *command.Environment,
+	directory *os.Root,
+	base string,
+	files []outputFile,
+) ([]string, error) {
 	paths, err := writeAll(directory, files)
 	if err == nil {
 		return paths, nil
 	}
-	fallback, err := os.MkdirTemp(base, outputDirectoryPrefix)
+	fallback, err := privatefile.MkdirTemp(base, outputDirectoryPrefix)
 	if err != nil {
 		return nil, errWriteOutput
 	}
+	defer removeIfEmpty(fallback)
 	fmt.Fprintf(
 		environment.Stderr,
 		"%s: warning: writing the files failed, trying a second new directory next to the first\n", command.Program,
 	)
 	if paths, err = writeAll(fallback, files); err != nil {
-		removeIfEmpty(fallback)
 		return nil, errWriteOutput
 	}
 	return paths, nil
 }
 
-func writeAll(directory string, files []outputFile) ([]string, error) {
-	var paths []string
+func writeAll(directory *os.Root, files []outputFile) ([]string, error) {
+	var names []string
 	for _, file := range files {
-		path, err := writePrivate(directory, file.name, file.data)
-		if errors.Is(err, fs.ErrExist) && !strings.HasPrefix(file.name, attachmentPrefix) {
-			path, err = writePrivate(directory, attachmentPrefix+file.name, file.data)
+		name := file.name
+		err := writePrivate(directory, name, file.data)
+		if errors.Is(err, fs.ErrExist) && !strings.HasPrefix(name, attachmentPrefix) {
+			name = attachmentPrefix + name
+			err = writePrivate(directory, name, file.data)
 		}
 		if err != nil {
-			for _, written := range paths {
-				os.Remove(written)
+			for _, written := range names {
+				_ = directory.Remove(written)
 			}
 			return nil, err
 		}
-		paths = append(paths, path)
+		names = append(names, name)
+	}
+	paths := make([]string, len(names))
+	for index, name := range names {
+		paths[index] = filepath.Join(directory.Name(), name)
 	}
 	return paths, nil
 }
 
-func outputDirectory(base string) (string, error) {
+func outputDirectory(base string) (*os.Root, error) {
 	if info, err := os.Stat(base); err != nil || !info.IsDir() {
-		return "", errOutNotDirectory
+		return nil, errOutNotDirectory
 	}
-	directory, err := os.MkdirTemp(base, outputDirectoryPrefix)
+	directory, err := privatefile.MkdirTemp(base, outputDirectoryPrefix)
+	if err == nil {
+		err = probePrivateFile(directory)
+	}
+	if errors.Is(err, privatefile.ErrNotPrivate) {
+		return nil, errOutNotPrivate
+	}
 	if err != nil {
-		return "", errOutNotCreated
+		return nil, errOutNotCreated
 	}
 	return directory, nil
 }
 
-func removeIfEmpty(directory string) {
-	if entries, err := os.ReadDir(directory); err == nil && len(entries) == 0 {
-		os.Remove(directory)
+// probePrivateFile proves a private file can be made there before the open is spent: FAT keeps one mask for
+// directories and another for files.
+func probePrivateFile(directory *os.Root) error {
+	file, err := privatefile.CreateIn(directory, probeFileName)
+	if err == nil {
+		err = errors.Join(file.Close(), directory.Remove(probeFileName))
+	}
+	if err != nil {
+		removeIfEmpty(directory)
+	}
+	return err
+}
+
+// removeIfEmpty closes the directory first, since Windows refuses to remove a directory that is still open.
+func removeIfEmpty(directory *os.Root) {
+	entries, err := fs.ReadDir(directory.FS(), ".")
+	directory.Close()
+	if err == nil && len(entries) == 0 {
+		os.Remove(directory.Name())
 	}
 }
 
-// writePrivate creates a new file only inside dir and never replaces one.
-func writePrivate(directory, name string, data []byte) (string, error) {
-	root, err := os.OpenRoot(directory)
+// writePrivate creates a new file only inside the directory and never replaces one.
+func writePrivate(directory *os.Root, name string, data []byte) error {
+	file, err := privatefile.CreateIn(directory, name)
 	if err != nil {
-		return "", err
-	}
-	defer root.Close()
-	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, command.PrivateFileMode)
-	if err != nil {
-		return "", err
+		return err
 	}
 	_, err = file.Write(data)
 	if err = errors.Join(err, file.Sync(), file.Close()); err != nil {
-		_ = root.Remove(name)
-		return "", err
+		_ = directory.Remove(name)
+		return err
 	}
-	return filepath.Join(directory, name), nil
+	return nil
 }

@@ -30,6 +30,9 @@ func RunStoreCheck(ctx context.Context, environment *command.Environment, argume
 }
 
 func storeCheck(ctx context.Context, getenv func(string) string, output io.Writer, logger *slog.Logger) error {
+	if !serverSupported {
+		return errServerUnsupported
+	}
 	settings, err := config.FromEnvironment(getenv, false)
 	if err != nil {
 		return err

@@ -25,6 +25,8 @@ The macOS and Windows binaries carry no Apple notarization or Authenticode signa
 
 Pass message links, passphrases, and manage tokens through stdin, files, supported `NYLZO_*` variables, or hidden terminal prompts. Keep them out of command arguments, which can appear in process listings and shell history. Arguments resembling a secret-bearing link are rejected before any network request. Prefer private files over environment variables when other processes can inspect your environment.
 
+The files and directories the CLI writes are new and private. It never replaces an existing file or writes through a link that has the file's name. A file gets mode 0600 and a directory mode 0700. macOS checks access control entries before the mode, so there the CLI creates each one without the entries its parent directory would pass on. Go applies no mode beyond read-only on Windows, so there the CLI creates each one with a protected access list that grants only your account. On both systems nothing is inherited from the parent directory, even when other accounts can read it (F04). The CLI then reads the owner and access back and refuses an entry that is not private. It writes only to a local disk whose file system stores and enforces the permissions itself: NTFS or ReFS on Windows, ext4, XFS, Btrfs, tmpfs and similar on Linux, and a local macOS volume that respects ownership. FAT, exFAT, network shares, FUSE and virtual machine shared folders are refused, since a mount option, server or helper decides access there whatever the file reports. `read --out` checks this before it opens the message. It opens the directory it created inside `--out` and writes every file through that handle, so renaming the directory or putting a link in its place does not redirect the files. Administrators on Windows and root elsewhere can still take ownership of any file.
+
 The CLI requires HTTPS, except for exact localhost and loopback addresses, which bypass proxies and are checked to resolve to loopback. It does not follow redirects. Error messages do not repeat flag values, file paths, server text, or certificate text that could contain secrets. Control characters in errors are escaped.
 
 ## Create a message
@@ -42,11 +44,11 @@ Create input/output files inside a directory accessible only to you, and use a r
 
 Passphrase options:
 
-- `--generate-passphrase-file FILE` creates a strong passphrase in a new mode-0600 file and does not print it.
+- `--generate-passphrase-file FILE` creates a strong passphrase in a new private file and does not print it.
 - `--passphrase-file FILE` or `NYLZO_PASSPHRASE_FILE` reads the first line of an existing file.
 - `--ask-passphrase` prompts twice without echo.
 
-A passphrase you choose needs at least 15 characters and must pass the checks of [protocol section 2](../reference/Protocol.md#2-key-derivation-client); a generated one always does. Passphrase key derivation uses scrypt with `N = 2^18`. The manage token is written only when requested with `--manage-token-file` (a new mode-0600 file) or `--print-manage-token`. It has two lines: the link, then the manage token. Keep both private.
+A passphrase you choose needs at least 15 characters and must pass the checks of [protocol section 2](../reference/Protocol.md#2-key-derivation-client); a generated one always does. Passphrase key derivation uses scrypt with `N = 2^18`. The manage token is written only when requested with `--manage-token-file` (a new private file) or `--print-manage-token`. It has two lines: the link, then the manage token. Keep both private.
 
 ## Read, inspect, cancel, or delete
 
@@ -64,13 +66,13 @@ A CLI from Nylzo 0.1 or 0.2 can neither create nor read messages on an instance 
 `read` requires an explicit destination before making a request:
 
 - `--stdout` prints text without writing files, so it cannot deliver an attachment. A message does not show whether it holds a file until it is opened: `--stdout` then prints the text, spends the open and reports the file it did not save. Use `--out` when a file may be attached. Control characters are escaped on a terminal; a pipe or file receives the original text.
-- `--out DIRECTORY` creates a new mode-0700 subdirectory before opening the message, writes `message.txt` and any attachment using a sanitized filename with mode 0600, and prints their paths. Name collisions do not consume an open. A failed write may be retried in a second new subdirectory beside the first, never in another location.
+- `--out DIRECTORY` creates a new private subdirectory before opening the message, writes `message.txt` and any attachment there as private files under a sanitized filename, and prints their paths. Name collisions do not consume an open. A failed write may be retried in a second new subdirectory beside the first, never in another location.
 
 For passphrase-protected messages, `read` prompts without echo or uses `--passphrase-file`. Ctrl-C restores terminal echo before exiting. Interrupted downloads are retried within the same invocation using the lease, without consuming another open.
 
 `status` supports `--json`. It and `cancel` accept the manage token via stdin, `--manage-token-file`, or `NYLZO_MANAGE_TOKEN_FILE`.
 
-Downloaded files contain plaintext. Delete them when no longer needed, while recognizing that SSDs and backups may retain copies. On Windows, POSIX modes 0700 and 0600 do not restrict access: files inherit directory permissions, so choose a private destination. The CLI makes a best effort to clear keys from its own memory, but Go strings, libraries, garbage collection, terminals, and pipes may retain copies.
+Downloaded files contain plaintext. Delete them when no longer needed, while recognizing that SSDs and backups may retain copies. The CLI makes a best effort to clear keys from its own memory, but Go strings, libraries, garbage collection, terminals, and pipes may retain copies.
 
 ## Use the web client without trusting the server
 
