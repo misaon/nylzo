@@ -104,11 +104,58 @@ func TestCreateRefusesNamesThatWin32WouldRewrite(t *testing.T) {
 	}
 }
 
-func TestReadbackRefusesAnInheritedList(t *testing.T) {
+func TestReadbackRefusesListsThatAreNotOwnerOnly(t *testing.T) {
 	t.Parallel()
+	user, err := windows.GetCurrentProcessToken().GetTokenUser()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sid := user.User.Sid.String()
+	for name, list := range map[string]string{
+		"everyone alone":     "(A;;FA;;;WD)",
+		"owner and everyone": "(A;;FA;;;" + sid + ")(A;;FR;;;WD)",
+		"owner reads only":   "(A;;FR;;;" + sid + ")",
+	} {
+		path := filepath.Join(t.TempDir(), "entry")
+		if err = os.WriteFile(path, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		descriptor, descriptorErr := windows.SecurityDescriptorFromString("O:" + sid + "D:P" + list)
+		if descriptorErr != nil {
+			t.Fatal(descriptorErr)
+		}
+		owner, _, ownerErr := descriptor.Owner()
+		dacl, _, daclErr := descriptor.DACL()
+		if ownerErr != nil || daclErr != nil {
+			t.Fatal(ownerErr, daclErr)
+		}
+		err = windows.SetNamedSecurityInfo(
+			path,
+			windows.SE_FILE_OBJECT,
+			windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|
+				windows.PROTECTED_DACL_SECURITY_INFORMATION,
+			owner,
+			nil,
+			dacl,
+			nil,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if readbackAccepts(t, path, user.User.Sid) {
+			t.Errorf("%s: the readback accepted it", name)
+		}
+	}
 	directory := t.TempDir()
 	shareWithEveryone(t, directory)
-	name, err := windows.UTF16PtrFromString(filepath.Join(directory, "usual"))
+	if readbackAccepts(t, filepath.Join(directory, "usual"), user.User.Sid) {
+		t.Error("the readback accepted a list inherited from a directory everyone can use")
+	}
+}
+
+func readbackAccepts(t *testing.T, path string, user *windows.SID) bool {
+	t.Helper()
+	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,11 +172,5 @@ func TestReadbackRefusesAnInheritedList(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer windows.CloseHandle(handle)
-	user, err := windows.GetCurrentProcessToken().GetTokenUser()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ownerOnly(handle, user.User.Sid, 0) {
-		t.Fatal("the readback accepted a list inherited from a directory everyone can use")
-	}
+	return ownerOnly(handle, user, 0)
 }

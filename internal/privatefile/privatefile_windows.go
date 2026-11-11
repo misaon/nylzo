@@ -71,13 +71,13 @@ func MkdirTemp(directory, prefix string) (*os.Root, error) {
 		return nil, &fs.PathError{Op: "mkdirtemp", Path: filepath.Join(directory, prefix+"*"), Err: err}
 	}
 	created := os.NewFile(uintptr(handle), filepath.Join(directory, name))
-	defer created.Close()
 	root, err := base.OpenRoot(name)
-	if err != nil {
-		return nil, err
+	if err == nil && !sameDirectory(created, root) {
+		err = errors.Join(errReplaced, root.Close())
 	}
-	if !sameDirectory(created, root) {
-		return nil, &fs.PathError{Op: "mkdirtemp", Path: created.Name(), Err: errors.Join(errReplaced, root.Close())}
+	created.Close()
+	if err != nil {
+		return nil, &fs.PathError{Op: "mkdirtemp", Path: created.Name(), Err: errors.Join(err, base.Remove(name))}
 	}
 	return root, nil
 }

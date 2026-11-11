@@ -101,5 +101,5 @@ Two variables, set before Claude Code starts: `CLAUDE_CODE_SKIP_PROMPT_HISTORY=1
 
 - Anything you saw stays in the request to the model provider and in the local transcript: a pasted secret, a printed link, plaintext.
 - A link works until it is opened or expires. A short `--ttl` and `--opens 1` keep that window small.
-- On Windows, modes 0700 and 0600 do not restrict access; files inherit the permissions of the target directory.
+- The CLI refuses to write a private file where it cannot keep it private: on FAT or exFAT, on a network or FUSE mount, or on a macOS volume that ignores ownership. Use a directory on a local disk.
 - This skill is guidance. The CLI defaults, permission rules and the sandbox are what enforce it.

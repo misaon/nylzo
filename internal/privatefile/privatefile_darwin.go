@@ -1,10 +1,10 @@
 package privatefile
 
 import (
-	"cmp"
-	"crypto/rand"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
@@ -20,8 +20,7 @@ type filesec struct {
 }
 
 const (
-	directoryMode = 0o700
-	filesecMagic  = 0x012cc16d
+	filesecMagic = 0x012cc16d
 	// aclNoInherit is KAUTH_ACL_NO_INHERIT: the new entry takes no ACE from its parent directory.
 	aclNoInherit = 1 << 17
 	unsetID      = ^uint32(0) - 100
@@ -46,20 +45,20 @@ func createNew(path string) (*os.File, error) {
 		uintptr(unsafe.Pointer(&noInheritance)),
 	)
 	if errno != 0 {
-		return nil, &os.PathError{Op: "open", Path: path, Err: errno}
+		return nil, &os.PathError{Op: "open", Path: path, Err: withoutSecurity(errno)}
 	}
 	return os.NewFile(descriptor, path), nil
 }
 
-func mkdirNew(directory, prefix string) (string, error) {
-	path := filepath.Join(cmp.Or(directory, os.TempDir()), prefix+rand.Text())
-	name, err := unix.BytePtrFromString(path)
+func mkdirIn(_ *os.Root, directory, name string) error {
+	path := filepath.Join(directory, name)
+	pathName, err := unix.BytePtrFromString(path)
 	if err != nil {
-		return "", err
+		return err
 	}
 	_, _, errno := unix.Syscall6(
 		unix.SYS_MKDIR_EXTENDED, //nolint:staticcheck // SA1019: libSystem's mkdirx_np, which makes this call, has no Go wrapper
-		uintptr(unsafe.Pointer(name)),
+		uintptr(unsafe.Pointer(pathName)),
 		uintptr(unsetID),
 		uintptr(unsetID),
 		directoryMode,
@@ -67,9 +66,28 @@ func mkdirNew(directory, prefix string) (string, error) {
 		0,
 	)
 	if errno != 0 {
-		return "", &os.PathError{Op: "mkdirtemp", Path: path, Err: errno}
+		return &os.PathError{Op: "mkdirtemp", Path: path, Err: withoutSecurity(errno)}
 	}
-	return path, nil
+	return nil
+}
+
+// withoutSecurity names the refusal: FAT, exFAT, NFS and some SMB volumes reject a filesec with EINVAL or ENOTSUP.
+func withoutSecurity(errno unix.Errno) error {
+	if errno == unix.EINVAL || errno == unix.ENOTSUP {
+		return errors.Join(ErrNotPrivate, errno)
+	}
+	return errno
+}
+
+// enforcedLocally refuses volumes that ignore ownership, where macOS treats every user as the owner, and volumes whose
+// server or FUSE helper decides access.
+func enforcedLocally(file *os.File) bool {
+	var stat unix.Statfs_t
+	if unix.Fstatfs(int(file.Fd()), &stat) != nil {
+		return false
+	}
+	return stat.Flags&unix.MNT_LOCAL != 0 && stat.Flags&unix.MNT_IGNORE_OWNERSHIP == 0 &&
+		!strings.Contains(unix.ByteSliceToString(stat.Fstypename[:]), "fuse")
 }
 
 // withoutACL asks fstat64_extended for the entry's filesec, whose size exceeds the bare header once it holds an ACE.

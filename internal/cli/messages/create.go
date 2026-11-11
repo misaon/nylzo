@@ -104,13 +104,13 @@ func createFlags(environment *command.Environment) (*flag.FlagSet, *createOption
 		&options.generate,
 		"generate-passphrase-file",
 		"",
-		"protect the message with a generated passphrase written to this new file (mode 0600)",
+		"protect the message with a generated passphrase written to this new file that only you can open",
 	)
 	flags.StringVar(
 		&options.manageFile,
 		"manage-token-file",
 		"",
-		"write the manage token for status and cancel to this new file (mode 0600)",
+		"write the manage token for status and cancel to this new file that only you can open",
 	)
 	flags.BoolVar(&options.printManage, "print-manage-token", false, "print the manage token after the link")
 	flags.BoolVar(

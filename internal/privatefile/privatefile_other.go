@@ -1,18 +1,24 @@
-//go:build !windows && !darwin
+//go:build !windows && !darwin && !linux
 
 package privatefile
 
-import "os"
+import (
+	"errors"
+	"os"
+)
 
-func createNew(path string) (*os.File, error) {
-	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fileMode)
+func createNew(string) (*os.File, error) {
+	return nil, errors.ErrUnsupported
 }
 
-func mkdirNew(directory, prefix string) (string, error) {
-	return os.MkdirTemp(directory, prefix+"*")
+func mkdirIn(*os.Root, string, string) error {
+	return errors.ErrUnsupported
 }
 
-// withoutACL holds for Linux, where the group bits of a 0600 or 0700 mode set the ACL mask to no access.
+func enforcedLocally(*os.File) bool {
+	return false
+}
+
 func withoutACL(*os.File) bool {
-	return true
+	return false
 }
