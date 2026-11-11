@@ -286,8 +286,9 @@ export const messages: Catalog = {
     'Se houver um pedido de dinheiro, login ou instalação, confirme com o remetente por outro canal.',
   'revealed.file': 'Anexo',
   'revealed.file.unchecked':
-    'O anexo é criptografado, então o Nylzo não consegue verificá-lo com um antivírus. Abra apenas arquivos de pessoas que você conhece.',
-  'revealed.confirm.title': 'Este tipo de arquivo pode executar código. Abra-o apenas se você confiar no remetente.',
+    'O anexo é criptografado, então o Nylzo não consegue verificá-lo com um antivírus. Baixe apenas arquivos de remetentes em quem você confia.',
+  'revealed.confirm.title':
+    'Qualquer arquivo pode conter código malicioso, até um PDF, um documento ou uma imagem. Baixe-o apenas se você confiar no remetente.',
   'revealed.confirm.extension': 'Extensão do arquivo:',
   'revealed.confirm.none': 'O arquivo não tem extensão.',
   'revealed.confirm.download': 'Baixar mesmo assim',

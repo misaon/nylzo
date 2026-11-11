@@ -5,32 +5,6 @@ const MAX_NAME_BYTES = 255;
 const MAX_EXTENSION_BYTES = 16;
 const FALLBACK_NAME = 'nylzo';
 
-const SAFE_EXTENSIONS = new Set([
-  'txt',
-  'md',
-  'csv',
-  'log',
-  'json',
-  'pdf',
-  'png',
-  'jpg',
-  'jpeg',
-  'gif',
-  'webp',
-  'avif',
-  'heic',
-  'heif',
-  'bmp',
-  'tif',
-  'tiff',
-  'docx',
-  'xlsx',
-  'pptx',
-  'odt',
-  'ods',
-  'odp',
-]);
-
 const encoder = new TextEncoder();
 
 function byteLength(text: string): number {
@@ -84,8 +58,4 @@ export function fileExtension(name: string): string {
   const clean = sanitizeFileName(name);
   const dot = clean.lastIndexOf('.');
   return dot > 0 ? clean.slice(dot + 1).toLowerCase() : '';
-}
-
-export function isKnownSafeFile(name: string): boolean {
-  return SAFE_EXTENSIONS.has(fileExtension(name));
 }

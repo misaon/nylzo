@@ -295,9 +295,9 @@ export const messages: Catalog = {
     'Bei einer Bitte um Geld, eine Anmeldung oder eine Installation fragen Sie auf einem anderen Weg beim Absender nach.',
   'revealed.file': 'Anhang',
   'revealed.file.unchecked':
-    'Der Anhang ist verschlüsselt, deshalb kann Nylzo ihn nicht mit einem Virenscanner prüfen. Öffnen Sie nur Dateien von Personen, die Sie kennen.',
+    'Der Anhang ist verschlüsselt, deshalb kann Nylzo ihn nicht mit einem Virenscanner prüfen. Laden Sie nur Dateien von Absendern herunter, denen Sie vertrauen.',
   'revealed.confirm.title':
-    'Dieser Dateityp kann Code ausführen. Öffnen Sie die Datei nur, wenn Sie dem Absender vertrauen.',
+    'Jede Datei kann Schadcode enthalten, auch ein PDF, ein Dokument oder ein Bild. Laden Sie die Datei nur herunter, wenn Sie dem Absender vertrauen.',
   'revealed.confirm.extension': 'Dateiendung:',
   'revealed.confirm.none': 'Die Datei hat keine Endung.',
   'revealed.confirm.download': 'Trotzdem herunterladen',
