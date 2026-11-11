@@ -33,7 +33,7 @@ gh attestation verify $archive.FullName --repo misaon/nylzo --signer-workflow mi
 
 ## Download and verify an archive
 
-Homebrew, Scoop and servers download these archives. The macOS and Windows binaries carry no Apple notarization or Authenticode signature, and macOS refuses to run a binary from an archive that a browser downloaded, so install the CLI with a package manager on a desktop. Choose the archive for your platform: `linux`, `darwin` (macOS), or `windows`; architecture `amd64` (x64) or `arm64`. Windows archives are ZIP files; Linux and macOS use `tar.gz`. This example selects Linux x64:
+Homebrew, Scoop and servers download these archives. The macOS and Windows binaries carry no Apple notarization or Authenticode signature, and macOS refuses to run a binary from an archive that a browser downloaded, so install the CLI with a package manager on a desktop. From 0.14.0 the macOS binaries carry an ad-hoc signature with the hardened runtime, which the [CLI guide](CLI.md#process-protection) explains; `codesign --display --verbose "$(command -v nylzo)"` then shows `flags=0x10002(adhoc,runtime)`. Earlier binaries show `linker-signed` on arm64 and no signature on amd64. Choose the archive for your platform: `linux`, `darwin` (macOS), or `windows`; architecture `amd64` (x64) or `arm64`. Windows archives are ZIP files; Linux and macOS use `tar.gz`. This example selects Linux x64:
 
 ```sh
 archive="nylzo_${tag#v}_linux_amd64.tar.gz"
@@ -151,7 +151,7 @@ mise run release:verify
 mise run release:verify-image
 ```
 
-Review repository tasks before trusting them. `release:verify` verifies the published manifest signature, rebuilds all six archives, the Caddy archives and the embedded client, and compares their hashes. From the first release that ships `nylzo_<version>.intoto.jsonl`, it also verifies every rebuilt archive and the host bundle against that provenance. `release:verify-image` compares the binaries in both images with that rebuild. It skips SBOM generation; verify downloaded SBOMs against the signed manifest separately.
+Review repository tasks before trusting them. `release:verify` verifies the published manifest signature, rebuilds all six archives, the Caddy archives and the embedded client, and compares their hashes. The rebuild signs the macOS binaries the same way on any system, so their archives match too. From the first release that ships `nylzo_<version>.intoto.jsonl`, it also verifies every rebuilt archive and the host bundle against that provenance. `release:verify-image` compares the binaries in both images with that rebuild. It skips SBOM generation; verify downloaded SBOMs against the signed manifest separately.
 
 `release:verify-image` requires Docker. It verifies the image signature and provenance, then compares both Linux image binaries with the local rebuild.
 

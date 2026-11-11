@@ -19,6 +19,7 @@ flag_management:
         - cmd/
         - internal/
         - tools/tlscheck/
+        - tools/codesign/
         - tools/deploy/monitor-identity/
     - name: typescript
       paths:

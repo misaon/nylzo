@@ -10,6 +10,18 @@ goreleaser release --clean --skip=sign --config "$config" \
   --release-header-tmpl "$RUNNER_TEMP/release-header.md" \
   --release-footer-tmpl "$RUNNER_TEMP/release-footer.md" "$@"
 
+# The macOS binaries carry exactly the signature tools/codesign writes, hardened runtime included.
+signed=0
+for binary in dist/nylzo_darwin_*/nylzo; do
+  copy="$RUNNER_TEMP/codesign-check/$signed/nylzo"
+  mkdir -p "${copy%/*}"
+  cp "$binary" "$copy"
+  go run ./tools/codesign "$copy"
+  cmp "$binary" "$copy"
+  signed=$((signed + 1))
+done
+test "$signed" = 2
+
 mkdir -p "$RUNNER_TEMP/release-build/images"
 for id in nylzo caddy; do
   digest=$(jq -er --arg id "$id" '[.[] | select(.type == "Docker Manifest" and .extra.ID == $id) | .extra.Digest] | unique | if length == 1 then .[0] else error("expected one image digest") end' dist/artifacts.json)
