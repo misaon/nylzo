@@ -81,6 +81,10 @@ Before a CLI command reads a link, passphrase, manage token or key, it hardens i
 
 References: [`PR_SET_DUMPABLE`](https://man7.org/linux/man-pages/man2/pr_set_dumpable.2const.html), [`mlock(2)`](https://man7.org/linux/man-pages/man2/mlock.2.html), [OpenSSH `platform_disable_tracing`](https://github.com/openssh/openssh-portable/blob/master/platform-tracing.c), [KeePassXC `disableCoreDumps`](https://github.com/keepassxreboot/keepassxc/blob/develop/src/core/Bootstrap.cpp).
 
+## Attachments the CLI saves
+
+`nylzo read --out` gives every file it writes the mark a browser gives a download (F08): a `Zone.Identifier` stream on Windows and the `com.apple.quarantine` attribute on macOS, so SmartScreen, Office Protected View and Gatekeeper check an attachment when it is opened. Linux has no such mark. Nylzo cannot scan an encrypted attachment, so after saving one `read` warns on stderr to open it only if the sender is trusted. A closed pipe on stdout or stderr does not stop `read` before the files are saved. The [CLI guide](CLI.md#read-inspect-cancel-or-delete) describes the marks and how to clear them.
+
 ## A link grants capabilities
 
 Anyone holding the link can use up a message's passphrase attempts without knowing the passphrase. Readers then have to wait, and so does anyone who wants to delete the message. Deleting a message that has a passphrase also needs the passphrase; a message without one can be deleted by anyone with the link. Only the sender's cancel is sure to end a message before it expires. Someone with both the link and a copy of the server's data, taken before the message expired, can guess a weak passphrase offline. A passphrase you choose needs at least 15 characters; the clients offer a generated one by default. Send it through a different channel than the link.
