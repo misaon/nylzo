@@ -387,7 +387,7 @@ export const messages: Catalog = {
     'Quiconque prendrait le contrôle du serveur en service ne verrait que les enregistrements des messages en cours d’ouverture, jamais leur contenu. C’est pourquoi nous comparons toutes les 30\u{A0}minutes le code du site nylzo.com avec la version signée, et en cas d’écart le service se met lui-même hors ligne. Le contrôle pourrait ne pas détecter une page substituée pour une seule personne ciblée\u{A0}; pour les données les plus sensibles, nous proposons donc des applications vérifiées (nylzo web, nylzo open et l’outil en ligne de commande nylzo), qui exécutent le code de la version signée.',
   'transparency.others.analytics.title': 'Statistiques de visite',
   'transparency.others.analytics':
-    'Les pages d’accueil de nylzo.com chargent Cloudflare Web Analytics pour savoir combien de personnes viennent et à quelle vitesse la page se charge. Cloudflare reçoit l’adresse de la page sans paramètres, la page d’où vous venez, les versions de votre navigateur et de votre système, les temps de chargement et, comme tout serveur, votre adresse IP. Le script n’utilise ni cookies ni stockage du navigateur. Cloudflare le fournit et il ne se charge qu’après l’affichage de la page. Les autres pages ne le chargent pas.',
+    'Aucune page ne charge de scripts d’analyse tiers, y compris les pages d’accueil de nylzo.com.',
   'transparency.personal.title': 'Données personnelles',
   'transparency.personal.controller.title': 'Responsable du traitement',
   'transparency.personal.controller': 'Le responsable du traitement est l’exploitant indiqué en haut de cette page.',
@@ -395,8 +395,7 @@ export const messages: Catalog = {
   'transparency.personal.basis':
     'Nous stockons le message, le transmettons au destinataire et le supprimons parce que l’expéditeur l’a demandé. Les limites, les journaux et les totaux de fréquentation nous sont nécessaires pour la sécurité et le développement du service (article\u{A0}6, paragraphe\u{A0}1, points\u{A0}b et\u{A0}f, du RGPD).',
   'transparency.personal.processor.title': 'Sous-traitant',
-  'transparency.personal.processor':
-    'Cloudflare, Inc. (États-Unis) traite les statistiques de la page d’accueil pour le compte de l’exploitant et est certifiée au titre de l’EU-US Data Privacy Framework.',
+  'transparency.personal.processor': 'Nous ne faisons appel à aucun service externe pour analyser les visites.',
   'transparency.personal.browser.title': 'Dans votre navigateur',
   'transparency.personal.browser':
     'La langue choisie, une donnée temporaire pendant l’ouverture d’un message et la liste Envoyés si vous suivez un message. Ces données sont nécessaires aux fonctions que vous demandez et ne requièrent donc pas de consentement.',
@@ -910,7 +909,7 @@ export const messages: Catalog = {
     'Pour un message à une seule ouverture, c’est cette personne qui le verra, et le destinataire ne pourra plus l’ouvrir. Le destinataire s’en rendra compte, car au lieu du message il verra qu’il a déjà été ouvert. Protégez donc les contenus sensibles par un mot de passe.',
   'faq.free.question': 'Pourquoi Nylzo est-il gratuit\u{A0}?',
   'faq.free.answer':
-    'C’est un projet ouvert, sans publicité ni fonctions payantes. L’auteur paie l’exploitation. Nous ne vendons pas de données sur les visiteurs. Nous mesurons la fréquentation de la page d’accueil de nylzo.com avec Cloudflare Web Analytics, sans cookies, pour améliorer le contenu et la vitesse du site. Les pages des messages ne sont pas mesurées.',
+    'C’est un projet ouvert, sans publicité ni fonctions payantes. L’auteur paie l’exploitation. Nous ne vendons pas de données sur les visiteurs et n’utilisons pas d’analyse tierce.',
   'faq.verify.question': 'Comment vérifier que Nylzo fait ce qu’il promet\u{A0}?',
   'faq.verify.answer':
     'Le code, la spécification du protocole et les vecteurs de test sont publics. Chaque modification passe par les tests du protocole, l’analyse statique, le contrôle des dépendances et le test des données d’un serveur volé. Les versions sont signées et reproductibles. La page Transparence présente les résultats des contrôles.',

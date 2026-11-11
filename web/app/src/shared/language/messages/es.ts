@@ -381,7 +381,7 @@ export const messages: Catalog = {
     'Quien tomara el control del servidor en funcionamiento solo vería los registros de los mensajes que se estén abriendo en ese momento, nunca su contenido. Por eso, en nylzo.com comparamos el código de la web con la versión firmada cada 30\u{A0}minutos y, ante cualquier diferencia, el servicio se desconecta solo. La comprobación podría no detectar una página sustituida a propósito para una persona concreta, así que para los datos más sensibles ofrecemos aplicaciones verificadas (nylzo web, nylzo open y la herramienta de línea de comandos nylzo), que ejecutan código de la versión firmada.',
   'transparency.others.analytics.title': 'Estadísticas de visitas',
   'transparency.others.analytics':
-    'Las páginas de inicio de nylzo.com cargan Cloudflare Web Analytics para saber cuántas personas nos visitan y lo rápido que carga la página. Cloudflare recibe la dirección de la página sin parámetros, la página de la que vienes, las versiones de tu navegador y tu sistema, los tiempos de carga y, como cualquier servidor, tu dirección IP. El script no usa cookies ni el almacenamiento del navegador. Lo proporciona Cloudflare y se carga solo después de mostrarse la página. Las demás páginas no lo cargan.',
+    'Ninguna página carga scripts de análisis de terceros, tampoco las páginas de inicio de nylzo.com.',
   'transparency.personal.title': 'Datos personales',
   'transparency.personal.controller.title': 'Responsable del tratamiento',
   'transparency.personal.controller':
@@ -390,8 +390,7 @@ export const messages: Catalog = {
   'transparency.personal.basis':
     'Guardamos el mensaje, se lo entregamos al destinatario y lo borramos porque así lo pidió el remitente. Necesitamos los límites, los logs y los totales de visitas para la seguridad y el desarrollo del servicio (artículo\u{A0}6, apartado\u{A0}1, letras\u{A0}b y\u{A0}f, del RGPD).',
   'transparency.personal.processor.title': 'Encargado del tratamiento',
-  'transparency.personal.processor':
-    'Cloudflare, Inc. (EE. UU.) trata las estadísticas de la página de inicio por cuenta del operador y está certificada en el EU-US Data Privacy Framework.',
+  'transparency.personal.processor': 'No usamos un servicio externo para analizar las visitas.',
   'transparency.personal.browser.title': 'En tu navegador',
   'transparency.personal.browser':
     'El idioma elegido, un dato temporal mientras se abre un mensaje y la lista de Enviados, si sigues un mensaje. Son necesarios para funciones que tú solicitas, por lo que no requieren consentimiento.',
@@ -896,7 +895,7 @@ export const messages: Catalog = {
     'Si el mensaje es de una sola apertura, lo verá esa persona y el destinatario ya no. El destinatario se dará cuenta, porque en lugar del mensaje verá que ya se abrió. Por eso, protege lo sensible con una contraseña.',
   'faq.free.question': '¿Por qué Nylzo es gratuito?',
   'faq.free.answer':
-    'Es un proyecto abierto, sin anuncios ni funciones de pago. El autor paga el funcionamiento. No vendemos datos sobre los visitantes. Medimos las visitas a la página de inicio de nylzo.com con Cloudflare Web Analytics, sin cookies, para mejorar el contenido y la velocidad del sitio. Las páginas de los mensajes no se miden.',
+    'Es un proyecto abierto, sin anuncios ni funciones de pago. El autor paga el funcionamiento. No vendemos datos sobre los visitantes ni usamos análisis de terceros.',
   'faq.verify.question': '¿Cómo compruebo que Nylzo hace lo que promete?',
   'faq.verify.answer':
     'El código, la especificación del protocolo y los vectores de prueba son públicos. Cada cambio pasa por pruebas del protocolo, análisis estático, revisión de dependencias y una prueba con los datos de un servidor robado. Las versiones están firmadas y son reproducibles. Los resultados de los controles están en la página Transparencia.',

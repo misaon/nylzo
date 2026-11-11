@@ -383,7 +383,7 @@ export const messages: Catalog = {
     'Siapa pun yang mengambil alih server yang sedang berjalan hanya akan melihat catatan pesan yang sedang dibuka, tidak pernah isinya. Karena itu, di nylzo.com kami membandingkan kode situs dengan rilis yang ditandatangani setiap 30\u{A0}menit, dan jika ada perbedaan, layanan otomatis offline. Pemeriksaan ini mungkin tidak mendeteksi halaman yang ditukar khusus untuk satu orang, sehingga untuk data yang paling sensitif kami menyediakan aplikasi terverifikasi (nylzo web, nylzo open, dan alat baris perintah nylzo) yang menjalankan kode dari rilis yang ditandatangani.',
   'transparency.others.analytics.title': 'Statistik pengunjung',
   'transparency.others.analytics':
-    'Halaman utama nylzo.com memuat Cloudflare Web Analytics agar kami tahu berapa banyak orang yang berkunjung dan seberapa cepat halaman dimuat. Cloudflare menerima alamat halaman tanpa parameter, halaman asal Anda, versi browser dan sistem Anda, waktu muat, dan, seperti server mana pun, alamat IP Anda. Skrip ini tidak memakai cookie atau penyimpanan browser. Skrip disediakan Cloudflare dan baru dimuat setelah halaman tampil. Halaman lain tidak memuatnya.',
+    'Tidak ada halaman yang memuat skrip analitik pihak ketiga, termasuk halaman beranda nylzo.com.',
   'transparency.personal.title': 'Data pribadi',
   'transparency.personal.controller.title': 'Pengendali data',
   'transparency.personal.controller': 'Pengendali data adalah operator yang disebutkan di bagian atas halaman ini.',
@@ -391,8 +391,7 @@ export const messages: Catalog = {
   'transparency.personal.basis':
     'Kami menyimpan pesan, menyerahkannya kepada penerima, dan menghapusnya karena pengirim memintanya. Batas, log, dan angka total kunjungan kami perlukan demi keamanan dan pengembangan layanan (Pasal\u{A0}6 ayat\u{A0}(1) huruf\u{A0}b dan\u{A0}f\u{A0}GDPR).',
   'transparency.personal.processor.title': 'Pemroses data',
-  'transparency.personal.processor':
-    'Cloudflare, Inc. (AS) memproses statistik halaman utama atas nama operator dan tersertifikasi dalam EU-US Data Privacy Framework.',
+  'transparency.personal.processor': 'Kami tidak menggunakan layanan eksternal untuk analitik pengunjung.',
   'transparency.personal.browser.title': 'Di browser Anda',
   'transparency.personal.browser':
     'Bahasa yang Anda pilih, data sementara selama pesan sedang dibuka, dan daftar Terkirim jika Anda memantau pesan. Semua itu diperlukan untuk fitur yang Anda minta, sehingga tidak memerlukan persetujuan.',
@@ -901,7 +900,7 @@ export const messages: Catalog = {
     'Untuk pesan yang hanya bisa dibuka sekali, orang itulah yang melihatnya, dan penerima tidak lagi. Penerima akan menyadarinya, karena alih-alih pesan, ia melihat bahwa pesan sudah dibuka. Karena itu, lindungi hal yang sensitif dengan kata sandi.',
   'faq.free.question': 'Mengapa Nylzo gratis?',
   'faq.free.answer':
-    'Nylzo adalah proyek terbuka tanpa iklan dan tanpa fitur berbayar. Biaya operasionalnya ditanggung pembuatnya. Kami tidak menjual data tentang pengunjung. Kunjungan ke halaman utama nylzo.com kami ukur dengan Cloudflare Web Analytics tanpa cookie, agar kami bisa memperbaiki konten dan kecepatan situs. Halaman pesan tidak diukur.',
+    'Ini proyek terbuka tanpa iklan dan tanpa fitur berbayar. Penulis menanggung biaya operasional. Kami tidak menjual data pengunjung atau menggunakan analitik pihak ketiga.',
   'faq.verify.question': 'Bagaimana saya bisa memeriksa bahwa Nylzo melakukan apa yang dijanjikannya?',
   'faq.verify.answer':
     'Kode, spesifikasi protokol, dan vektor uji terbuka untuk umum. Setiap perubahan diperiksa oleh pengujian protokol, analisis statis, pemeriksaan dependensi, dan pengujian data dari server yang dicuri. Rilis ditandatangani dan dapat direproduksi. Hasil pemeriksaannya ada di halaman Transparansi.',

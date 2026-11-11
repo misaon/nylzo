@@ -370,8 +370,7 @@ export const messages: Catalog = {
   'transparency.others.client':
     'Whoever took over the running server would see only the records of messages being opened at that moment, never their content. That is why nylzo.com compares its site code with the signed release every 30 minutes and takes itself offline on any difference. The check might not notice a page swapped for one specific person, so for the most sensitive data we offer verified apps (nylzo web, nylzo open and the nylzo command-line tool), which run code from the signed release.',
   'transparency.others.analytics.title': 'Visitor statistics',
-  'transparency.others.analytics':
-    'The nylzo.com home pages load Cloudflare Web Analytics so we know how many people visit and how fast the page loads. Cloudflare receives the page address without parameters, the page you came from, your browser and system versions, load times and, like any server, your IP address. The script uses no cookies or browser storage. Cloudflare supplies it, and it loads only after the page is shown. Other pages do not load it.',
+  'transparency.others.analytics': 'No page loads third-party analytics scripts, including the nylzo.com home pages.',
   'transparency.personal.title': 'Personal data',
   'transparency.personal.controller.title': 'Controller',
   'transparency.personal.controller': 'The controller is the operator named at the top of this page.',
@@ -379,8 +378,7 @@ export const messages: Catalog = {
   'transparency.personal.basis':
     'We store the message, hand it to the recipient and delete it because the sender asked us to. We need the limits, logs and traffic totals for the security and development of the service (Art. 6(1)(b) and (f) GDPR).',
   'transparency.personal.processor.title': 'Processor',
-  'transparency.personal.processor':
-    'Cloudflare, Inc. (USA) processes the home page statistics for the operator and is certified under the EU-US Data Privacy Framework.',
+  'transparency.personal.processor': 'We do not use an external service for visitor analytics.',
   'transparency.personal.browser.title': 'In your browser',
   'transparency.personal.browser':
     'The language you chose, a temporary item while a message opens, and the Sent list if you track a message. They are needed for features you ask for, so they need no consent.',
@@ -880,7 +878,7 @@ export const messages: Catalog = {
     'For a one-time message, they see it and the recipient no longer does. The recipient notices, because instead of the message they see that it was already opened. So protect sensitive things with a passphrase.',
   'faq.free.question': 'Why is Nylzo free?',
   'faq.free.answer':
-    'It is an open project with no ads and no paid features. The author pays for hosting. We do not sell data about visitors. We measure traffic on the nylzo.com home page with Cloudflare Web Analytics, without cookies, so we can improve the content and speed of the site. Message pages are not measured.',
+    'It is an open project with no ads and no paid features. The author pays for hosting. We do not sell data about visitors or use third-party analytics.',
   'faq.verify.question': 'How can I check that Nylzo does what it promises?',
   'faq.verify.answer':
     'The code, the protocol specification and the test vectors are public. Every change goes through protocol tests, static analysis, dependency checks and a stolen-server data test. Releases are signed and reproducible. The Transparency page shows the results of the checks.',

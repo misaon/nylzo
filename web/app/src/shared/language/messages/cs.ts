@@ -368,7 +368,7 @@ export const messages = {
     'Kdo by ovládl běžící server, uvidí jen záznamy zpráv, které se právě otevírají, nikdy jejich obsah. Na nylzo.com proto kód webu každých 30\u{A0}minut porovnáváme s\u{A0}podepsaným vydáním a\u{A0}při odchylce se služba sama odpojí. Stránku podvrženou cíleně jednomu člověku by kontrola poznat nemusela, a\u{A0}proto pro nejcitlivější data nabízíme ověřené aplikace (nylzo web, nylzo open a\u{A0}nástroj nylzo pro příkazovou řádku), které spouštějí kód z\u{A0}podepsaného vydání.',
   'transparency.others.analytics.title': 'Měření návštěvnosti',
   'transparency.others.analytics':
-    'Úvodní stránky nylzo.com načítají Cloudflare Web Analytics, abychom věděli, kolik lidí přichází a\u{A0}jak rychle se stránka načítá. Cloudflare dostane adresu stránky bez parametrů, stránku, ze které jste přišli, verzi prohlížeče a\u{A0}systému, časy načítání a\u{A0}jako každý server i\u{A0}vaši IP adresu. Skript nepoužívá cookies ani úložiště prohlížeče. Dodává ho Cloudflare a\u{A0}načítá se až po zobrazení stránky. Ostatní stránky ho nenačítají.',
+    'Žádná stránka nenačítá analytické skripty třetích stran, ani úvodní stránky nylzo.com.',
   'transparency.personal.title': 'Osobní údaje',
   'transparency.personal.controller.title': 'Správce',
   'transparency.personal.controller': 'Správcem údajů je provozovatel uvedený nahoře na této stránce.',
@@ -376,8 +376,7 @@ export const messages = {
   'transparency.personal.basis':
     'Zprávu uložíme, předáme příjemci a\u{A0}smažeme, protože o\u{A0}to odesílatel požádal. Limity, logy a\u{A0}souhrnnou návštěvnost potřebujeme kvůli bezpečnosti a\u{A0}rozvoji služby (čl.\u{A0}6\u{A0}odst.\u{A0}1\u{A0}písm.\u{A0}b\u{A0}a\u{A0}f\u{A0}GDPR).',
   'transparency.personal.processor.title': 'Zpracovatel',
-  'transparency.personal.processor':
-    'Měření návštěvnosti úvodní stránky zpracovává pro provozovatele Cloudflare, Inc. z\u{A0}USA, který je certifikovaný podle EU-US Data Privacy Framework.',
+  'transparency.personal.processor': 'Pro měření návštěvnosti nepoužíváme externí službu.',
   'transparency.personal.browser.title': 'Ve vašem prohlížeči',
   'transparency.personal.browser':
     'Zvolený jazyk, dočasný údaj během otevírání zprávy a\u{A0}seznam Odeslaných, pokud zprávu sledujete. Je to nutné pro funkce, o\u{A0}které žádáte, a\u{A0}proto to nevyžaduje souhlas.',
@@ -880,7 +879,7 @@ export const messages = {
     'U\u{A0}zprávy na jedno otevření ji uvidí on a\u{A0}příjemce už ne. Příjemce to pozná, protože místo zprávy uvidí, že už byla otevřena. Citlivé věci proto chraňte heslem.',
   'faq.free.question': 'Proč je Nylzo zdarma?',
   'faq.free.answer':
-    'Je to otevřený projekt bez reklam a\u{A0}bez placených funkcí. Provoz platí autor. Data o\u{A0}návštěvnících neprodáváme. Návštěvnost úvodní stránky nylzo.com měříme bez cookies přes Cloudflare Web Analytics, abychom mohli zlepšovat obsah a\u{A0}rychlost webu. Stránky se zprávou neměříme.',
+    'Je to otevřený projekt bez reklam a bez placených funkcí. Provoz platí autor. Data o návštěvnících neprodáváme a nepoužíváme analytiku třetích stran.',
   'faq.verify.question': 'Jak si ověřím, že Nylzo dělá, co slibuje?',
   'faq.verify.answer':
     'Kód, specifikace protokolu i\u{A0}testovací vektory jsou veřejné. Každou změnu prověří testy protokolu, statická analýza, kontrola závislostí a\u{A0}test dat z\u{A0}ukradeného serveru. Vydání jsou podepsaná a\u{A0}reprodukovatelná. Výsledky kontrol ukazuje stránka Transparentnost.',

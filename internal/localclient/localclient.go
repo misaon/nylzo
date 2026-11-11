@@ -69,7 +69,7 @@ func New(listeners *Listeners, config *Config) (*Server, error) {
 	if !config.Build.Built {
 		return nil, errNoClient
 	}
-	pages, err := config.Build.RenderLocal(instance, config.Contact)
+	pages, err := config.Build.Render(instance, config.Contact)
 	if err != nil {
 		return nil, err
 	}
