@@ -39,8 +39,7 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	locator, sealed := record.Row.Locator, slices.Clone(record.Row.Record)
 	claimedAt := testNow.Add(time.Minute)
 	parameters := claimParameters(claimedAt)
-	parameters.VerifierSent = true
-	parameters.VerifyMAC = func(byte, []byte) bool { return true }
+	parameters.Verifier = store.Verifier{Sent: true, Check: func(byte, []byte) bool { return true }}
 	claimed, err := store.Claim(t.Context(), storage, record, parameters)
 	if err != nil {
 		t.Fatal(err)
@@ -75,8 +74,7 @@ func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 	create(t, storage, locked)
 	attemptAt := testNow.Add(17*time.Second + 123*time.Millisecond)
 	parameters := claimParameters(attemptAt)
-	parameters.VerifierSent = true
-	parameters.VerifyMAC = func(byte, []byte) bool { return false }
+	parameters.Verifier = store.Verifier{Sent: true, Check: func(byte, []byte) bool { return false }}
 	for attempt := 1; attempt <= store.FreeAttempts+1; attempt++ {
 		if _, err := store.Claim(t.Context(), storage, locked, parameters); !isPassphraseError(err) {
 			t.Fatalf("attempt %d: %v", attempt, err)

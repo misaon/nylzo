@@ -23,6 +23,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/privatefile"
+	"github.com/misaon/nylzo/internal/quarantine"
 	"github.com/misaon/nylzo/internal/secretmode"
 )
 
@@ -74,6 +75,10 @@ var (
 	errOutNotPrivate   = errors.New(
 		"--out: the file system there cannot keep files private; choose a directory on a local disk",
 	)
+	errOutNotMarked = errors.New(
+		"--out: the files there cannot be marked as downloaded from the internet; choose another directory",
+	)
+	errNotMarked = errors.New("a file could not be marked as downloaded from the internet, so nylzo did not keep it")
 )
 
 type readOptions struct {
@@ -170,18 +175,7 @@ func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 		"",
 		"read the link from this file (or "+command.EnvironmentLink+", or stdin)",
 	)
-	flags.StringVar(
-		&options.passphrase.file,
-		"passphrase-file",
-		"",
-		"read the passphrase from the first line of this file (or "+command.EnvironmentPassphrase+")",
-	)
-	flags.BoolVar(
-		&options.passphrase.ask,
-		"ask-passphrase",
-		false,
-		"ask for the passphrase on the terminal without echo",
-	)
+	passphraseFlags(flags, &options.passphrase)
 	flags.StringVar(
 		&options.out,
 		"out",
@@ -190,6 +184,16 @@ func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 	)
 	flags.BoolVar(&options.stdout, "stdout", false, "print the text to stdout and write nothing to disk")
 	return flags, options
+}
+
+func passphraseFlags(flags *flag.FlagSet, source *passphraseSource) {
+	flags.StringVar(
+		&source.file,
+		"passphrase-file",
+		"",
+		"read the passphrase from the first line of this file (or "+command.EnvironmentPassphrase+")",
+	)
+	flags.BoolVar(&source.ask, "ask-passphrase", false, "ask for the passphrase on the terminal without echo")
 }
 
 // RunRead creates the output directory before the claim, so a write problem never spends an open.
@@ -306,6 +310,18 @@ func readMessage(
 func checkMetadata(link *openLink, metadata *api.Metadata) error {
 	if metadata.State != api.StateAvailable {
 		return &client.APIError{Status: http.StatusGone, Kind: api.ErrorGone, State: metadata.State}
+	}
+	if err := core.AssertProfile(link.kdf, metadata.KDFID); err != nil {
+		return errLinkMismatch
+	}
+	return nil
+}
+
+// checkBurnable refuses an ended message before the passphrase prompt; an opened one may still have its last open in
+// flight, which a burn cuts off, so the server decides.
+func checkBurnable(link *openLink, metadata *api.Metadata) error {
+	if metadata.State != api.StateOpened || metadata.EndedAt != "" {
+		return checkMetadata(link, metadata)
 	}
 	if err := core.AssertProfile(link.kdf, metadata.KDFID); err != nil {
 		return errLinkMismatch
@@ -480,9 +496,9 @@ func writeWithFallback(
 	if err == nil {
 		return paths, nil
 	}
-	fallback, err := privatefile.MkdirTemp(base, outputDirectoryPrefix)
-	if err != nil {
-		return nil, errWriteOutput
+	fallback, fallbackErr := privatefile.MkdirTemp(base, outputDirectoryPrefix)
+	if fallbackErr != nil {
+		return nil, outputError(err)
 	}
 	defer removeIfEmpty(fallback)
 	fmt.Fprintf(
@@ -490,9 +506,16 @@ func writeWithFallback(
 		"%s: warning: writing the files failed, trying a second new directory next to the first\n", command.Program,
 	)
 	if paths, err = writeAll(fallback, files); err != nil {
-		return nil, errWriteOutput
+		return nil, outputError(err)
 	}
 	return paths, nil
+}
+
+func outputError(err error) error {
+	if errors.Is(err, errNotMarked) {
+		return errNotMarked
+	}
+	return errWriteOutput
 }
 
 func writeAll(directory *os.Root, files []outputFile) ([]string, error) {
@@ -500,7 +523,7 @@ func writeAll(directory *os.Root, files []outputFile) ([]string, error) {
 	for _, file := range files {
 		name := file.name
 		err := writePrivate(directory, name, file.data)
-		if errors.Is(err, fs.ErrExist) && !strings.HasPrefix(name, attachmentPrefix) {
+		if errors.Is(err, fs.ErrExist) && !errors.Is(err, errNotMarked) && !strings.HasPrefix(name, attachmentPrefix) {
 			name = attachmentPrefix + name
 			err = writePrivate(directory, name, file.data)
 		}
@@ -525,23 +548,26 @@ func outputDirectory(base string) (*os.Root, error) {
 	}
 	directory, err := privatefile.MkdirTemp(base, outputDirectoryPrefix)
 	if err == nil {
-		err = probePrivateFile(directory)
+		err = probeOutput(directory)
 	}
-	if errors.Is(err, privatefile.ErrNotPrivate) {
+	switch {
+	case errors.Is(err, privatefile.ErrNotPrivate):
 		return nil, errOutNotPrivate
-	}
-	if err != nil {
+	case errors.Is(err, errNotMarked):
+		return nil, errOutNotMarked
+	case err != nil:
 		return nil, errOutNotCreated
+	default:
+		return directory, nil
 	}
-	return directory, nil
 }
 
-// probePrivateFile proves a private file can be made there before the open is spent: FAT keeps one mask for
+// probeOutput proves a private, marked file can be made there before the open is spent: FAT keeps one mask for
 // directories and another for files.
-func probePrivateFile(directory *os.Root) error {
-	file, err := privatefile.CreateIn(directory, probeFileName)
+func probeOutput(directory *os.Root) error {
+	err := writePrivate(directory, probeFileName, nil)
 	if err == nil {
-		err = errors.Join(file.Close(), directory.Remove(probeFileName))
+		err = directory.Remove(probeFileName)
 	}
 	if err != nil {
 		removeIfEmpty(directory)
@@ -558,13 +584,18 @@ func removeIfEmpty(directory *os.Root) {
 	}
 }
 
-// writePrivate creates a new file only inside the directory and never replaces one.
+// writePrivate creates a new file only inside the directory, never replaces one, and marks it as downloaded from the
+// internet before it holds any content.
 func writePrivate(directory *os.Root, name string, data []byte) error {
 	file, err := privatefile.CreateIn(directory, name)
 	if err != nil {
 		return err
 	}
-	_, err = file.Write(data)
+	if err = quarantine.Mark(file); err != nil {
+		err = fmt.Errorf("%w: %w", errNotMarked, err)
+	} else {
+		_, err = file.Write(data)
+	}
 	if err = errors.Join(err, file.Sync(), file.Close()); err != nil {
 		_ = directory.Remove(name)
 		return err

@@ -92,6 +92,35 @@ test('the recipient deletes the remaining opens, keeps reading and keeps the mes
   await expect(late.getByText('The message was deleted')).toBeVisible();
 });
 
+test('the recipient needs the passphrase to delete a message that has one, before and after showing it (F05)', async ({
+  page,
+}) => {
+  const passphrase = 'four random words here';
+  const message = await createMessageThroughApi({ text: 'guarded', passphrase, opensMax: 2 });
+  await page.goto(message.link);
+  const field = page.getByLabel('Passphrase', { exact: true });
+  const remove = page.getByRole('button', { name: 'Delete without opening' });
+  await remove.click();
+  await expect(page.getByText('then choose “Delete without opening”')).toBeVisible();
+  await expect(field).toBeFocused();
+  await expect(confirmation(page)).toHaveCount(0);
+
+  await field.fill('four wrong words here');
+  await field.press('Enter');
+  await expect(confirmation(page)).toBeVisible();
+  await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Wrong passphrase.' })).toBeVisible({ timeout: 45_000 });
+  await expect(field).toBeFocused();
+  expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 0, failedPassphraseAttempts: 1 });
+
+  await showMessage(page, message.link, passphrase);
+  await expectMessageShown(page);
+  await page.getByRole('button', { name: 'Delete message' }).click();
+  await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
+  await expect(page.getByRole('status').first()).toHaveText('The remaining opens are deleted.');
+  expect(await message.status()).toMatchObject({ state: 'deleted' });
+});
+
 test('a refused deletion says so where the reader can see it and lets them try again', async ({ page }) => {
   const message = await createMessageThroughApi({ text: 'refused' });
   await page.route(DELETION, (route) => route.fulfill({ status: 500, body: 'boom' }));

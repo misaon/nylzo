@@ -384,6 +384,59 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 	})
 }
 
+func TestF05BurnNeedsThePassphrase(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFScrypt, "correct", 2, 3600, "guarded")
+		harness.mustCreate(message)
+		burn := func(verifier string) (testResponse, responseBody) {
+			t.Helper()
+			return harness.do(&testRequest{
+				method:   http.MethodPost,
+				path:     "/api/v1/messages/" + message.id.String() + "/burn",
+				token:    message.readToken,
+				verifier: verifier,
+			})
+		}
+		expectRefusal := func(response testResponse, body responseBody, attemptsLeft float64) {
+			t.Helper()
+			fields := decodeJSON(t, body)
+			if response.StatusCode != http.StatusForbidden || fields["error"] != "passphrase" ||
+				fields["retry_after"].(float64) != 0 || fields["attempts_left"].(float64) != attemptsLeft {
+				t.Fatalf("got %d %s, want a refusal with %v attempts left", response.StatusCode, body, attemptsLeft)
+			}
+			if !harness.blobExists(message) {
+				t.Fatal("a refused burn deleted the blob")
+			}
+		}
+		response, body := burn("")
+		if response.StatusCode != http.StatusBadRequest || decodeJSON(t, body)["error"] != "client_outdated" ||
+			!harness.blobExists(message) {
+			t.Fatalf("a burn without a verifier tests no passphrase and must be refused uncounted: %d %s",
+				response.StatusCode, body)
+		}
+		response, body = burn(core.Encode(make([]byte, core.SeedLen)))
+		expectRefusal(response, body, 4)
+		response, body = harness.claim(message, core.Encode(make([]byte, core.SeedLen)), "")
+		expectRefusal(response, body, 3)
+		if response, _ = burn("not-a-verifier"); response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("a malformed verifier: %d", response.StatusCode)
+		}
+		if _, status := harness.status(message); status["state"] != "available" ||
+			status["failed_passphrase_attempts"].(float64) != 2 {
+			t.Fatalf("claims and burns share the counters: %v", status)
+		}
+		if response, body = burn(message.verifier); response.StatusCode != http.StatusNoContent ||
+			harness.blobExists(message) {
+			t.Fatalf("burn with the passphrase: %d %s", response.StatusCode, body)
+		}
+		if _, metadata := harness.metadata(message); metadata["state"] != "deleted" {
+			t.Fatalf("metadata after the burn: %v", metadata)
+		}
+	})
+}
+
 type racingStore struct {
 	store.Store
 
@@ -410,22 +463,29 @@ func (s *racingStore) Lookup(ctx context.Context, locator seal.Locator) (store.R
 func TestBurnRacingACancelReportsTheCancel(t *testing.T) {
 	t.Parallel()
 	for name, finished := range map[string]bool{"recorded cancel": false, "finished cancel": true} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			synctest.Test(t, func(t *testing.T) {
-				harness := newHarness(t, baseSettings(pepperA, nil))
-				message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-				harness.mustCreate(message)
-				harness.endOnFirstLoad(message, store.StateCancelled, finished)
-				response, body := harness.post(message, "burn", message.readToken)
-				if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
-					t.Fatalf("burn that lost the race: %d %s", response.StatusCode, body)
-				}
-				if _, status := harness.status(message); status["state"] != "cancelled" {
-					t.Fatalf("status: %v", status)
-				}
+		for _, kdf := range []core.KDF{core.KDFNone, core.KDFScrypt} {
+			t.Run(fmt.Sprintf("%s, kdf %d", name, kdf), func(t *testing.T) {
+				t.Parallel()
+				synctest.Test(t, func(t *testing.T) {
+					harness := newHarness(t, baseSettings(pepperA, nil))
+					message := newMessage(t, kdf, "correct", 1, 3600, "x")
+					harness.mustCreate(message)
+					harness.endOnFirstLoad(message, store.StateCancelled, finished)
+					response, body := harness.do(&testRequest{
+						method:   http.MethodPost,
+						path:     "/api/v1/messages/" + message.id.String() + "/burn",
+						token:    message.readToken,
+						verifier: message.verifier,
+					})
+					if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
+						t.Fatalf("burn that lost the race: %d %s", response.StatusCode, body)
+					}
+					if _, status := harness.status(message); status["state"] != "cancelled" {
+						t.Fatalf("status: %v", status)
+					}
+				})
 			})
-		})
+		}
 	}
 }
 

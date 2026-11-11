@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -441,6 +442,26 @@ func TestPassphraseFromFilesAndWrongAttempts(t *testing.T) {
 		runWith(t, link, map[string]string{command.EnvironmentPassphrase: right}, nil, "read", "--out", t.TempDir()),
 	)
 	assertPrivate(t, paths[0], "behind a passphrase")
+}
+
+func TestBurnNeedsThePassphrase(t *testing.T) {
+	t.Parallel()
+	instance := newTestServer(t, nil)
+	right := writeSecretFile(t, "correct horse battery staple\n")
+	link, _ := createText(t, instance, "burn behind a passphrase", "--passphrase-file", right)
+	wrong := writeSecretFile(t, "wrong horse battery staple")
+	result := runWith(t, link, nil, nil, "burn", "--passphrase-file", wrong)
+	if result.code != command.ExitError || !strings.Contains(result.stderr, "wrong passphrase; 4 attempts left") {
+		t.Fatalf("burn with a wrong passphrase: %d %q", result.code, result.stderr)
+	}
+	if result = runWith(t, link, nil, nil, "burn"); result.code != command.ExitError ||
+		!strings.Contains(result.stderr, "needs a passphrase") {
+		t.Fatalf("burn without a passphrase: %d %q", result.code, result.stderr)
+	}
+	if result = runWith(t, link, nil, nil, "burn", "--passphrase-file", right); result.code != command.ExitOK ||
+		result.stdout != "deleted\n" {
+		t.Fatalf("burn with the passphrase: %d %q %q", result.code, result.stdout, result.stderr)
+	}
 }
 
 func TestCreateHasNoProfileChoice(t *testing.T) {
@@ -992,7 +1013,7 @@ func TestCreateRetriesWithANewIDAndSignedRequestsRetryA404(t *testing.T) {
 	}
 }
 
-// F7: the headers of a create and of a claim have one length whether or not the message has a passphrase.
+// F7, F05: the headers of a create, a claim and a burn have one length whether or not the message has a passphrase.
 func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)
@@ -1005,11 +1026,16 @@ func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 			route = "create"
 		case strings.HasSuffix(r.URL.Path, "/claim"):
 			route = "claim"
+		case strings.HasSuffix(r.URL.Path, "/burn"):
+			route = "burn"
 		default:
 			return false
 		}
 		if route == "claim" && (r.Header.Get("X-Nylzo-Verifier") == "" || r.Header.Get("X-Nylzo-Share-Key") == "") {
 			t.Errorf("a %s without a verifier or a share key", route)
+		}
+		if route == "burn" && r.Header.Get("X-Nylzo-Verifier") == "" {
+			t.Error("a burn without a verifier")
 		}
 		size := 0
 		for name, values := range r.Header {
@@ -1034,8 +1060,25 @@ func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 	readPaths(t, runWith(t, "\n  "+plain+"  \n", nil, nil, "read", "--out", t.TempDir()))
 	passphrase := map[string]string{command.EnvironmentPassphrase: writeSecretFile(t, "correct horse battery staple")}
 	readPaths(t, runWith(t, guarded, passphrase, nil, "read", "--out", t.TempDir()))
-	for route, sizes := range lengths {
-		if len(sizes) != 2 || sizes[0] != sizes[1] {
+	plainBurn, _ := createText(t, instance, "same length")
+	guardedBurn, _ := createText(
+		t,
+		instance,
+		"same length",
+		"--passphrase-file",
+		passphrase[command.EnvironmentPassphrase],
+	)
+	for _, burned := range []commandResult{
+		runWith(t, plainBurn, nil, nil, "burn"),
+		runWith(t, guardedBurn, passphrase, nil, "burn"),
+	} {
+		if burned.code != command.ExitOK {
+			t.Fatalf("burn: %d %q", burned.code, burned.stderr)
+		}
+	}
+	for route, want := range map[string]int{"create": 4, "claim": 2, "burn": 2} {
+		sizes := lengths[route]
+		if len(sizes) != want || slices.Min(sizes) != slices.Max(sizes) {
 			t.Errorf("%s headers of %v bytes; a passphrase must not change them", route, sizes)
 		}
 	}

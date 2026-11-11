@@ -267,6 +267,47 @@ func (f *fixture) burnAndCancel() {
 	f.endedTimes()
 }
 
+func (f *fixture) burnNeedsThePassphrase() {
+	t := f.t
+	created := f.create(2, oneDay, true)
+	expectRefusal := func(verifier store.Verifier, retryAfter time.Duration, attemptsLeft int) {
+		t.Helper()
+		_, err := f.burn(created, baseTime, verifier)
+		refusal, ok := errors.AsType[*store.PassphraseError](err)
+		if !ok || refusal.RetryAfter != retryAfter || refusal.AttemptsLeft != attemptsLeft {
+			t.Fatalf("got %v, want retry after %s with %d attempts left", err, retryAfter, attemptsLeft)
+		}
+	}
+	expectRefusal(verifierOf(created, false), 0, store.FreeAttempts-1)
+	expectRefusal(store.Verifier{}, 0, store.FreeAttempts-2)
+	for range store.FreeAttempts - 2 {
+		if _, err := f.claimWithVerifier(created, baseTime, 1, false); err == nil {
+			t.Fatal("a wrong claim passed")
+		}
+	}
+	expectRefusal(verifierOf(created, false), time.Minute, 0)
+	expectRefusal(verifierOf(created, true), time.Minute, 0)
+	if record := f.get(created); record.State(baseTime) != store.StateAvailable ||
+		record.Message.FailCountTotal != store.FreeAttempts+1 || !f.blobExists(created.reference()) {
+		t.Fatalf("claims and burns share the counters, and a refused burn ends nothing: %+v", record.Message)
+	}
+	if state, err := f.burn(created, baseTime.Add(time.Minute), verifierOf(created, true)); err != nil ||
+		state != store.StateDeleted || f.blobExists(created.reference()) {
+		t.Fatalf("burn with the passphrase after the wait: %s %v", state, err)
+	}
+}
+
+func (f *fixture) burnWithoutAPassphrase() {
+	guarded := f.create(1, oneDay, true)
+	for _, verifier := range []store.Verifier{{}, verifierOf(guarded, false)} {
+		plain := f.create(1, oneDay, false)
+		if state, err := f.burn(plain, baseTime, verifier); err != nil || state != store.StateDeleted ||
+			f.get(plain).Message.FailCountTotal != 0 {
+			f.t.Fatalf("a message without a passphrase burns whatever the verifier: %s %v", state, err)
+		}
+	}
+}
+
 func (f *fixture) endedTimes() {
 	t := f.t
 	late := f.create(1, oneHour, false)

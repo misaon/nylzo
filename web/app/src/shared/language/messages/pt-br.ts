@@ -267,6 +267,11 @@ export const messages: Catalog = {
   'read.delete.no': 'Não apagar',
   'read.deleted_rest': 'As aberturas restantes foram apagadas.',
   'read.delete.failed': 'Não foi possível apagar a mensagem. Tente novamente.',
+  'read.delete.wait':
+    'Depois de muitas senhas erradas, não é possível apagar a mensagem agora. Tente novamente em {time}.',
+  'read.delete.locked':
+    'Depois de muitas senhas erradas, a mensagem fica bloqueada até o fim da validade. Ninguém pode abri-la, mas o remetente ainda pode cancelá-la.',
+  'read.delete.passphrase': 'Digite a senha enviada pelo remetente e depois escolha “Apagar sem abrir”.',
 
   'busy.deriving': 'Preparando a chave a partir da senha…',
   'busy.claiming': 'Abrindo a mensagem…',
