@@ -5,7 +5,7 @@ lockfile = true
 
 [tools]
 go = "1.27.4"
-goreleaser = "2.20.0"
+goreleaser = "2.20.1"
 golangci-lint = "2.15.0"
 "aqua:rhysd/actionlint" = "1.7.12"
 zizmor = "1.32.0"
