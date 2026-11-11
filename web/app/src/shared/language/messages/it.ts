@@ -285,8 +285,9 @@ export const messages: Catalog = {
     'Verifica con il mittente, attraverso un altro canale, qualsiasi richiesta di denaro, di accesso o di installazione.',
   'revealed.file': 'Allegato',
   'revealed.file.unchecked':
-    'L’allegato è cifrato, quindi Nylzo non può controllarlo con un antivirus. Apri solo file di persone che conosci.',
-  'revealed.confirm.title': 'Questo tipo di file può eseguire codice. Aprilo solo se ti fidi del mittente.',
+    'L’allegato è cifrato, quindi Nylzo non può controllarlo con un antivirus. Scarica solo file di mittenti di cui ti fidi.',
+  'revealed.confirm.title':
+    'Qualsiasi file può contenere codice dannoso, anche un PDF, un documento o un’immagine. Scaricalo solo se ti fidi del mittente.',
   'revealed.confirm.extension': 'Estensione del file:',
   'revealed.confirm.none': 'Il file non ha estensione.',
   'revealed.confirm.download': 'Scarica comunque',

@@ -242,33 +242,52 @@ describe('read page interactions', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('downloads safe attachments directly and requires confirmation for executable files', async () => {
+  it('asks before every download, a file named like a PDF included (F09)', async () => {
     const page = new ReadPage(new Translator('en'));
     const click = { detail: 1 } as MouseEvent;
     const doubleClick = { detail: 2 } as MouseEvent;
-    const unsafe = { ...file, name: 'script.sh' };
-    await page.askDownload(doubleClick, file);
-    expect(saveFile).not.toHaveBeenCalled();
-    await page.askDownload(click, file);
-    expect(saveFile).toHaveBeenCalledExactlyOnceWith(file.bytes, file.name);
-    expect(page.downloaded.shown).toBe(true);
     const keep = focusTarget(page, 'keepFile');
-    await page.askDownload(click, unsafe);
+    await page.askDownload(doubleClick);
+    expect(page.confirmingDownload).toBe(false);
+    await page.askDownload(click);
     expect(page.confirmingDownload).toBe(true);
     expect(keep).toHaveBeenCalledOnce();
-    await page.confirmDownload(doubleClick, unsafe);
-    expect(saveFile).toHaveBeenCalledTimes(1);
-    await page.confirmDownload(click, unsafe);
-    expect(saveFile).toHaveBeenLastCalledWith(unsafe.bytes, unsafe.name);
-    expect(page.confirmingDownload).toBe(false);
-    await page.confirmDownload(click, unsafe);
+    expect(saveFile).not.toHaveBeenCalled();
+    await page.confirmDownload(click, file);
+    expect(saveFile).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(999);
+    expect(page.downloadReady).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(page.downloadReady).toBe(true);
+    await page.confirmDownload(doubleClick, file);
+    expect(saveFile).not.toHaveBeenCalled();
+    vi.mocked(saveFile).mockImplementationOnce(() => {
+      throw new Error('out of memory');
+    });
+    await expect(page.confirmDownload(click, file)).rejects.toThrow('out of memory');
+    expect(page.confirmingDownload).toBe(true);
+    await page.confirmDownload(click, file);
+    expect(saveFile).toHaveBeenLastCalledWith(file.bytes, file.name);
     expect(saveFile).toHaveBeenCalledTimes(2);
-    await page.askDownload(click, unsafe);
+    expect(page.confirmingDownload).toBe(false);
+    expect(page.downloadReady).toBe(false);
+    expect(page.downloaded.shown).toBe(true);
+    await page.confirmDownload(click, file);
+    expect(saveFile).toHaveBeenCalledTimes(2);
+    await page.askDownload(click);
     await page.cancelDownload(doubleClick);
     expect(page.confirmingDownload).toBe(true);
     await page.cancelDownload(click);
     expect(page.confirmingDownload).toBe(false);
+    await page.askDownload(click);
+    page.onDownloadKeydown({ key: 'Enter', detail: 0 } as KeyboardEvent);
+    expect(page.confirmingDownload).toBe(true);
+    const escape = { key: 'Escape', detail: 0, stopPropagation: vi.fn<(...arguments_: unknown[]) => void>() };
+    page.onDownloadKeydown(escape as unknown as KeyboardEvent);
+    expect(escape.stopPropagation).toHaveBeenCalledOnce();
+    expect(page.confirmingDownload).toBe(false);
     vi.advanceTimersByTime(2400);
+    expect(page.downloadReady).toBe(false);
     expect(page.downloaded.shown).toBe(false);
   });
 

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
-import { fileExtension, isKnownSafeFile, sanitizeFileName, splitFileName } from './file-name.ts';
+import { fileExtension, sanitizeFileName, splitFileName } from './file-name.ts';
 
 type Part = readonly [text: string, count: number];
 
@@ -69,41 +69,7 @@ describe('file names match the CLI (spec/file-name-vectors.json)', () => {
   });
 });
 
-describe('known safe files (D35)', () => {
-  it.each(['notes.txt', 'README.md', 'data.csv', 'report.PDF', 'photo.jpeg', 'scan.HEIC', 'table.xlsx', 'letter.odt'])(
-    'trusts %s',
-    (name) => {
-      expect(isKnownSafeFile(name)).toBe(true);
-    },
-  );
-
-  it.each([
-    'setup.exe',
-    'script.ps1',
-    'run.pif',
-    'link.scf',
-    'console.msc',
-    'help.chm',
-    'app.application',
-    'types.ps1xml',
-    'launch.jnlp',
-    'macro.docm',
-    'macro.xlsm',
-    'macro.pptm',
-    'disk.img',
-    'disk.vhd',
-    'disk.vhdx',
-    'page.mht',
-    'page.html',
-    'drawing.svg',
-    'archive.zip',
-    'no-extension',
-    'invoice\u{202E}fdp.exe',
-    'report.pdf.exe',
-  ])('asks before %j', (name) => {
-    expect(isKnownSafeFile(name)).toBe(false);
-  });
-
+describe('file extensions', () => {
   it('reports the extension that the sanitised name really has', () => {
     expect(fileExtension('invoice\u{202E}fdp.exe')).toBe('exe');
     expect(fileExtension('Report.PDF')).toBe('pdf');

@@ -62,7 +62,7 @@
           {@attach page.focus.attach('download')}
           variant="tint"
           disabled={page.confirmingDownload}
-          onclick={(event: MouseEvent) => void page.askDownload(event, file)}
+          onclick={(event: MouseEvent) => void page.askDownload(event)}
           class="max-sm:w-11 max-sm:px-0"
           aria-label={translate('open.download.file')}
         >
@@ -71,6 +71,11 @@
         </Button>
       </div>
       <div
+        role="alertdialog"
+        tabindex="-1"
+        aria-labelledby="{id}-confirm-title"
+        aria-describedby="{id}-confirm"
+        onkeydown={page.onDownloadKeydown}
         class={[
           'flex flex-col gap-2.5 fade-swap sm:flex-row sm:items-center sm:justify-between',
           page.confirmingDownload ? 'opacity-100' : 'pointer-events-none opacity-0',
@@ -85,16 +90,16 @@
             <Icon name="alert" class="size-5" />
           </span>
           <span class="min-w-0">
-            <span role="alert" class="block text-ui text-ink"
-              >{page.confirmingDownload ? translate('revealed.confirm.title') : ''}</span
-            >
-            <span class="block text-micro text-ink-mute"
+            <span id="{id}-confirm-title" class="block text-ui text-ink">{translate('revealed.confirm.title')}</span>
+            <span id="{id}-confirm" class="block text-micro text-ink-mute"
               >{#if extension}{translate('revealed.confirm.extension')}
                 <bdi translate="no">.{extension}</bdi>{:else}{translate('revealed.confirm.none')}{/if}</span
             >
           </span>
         </div>
-        <div class="grid shrink-0 grid-cols-2 gap-1.5 sm:flex">
+        <div
+          class="flex shrink-0 flex-wrap gap-1.5 *:min-w-fit *:flex-1 max-sm:*:h-auto max-sm:*:min-h-11 max-sm:*:py-2 max-sm:*:text-center max-sm:*:whitespace-normal sm:flex-nowrap sm:*:flex-none"
+        >
           <Button
             {@attach page.focus.attach('keepFile')}
             variant="ghost"
@@ -105,6 +110,7 @@
           <Button
             variant="danger"
             disabled={!page.confirmingDownload}
+            aria-disabled={page.confirmingDownload && !page.downloadReady}
             onclick={(event: MouseEvent) => void page.confirmDownload(event, file)}
           >
             <Icon name="download" class="size-4 shrink-0" animated />

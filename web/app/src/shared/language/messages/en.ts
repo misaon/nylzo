@@ -274,8 +274,9 @@ export const messages: Catalog = {
   'revealed.sender.text': 'Check any request for money, a sign-in or an installation with the sender another way.',
   'revealed.file': 'Attachment',
   'revealed.file.unchecked':
-    'The attachment is encrypted, so Nylzo cannot scan it for viruses. Open only files from people you know.',
-  'revealed.confirm.title': 'This type of file can run code. Open it only if you trust the sender.',
+    'The attachment is encrypted, so Nylzo cannot scan it for viruses. Download files only from senders you trust.',
+  'revealed.confirm.title':
+    'Any file can carry malware, even a PDF, a document or an image. Download it only if you trust the sender.',
   'revealed.confirm.extension': 'File extension:',
   'revealed.confirm.none': 'The file has no extension.',
   'revealed.confirm.download': 'Download anyway',

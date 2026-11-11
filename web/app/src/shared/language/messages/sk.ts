@@ -275,8 +275,9 @@ export const messages: Catalog = {
     'Žiadosť o\u{A0}peniaze, prihlásenie alebo inštaláciu si overte u\u{A0}odosielateľa inou cestou.',
   'revealed.file': 'Príloha',
   'revealed.file.unchecked':
-    'Príloha je šifrovaná, takže ju Nylzo nemôže preveriť antivírusom. Otvárajte len súbory od ľudí, ktorých poznáte.',
-  'revealed.confirm.title': 'Tento typ súboru môže spustiť kód. Otvorte ho, len ak odosielateľovi dôverujete.',
+    'Príloha je šifrovaná, takže ju Nylzo nemôže preveriť antivírusom. Sťahujte len súbory od odosielateľov, ktorým dôverujete.',
+  'revealed.confirm.title':
+    'Škodlivý kód môže niesť každý súbor, aj PDF, dokument alebo obrázok. Stiahnite ho, len ak odosielateľovi dôverujete.',
   'revealed.confirm.extension': 'Prípona súboru:',
   'revealed.confirm.none': 'Súbor nemá príponu.',
   'revealed.confirm.download': 'Napriek tomu stiahnuť',

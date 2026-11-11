@@ -277,8 +277,9 @@ export const messages: Catalog = {
   'revealed.sender.text': 'お金、ログイン、インストールを求められた場合は、別の経路で送信者に確認してください。',
   'revealed.file': '添付ファイル',
   'revealed.file.unchecked':
-    '添付ファイルは暗号化されているため、Nylzoはウイルスチェックができません。知っている人からのファイルだけを開いてください。',
-  'revealed.confirm.title': 'この種類のファイルはコードを実行できます。送信者を信頼できる場合にのみ開いてください。',
+    '添付ファイルは暗号化されているため、Nylzoはウイルスチェックができません。信頼できる送信者からのファイルだけをダウンロードしてください。',
+  'revealed.confirm.title':
+    'PDF、文書、画像を含め、どのファイルにも悪意のあるコードが含まれている可能性があります。送信者を信頼できる場合にのみダウンロードしてください。',
   'revealed.confirm.extension': 'ファイルの拡張子：',
   'revealed.confirm.none': 'ファイルに拡張子がありません。',
   'revealed.confirm.download': 'それでもダウンロード',

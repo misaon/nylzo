@@ -5,7 +5,6 @@ import { prefersReducedMotion } from 'svelte/motion';
 import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
 import { clearClipboard } from '../../shared/clipboard/clear-clipboard.ts';
-import { isKnownSafeFile } from '../../shared/files/file-name.ts';
 import { revokeSavedFiles, saveFile } from '../../shared/files/save-file.ts';
 import { scryptInWorker, stopRunningWorkers } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
@@ -72,6 +71,7 @@ const NOISE_CHARACTERS = 260;
 const NOISE_GROWTH = 900;
 const SETTLE_WAIT_MS = 700;
 const COUNTDOWN_TICK_MS = 1000;
+const CONFIRM_DELAY_MS = 1000;
 export const SHOWN_SECONDS = 15 * 60;
 const FAILED_BURNS: ReadonlySet<BurnOutcome['outcome']> = new Set(['failed', 'retry_later', 'unknown']);
 const WHITESPACE: ReadonlySet<string> = new Set([' ', '\n', '\t']);
@@ -96,6 +96,7 @@ export class ReadPage {
   #markShown: (() => void) | undefined;
   #revealTimer: ReturnType<typeof setInterval> | undefined;
   #countdownTimer: ReturnType<typeof setInterval> | undefined;
+  #confirmTimer: ReturnType<typeof setTimeout> | undefined;
   readonly #settleTimer: ReturnType<typeof setTimeout>;
   #shownUntil = 0;
   readonly #reader: Reader;
@@ -110,6 +111,7 @@ export class ReadPage {
   passphraseRequired = $state(false);
   metadata = $state.raw<Metadata>();
   confirmingDownload = $state(false);
+  downloadReady = $state(false);
   askingDelete = $state(false);
   restDeleted = $state(false);
   deleting = $state(false);
@@ -228,15 +230,16 @@ export class ReadPage {
     await this.focus.focusAfterUpdate('keepMessage');
   };
 
-  readonly askDownload = async (event: MouseEvent, file: RevealedFile): Promise<void> => {
+  readonly askDownload = async (event: MouseEvent): Promise<void> => {
     if (event.detail > 1) {
       return;
     }
-    if (isKnownSafeFile(file.name)) {
-      this.#save(file);
-      return;
-    }
     this.confirmingDownload = true;
+    this.downloadReady = false;
+    clearTimeout(this.#confirmTimer);
+    this.#confirmTimer = setTimeout(() => {
+      this.downloadReady = true;
+    }, CONFIRM_DELAY_MS);
     await this.focus.focusAfterUpdate('keepFile');
   };
 
@@ -257,19 +260,21 @@ export class ReadPage {
     await this.focus.focusAfterUpdate(() => (this.revealed ? 'deleteRest' : 'deleteMessage'));
   };
 
-  readonly cancelDownload = async (event: MouseEvent): Promise<void> => {
+  readonly cancelDownload = async (event: KeyboardEvent | MouseEvent): Promise<void> => {
     if (event.detail > 1) {
       return;
     }
-    this.confirmingDownload = false;
+    this.#closeDownload();
     await this.focus.focusAfterUpdate('download');
   };
 
   readonly confirmDownload = async (event: MouseEvent, file: RevealedFile): Promise<void> => {
-    if (event.detail > 1 || !this.confirmingDownload) {
+    if (event.detail > 1 || !this.downloadReady) {
       return;
     }
-    this.#save(file);
+    saveFile(file.bytes, file.name);
+    this.#closeDownload();
+    this.downloaded.show();
     await this.focus.focusAfterUpdate('download');
   };
 
@@ -338,6 +343,15 @@ export class ReadPage {
 
     event.stopPropagation();
     void this.cancelDelete();
+  };
+
+  readonly onDownloadKeydown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape') {
+      return;
+    }
+
+    event.stopPropagation();
+    void this.cancelDownload(event);
   };
 
   readonly retry = (): void => {
@@ -420,6 +434,7 @@ export class ReadPage {
       this.timeline.stop();
       clearInterval(this.#revealTimer);
       clearTimeout(this.#settleTimer);
+      clearTimeout(this.#confirmTimer);
       this.#stopCountdown();
       this.#reader.clear();
     });
@@ -508,22 +523,22 @@ export class ReadPage {
     }
   }
 
-  #save(file: RevealedFile): void {
-    this.confirmingDownload = false;
-    saveFile(file.bytes, file.name);
-    this.downloaded.show();
-  }
-
   #settleShown(): void {
     this.#markShown?.();
     this.#markShown = undefined;
+  }
+
+  #closeDownload(): void {
+    clearTimeout(this.#confirmTimer);
+    this.confirmingDownload = false;
+    this.downloadReady = false;
   }
 
   #close(closed: ClosedView): void {
     stopRunningWorkers();
     revokeSavedFiles();
     this.burned = undefined;
-    this.confirmingDownload = false;
+    this.#closeDownload();
     this.askingDelete = false;
     this.showPassphrase = false;
     this.passphrase = '';
