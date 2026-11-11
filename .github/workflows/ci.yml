@@ -773,7 +773,7 @@ jobs:
           name: darwin-binaries
           path: ${{ runner.temp }}/darwin-binaries
           digest-mismatch: error
-      - name: The release build's macOS binaries run under the hardened runtime and refuse injected libraries and the task port
+      - name: The release build's macOS binaries run under the hardened runtime and refuse injected libraries
         run: bash tools/security/check-macos-release "$RUNNER_TEMP/darwin-binaries"
 
   codeql-go:
