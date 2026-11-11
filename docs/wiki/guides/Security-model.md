@@ -111,7 +111,7 @@ When a message ends, the server overwrites the 4 KiB block at the start of its b
 
 ## Metadata still exists
 
-The server observes padded content sizes and request timing. Some retained times are rounded to minutes. Logs and a low-traffic instance can still link a sender's requests to a reader's by their timing. Encryption hides the content but leaves the traffic visible.
+The server observes padded content sizes and request timing. Some retained times are rounded to minutes. A message's stored metadata (expiry, opens, leases, passphrase backoff) sits in a record that opens only with a public key from a signed request together with the server's pepper, so a copy of the database opens no record without the pepper, even with recorded requests. Copies taken before an instance first ran Nylzo 0.14.0 or later lack that layer. Logs and a low-traffic instance can still link a sender's requests to a reader's by their timing. Encryption hides the content but leaves the traffic visible.
 
 An attachment is gzip-compressed on the sender's device before encryption only when the sender asks for it with `nylzo create --compress`. The web client never compresses, and the server cannot make a client compress. Text and other messages are excluded from each file's compression context. The visible padded size then reflects compressed content; padding does not remove all length-based inference. Do not combine attacker-controlled bytes with secrets in a file if the attacker can repeatedly observe its compressed size. Readers authenticate before decompressing and enforce the original file-size limit. Older CLI versions must be updated to read compressed attachments. See the [protocol](../reference/Protocol.md#32-compressed-attachments).
 

@@ -204,6 +204,9 @@ type Messages interface {
 	ForgetBlobs(ctx context.Context, due []DueBlob) error
 	PurgeRows(ctx context.Context, now time.Time, limit int) (int, error)
 	KnownBlobReferences(ctx context.Context) (map[string]struct{}, error)
+	// ResealWraps hands the locator and wraps of every row to reseal, stores the wraps it changed and leaves no older
+	// copy of a row behind.
+	ResealWraps(ctx context.Context, reseal func(row *Row) bool) error
 }
 
 type Counters interface {

@@ -13,6 +13,7 @@ import (
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -66,6 +67,7 @@ type Server struct {
 	store         store.Store
 	blobs         store.Blobs
 	ring          *pepper.Ring
+	recordsKey    seal.Key
 	epochs        *epoch.Ratchet
 	leaseTimers   *leasetimer.Timers
 	logger        *slog.Logger
@@ -110,9 +112,10 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		leaseTimers: leasetimer.New(),
 		logger:      logging.New(os.Stderr),
 		webFiles:    web.Files(),
-		dummyRow:    newDummyRow(),
 		pace:        transport.DefaultPace(),
 	}
+	server.recordsKey = ring.RecordsKey()
+	server.dummyRow = newDummyRow(server.recordsKey)
 	server.settings.Pepper, server.settings.PepperPrevious = nil, nil
 	for _, option := range options {
 		option(server)

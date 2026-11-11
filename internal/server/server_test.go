@@ -1195,7 +1195,7 @@ func TestAnEndedMessageStaysUnreadableWithItsLinkAndAnOlderRow(t *testing.T) {
 			}
 		}
 		readKey := signing.PublicKey(&message.link.R)
-		record, err := openRow(&older, seal.Read, readKey[:])
+		record, err := harness.server.openRow(&older, seal.Read, readKey[:])
 		if err != nil {
 			t.Fatal(err)
 		}

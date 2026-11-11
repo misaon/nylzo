@@ -432,7 +432,15 @@ func (s *Server) persistMessage(
 	locator := seal.LocatorOf(request.id[:])
 	var record store.Record
 	secretmode.Do(func() {
-		record = store.NewRecord(locator, message, request.readKey, request.manageKey, blob.reference, blob.key)
+		record = store.NewRecord(
+			s.recordsKey,
+			locator,
+			message,
+			request.readKey,
+			request.manageKey,
+			blob.reference,
+			blob.key,
+		)
 	})
 	defer clear(record.Key[:])
 	return s.store.Create(ctx, &record.Row, s.storedCreateCounters(now)...)

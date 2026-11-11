@@ -35,6 +35,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/signing"
 
 	"github.com/misaon/nylzo/internal/erase"
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
@@ -46,6 +47,8 @@ import (
 )
 
 const reexecEnv = "NYLZO_CLI_TEST_REEXEC"
+
+var testPepper = bytes.Repeat([]byte{7}, pepper.SecretLen)
 
 func TestMain(tests *testing.M) {
 	if os.Getenv(reexecEnv) == "1" {
@@ -79,7 +82,7 @@ func newTestServer(t *testing.T, change func(*config.Server)) *testServer {
 	directory := t.TempDir()
 	settings := config.Defaults()
 	settings.DataDirectory = directory
-	settings.Pepper = bytes.Repeat([]byte{7}, 32)
+	settings.Pepper = bytes.Clone(testPepper)
 	settings.ReportKey = testReportKey.PublicKey()
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
 	settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1<<20, 1<<20
@@ -342,7 +345,11 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 		t.Fatal(err)
 	}
 	readKey := signing.PublicKey(&linkKeys.R)
-	recordKey, err := seal.Unwrap(seal.KeyFor(readKey[:], locator, seal.Read), row.ReadWrap, locator, seal.Read)
+	ring, err := pepper.NewRing(testPepper, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordKey, err := seal.UnwrapRecordKey(ring.RecordsKey(), readKey[:], row.ReadWrap, locator, seal.Read)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -101,8 +101,8 @@ func (f *fixture) createCountsWithTheRow() {
 func (f *fixture) createRowWith(hit store.RateHit) {
 	f.t.Helper()
 	fresh := core.NewID()
-	record := store.NewRecord(seal.LocatorOf(fresh[:]), newMessage(1, oneHour, false), core.NewSecret()[:],
-		core.NewSecret()[:], fresh.String(), seal.NewKey())
+	record := store.NewRecord(recordsKey, seal.LocatorOf(fresh[:]), newMessage(1, oneHour, false),
+		core.NewSecret()[:], core.NewSecret()[:], fresh.String(), seal.NewKey())
 	if err := f.store.Create(f.t.Context(), &record.Row, hit); err != nil {
 		f.t.Fatal(err)
 	}

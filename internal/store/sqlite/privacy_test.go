@@ -407,6 +407,28 @@ func TestChurnAndPurgeLeaveNoCopyOfARow(t *testing.T) {
 	})
 }
 
+// TestResealingLeavesNoOlderWrap covers the start of serve: once the wraps are sealed again, neither free space nor
+// the log keeps a wrap they replaced, or any other row version that churn left behind.
+func TestResealingLeavesNoOlderWrap(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	storage := openStore(t, path)
+	checkpoint(t, storage)
+	churned := churn(t, storage)
+	err := storage.ResealWraps(t.Context(), func(row *store.Row) bool {
+		if row.Locator == store.DummyLocator {
+			return false
+		}
+		row.ReadWrap = churned.written.value("RWR:", seal.SealedWrapLen)
+		row.ManageWrap = churned.written.value("MWR:", seal.SealedWrapLen)
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	churned.requireNoCopy(t, storage, path)
+}
+
 // checkpoint retries while the scrubber of another store holds the log.
 func checkpoint(t *testing.T, storage *sqlite.Store) {
 	t.Helper()
@@ -536,8 +558,8 @@ func (tr *traces) value(tag string, length int) []byte {
 func (tr *traces) row() store.Row {
 	return store.Row{
 		Locator:       seal.Locator(tr.value("LOC:", seal.LocatorLen)),
-		ReadWrap:      tr.value("RWR:", seal.WrapLen),
-		ManageWrap:    tr.value("MWR:", seal.WrapLen),
+		ReadWrap:      tr.value("RWR:", seal.SealedWrapLen),
+		ManageWrap:    tr.value("MWR:", seal.SealedWrapLen),
 		Record:        tr.value("REC:", seal.RecordBlock),
 		BlobReference: string(tr.value("REF-", 22)),
 		BlobWrap:      tr.value("BWR:", seal.WrapLen),

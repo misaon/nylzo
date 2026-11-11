@@ -28,8 +28,9 @@ const (
 	SecretLen = 32
 	MACLen    = 32
 
-	labelID  = "nylzo/v1/pepper-id"
-	infoBase = "nylzo/v1/mac/"
+	labelID     = "nylzo/v1/pepper-id"
+	infoBase    = "nylzo/v1/mac/"
+	infoRecords = "nylzo/v1/records"
 )
 
 var purposes = []Purpose{Read, Verifier, Manage, Lease, PoW, IDToken, Challenge}
@@ -64,8 +65,9 @@ func decodeSecret(text string) ([]byte, error) {
 }
 
 type key struct {
-	id      byte
-	macKeys map[Purpose][32]byte
+	id         byte
+	macKeys    map[Purpose][32]byte
+	recordsKey [SecretLen]byte
 }
 
 func newKey(secret []byte) (*key, error) {
@@ -83,6 +85,12 @@ func newKey(secret []byte) (*key, error) {
 		}
 		derived.macKeys[purpose] = [32]byte(macKey)
 	}
+	recordsKey, err := hkdf.Key(sha256.New, secret, nil, infoRecords, SecretLen)
+	if err != nil {
+		return nil, err
+	}
+	derived.recordsKey = [SecretLen]byte(recordsKey)
+	clear(recordsKey)
 	return derived, nil
 }
 
@@ -119,6 +127,27 @@ func NewRing(current, previous []byte) (*Ring, error) {
 		return nil, ErrCollision
 	}
 	return ring, nil
+}
+
+// RecordsKey seals the record key wraps (spec §5.2).
+func (r *Ring) RecordsKey() [SecretLen]byte {
+	return r.current.recordsKey
+}
+
+// PreviousRecordsKey is the records key of the previous pepper, until ForgetPreviousRecordsKey erases it.
+func (r *Ring) PreviousRecordsKey() ([SecretLen]byte, bool) {
+	if r.previous == nil || r.previous.recordsKey == [SecretLen]byte{} {
+		return [SecretLen]byte{}, false
+	}
+	return r.previous.recordsKey, true
+}
+
+// ForgetPreviousRecordsKey erases the records key of the previous pepper once serve has sealed every row again; the
+// macs of the previous pepper still verify.
+func (r *Ring) ForgetPreviousRecordsKey() {
+	if r.previous != nil {
+		clear(r.previous.recordsKey[:])
+	}
 }
 
 func (r *Ring) CurrentID() byte {
