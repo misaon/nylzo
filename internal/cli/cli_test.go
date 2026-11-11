@@ -1190,9 +1190,17 @@ func TestReadWritesToDiskOnlyWhenAsked(t *testing.T) {
 		!strings.Contains(result.stderr, "--out DIR") {
 		t.Fatalf("read --stdout of an attachment did not say why it saved nothing: %d %q", result.code, result.stderr)
 	}
-	paths := readPaths(t, runWith(t, attachment, nil, nil, "read", "--out", t.TempDir()))
+	result := runWith(t, attachment, nil, nil, "read", "--out", t.TempDir())
+	paths := readPaths(t, result)
 	if len(paths) != 1 || mustRead(t, paths[0]) != "\x01\x02\x03" {
 		t.Fatalf("the second open lost the file: %v", paths)
+	}
+	if !strings.Contains(result.stderr, "cannot scan attachments") {
+		t.Fatalf("a saved attachment came without the warning: %q", result.stderr)
+	}
+	if result = runWith(t, link, nil, nil, "read", "--out", t.TempDir()); result.code != command.ExitOK ||
+		strings.Contains(result.stderr, "cannot scan attachments") {
+		t.Fatalf("a text-only read: %d %q", result.code, result.stderr)
 	}
 }
 
