@@ -153,7 +153,7 @@ jobs:
           env-regex: ^(?:RENOVATE_\w+|LOG_LEVEL|METADATA_SERVER_DETECTION)$
           token: ${{ steps.app.outputs.token }}
           configurationFile: ${{ runner.temp }}/renovate-global.json
-          renovate-image: ghcr.io/renovatebot/renovate:44.235.1@sha256:b84e0630ca478e0318b85512e510b61f55a00b30b5b039585be2cb8460cce188
+          renovate-image: ghcr.io/renovatebot/renovate:44.235.2@sha256:37e53649fc2c90effed0f256d978964ae7e85243e0c903ebaf89a14446088462
           mount-docker-socket: false
           docker-volumes: /tmp:/tmp;${{ github.workspace }}/automation/dependency-sync/sync.ts:/opt/nylzo-dependency-sync.ts:ro
       # Runs started by another workflow may only read the cache; the regular run writes it once a week.
