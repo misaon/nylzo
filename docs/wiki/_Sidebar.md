@@ -33,6 +33,7 @@
 - [Security checks and public reports](maintainers/Security-checks.md)
 - [Automatic security updates](maintainers/Security-updates.md)
 - [Security assessment and threat model](maintainers/Security-assessment.md)
+- [Passphrase verifier and PAKE](maintainers/Passphrase-verifier.md)
 - [Deployment security review](maintainers/Deployment-security-review.md)
 - [Security control policies](maintainers/Security-controls.md)
 - [Infrastructure roadmap](maintainers/Infrastructure-roadmap.md)

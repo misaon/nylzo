@@ -634,9 +634,11 @@ jobs:
           id=$(head -c 16 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=')
           code=$(curl -s -o /dev/null -w '%{http_code}' --cacert "$RUNNER_TEMP/root.crt" -H 'X-Nylzo-Lease: lease-that-must-not-be-logged' "https://localhost/api/v1/messages/$id/blob")
           test "$code" = 502
+          code=$(curl -s -o /dev/null -w '%{http_code}' --cacert "$RUNNER_TEMP/root.crt" -X POST -H 'X-Nylzo-Verifier: verifier-that-must-not-be-logged' -H 'X-Nylzo-Create: create-that-must-not-be-logged' "https://localhost/api/v1/messages/$id/claim")
+          test "$code" = 502
           sleep 2
           docker compose logs caddy > "$RUNNER_TEMP/caddy.log" 2>&1
-          if grep -F -e "$id" -e '/api/v1/messages/' -e 'lease-that-must-not-be-logged' "$RUNNER_TEMP/caddy.log"; then exit 1; fi
+          if grep -F -e "$id" -e '/api/v1/messages/' -e 'that-must-not-be-logged' "$RUNNER_TEMP/caddy.log"; then exit 1; fi
           docker compose start nylzo
       - name: A spoofed X-Forwarded-For gets no bucket of its own
         working-directory: deploy/compose

@@ -13,6 +13,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -22,6 +23,7 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/quic-go/quic-go/http3"
 
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -151,7 +153,11 @@ func startCaddyWithMaintenance(t *testing.T, caddyfile, backend, maintenance str
 }
 
 // startCaddyWith serves the Caddyfile on loopback; crawlers stands in for the embedded crawler list.
-func startCaddyWith(t *testing.T, caddyfile, backend, maintenance, crawlers string) (string, *x509.CertPool) {
+func startCaddyWith(
+	t *testing.T,
+	caddyfile, backend, maintenance, crawlers string,
+	edits ...func(config map[string]any),
+) (string, *x509.CertPool) {
 	t.Helper()
 	t.Setenv("NYLZO_DOMAIN", "localhost")
 	t.Setenv("NYLZO_CONTACT", operatorContact)
@@ -203,6 +209,9 @@ func startCaddyWith(t *testing.T, caddyfile, backend, maintenance, crawlers stri
 		}
 		return value
 	})
+	for _, edit := range edits {
+		edit(config)
+	}
 	encoded, err := json.Marshal(config)
 	if err != nil {
 		t.Fatal(err)
@@ -231,11 +240,13 @@ func startCaddyWith(t *testing.T, caddyfile, backend, maintenance, crawlers stri
 	return "", nil
 }
 
+var profileCaddyfiles = map[string]string{
+	"Hetzner Flatcar": filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),
+	"Compose":         filepath.Join("..", "compose", "Caddyfile"),
+}
+
 func TestCaddyfilesProtectTheEdge(t *testing.T) {
-	for name, caddyfile := range map[string]string{
-		"Hetzner Flatcar": filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),
-		"Compose":         filepath.Join("..", "compose", "Caddyfile"),
-	} {
+	for name, caddyfile := range profileCaddyfiles {
 		t.Run(name, func(t *testing.T) {
 			recorder := &upstream{}
 			backend := httptest.NewServer(recorder)
@@ -383,10 +394,7 @@ func TestCaddyfilesProtectTheEdge(t *testing.T) {
 }
 
 func TestCaddyfilesBoundSlowAndLargeRequests(t *testing.T) {
-	for name, caddyfile := range map[string]string{
-		"Hetzner Flatcar": filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),
-		"Compose":         filepath.Join("..", "compose", "Caddyfile"),
-	} {
+	for name, caddyfile := range profileCaddyfiles {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("NYLZO_DOMAIN", "localhost")
 			source, err := os.ReadFile(caddyfile)
@@ -438,6 +446,191 @@ func TestCaddyfilesBoundSlowAndLargeRequests(t *testing.T) {
 				if server.MaxHeaderBytes <= 0 || server.MaxHeaderBytes > 16<<10 {
 					t.Errorf("%s max_header_size is %d", name, server.MaxHeaderBytes)
 				}
+			}
+		})
+	}
+}
+
+// logEverythingTo sends every log to one file at debug level and keeps what each log includes and excludes.
+func logEverythingTo(path string) func(config map[string]any) {
+	return func(config map[string]any) {
+		writer := map[string]any{"output": "file", "filename": path}
+		logging := config["logging"].(map[string]any)
+		for _, log := range logging["logs"].(map[string]any) {
+			log.(map[string]any)["writer"] = writer
+			log.(map[string]any)["level"] = "DEBUG"
+		}
+		logging["sink"] = map[string]any{"writer": writer}
+	}
+}
+
+// composeCaddyfile joins Caddyfiles the way the Hetzner activation does.
+func composeCaddyfile(t *testing.T, parts ...string) string {
+	t.Helper()
+	var composed []byte
+	for _, part := range parts {
+		source, err := os.ReadFile(part)
+		if err != nil {
+			t.Fatal(err)
+		}
+		composed = append(append(composed, source...), '\n')
+	}
+	path := filepath.Join(t.TempDir(), "Caddyfile")
+	if err := os.WriteFile(path, composed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func awaitCertificate(t *testing.T, address string, roots *x509.CertPool, name string) {
+	t.Helper()
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		connection, err := tls.Dial("tcp", address, &tls.Config{RootCAs: roots, ServerName: name})
+		if err == nil {
+			_ = connection.Close()
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Caddy served no certificate for %s in time: %v", name, err)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+// TestCaddyfilesLogNoRequestSecrets covers F11: a logged X-Nylzo-Create or X-Nylzo-Verifier lets whoever also holds
+// the link test passphrase guesses offline, and a logged X-Nylzo-Lease downloads a blob without an open, so Caddy logs
+// no such header and no message path, over HTTP/2 or HTTP/3, not even at debug level or when the upstream fails.
+func TestCaddyfilesLogNoRequestSecrets(t *testing.T) {
+	sentinels := map[string]string{
+		"Authorization":        "Nylzo f11-sentinel-authorization",
+		api.CreateHeaderName:   "f11-sentinel-create",
+		api.VerifierHeaderName: "f11-sentinel-verifier",
+		api.LeaseHeaderName:    "f11-sentinel-lease",
+		api.WorkHeaderName:     "f11-sentinel-pow",
+		api.TTLHeaderName:      "f11-sentinel-ttl",
+		api.ShareKeyHeaderName: "f11-sentinel-share-key",
+	}
+	responses := map[string]string{
+		api.LeaseHeaderName:  "f11-sentinel-response-lease",
+		api.ShareHeaderName:  "f11-sentinel-response-share",
+		api.PolicyHeaderName: "f11-sentinel-response-policy",
+	}
+	const messageID = "f11-sentinel-message-id"
+	burn, claim := api.MessagePath(messageID)+api.BurnAction, api.MessagePath(messageID)+api.ClaimAction
+	// The monitor site is left out: it needs the monitor's client certificate file.
+	for name, profile := range map[string]struct {
+		parts     []string
+		redirects []string
+	}{
+		"Compose": {parts: []string{profileCaddyfiles["Compose"]}},
+		"Hetzner Flatcar with www": {
+			parts: []string{
+				profileCaddyfiles["Hetzner Flatcar"],
+				filepath.Join("..", "hetzner-flatcar", "host", "proxy", "www.Caddyfile"),
+			},
+			redirects: []string{"www.localhost"},
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			logFile := filepath.Join(t.TempDir(), "caddy.log")
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.Copy(io.Discard, r.Body)
+				if !strings.HasSuffix(r.URL.Path, api.ClaimAction) {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				for header, value := range responses {
+					w.Header().Set(header, value)
+				}
+				w.Header().Set("Content-Type", "application/octet-stream")
+				_, _ = io.WriteString(w, "ciphertext")
+			}))
+			t.Cleanup(backend.Close)
+			address, roots := startCaddyWith(
+				t,
+				composeCaddyfile(t, profile.parts...),
+				backend.Listener.Addr().String(),
+				"",
+				otherAddresses,
+				logEverythingTo(logFile),
+			)
+			_, port, splitErr := net.SplitHostPort(address)
+			if splitErr != nil {
+				t.Fatal(splitErr)
+			}
+			client := &http.Client{
+				Transport: &http.Transport{
+					DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+						return (&net.Dialer{}).DialContext(ctx, network, address)
+					},
+					TLSClientConfig:   &tls.Config{RootCAs: roots},
+					ForceAttemptHTTP2: true,
+				},
+				CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+				Timeout:       10 * time.Second,
+			}
+			h3 := &http3.Transport{TLSClientConfig: &tls.Config{RootCAs: roots, ServerName: "localhost"}}
+			t.Cleanup(func() { _ = h3.Close() })
+			overQUIC := &http.Client{Transport: h3, Timeout: 10 * time.Second}
+			send := func(client *http.Client, protocol int, host, path string, body io.Reader, want int) http.Header {
+				t.Helper()
+				target := "https://" + net.JoinHostPort(host, port) + path
+				request, err := http.NewRequest(http.MethodPost, target, body)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for header, value := range sentinels {
+					request.Header.Set(header, value)
+				}
+				response, err := client.Do(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, _ = io.Copy(io.Discard, response.Body)
+				_ = response.Body.Close()
+				if response.StatusCode != want || response.ProtoMajor != protocol {
+					t.Fatalf("POST %s got %d over %s, want %d over HTTP/%d", target, response.StatusCode,
+						response.Proto, want, protocol)
+				}
+				return response.Header
+			}
+			send(client, 2, "localhost", burn, http.NoBody, http.StatusNoContent)
+			send(overQUIC, 3, "localhost", burn, http.NoBody, http.StatusNoContent)
+			claimed := send(client, 2, "localhost", claim, http.NoBody, http.StatusOK)
+			if claimed.Get(api.LeaseHeaderName) != responses[api.LeaseHeaderName] {
+				t.Fatal("the claim response lost its lease, so its headers prove nothing")
+			}
+			oversized := io.LimitReader(zeros{}, 7<<20)
+			send(client, 2, "localhost", api.MessagesPath, oversized, http.StatusRequestEntityTooLarge)
+			for _, host := range profile.redirects {
+				awaitCertificate(t, address, roots, host)
+				send(client, 2, host, claim, http.NoBody, http.StatusPermanentRedirect)
+			}
+			backend.Close()
+			send(client, 2, "localhost", claim, http.NoBody, http.StatusBadGateway)
+			if err := caddy.Stop(); err != nil {
+				t.Fatal(err)
+			}
+			logged, err := os.ReadFile(logFile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Contains(logged, []byte(`"level":"debug"`)) {
+				t.Fatalf("the log holds no debug line, so it proves nothing:\n%s", logged)
+			}
+			for header, value := range sentinels {
+				if bytes.Contains(logged, []byte(value)) {
+					t.Errorf("Caddy logged %s", header)
+				}
+			}
+			for header, value := range responses {
+				if bytes.Contains(logged, []byte(value)) {
+					t.Errorf("Caddy logged the response header %s", header)
+				}
+			}
+			if bytes.Contains(logged, []byte(messageID)) {
+				t.Error("Caddy logged a message path")
 			}
 		})
 	}

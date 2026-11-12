@@ -1378,6 +1378,15 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 		needles.text("contact", contact)
 		needles.text("reason", "spam, see")
+		sent := harness.sentSecretHeaders()
+		for i, header := range sent {
+			needles.text(fmt.Sprintf("%s as sent in request %d", header.name, i), header.value)
+		}
+		for _, name := range []string{"Authorization", api.CreateHeaderName, api.VerifierHeaderName} {
+			if !slices.ContainsFunc(sent, func(header sentHeader) bool { return header.name == name }) {
+				t.Fatalf("no request carried %s, so the search for it proves nothing", name)
+			}
+		}
 		if logs := harness.logs.String(); logs != startupLogs {
 			t.Fatalf("a line was written before the hourly flush: %s", strings.TrimPrefix(logs, startupLogs))
 		}

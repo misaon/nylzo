@@ -5,6 +5,6 @@
 - A security vulnerability: report it [privately](https://github.com/misaon/nylzo/security/advisories/new), never in a public issue. See [SECURITY.md](SECURITY.md).
 - Abusive content on an instance: write to the operator contact on that instance's `/transparency` page.
 
-Use synthetic data everywhere. Never post a real message link, passphrase, manage token or credential.
+Use synthetic data everywhere. Never post a real message link, passphrase, manage token or credential, nor a HAR file, request dump or debug log of a real message: its headers let anyone with the link guess the passphrase.
 
 The [documentation](https://github.com/misaon/nylzo/wiki) covers setup, the CLI, operations and the security model. Nylzo has one maintainer, so an answer can take a few days.
