@@ -84,6 +84,26 @@ func TestStoreCheckPassesAReleaseAndWritesNothing(t *testing.T) {
 	if after := snapshot(t, filepath.Dir(directory)); !maps.Equal(before, after) {
 		t.Fatal("store-check changed the data directory")
 	}
+	legacySeed := make([]byte, 4096)
+	copy(legacySeed, "nylzo-e1\x09")
+	legacySeed[31] = 1
+	legacySeed[40] = 1
+	if err := os.WriteFile(filepath.Join(epochDirectory, epoch.FileName), legacySeed, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	beforeEpoch := snapshot(t, epochDirectory)
+	result = storeCheck(t, directory, epochDirectory)
+	if result.code != command.ExitOK || !strings.Contains(result.stdout, "seed of an earlier release") {
+		t.Fatalf(
+			"store-check on the seed of an earlier release: exit %d %q %s",
+			result.code,
+			result.stdout,
+			result.stderr,
+		)
+	}
+	if after := snapshot(t, epochDirectory); !maps.Equal(beforeEpoch, after) {
+		t.Fatal("store-check changed the epoch directory")
+	}
 }
 
 func TestStoreCheckRefusesWhatServeRefuses(t *testing.T) {

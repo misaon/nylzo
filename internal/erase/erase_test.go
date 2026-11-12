@@ -103,3 +103,19 @@ func TestReplaceWritesOverTheWholeFile(t *testing.T) {
 		t.Fatalf("content %q", content)
 	}
 }
+
+func TestPadWritesZerosOverAndPastTheEnd(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "seed")
+	if err := os.WriteFile(path, []byte("first"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		if err := erase.Pad(path, 2, 8); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if content, _ := os.ReadFile(path); string(content) != "fi\x00\x00\x00\x00\x00\x00" {
+		t.Fatalf("content %q", content)
+	}
+}

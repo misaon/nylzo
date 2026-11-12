@@ -46,7 +46,7 @@ type createRequest struct {
 	ttlSeconds  uint32
 	bodyBy      time.Time
 	outdated    bool
-	ratchetID   epoch.RatchetID
+	generation  epoch.GenerationID
 }
 
 // The create checks run in the order of spec §6.2, each before the body is read.
@@ -86,12 +86,16 @@ func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequ
 	size := request.header.Size
 	tokenOK := false
 	if ok {
-		request.ratchetID, tokenOK = s.idTokens.Valid(
+		request.generation, tokenOK = s.idTokens.Valid(
 			request.id,
 			*request.header.Epoch,
 			request.header.IDToken,
 			time.Now(),
 		)
+	}
+	held, heldErr := false, error(nil)
+	if tokenOK {
+		held, heldErr = s.holdsGeneration(request.generation, time.Now())
 	}
 	switch {
 	case request.outdated:
@@ -100,7 +104,10 @@ func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequ
 		rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
 	case !tokenOK:
 		rejectCreate(w, r, http.StatusForbidden, errIDToken)
-	case request.ratchetID != s.epochs.ID():
+	case heldErr != nil:
+		closeAfterResponse(w, r)
+		s.writeInternal(w, r, heldErr)
+	case !held:
 		rejectCreate(w, r, http.StatusConflict, errShareLost)
 	case r.ContentLength < 0 || r.Header.Get("Content-Length") == "":
 		rejectCreate(w, r, http.StatusLengthRequired, errLengthRequired)
@@ -408,7 +415,7 @@ func (s *Server) storeMessage(
 		rejectCreate(w, r, http.StatusConflict, errConflict)
 	case errors.Is(err, errShareEpoch):
 		rejectCreate(w, r, http.StatusForbidden, errIDToken)
-	case errors.Is(err, errRatchetChanged):
+	case errors.Is(err, errGenerationGone):
 		rejectCreate(w, r, http.StatusConflict, errShareLost)
 	default:
 		s.writeInternal(w, r, err)
@@ -423,11 +430,16 @@ func (s *Server) persistMessage(
 	blob *storedBlob,
 	now time.Time,
 ) error {
-	if request.ratchetID != s.epochs.ID() {
-		return errRatchetChanged
-	}
-	if !shareOutlives(message.Epoch, message.ExpiresAt) {
+	held, err := s.holdsGeneration(request.generation, now)
+	switch {
+	case err != nil:
+		return err
+	case !held:
+		return errGenerationGone
+	case !shareOutlives(message.Epoch, message.ExpiresAt):
 		return errShareEpoch
+	case !s.epochs.Covers(request.generation, message.Epoch):
+		return errGenerationGone
 	}
 	locator := seal.LocatorOf(request.id[:])
 	var record store.Record
@@ -448,7 +460,7 @@ func (s *Server) persistMessage(
 
 var (
 	errShareEpoch     = errors.New("server: the share epoch does not cover the expiry")
-	errRatchetChanged = errors.New("server: the share of the id came from an earlier seed")
+	errGenerationGone = errors.New("server: the share of the id came from a seed that is gone")
 )
 
 // shareOutlives keeps every message inside the life of its share, and every share at most an hour past its message.
@@ -475,7 +487,7 @@ func (s *Server) newMessage(
 		OpensRemaining: request.opensMax,
 		Size:           request.header.Size,
 		Epoch:          *request.header.Epoch,
-		RatchetID:      request.ratchetID,
+		Generation:     request.generation,
 	}
 	if envelopeHeader.KDF.RequiresPassphrase() {
 		verifier := s.ring.MAC(pepper.Verifier, verifierInput(salt, request.verifierKey))
@@ -490,10 +502,25 @@ func (c *createRequest) ttl() time.Duration {
 }
 
 func rejectCreate(w http.ResponseWriter, r *http.Request, status int, body any) {
+	closeAfterResponse(w, r)
+	writeJSON(w, status, body)
+}
+
+// closeAfterResponse ends an HTTP/1 connection whose create body was never read.
+func closeAfterResponse(w http.ResponseWriter, r *http.Request) {
 	if r.ProtoMajor == 1 {
 		w.Header().Set("Connection", "close")
 	}
-	writeJSON(w, status, body)
+}
+
+// holdsGeneration runs in secret mode, because looking for a generation may read the seeds again.
+func (s *Server) holdsGeneration(generation epoch.GenerationID, now time.Time) (bool, error) {
+	var (
+		held bool
+		err  error
+	)
+	secretmode.Do(func() { held, err = s.epochs.Holds(generation, now) })
+	return held, err
 }
 
 func (s *Server) setCreateDeadlines(w http.ResponseWriter, bodyBy time.Time) {

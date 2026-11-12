@@ -127,7 +127,11 @@ func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *st
 		return "", false
 	}
 	now := time.Now()
-	expiryShare, err := s.epochs.Share(message.RatchetID, message.Epoch, record.Row.Locator, now)
+	var expiryShare [core.ShareLen]byte
+	secretmode.Do(func() {
+		expiryShare, err = s.epochs.Share(message.Generation, message.Epoch, record.Row.Locator, now)
+	})
+	defer clear(expiryShare[:])
 	if errors.Is(err, epoch.ErrShareGone) {
 		s.endLostShare(w, r, record, now)
 		return "", false
@@ -136,7 +140,6 @@ func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *st
 		s.writeInternal(w, r, err)
 		return "", false
 	}
-	defer clear(expiryShare[:])
 	wrapped, err := share.Wrap(&expiryShare, clientKey)
 	if err != nil {
 		s.writeInternal(w, r, err)
