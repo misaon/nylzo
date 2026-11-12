@@ -13,6 +13,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/proof"
@@ -135,19 +136,24 @@ func (s *Server) parseCreation(header http.Header) (creationRequest, bool) {
 	return creationRequest{requested: true, ttl: time.Duration(seconds) * time.Second, shareKey: key}, true
 }
 
-// issueID hands out an id with the share of the hour in which a message made with it can expire at the latest.
+// issueID hands out an id with the share of the hour in which a message made with it can expire at the latest, made
+// by the generation of the current hour.
 func (s *Server) issueID(creation *creationRequest, now time.Time) (api.InstanceCreate, error) {
 	id := core.NewID()
-	upload := max(createBodyTimeout, store.TransferTime(s.settings.Limits.MaxObjectBytes))
-	latestExpiry := now.Add(proof.IDTokenTTL() + upload + storeSlack + creation.ttl)
-	shareEpoch := epoch.Hour(latestExpiry)
-	ratchetID := s.epochs.ID()
-	token, expires := s.idTokens.Issue(id, shareEpoch, ratchetID, now)
-	expiryShare, err := s.epochs.Share(ratchetID, shareEpoch, seal.LocatorOf(id[:]), now)
+	shareEpoch := epoch.Hour(latestExpiry(now, creation.ttl, s.settings.Limits.MaxObjectBytes))
+	var (
+		generation  epoch.GenerationID
+		expiryShare [core.ShareLen]byte
+		err         error
+	)
+	secretmode.Do(func() {
+		generation, expiryShare, err = s.epochs.Issue(shareEpoch, seal.LocatorOf(id[:]), now)
+	})
+	defer clear(expiryShare[:])
 	if err != nil {
 		return api.InstanceCreate{}, err
 	}
-	defer clear(expiryShare[:])
+	token, expires := s.idTokens.Issue(id, shareEpoch, generation, now)
 	wrapped, err := share.Wrap(&expiryShare, creation.shareKey)
 	if err != nil {
 		return api.InstanceCreate{}, err
@@ -159,6 +165,13 @@ func (s *Server) issueID(creation *creationRequest, now time.Time) (api.Instance
 		Epoch:     &shareEpoch,
 		Share:     core.Encode(wrapped[:]),
 	}, nil
+}
+
+// latestExpiry is the latest expiry of a message whose id is issued now: the client may start its upload until the id
+// token expires, and the upload of the largest object may take its whole transfer time.
+func latestExpiry(now time.Time, ttl time.Duration, maxObjectBytes int64) time.Time {
+	upload := max(createBodyTimeout, store.TransferTime(maxObjectBytes))
+	return now.Add(proof.IDTokenTTL() + upload + storeSlack + ttl)
 }
 
 func (s *Server) handleChallenge(w http.ResponseWriter, _ *http.Request) {

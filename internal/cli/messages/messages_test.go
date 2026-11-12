@@ -769,20 +769,22 @@ func TestAStalledStderrDoesNotHoldUpStdout(t *testing.T) {
 	}
 }
 
-type cancellingTerminal struct {
+type promptTerminal struct {
 	noTerminal
 
-	cancel     context.CancelFunc
+	atPrompt   func()
 	passphrase string
 }
 
-func (c cancellingTerminal) ReadSecret(string) ([]byte, error) {
-	c.cancel()
-	return []byte(c.passphrase), nil
+func (p promptTerminal) ReadSecret(string) ([]byte, error) {
+	p.atPrompt()
+	return []byte(p.passphrase), nil
 }
 
-// A Ctrl-C before the claim, here during the passphrase prompt, ends read without spending the open.
-func TestACtrlCBeforeTheClaimSpendsNothing(t *testing.T) {
+// Ctrl-C at the passphrase prompt ends the process before any cleanup, so --out must be empty then: the prompt here
+// removes it, which works only for an empty directory. A stop before the claim, or a --out gone after the prompt,
+// ends read without spending the open.
+func TestReadMakesItsDirectoryBetweenThePromptAndTheClaim(t *testing.T) {
 	t.Parallel()
 	passphrase := "correct horse battery staple"
 	passphraseFile := filepath.Join(t.TempDir(), "passphrase")
@@ -792,16 +794,83 @@ func TestACtrlCBeforeTheClaimSpendsNothing(t *testing.T) {
 	instance := newTestServer(t)
 	text := "still unopened"
 	link := createText(t, instance, text, "--passphrase-file", passphraseFile)
-	ctx, stop := context.WithCancel(t.Context())
-	defer stop()
-	environment := readEnvironment(link, io.Discard, io.Discard)
-	environment.Terminal = cancellingTerminal{cancel: stop, passphrase: passphrase}
-	if code := RunRead(ctx, environment, []string{"--stdout"}); code == command.ExitOK {
-		t.Fatal("read went on after a Ctrl-C before the claim")
+	for _, test := range []struct {
+		name   string
+		toOut  bool
+		stop   bool
+		report error
+	}{
+		{"a stop with --stdout", false, true, context.Canceled},
+		{"a stop with --out", true, true, context.Canceled},
+		{"--out gone after the prompt", true, false, errOutNotDirectory},
+	} {
+		out := filepath.Join(t.TempDir(), "out")
+		if err := os.Mkdir(out, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		arguments := []string{"--stdout"}
+		if test.toOut {
+			arguments = []string{"--out", out}
+		}
+		ctx, stop := context.WithCancel(t.Context())
+		var removed error
+		var stderr bytes.Buffer
+		environment := readEnvironment(link, io.Discard, &stderr)
+		environment.Terminal = promptTerminal{passphrase: passphrase, atPrompt: func() {
+			if test.toOut {
+				removed = os.Remove(out)
+			}
+			if test.stop {
+				stop()
+			}
+		}}
+		code := RunRead(ctx, environment, arguments)
+		stop()
+		if code != command.ExitError || removed != nil ||
+			stderr.String() != command.Program+": "+test.report.Error()+"\n" {
+			t.Fatalf(
+				"%s: exit %d, removing --out at the prompt: %v, stderr %q",
+				test.name,
+				code,
+				removed,
+				stderr.String(),
+			)
+		}
 	}
 	result := runWith(t, link, "read", "--stdout", "--passphrase-file", passphraseFile)
 	if result.code != command.ExitOK || result.stdout != text+"\n" {
 		t.Fatalf("the open was spent: exit %d, stdout %q, stderr %q", result.code, result.stdout, result.stderr)
+	}
+}
+
+func TestTheClaimWipesItsKeys(t *testing.T) {
+	t.Parallel()
+	passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+	if err := os.WriteFile(passphraseFile, []byte("correct horse battery staple\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	created := createText(t, newTestServer(t), "wiped after the claim", "--passphrase-file", passphraseFile)
+	link, err := parseOpenLink(created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer link.wipe()
+	apiClient, err := client.New(link.origin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment := readEnvironment("", io.Discard, io.Discard)
+	unlocked, err := unlockClaim(t.Context(), environment, apiClient, &link, passphraseSource{file: passphraseFile})
+	if err != nil {
+		t.Fatal(err)
+	}
+	passphraseKey := unlocked.passphraseKey
+	guard := &claimGuard{environment: environment}
+	_, _, err = claimMessage(t.Context(), apiClient, &link, unlocked, guard)
+	guard.release()
+	keyWiped := len(passphraseKey) > 0 && !slices.ContainsFunc(passphraseKey, func(b byte) bool { return b != 0 })
+	if err != nil || unlocked.verifier != [core.SeedLen]byte{} || !keyWiped {
+		t.Fatalf("claim: %v, verifier %x, passphrase key wiped: %v", err, unlocked.verifier, keyWiped)
 	}
 }
 

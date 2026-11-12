@@ -232,7 +232,7 @@ func encodeMessage(message *Message) []byte {
 	data = binary.BigEndian.AppendUint32(data, saturate[uint32](message.ReportDay))
 	data = append(data, saturate[uint8](int64(message.Reports)))
 	data = binary.BigEndian.AppendUint32(data, message.Epoch)
-	data = append(data, message.RatchetID[:]...)
+	data = append(data, message.Generation[:]...)
 	data = append(data, saturate[uint8](int64(len(message.Leases))))
 	for _, lease := range message.Leases {
 		data = append(data, lease.PepperID)
@@ -302,7 +302,7 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.ReportDay = int64(fields.readUint32())
 	message.Reports = int(fields.readByte())
 	message.Epoch = fields.readUint32()
-	copy(message.RatchetID[:], fields.next(epoch.RatchetIDLen))
+	copy(message.Generation[:], fields.next(epoch.GenerationIDLen))
 	leases := int(fields.readByte())
 	if fields.truncated() || ending >= len(endings) || hasVerifier > 1 || !fields.remaining(leases*leaseLen) {
 		return nil, fmt.Errorf("%w: truncated or unknown field", ErrCorrupt)

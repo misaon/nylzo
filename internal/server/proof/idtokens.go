@@ -14,7 +14,7 @@ import (
 const (
 	idTokenTTL       = 10 * time.Minute
 	idTokenTagLength = 16
-	idTokenFieldsLen = 8 + epoch.RatchetIDLen
+	idTokenFieldsLen = 8 + epoch.GenerationIDLen
 	idTokenLength    = idTokenFieldsLen + idTokenTagLength
 )
 
@@ -31,31 +31,36 @@ func IDTokenTTL() time.Duration {
 	return idTokenTTL + clockSkew
 }
 
-// Issue binds the id to the epoch of its expiry share and to the ratchet whose seed made it (spec section 5.4).
-func (t IDTokens) Issue(id core.ID, shareEpoch uint32, ratchetID epoch.RatchetID, now time.Time) (string, time.Time) {
+// Issue binds the id to the epoch of its expiry share and to the generation whose seed made it (spec section 5.4).
+func (t IDTokens) Issue(
+	id core.ID,
+	shareEpoch uint32,
+	generation epoch.GenerationID,
+	now time.Time,
+) (string, time.Time) {
 	expires := now.Add(idTokenTTL)
 	token := make([]byte, idTokenLength)
 	binary.BigEndian.PutUint32(token, unixSeconds(expires))
 	binary.BigEndian.PutUint32(token[4:], shareEpoch)
-	copy(token[8:idTokenFieldsLen], ratchetID[:])
+	copy(token[8:idTokenFieldsLen], generation[:])
 	copy(token[idTokenFieldsLen:], t.tag(id, token[:idTokenFieldsLen]))
 	return core.Encode(token), expires.Truncate(time.Second)
 }
 
-// Valid also returns the ratchet the token names, so a create can tell a share of an earlier seed apart.
-func (t IDTokens) Valid(id core.ID, shareEpoch uint32, token string, now time.Time) (epoch.RatchetID, bool) {
-	var ratchetID epoch.RatchetID
+// Valid also returns the generation the token names, so a create can tell a share of a lost seed apart.
+func (t IDTokens) Valid(id core.ID, shareEpoch uint32, token string, now time.Time) (epoch.GenerationID, bool) {
+	var generation epoch.GenerationID
 	raw, err := core.DecodeExact(token, idTokenLength)
 	if err != nil {
-		return ratchetID, false
+		return generation, false
 	}
 	fields := binary.BigEndian.AppendUint32(bytes.Clone(raw[:4]), shareEpoch)
 	fields = append(fields, raw[8:idTokenFieldsLen]...)
 	tagOK := hmac.Equal(t.tag(id, fields), raw[idTokenFieldsLen:])
 	epochOK := binary.BigEndian.Uint32(raw[4:8]) == shareEpoch
 	left := int64(binary.BigEndian.Uint32(raw[:4])) - now.Unix()
-	copy(ratchetID[:], raw[8:idTokenFieldsLen])
-	return ratchetID, tagOK && epochOK && left >= 0 && left <= int64((idTokenTTL+clockSkew)/time.Second)
+	copy(generation[:], raw[8:idTokenFieldsLen])
+	return generation, tagOK && epochOK && left >= 0 && left <= int64((idTokenTTL+clockSkew)/time.Second)
 }
 
 func (t IDTokens) tag(id core.ID, fields []byte) []byte {

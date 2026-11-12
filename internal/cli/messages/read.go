@@ -260,7 +260,8 @@ func (w *lossWatch) Write(data []byte) (int, error) {
 	return written, err
 }
 
-// read creates the output directory before the claim, so a write problem never spends an open.
+// read makes the output directory after the passphrase prompt, which Ctrl-C ends before any cleanup, and before the
+// claim, so a write problem never spends an open.
 func read(
 	ctx context.Context,
 	environment *command.Environment,
@@ -272,9 +273,8 @@ func read(
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
-	if !options.stdout && options.out == "" {
-		fmt.Fprintln(environment.Stderr, command.Program+": "+errNoDestination.Error())
-		return command.ExitUsage
+	if code, ok := checkDestination(ctx, environment, options); !ok {
+		return code
 	}
 	link, err := linkFromInput(environment, options.linkFile)
 	if err != nil {
@@ -285,16 +285,21 @@ func read(
 	if err != nil {
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
+	unlocked, err := unlockClaim(ctx, environment, server, &link, options.passphrase)
+	if err != nil {
+		return command.Failf(environment, "%s", command.Explain(err))
+	}
+	defer unlocked.wipe()
 	var directory *os.Root
 	if options.out != "" {
-		if directory, err = outputDirectory(options.out); err != nil {
+		if directory, err = outputDirectory(ctx, options.out); err != nil {
 			return command.Failf(environment, "%s", err)
 		}
 		defer removeIfEmpty(directory)
 	}
 	guard.out = options.out
 	guard.hangup = options.out != "" || !environment.Terminal.StdoutIsTerminal()
-	opened, claimCtx, err := readMessage(ctx, environment, server, &link, options.passphrase, guard)
+	opened, claimCtx, err := claimMessage(ctx, server, &link, unlocked, guard)
 	if err != nil {
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
@@ -310,6 +315,24 @@ func read(
 	}
 	acknowledge(claimCtx, environment, server, &link, opened.lease)
 	return finishRead(environment, paths, loss)
+}
+
+// checkDestination refuses a read without a destination, or with a --out that cannot take private files, before read
+// asks for anything. The directory that proves --out goes again at once.
+func checkDestination(ctx context.Context, environment *command.Environment, options *readOptions) (int, bool) {
+	if !options.stdout && options.out == "" {
+		fmt.Fprintln(environment.Stderr, command.Program+": "+errNoDestination.Error())
+		return command.ExitUsage, false
+	}
+	if options.out == "" {
+		return command.ExitOK, true
+	}
+	directory, err := outputDirectory(ctx, options.out)
+	if err != nil {
+		return command.Failf(environment, "%s", err), false
+	}
+	removeIfEmpty(directory)
+	return command.ExitOK, true
 }
 
 func acknowledge(
@@ -349,36 +372,56 @@ type openedMessage struct {
 	lease   string
 }
 
-func readMessage(
+// unlockedClaim holds what the claim and the decryption need; getting it spends nothing.
+type unlockedClaim struct {
+	metadata      api.Metadata
+	passphraseKey []byte
+	verifier      [core.SeedLen]byte
+}
+
+func (u *unlockedClaim) wipe() {
+	clear(u.passphraseKey)
+	clear(u.verifier[:])
+}
+
+func unlockClaim(
 	ctx context.Context,
 	environment *command.Environment,
 	server *client.Client,
 	link *openLink,
 	source passphraseSource,
-	guard *claimGuard,
-) (openedMessage, context.Context, error) {
+) (*unlockedClaim, error) {
 	metadata, err := server.Metadata(ctx, link.id, &link.keys.R)
 	if err != nil {
-		return openedMessage{}, nil, err
+		return nil, err
 	}
 	if checkErr := checkMetadata(link, &metadata); checkErr != nil {
-		return openedMessage{}, nil, checkErr
+		return nil, checkErr
 	}
-	passphraseKey, err := passphraseKey(environment, link, source)
+	unlocked := &unlockedClaim{metadata: metadata}
+	if unlocked.passphraseKey, err = passphraseKey(environment, link, source); err != nil {
+		return nil, err
+	}
+	if unlocked.verifier, err = keys.DeriveVerifier(link.id, &link.secret, unlocked.passphraseKey); err != nil {
+		unlocked.wipe()
+		return nil, err
+	}
+	return unlocked, nil
+}
+
+func claimMessage(
+	ctx context.Context,
+	server *client.Client,
+	link *openLink,
+	unlocked *unlockedClaim,
+	guard *claimGuard,
+) (openedMessage, context.Context, error) {
+	defer unlocked.wipe()
+	claimCtx, err := guard.hold(ctx, client.TransferTime(unlocked.metadata.Size))
 	if err != nil {
 		return openedMessage{}, nil, err
 	}
-	defer clear(passphraseKey)
-	verifier, err := keys.DeriveVerifier(link.id, &link.secret, passphraseKey)
-	if err != nil {
-		return openedMessage{}, nil, err
-	}
-	defer clear(verifier[:])
-	claimCtx, err := guard.hold(ctx, client.TransferTime(metadata.Size))
-	if err != nil {
-		return openedMessage{}, nil, err
-	}
-	fetched, lease, err := fetchEnvelope(claimCtx, server, link, &verifier, metadata.Size)
+	fetched, lease, err := fetchEnvelope(claimCtx, server, link, &unlocked.verifier, unlocked.metadata.Size)
 	if err != nil && errors.Is(context.Cause(claimCtx), errStopTimedOut) {
 		return openedMessage{}, nil, errStopTimedOut
 	}
@@ -386,10 +429,10 @@ func readMessage(
 		return openedMessage{}, nil, err
 	}
 	defer clear(fetched.Object)
-	if !headerMatches(&fetched, link, &metadata) {
+	if !headerMatches(&fetched, link, &unlocked.metadata) {
 		return openedMessage{}, nil, errPolicyChanged
 	}
-	contentKeys, err := contentKeysOf(link, passphraseKey, fetched.ShareKey, fetched.Share)
+	contentKeys, err := contentKeysOf(link, unlocked.passphraseKey, fetched.ShareKey, fetched.Share)
 	if err != nil {
 		return openedMessage{}, nil, errTampered
 	}
@@ -866,7 +909,11 @@ func writeAll(environment *command.Environment, directory *os.Root, files []outp
 	return paths, nil
 }
 
-func outputDirectory(base string) (*os.Root, error) {
+// outputDirectory touches --out only while read may go on.
+func outputDirectory(ctx context.Context, base string) (*os.Root, error) {
+	if ctx.Err() != nil {
+		return nil, context.Cause(ctx)
+	}
 	if info, err := os.Stat(base); err != nil || !info.IsDir() {
 		return nil, errOutNotDirectory
 	}

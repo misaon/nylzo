@@ -236,8 +236,13 @@ func (h *testHarness) challengeAt(now time.Time) [signing.ChallengeLen]byte {
 }
 
 func (h *testHarness) idToken(id core.ID, shareEpoch uint32) string {
-	token, _ := h.server.idTokens.Issue(id, shareEpoch, h.server.epochs.ID(), time.Now())
+	token, _ := h.server.idTokens.Issue(id, shareEpoch, issuingGeneration(h.server), time.Now())
 	return token
+}
+
+func issuingGeneration(server *Server) epoch.GenerationID {
+	generations := server.epochs.Generations()
+	return generations[len(generations)-1]
 }
 
 // shareEpochFor is the epoch a client gets for a TTL from the instance; a test upload takes far less than its slack.

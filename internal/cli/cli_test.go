@@ -1347,9 +1347,12 @@ func TestAnUnwritableOutDirectoryIsNotNamed(t *testing.T) {
 	if err := os.Mkdir(locked, 0o500); err != nil {
 		t.Fatal(err)
 	}
+	before := instance.requests.Load()
 	result := runWith(t, link, nil, nil, "read", "--out", locked)
-	if result.code != command.ExitError || strings.Contains(result.stderr, "correct horse") {
-		t.Fatalf("read into an unwritable --out: %d %q", result.code, result.stderr)
+	if result.code != command.ExitError || strings.Contains(result.stderr, "correct horse") ||
+		instance.requests.Load() != before {
+		t.Fatalf("read into an unwritable --out: %d %q, %d requests",
+			result.code, result.stderr, instance.requests.Load()-before)
 	}
 	paths := readPaths(t, runWith(t, link, nil, nil, "read", "--out", t.TempDir()))
 	assertPrivate(t, paths[0], "kept")

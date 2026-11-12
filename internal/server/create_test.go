@@ -1516,8 +1516,41 @@ func TestShareEpochBudgetsTheWholeCreateBody(t *testing.T) {
 	})
 }
 
-// A new seed between the instance answer and the create would store a message whose share nobody can make, so
-// the create names the ratchet through its id token and is refused before anything is stored.
+// F12: a generation makes shares for Span hours past the hour that starts it, and a converted chain of an earlier
+// release starts an hour early, so an id issued in the last second of an hour, with the longest TTL and the largest
+// object, must expire within Span - 1 hours.
+func TestTheLatestShareEpochFitsTheGenerationSpan(t *testing.T) {
+	t.Parallel()
+	issued := epoch.End(493_000).Add(-time.Second)
+	latest := latestExpiry(issued, config.MaxTTL, envelope.MaxObjectBytes)
+	if epoch.Hour(latest) > epoch.Hour(issued)+epoch.Span-1 {
+		t.Fatalf("an id issued at %s may expire at %s, past the span of its generation", issued, latest)
+	}
+}
+
+// F12: an id issued just before an hour ends keeps its generation, so its create in the next hour stores a message
+// that opens.
+func TestAnIDIssuedBeforeTheHourEndsIsCreatedAfterIt(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		synctest.Sleep(time.Until(epoch.End(epoch.Hour(time.Now()))) - time.Minute)
+		late := harness.issueMessage(core.KDFNone, "", 1, 3600, "issued before the hour ends")
+		synctest.Sleep(2 * time.Minute)
+		harness.mustCreate(harness.issueMessage(core.KDFNone, "", 1, 3600, "issued in the next hour"))
+		harness.mustCreate(late)
+		response, object := harness.claim(late, late.verifier, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("claim: %d", response.StatusCode)
+		}
+		if _, err := harness.openObject(late, object, response.Header.Get(api.PolicyHeaderName)); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+// A lost seed between the instance answer and the create would store a message whose share nobody can make, so
+// the create names the generation through its id token and is refused before anything is stored.
 func TestCreateRefusesAnIDWhoseShareCameFromAnEarlierSeed(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {

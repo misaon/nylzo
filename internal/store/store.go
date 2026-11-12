@@ -128,9 +128,9 @@ type Message struct {
 	Leases           []Lease
 	ReportDay        int64
 	Reports          int
-	// Epoch and RatchetID name the expiry share of the message (spec section 5.6).
-	Epoch     uint32
-	RatchetID epoch.RatchetID
+	// Epoch and Generation name the expiry share of the message (spec section 5.6).
+	Epoch      uint32
+	Generation epoch.GenerationID
 }
 
 func (m *Message) PassphraseRequired() bool {
