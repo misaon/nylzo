@@ -23,6 +23,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
+	"github.com/misaon/nylzo/internal/cli/stopsignal"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
@@ -593,6 +594,7 @@ func TestReadSavesTheMessageThroughStopSignalsAfterTheClaim(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows has no SIGHUP")
 	}
+	skipIfCtrlCIsIgnored(t)
 	if os.Getenv(stopSignalsChild) != "" {
 		readThroughStopSignals(t)
 		return
@@ -626,21 +628,25 @@ func readThroughStopSignals(t *testing.T) {
 			stdout.beforeFirstWrite = func() { signalSelf(t, syscall.SIGHUP, syscall.SIGTERM) }
 		}
 		stderr := &lockedBuffer{}
-		code := RunRead(ctx, readEnvironment(link, stdout, stderr), append(arguments, "--out", out))
+		environment := readEnvironment(link, stdout, stderr)
+		environment.Stop = new(stopsignal.Pending)
+		code := RunRead(ctx, environment, append(arguments, "--out", out))
 		stop()
 		saved := savedAttachments(t, out)
 		got := deliveredText(arguments, stdout.String(), saved)
 		verdict := "saved"
-		stoppedBy := []int{129, 130, 143}
-		if !slices.Contains(stoppedBy, code) || len(saved) != 1 || got != text ||
+		held := environment.Stop.Signal()
+		if code != command.ExitOK || !environment.Stop.Held() || held != os.Interrupt || len(saved) != 1 ||
+			got != text ||
 			!strings.Contains(
 				stderr.String(),
 				"a second Ctrl-C",
 			) || strings.Contains(stderr.String(), "did not confirm") {
 			verdict = fmt.Sprintf(
-				"%v: exit %d, attachment %v, text %q, stderr %q",
+				"%v: exit %d, held %v, attachment %v, text %q, stderr %q",
 				arguments,
 				code,
+				held,
 				saved,
 				got,
 				stderr.String(),
@@ -674,19 +680,20 @@ func (b *lockedBuffer) String() string {
 	return b.buffer.String()
 }
 
-// A second Ctrl-C after the claim ends read at once, as the warning after the first one says.
+// A second Ctrl-C after the claim ends read at once by that Ctrl-C, as the warning after the first one says.
 func TestASecondCtrlCAfterTheClaimStopsRead(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the test sends itself signals")
 	}
+	skipIfCtrlCIsIgnored(t)
 	if os.Getenv(secondInterruptChild) != "" {
 		interruptReadTwice(t)
 		return
 	}
 	t.Parallel()
 	child := runChild(t, "TestASecondCtrlCAfterTheClaimStopsRead", secondInterruptChild, false)
-	if child.code != 128+int(syscall.SIGINT) {
-		t.Fatalf("exit %d after a second Ctrl-C\n%s", child.code, child.output)
+	if child.code != -1 || child.signal != syscall.SIGINT {
+		t.Fatalf("exit %d, signal %v after a second Ctrl-C\n%s", child.code, child.signal, child.output)
 	}
 }
 
@@ -705,6 +712,13 @@ func interruptReadTwice(t *testing.T) {
 	}}
 	code := RunRead(t.Context(), readEnvironment(link, io.Discard, stderr), []string{"--out", t.TempDir()})
 	t.Fatalf("read returned %d after a second Ctrl-C: %q", code, stderr.String())
+}
+
+func skipIfCtrlCIsIgnored(t *testing.T) {
+	t.Helper()
+	if signal.Ignored(os.Interrupt) {
+		t.Skip("the tests run with Ctrl-C ignored, which read then leaves ignored")
+	}
 }
 
 func signalSelf(t *testing.T, signals ...os.Signal) {
@@ -877,28 +891,120 @@ func TestAStopRequestAfterTheGraceEndsRead(t *testing.T) {
 
 func TestAStopRequestLeavesTheClaimOneTransferTime(t *testing.T) {
 	t.Parallel()
-	guard := &claimGuard{environment: &command.Environment{Stderr: io.Discard}, hangup: true}
-	claimCtx, err := guard.hold(t.Context(), time.Millisecond)
-	if err != nil {
+	for _, test := range []struct {
+		name string
+		stop os.Signal
+		send func(*claimGuard, os.Signal, context.CancelCauseFunc)
+	}{
+		{"a termination request", syscall.SIGTERM, func(g *claimGuard, stop os.Signal, _ context.CancelCauseFunc) {
+			g.held <- stop
+		}},
+		{"a hangup", syscall.SIGHUP, func(g *claimGuard, stop os.Signal, _ context.CancelCauseFunc) {
+			g.held <- stop
+		}},
+		{"Ctrl-C", os.Interrupt, func(g *claimGuard, stop os.Signal, _ context.CancelCauseFunc) {
+			g.interrupt <- stop
+		}},
+		{"a Ctrl-C that reached only cli.Run", os.Interrupt, func(_ *claimGuard, stop os.Signal, cancel context.CancelCauseFunc) {
+			cancel(stopsignal.StopError{Signal: stop})
+		}},
+	} {
+		stop := test.stop
+		ctx, cancel := context.WithCancelCause(t.Context())
+		pending := new(stopsignal.Pending)
+		guard := &claimGuard{environment: &command.Environment{Stderr: io.Discard, Stop: pending}, hangup: true}
+		claimCtx, err := guard.hold(ctx, time.Millisecond)
+		if err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-claimCtx.Done():
+			t.Fatal("the claim ended before a stop request")
+		default:
+		}
+		test.send(guard, stop, cancel)
+		select {
+		case <-claimCtx.Done():
+		case <-time.After(time.Minute):
+			t.Fatalf("%s: the claim outlived its time after a stop request", test.name)
+		}
+		if cause := context.Cause(claimCtx); !errors.Is(cause, errStopTimedOut) {
+			t.Fatalf("%s: the claim ended with %v", test.name, cause)
+		}
+		guard.release()
+		cancel(nil)
+		if held := pending.Signal(); held != stop || !pending.Held() {
+			t.Fatalf("%s: read keeps %v for the process to end by", test.name, held)
+		}
+	}
+}
+
+// release waits for a stop that cancelled the command just before, so the exit cannot miss it; one after release
+// holds nothing.
+func TestReleaseKeepsALateStopAndNothingAfterIt(t *testing.T) {
+	t.Parallel()
+	for range 200 {
+		ctx, cancel := context.WithCancelCause(t.Context())
+		pending := new(stopsignal.Pending)
+		guard := &claimGuard{environment: &command.Environment{Stderr: io.Discard, Stop: pending}}
+		if _, err := guard.hold(ctx, time.Hour); err != nil {
+			t.Fatal(err)
+		}
+		cancel(stopsignal.StopError{Signal: syscall.SIGTERM})
+		guard.release()
+		if !pending.Held() || pending.Signal() != syscall.SIGTERM {
+			t.Fatalf("release missed a stop that came just before it: %v", pending.Signal())
+		}
+	}
+	ctx, cancel := context.WithCancelCause(t.Context())
+	pending := new(stopsignal.Pending)
+	guard := &claimGuard{environment: &command.Environment{Stderr: io.Discard, Stop: pending}}
+	if _, err := guard.hold(ctx, time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-claimCtx.Done():
-		t.Fatal("the claim ended before a stop request")
-	default:
-	}
-	guard.held <- syscall.SIGTERM
-	select {
-	case <-claimCtx.Done():
-	case <-time.After(time.Minute):
-		t.Fatal("the claim outlived its time after a stop request")
-	}
-	if cause := context.Cause(claimCtx); !errors.Is(cause, errStopTimedOut) {
-		t.Fatalf("the claim ended with %v", cause)
-	}
 	guard.release()
-	if code := guard.exitCode(command.ExitOK); code != 128+int(syscall.SIGTERM) {
-		t.Fatalf("exit %d after a held SIGTERM", code)
+	cancel(stopsignal.StopError{Signal: syscall.SIGTERM})
+	if pending.Held() {
+		t.Fatal("a stop after read finished was held")
+	}
+}
+
+// A stop signal that reaches only cli.Run, just before the guard registers, cancels the command after the claim has
+// started; read still saves the message and the process then ends by that signal.
+func TestAStopThatReachesOnlyTheCommandAfterTheClaimStillEndsRead(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancelCause(t.Context())
+	defer cancel(nil)
+	instance := serveWith(t, func(request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, api.ClaimAction) {
+			cancel(stopsignal.StopError{Signal: os.Interrupt})
+		}
+	})
+	text := "saved after a late stop"
+	link := createText(t, instance, text)
+	var stdout bytes.Buffer
+	environment := readEnvironment(link, &stdout, io.Discard)
+	environment.Stop = new(stopsignal.Pending)
+	code := RunRead(ctx, environment, []string{"--stdout"})
+	if code != command.ExitOK || stdout.String() != text+"\n" || !environment.Stop.Held() ||
+		environment.Stop.Signal() != os.Interrupt {
+		t.Fatalf(
+			"exit %d, text %q, held %v %v",
+			code,
+			stdout.String(),
+			environment.Stop.Held(),
+			environment.Stop.Signal(),
+		)
+	}
+}
+
+func TestAStopBeforeTheClaimNamesTheSignal(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancelCause(t.Context())
+	cancel(stopsignal.StopError{Signal: syscall.SIGTERM})
+	guard := &claimGuard{environment: &command.Environment{Stderr: io.Discard}}
+	if _, err := guard.hold(ctx, time.Second); err == nil || err.Error() != "terminated signal received" {
+		t.Fatalf("hold refused with %v", err)
 	}
 }
 
@@ -932,6 +1038,7 @@ func childVerdict(t *testing.T, test, variable string, closedOutput bool) string
 type childRun struct {
 	verdict string
 	code    int
+	signal  syscall.Signal
 	output  []byte
 }
 
@@ -952,9 +1059,12 @@ func runChild(t *testing.T, test, variable string, closedOutput bool) childRun {
 	child.ExtraFiles = []*os.File{reportWriter}
 	err = child.Run()
 	reportWriter.Close()
-	code := 0
+	run := childRun{}
 	if exit, exited := errors.AsType[*exec.ExitError](err); exited {
-		code = exit.ExitCode()
+		run.code = exit.ExitCode()
+		if status, ok := exit.Sys().(syscall.WaitStatus); ok && status.Signaled() {
+			run.signal = status.Signal()
+		}
 	} else if err != nil {
 		t.Fatal(err)
 	}
@@ -962,7 +1072,8 @@ func runChild(t *testing.T, test, variable string, closedOutput bool) childRun {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return childRun{verdict: string(reported), code: code, output: combined.Bytes()}
+	run.verdict, run.output = string(reported), combined.Bytes()
+	return run
 }
 
 func reportVerdict(t *testing.T, verdict string) {

@@ -35,7 +35,7 @@ func protectedRun(
 		Terminal: noTerminal{},
 		Version:  "test",
 		Harden:   hook,
-	})
+	}).Code
 	return commandResult{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 

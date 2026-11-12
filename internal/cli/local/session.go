@@ -182,6 +182,9 @@ func (s *session) run(ctx context.Context, served <-chan error, timers deadlines
 	for {
 		select {
 		case <-ctx.Done():
+			if s.options.Link != nil && !s.taken {
+				return command.Failf(s.environment, "stopped before a browser took the link, which still works")
+			}
 			return command.ExitOK
 		case err := <-served:
 			return command.Failf(s.environment, "the verified client stopped: %s", err)

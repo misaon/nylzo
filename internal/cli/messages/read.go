@@ -22,6 +22,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
+	"github.com/misaon/nylzo/internal/cli/stopsignal"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
@@ -39,7 +40,6 @@ const (
 	outputDirectoryPrefix = "nylzo-"
 	attachmentPrefix      = "attachment-"
 	probeFileName         = "probe"
-	exitSignalBase        = 128
 	releasesURL           = "https://github.com/misaon/nylzo/releases"
 )
 
@@ -220,7 +220,7 @@ func RunRead(ctx context.Context, environment *command.Environment, arguments []
 	if code == command.ExitOK && loss.lost() != nil {
 		code = command.ExitError
 	}
-	return guard.exitCode(code)
+	return code
 }
 
 type outputLoss struct {
@@ -408,35 +408,49 @@ func readMessage(
 }
 
 // claimGuard keeps read running from the claim, which spends the open, until read returns: a hangup or a termination
-// request (Go's SIGTERM for a closed Windows console) waits, the first Ctrl-C only warns and the second exits. After a
-// stop request the claim and the Ack have one transfer time left; then further stop requests take effect at once.
+// request (Go's SIGTERM for a closed Windows console) waits, the first Ctrl-C only warns and the second ends the
+// process by it. After a stop request the claim and the Ack have one transfer time left; then further stop requests
+// take effect at once. Held stop requests go to Environment.Stop, so the process ends by one after read.
 type claimGuard struct {
 	environment *command.Environment
 	out         string
 	hangup      bool
 	held        chan os.Signal
 	interrupt   chan os.Signal
+	late        chan os.Signal
+	lateSent    chan struct{}
 	done        chan struct{}
 	finished    chan struct{}
 	grace       time.Duration
 	cancelClaim context.CancelCauseFunc
 	deadline    *time.Timer
-	stopped     os.Signal
+	stopLate    func() bool
+	stopped     bool
+	interrupted bool
+	warned      bool
 }
 
 func (g *claimGuard) hold(ctx context.Context, grace time.Duration) (context.Context, error) {
 	g.held = make(chan os.Signal, 1)
 	signal.Notify(g.held, g.heldSignals()...)
 	g.interrupt = make(chan os.Signal, 2)
-	signal.Notify(g.interrupt, os.Interrupt)
-	if err := ctx.Err(); err != nil {
+	stopsignal.Notify(g.interrupt, os.Interrupt)
+	if ctx.Err() != nil {
 		signal.Stop(g.held)
 		signal.Stop(g.interrupt)
-		return nil, err
+		return nil, context.Cause(ctx)
 	}
 	claimCtx, cancelClaim := context.WithCancelCause(context.WithoutCancel(ctx))
 	g.grace, g.cancelClaim = grace, cancelClaim
 	g.done, g.finished = make(chan struct{}), make(chan struct{})
+	g.late, g.lateSent = make(chan os.Signal, 1), make(chan struct{})
+	// A stop signal that reached only cli.Run, just before the registration above, is held like the others.
+	g.stopLate = context.AfterFunc(ctx, func() {
+		defer close(g.lateSent)
+		if stop, ok := errors.AsType[stopsignal.StopError](context.Cause(ctx)); ok {
+			g.late <- stop.Signal
+		}
+	})
 	go g.watch()
 	return claimCtx, nil
 }
@@ -451,20 +465,16 @@ func (g *claimGuard) heldSignals() []os.Signal {
 }
 
 func (g *claimGuard) watch() {
-	interrupted := false
 	for {
 		select {
 		case received := <-g.held:
 			g.stop(received)
+		case received := <-g.late:
+			g.stopLater(received)
 		case received := <-g.interrupt:
-			if interrupted {
-				os.Exit(exitSignalBase + int(syscall.SIGINT))
-			}
-			interrupted = true
-			g.stop(received)
-			go g.warn()
+			g.ctrlC(received)
 		case <-g.done:
-			for _, pending := range []chan os.Signal{g.held, g.interrupt} {
+			for _, pending := range []chan os.Signal{g.held, g.interrupt, g.late} {
 				select {
 				case received := <-pending:
 					g.stop(received)
@@ -477,9 +487,35 @@ func (g *claimGuard) watch() {
 	}
 }
 
+func (g *claimGuard) ctrlC(received os.Signal) {
+	if g.interrupted {
+		stopsignal.Exit(received)
+	}
+	g.interrupted = true
+	g.stop(received)
+	g.warnOnce()
+}
+
+// stopLater does not count a late Ctrl-C: the guard may have received the same one, and counting it twice would end
+// read before it saved the message.
+func (g *claimGuard) stopLater(received os.Signal) {
+	g.stop(received)
+	if received == os.Interrupt {
+		g.warnOnce()
+	}
+}
+
+func (g *claimGuard) warnOnce() {
+	if !g.warned {
+		g.warned = true
+		go g.warn()
+	}
+}
+
 func (g *claimGuard) stop(received os.Signal) {
-	if g.stopped == nil {
-		g.stopped = received
+	g.environment.Stop.Hold(received)
+	if !g.stopped {
+		g.stopped = true
 		g.deadline = time.AfterFunc(g.grace, func() {
 			signal.Stop(g.held)
 			signal.Reset(syscall.SIGTERM)
@@ -511,6 +547,9 @@ func (g *claimGuard) release() {
 	if g.done == nil {
 		return
 	}
+	if !g.stopLate() {
+		<-g.lateSent
+	}
 	signal.Stop(g.held)
 	signal.Stop(g.interrupt)
 	close(g.done)
@@ -520,14 +559,6 @@ func (g *claimGuard) release() {
 	}
 	g.cancelClaim(nil)
 	g.done = nil
-}
-
-// exitCode reports a stop request that read held back, as a shell expects from a process the signal ended.
-func (g *claimGuard) exitCode(code int) int {
-	if number, ok := g.stopped.(syscall.Signal); ok {
-		return exitSignalBase + int(number)
-	}
-	return code
 }
 
 // checkMetadata refuses before anything is spent: an ended message and a link of another profile.
