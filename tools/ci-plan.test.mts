@@ -98,6 +98,19 @@ test("the isolated Flatcar profile runs provisioning checks without unrelated ap
   }
 });
 
+test("a profile Caddyfile runs the Go job, which tests what Caddy logs and lets through (F11)", () => {
+  for (const [file, profileJob] of [
+    ["deploy/compose/Caddyfile", "compose"],
+    ["deploy/hetzner-flatcar/host/proxy/Caddyfile", "deployment"],
+    ["deploy/hetzner-flatcar/host/proxy/www.Caddyfile", "deployment"],
+    ["deploy/hetzner-flatcar/host/proxy/monitor.Caddyfile", "deployment"],
+  ] as const) {
+    const plan = planChecks([file], "pull_request");
+    assert.equal(plan.jobs.go, true, file);
+    assert.equal(plan.jobs[profileJob], true, file);
+  }
+});
+
 test("any change to the Caddy module runs dependency review and every check that builds or scans Caddy", () => {
   for (const file of ["deploy/caddy/go.mod", "deploy/caddy/go.sum", "deploy/caddy/main.go", "deploy/caddy/build-tags"]) {
     const plan = planChecks([file], "pull_request");

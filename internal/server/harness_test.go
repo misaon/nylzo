@@ -90,7 +90,10 @@ type testHarness struct {
 	directory  string
 	captureMu  sync.Mutex
 	lastCreate []byte
+	sent       []sentHeader
 }
+
+type sentHeader struct{ name, value string }
 
 type responseBody []byte
 
@@ -287,6 +290,7 @@ func (h *testHarness) tryDo(request *testRequest) (testResponse, responseBody, e
 	if request.token != "" {
 		h.sign(r, request.token, request.verifier, request.body)
 	}
+	h.recordSecretHeaders(r.Header)
 	response, err := h.client.Do(r)
 	if err != nil {
 		return testResponse{}, nil, err
@@ -310,6 +314,23 @@ func (h *testHarness) statusFrom(request *testRequest) int {
 		return 0
 	}
 	return response.StatusCode
+}
+
+// recordSecretHeaders keeps the exact header values a request carried, so a test can look for them as sent (F11).
+func (h *testHarness) recordSecretHeaders(header http.Header) {
+	h.captureMu.Lock()
+	defer h.captureMu.Unlock()
+	for _, name := range []string{"Authorization", api.CreateHeaderName, api.VerifierHeaderName, api.LeaseHeaderName} {
+		if value := header.Get(name); value != "" {
+			h.sent = append(h.sent, sentHeader{name, value})
+		}
+	}
+}
+
+func (h *testHarness) sentSecretHeaders() []sentHeader {
+	h.captureMu.Lock()
+	defer h.captureMu.Unlock()
+	return slices.Clone(h.sent)
 }
 
 func (h *testHarness) lastCreateRequest() []byte {

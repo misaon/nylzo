@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"io"
 	"maps"
 	"net/http"
@@ -18,6 +19,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
 	"github.com/quic-go/quic-go/http3"
 
@@ -472,5 +474,26 @@ func TestCrawlersReachOnlyPublicDocumentsOverClassicalTLS(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestFrontendRefusesSettingsThatRecordRequestHeaders covers F11: GODEBUG=http2debug prints HTTP/2 headers through the
+// standard logger, which no Caddy log excludes, QLOGDIR, also from --envfile, makes quic-go write HTTP/3 headers, and
+// a configuration that skipped the nylzo adapter skipped its logging checks.
+func TestFrontendRefusesSettingsThatRecordRequestHeaders(t *testing.T) {
+	for name, value := range map[string]string{"GODEBUG": "http2debug=2", "QLOGDIR": t.TempDir()} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(name, value)
+			err := (&Frontend{PublicURL: "https://nylzo.example", LoggingChecked: true}).Provision(caddy.Context{})
+			if !errors.Is(err, errRecordsHeaders) || !strings.Contains(err.Error(), name) {
+				t.Fatalf("Provision with %s set: %v", name, err)
+			}
+		})
+	}
+	if err := (&Frontend{PublicURL: "https://nylzo.example"}).Provision(caddy.Context{}); !errors.Is(
+		err,
+		errLoggingUnchecked,
+	) {
+		t.Fatalf("Provision without the adapter's check: %v", err)
 	}
 }

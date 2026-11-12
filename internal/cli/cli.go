@@ -20,6 +20,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/stopsignal"
 	"github.com/misaon/nylzo/internal/cli/verifyclient"
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/debugenv"
 )
 
 type subcommand struct {
@@ -229,10 +230,18 @@ func stopOnSignal(pending *stopsignal.Pending, cancel context.CancelCauseFunc) f
 	}
 }
 
-// protect hardens the process before the command reads anything secret, and fails closed without the hook (F07).
+// protect hardens the process before the command reads anything secret, and fails closed without the hook (F07) or
+// with a setting that would log request headers (F11).
 func protect(environment *command.Environment, level harden.Level) (int, bool) {
 	if level == harden.Off {
 		return command.ExitOK, true
+	}
+	if setting := debugenv.HTTP2HeaderDump(environment.Getenv); setting != "" {
+		return command.Failf(
+			environment,
+			"%s makes Go write request headers, which carry keys and passphrase verifiers, to the log; unset it",
+			setting,
+		), false
 	}
 	if environment.Harden == nil {
 		return command.Failf(environment, "this build cannot protect its process, so it reads no secret"), false

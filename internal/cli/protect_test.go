@@ -97,6 +97,39 @@ func TestACommandReadsNoSecretWithoutProtection(t *testing.T) {
 	}
 }
 
+// TestACommandRefusesSettingsThatLogRequestHeaders covers F11: GODEBUG=http2debug makes net/http print every header,
+// verifier and signature included, and the refusal comes before stdin is read.
+func TestACommandRefusesSettingsThatLogRequestHeaders(t *testing.T) {
+	for _, listed := range commands() {
+		if listed.protect == harden.Off {
+			continue
+		}
+		t.Run(listed.name, func(t *testing.T) {
+			stdin := &watchedInput{}
+			variables := map[string]string{"GODEBUG": "http2debug=2"}
+			result := protectedRun(stdin, variables, noHarden, listed.name, "--server", "https://nylzo.example")
+			if result.code != command.ExitError || stdin.read || result.stdout != "" ||
+				!strings.Contains(result.stderr, "GODEBUG=http2debug=2") {
+				t.Fatalf(
+					"exit %d, stdin read %t, stdout %q, stderr %q",
+					result.code,
+					stdin.read,
+					result.stdout,
+					result.stderr,
+				)
+			}
+		})
+	}
+	if result := protectedRun(
+		&watchedInput{},
+		map[string]string{"GODEBUG": "http2debug=2"},
+		nil,
+		"version",
+	); result.code != command.ExitOK {
+		t.Fatalf("version sends no request: exit %d, %s", result.code, result.stderr)
+	}
+}
+
 func TestTheSwapWarningAndItsOptOut(t *testing.T) {
 	exposed := func(harden.Level) (string, error) { return "swap on /swap.img is not encrypted", nil }
 	shown := protectedRun(&watchedInput{}, nil, exposed, "status", "-h")

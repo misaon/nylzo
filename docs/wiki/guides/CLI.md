@@ -39,6 +39,8 @@ Second, it shuts out debuggers that run as the same user, and it stops when one 
 
 Third, on Linux the command locks all of its memory with `mlockall`, so no secret reaches swap, when the memlock limit is unlimited or the process has `CAP_IPC_LOCK` outside a user namespace. It first raises its soft limit to the hard limit. Under a finite limit it does not lock, because an allocation past the limit would later stop the process, and scrypt alone takes 256 MiB. It then reads `/proc/swaps` (or, when that is hidden, asks the kernel whether any swap is active) and warns on stderr about every swap area that dm-crypt does not encrypt on each path down to the disk. zram counts as memory unless it writes pages back to a device, and an area nylzo cannot trace counts as unencrypted. To clear the warning, encrypt swap or give your user an unlimited memlock limit (`memlock` in `/etc/security/limits.conf`, or `LimitMEMLOCK=infinity` in a systemd unit). `NYLZO_ALLOW_SWAP=1` (or `true`) hides it. macOS encrypts swap, and the CLI checks the `vm.swapusage` flag. Go cannot lock its heap on Windows, so turn on BitLocker for the system drive, which also encrypts the page file. Hibernation writes all memory to disk, locked pages included, so only disk encryption covers it.
 
+The same commands refuse to start while `GODEBUG` contains `http2debug=1` or `http2debug=2`. Go's HTTP/2 code would then print every request header to stderr, the passphrase verifier among them, and a pasted debug log together with the link lets its reader guess the passphrase offline (F11).
+
 ## Create a message
 
 Use a private directory and synthetic data while experimenting. Read real secrets from a private input file; avoid typing them into a recorded terminal.

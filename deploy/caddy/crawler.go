@@ -20,19 +20,19 @@ import (
 )
 
 const (
-	crawlerOption     = "nylzo_crawler_tls"
-	crawlerMatcher    = "nylzo_crawler"
-	postQuantumCurve  = "x25519mlkem768"
-	classicalCurve    = "x25519"
-	defaultHTTPSPort  = 443
-	crawlerAdapterKey = "nylzo"
+	crawlerOption    = "nylzo_crawler_tls"
+	crawlerMatcher   = "nylzo_crawler"
+	postQuantumCurve = "x25519mlkem768"
+	classicalCurve   = "x25519"
+	defaultHTTPSPort = 443
+	adapterName      = "nylzo"
 )
 
 //go:embed crawlers.json
 var crawlerList []byte
 
 var (
-	errAdapterRequired   = errors.New(crawlerOption + " needs the Caddyfile loaded with --adapter " + crawlerAdapterKey)
+	errAdapterRequired   = errors.New(crawlerOption + " needs the Caddyfile loaded with --adapter " + adapterName)
 	errNoCrawlerSite     = errors.New(crawlerOption + " names no site served on the HTTPS port")
 	errPolicyNotQuantum  = errors.New("allows more than " + postQuantumCurve)
 	errPolicyWiderThan   = errors.New("also serves a host that " + crawlerOption + " does not name")
@@ -44,7 +44,7 @@ func init() {
 	caddy.RegisterModule(new(Crawler))
 	caddy.RegisterModule(CrawlerSites{})
 	httpcaddyfile.RegisterGlobalOption(crawlerOption, parseCrawlerSites)
-	caddyconfig.RegisterAdapter(crawlerAdapterKey, crawlerAdapter{})
+	caddyconfig.RegisterAdapter(adapterName, nylzoAdapter{})
 }
 
 type crawlerFile struct {
@@ -128,12 +128,13 @@ func parseCrawlerSites(dispenser *caddyfile.Dispenser, _ any) (any, error) {
 	return httpcaddyfile.App{Name: crawlerOption, Value: caddyconfig.JSON(CrawlerSites{Hosts: hosts}, nil)}, nil
 }
 
-type crawlerAdapter struct{}
+type nylzoAdapter struct{}
 
-// Adapt lets the named sites also accept X25519, only from crawler addresses, by a policy ahead of their own.
+// Adapt refuses a configuration that records request headers, and lets the named sites also accept X25519, only from
+// crawler addresses, by a policy ahead of their own.
 //
 //nolint:gocritic // caddyconfig.Adapter fixes these three unnamed results.
-func (crawlerAdapter) Adapt(body []byte, options map[string]any) ([]byte, []caddyconfig.Warning, error) {
+func (nylzoAdapter) Adapt(body []byte, options map[string]any) ([]byte, []caddyconfig.Warning, error) {
 	adapted, warnings, err := caddyfile.Adapter{ServerType: httpcaddyfile.ServerType{}}.Adapt(body, options)
 	if err != nil {
 		return nil, warnings, err
@@ -143,16 +144,21 @@ func (crawlerAdapter) Adapt(body []byte, options map[string]any) ([]byte, []cadd
 		return nil, warnings, err
 	}
 	applications, _ := config["apps"].(map[string]any)
-	sites, ok := applications[crawlerOption].(map[string]any)
-	if !ok {
-		return adapted, warnings, nil
+	sites, crawled := applications[crawlerOption].(map[string]any)
+	if crawled {
+		delete(applications, crawlerOption)
+		web, _ := applications["http"].(map[string]any)
+		if err = addCrawlerPolicies(web, stringList(sites["hosts"])); err != nil {
+			return nil, warnings, err
+		}
 	}
-	delete(applications, crawlerOption)
-	web, _ := applications["http"].(map[string]any)
-	err = addCrawlerPolicies(web, stringList(sites["hosts"]))
-	if err != nil {
+	if err = refuseHeaderDumps(); err != nil {
 		return nil, warnings, err
 	}
+	if err = refuseRequestRecording(config); err != nil {
+		return nil, warnings, err
+	}
+	markChecked(config)
 	result, err := json.Marshal(config)
 	return result, warnings, err
 }
@@ -253,5 +259,5 @@ var (
 	_ caddy.Provisioner          = (*CrawlerSites)(nil)
 	_ caddy.Provisioner          = (*Crawler)(nil)
 	_ caddytls.ConnectionMatcher = (*Crawler)(nil)
-	_ caddyconfig.Adapter        = crawlerAdapter{}
+	_ caddyconfig.Adapter        = nylzoAdapter{}
 )
