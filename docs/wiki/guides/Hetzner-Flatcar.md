@@ -202,19 +202,7 @@ Run the Tang servers at two other providers, firewalled to the server's IPv4 and
 
 It protects the pepper, the database, Caddy's TLS and ACME account keys, and the journal against a provider snapshot booted elsewhere, a leaked backup or disk, and a Hetzner token holder who copies the disk. It does not protect against a compromised running host, the provider reading guest memory or spoofing the server address, or a token holder who boots the same server into rescue mode while Tang still answers. Only Tang servers that answer only in the reboot window, or after an operator approves, close that gap, at the cost of availability.
 
-The volume is created only on an empty host. On an existing server, stop Nylzo and Caddy, move the four directories aside, create `/etc/nylzo/tang.json`, start `nylzo-storage`, copy the data back, and remove the plaintext copies. Free blocks of the old disk may still hold earlier data. On a suspected snapshot, deactivate the ACME account, revoke the certificate, [rotate the pepper](#pepper-rotation), and rotate the Tang keys.
-
-## Pepper rotation
-
-When `/var/lib/nylzo-secrets/pepper.previous` exists, `nylzo.service` mounts it read-only as `NYLZO_PEPPER_PREVIOUS_FILE`, so stored messages stay open across a rotation:
-
-```sh
-sudo mv /var/lib/nylzo-secrets/pepper /var/lib/nylzo-secrets/pepper.previous
-sudo /opt/nylzo/runtime/prepare
-sudo systemctl restart nylzo
-```
-
-`prepare` writes a new pepper whose `pepper_id` differs from the previous one, which `serve` requires, and gives both files to the container user with mode 0400. Until it runs, Nylzo refuses to start rather than run without a pepper. At start, `serve` seals every stored message with the new pepper and logs `rows-sealed`. Keep `pepper.previous` for seven days, so passphrase checks and leases of live messages still verify, then delete it and restart `nylzo` so the process forgets it. Deleting `pepper` without keeping it as `pepper.previous` closes every stored message instead: their links answer as unknown and `serve` logs `rows-unopenable` until the sweep purges them.
+The volume is created only on an empty host. On an existing server, stop Nylzo and Caddy, move the four directories aside, create `/etc/nylzo/tang.json`, start `nylzo-storage`, copy the data back, and remove the plaintext copies. Free blocks of the old disk may still hold earlier data. On a suspected snapshot, deactivate the ACME account, revoke the certificate, rotate the pepper, and rotate the Tang keys. This profile mounts no previous pepper, so rotating it closes every stored message: their links answer as unknown and `serve` logs `rows-unopenable` until the sweep purges them.
 
 ## Monitoring
 
