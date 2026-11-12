@@ -13,8 +13,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 	"unicode"
 
 	"github.com/misaon/nylzo/internal/cli/command"
@@ -36,6 +39,7 @@ const (
 	outputDirectoryPrefix = "nylzo-"
 	attachmentPrefix      = "attachment-"
 	probeFileName         = "probe"
+	exitSignalBase        = 128
 	releasesURL           = "https://github.com/misaon/nylzo/releases"
 )
 
@@ -81,7 +85,10 @@ var (
 	errOutNotMarked = errors.New(
 		"--out: the files there cannot be marked as downloaded from the internet; choose another directory",
 	)
-	errNotMarked = errors.New("a file could not be marked as downloaded from the internet, so nylzo did not keep it")
+	errNotMarked    = errors.New("a file could not be marked as downloaded from the internet, so nylzo did not keep it")
+	errStopTimedOut = errors.New(
+		"the server did not send the message in time after the stop request, so read gave up; the open may be spent",
+	)
 )
 
 type readOptions struct {
@@ -207,32 +214,60 @@ func RunRead(ctx context.Context, environment *command.Environment, arguments []
 	watched := *environment
 	watched.Stdout = &lossWatch{writer: environment.Stdout, loss: &loss}
 	watched.Stderr = &lossWatch{writer: environment.Stderr, loss: &loss}
-	code := read(ctx, &watched, arguments, &loss)
-	if code == command.ExitOK && loss.first != nil {
-		return command.ExitError
+	guard := &claimGuard{environment: &watched}
+	code := read(ctx, &watched, arguments, &loss, guard)
+	guard.release()
+	if code == command.ExitOK && loss.lost() != nil {
+		code = command.ExitError
 	}
-	return code
+	return guard.exitCode(code)
 }
 
 type outputLoss struct {
+	mutex sync.Mutex
 	first error
 }
 
+func (l *outputLoss) record(err error) {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	if l.first == nil {
+		l.first = err
+	}
+}
+
+func (l *outputLoss) lost() error {
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
+	return l.first
+}
+
+// lossWatch locks each stream on its own, since claimGuard warns from another goroutine and a stalled stderr must not
+// hold up stdout.
 type lossWatch struct {
+	mutex  sync.Mutex
 	writer io.Writer
 	loss   *outputLoss
 }
 
 func (w *lossWatch) Write(data []byte) (int, error) {
+	w.mutex.Lock()
+	defer w.mutex.Unlock()
 	written, err := w.writer.Write(data)
-	if err != nil && w.loss.first == nil {
-		w.loss.first = err
+	if err != nil {
+		w.loss.record(err)
 	}
 	return written, err
 }
 
 // read creates the output directory before the claim, so a write problem never spends an open.
-func read(ctx context.Context, environment *command.Environment, arguments []string, loss *outputLoss) int {
+func read(
+	ctx context.Context,
+	environment *command.Environment,
+	arguments []string,
+	loss *outputLoss,
+	guard *claimGuard,
+) int {
 	flags, options := readFlags(environment)
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
@@ -257,7 +292,9 @@ func read(ctx context.Context, environment *command.Environment, arguments []str
 		}
 		defer removeIfEmpty(directory)
 	}
-	opened, err := readMessage(ctx, environment, server, &link, options.passphrase)
+	guard.out = options.out
+	guard.hangup = options.out != "" || !environment.Terminal.StdoutIsTerminal()
+	opened, claimCtx, err := readMessage(ctx, environment, server, &link, options.passphrase, guard)
 	if err != nil {
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
@@ -266,32 +303,43 @@ func read(ctx context.Context, environment *command.Environment, arguments []str
 	if err != nil {
 		return command.Failf(environment, "the message was opened but could not be saved: %s", err)
 	}
-	if err = server.Ack(ctx, link.id, &link.keys.R, opened.lease); err != nil && !client.IsKind(err, api.ErrorGone) {
+	if !options.stdout {
+		for _, path := range paths {
+			fmt.Fprintln(environment.Stdout, path)
+		}
+	}
+	acknowledge(claimCtx, environment, server, &link, opened.lease)
+	return finishRead(environment, paths, loss)
+}
+
+func acknowledge(
+	ctx context.Context,
+	environment *command.Environment,
+	server *client.Client,
+	link *openLink,
+	lease string,
+) {
+	if err := server.Ack(ctx, link.id, &link.keys.R, lease); err != nil && !client.IsKind(err, api.ErrorGone) {
 		fmt.Fprintf(
 			environment.Stderr,
 			"%s: warning: the server did not confirm the read; it frees the message when the lease ends\n",
 			command.Program,
 		)
 	}
-	return finishRead(environment, paths, options.stdout, loss)
 }
 
-func finishRead(environment *command.Environment, paths []string, toStdout bool, loss *outputLoss) int {
-	if !toStdout {
-		for _, path := range paths {
-			fmt.Fprintln(environment.Stdout, path)
-		}
-	}
-	if loss.first == nil {
+func finishRead(environment *command.Environment, paths []string, loss *outputLoss) int {
+	lost := loss.lost()
+	if lost == nil {
 		return command.ExitOK
 	}
 	if len(paths) == 0 {
-		return command.Failf(environment, "part of the output could not be written: %s", loss.first)
+		return command.Failf(environment, "part of the output could not be written: %s", lost)
 	}
 	return command.Failf(
 		environment,
 		"part of the output could not be written (%s); the files are in %s",
-		loss.first,
+		lost,
 		filepath.Dir(paths[0]),
 	)
 }
@@ -307,35 +355,43 @@ func readMessage(
 	server *client.Client,
 	link *openLink,
 	source passphraseSource,
-) (openedMessage, error) {
+	guard *claimGuard,
+) (openedMessage, context.Context, error) {
 	metadata, err := server.Metadata(ctx, link.id, &link.keys.R)
 	if err != nil {
-		return openedMessage{}, err
+		return openedMessage{}, nil, err
 	}
 	if checkErr := checkMetadata(link, &metadata); checkErr != nil {
-		return openedMessage{}, checkErr
+		return openedMessage{}, nil, checkErr
 	}
 	passphraseKey, err := passphraseKey(environment, link, source)
 	if err != nil {
-		return openedMessage{}, err
+		return openedMessage{}, nil, err
 	}
 	defer clear(passphraseKey)
 	verifier, err := keys.DeriveVerifier(link.id, &link.secret, passphraseKey)
 	if err != nil {
-		return openedMessage{}, err
+		return openedMessage{}, nil, err
 	}
 	defer clear(verifier[:])
-	fetched, lease, err := fetchEnvelope(ctx, server, link, &verifier, metadata.Size)
+	claimCtx, err := guard.hold(ctx, client.TransferTime(metadata.Size))
 	if err != nil {
-		return openedMessage{}, err
+		return openedMessage{}, nil, err
+	}
+	fetched, lease, err := fetchEnvelope(claimCtx, server, link, &verifier, metadata.Size)
+	if err != nil && errors.Is(context.Cause(claimCtx), errStopTimedOut) {
+		return openedMessage{}, nil, errStopTimedOut
+	}
+	if err != nil {
+		return openedMessage{}, nil, err
 	}
 	defer clear(fetched.Object)
 	if !headerMatches(&fetched, link, &metadata) {
-		return openedMessage{}, errPolicyChanged
+		return openedMessage{}, nil, errPolicyChanged
 	}
 	contentKeys, err := contentKeysOf(link, passphraseKey, fetched.ShareKey, fetched.Share)
 	if err != nil {
-		return openedMessage{}, errTampered
+		return openedMessage{}, nil, errTampered
 	}
 	defer contentKeys.Wipe()
 	expected := envelope.Expected{
@@ -346,9 +402,132 @@ func readMessage(
 	}
 	_, payload, err := envelope.Open(&contentKeys, &expected, fetched.Object)
 	if err != nil {
-		return openedMessage{}, errTampered
+		return openedMessage{}, nil, errTampered
 	}
-	return openedMessage{payload: payload, lease: lease}, nil
+	return openedMessage{payload: payload, lease: lease}, claimCtx, nil
+}
+
+// claimGuard keeps read running from the claim, which spends the open, until read returns: a hangup or a termination
+// request (Go's SIGTERM for a closed Windows console) waits, the first Ctrl-C only warns and the second exits. After a
+// stop request the claim and the Ack have one transfer time left; then further stop requests take effect at once.
+type claimGuard struct {
+	environment *command.Environment
+	out         string
+	hangup      bool
+	held        chan os.Signal
+	interrupt   chan os.Signal
+	done        chan struct{}
+	finished    chan struct{}
+	grace       time.Duration
+	cancelClaim context.CancelCauseFunc
+	deadline    *time.Timer
+	stopped     os.Signal
+}
+
+func (g *claimGuard) hold(ctx context.Context, grace time.Duration) (context.Context, error) {
+	g.held = make(chan os.Signal, 1)
+	signal.Notify(g.held, g.heldSignals()...)
+	g.interrupt = make(chan os.Signal, 2)
+	signal.Notify(g.interrupt, os.Interrupt)
+	if err := ctx.Err(); err != nil {
+		signal.Stop(g.held)
+		signal.Stop(g.interrupt)
+		return nil, err
+	}
+	claimCtx, cancelClaim := context.WithCancelCause(context.WithoutCancel(ctx))
+	g.grace, g.cancelClaim = grace, cancelClaim
+	g.done, g.finished = make(chan struct{}), make(chan struct{})
+	go g.watch()
+	return claimCtx, nil
+}
+
+// heldSignals leaves a hangup alone when nohup ignores it, or when the only output is the terminal that hung up.
+func (g *claimGuard) heldSignals() []os.Signal {
+	held := []os.Signal{syscall.SIGTERM}
+	if g.hangup && !signal.Ignored(syscall.SIGHUP) {
+		held = append(held, syscall.SIGHUP)
+	}
+	return held
+}
+
+func (g *claimGuard) watch() {
+	interrupted := false
+	for {
+		select {
+		case received := <-g.held:
+			g.stop(received)
+		case received := <-g.interrupt:
+			if interrupted {
+				os.Exit(exitSignalBase + int(syscall.SIGINT))
+			}
+			interrupted = true
+			g.stop(received)
+			go g.warn()
+		case <-g.done:
+			for _, pending := range []chan os.Signal{g.held, g.interrupt} {
+				select {
+				case received := <-pending:
+					g.stop(received)
+				default:
+				}
+			}
+			close(g.finished)
+			return
+		}
+	}
+}
+
+func (g *claimGuard) stop(received os.Signal) {
+	if g.stopped == nil {
+		g.stopped = received
+		g.deadline = time.AfterFunc(g.grace, func() {
+			signal.Stop(g.held)
+			signal.Reset(syscall.SIGTERM)
+			g.cancelClaim(errStopTimedOut)
+		})
+	}
+}
+
+func (g *claimGuard) warn() {
+	if g.out == "" {
+		command.Warnf(
+			g.environment,
+			"opening the message spends an open, so read prints it before it stops, "+
+				"though Ctrl-C may have stopped a program that reads its output; "+
+				"a second Ctrl-C stops read at once and loses this open",
+		)
+		return
+	}
+	command.Warnf(
+		g.environment,
+		"opening the message spends an open, so read saves it before it stops; "+
+			"a second Ctrl-C stops read at once, loses this open and may leave part of the message "+
+			"in a nylzo- directory inside %s",
+		g.out,
+	)
+}
+
+func (g *claimGuard) release() {
+	if g.done == nil {
+		return
+	}
+	signal.Stop(g.held)
+	signal.Stop(g.interrupt)
+	close(g.done)
+	<-g.finished
+	if g.deadline != nil {
+		g.deadline.Stop()
+	}
+	g.cancelClaim(nil)
+	g.done = nil
+}
+
+// exitCode reports a stop request that read held back, as a shell expects from a process the signal ended.
+func (g *claimGuard) exitCode(code int) int {
+	if number, ok := g.stopped.(syscall.Signal); ok {
+		return exitSignalBase + int(number)
+	}
+	return code
 }
 
 // checkMetadata refuses before anything is spent: an ended message and a link of another profile.
@@ -566,7 +745,7 @@ func writeWithFallback(
 	base string,
 	files []outputFile,
 ) ([]string, error) {
-	paths, err := writeAll(directory, files)
+	paths, err := writeAll(environment, directory, files)
 	if err == nil {
 		return paths, nil
 	}
@@ -579,10 +758,51 @@ func writeWithFallback(
 		environment.Stderr,
 		"%s: warning: writing the files failed, trying a second new directory next to the first\n", command.Program,
 	)
-	if paths, err = writeAll(fallback, files); err != nil {
+	if paths, err = writeAll(environment, fallback, files); err != nil {
 		return nil, outputError(err)
 	}
 	return paths, nil
+}
+
+func warnLeftovers(environment *command.Environment, err error) {
+	left, found := errors.AsType[*leftoverError](err)
+	if !found {
+		return
+	}
+	for _, path := range left.paths {
+		command.Warnf(
+			environment,
+			"could not remove %s after the failed write; it may hold all or part of the message in plaintext, "+
+				"so delete it",
+			path,
+		)
+	}
+}
+
+type leftoverError struct {
+	error
+
+	paths []string
+}
+
+func (e *leftoverError) Unwrap() error {
+	return e.error
+}
+
+func removeAfter(err error, directory *os.Root, names ...string) error {
+	var left []string
+	for _, name := range names {
+		if removeErr := directory.Remove(name); removeErr != nil && !errors.Is(removeErr, fs.ErrNotExist) {
+			left = append(left, filepath.Join(directory.Name(), name))
+		}
+	}
+	if len(left) == 0 {
+		return err
+	}
+	if earlier, found := errors.AsType[*leftoverError](err); found {
+		left = append(slices.Clone(earlier.paths), left...)
+	}
+	return &leftoverError{error: err, paths: left}
 }
 
 func outputError(err error) error {
@@ -592,7 +812,7 @@ func outputError(err error) error {
 	return errWriteOutput
 }
 
-func writeAll(directory *os.Root, files []outputFile) ([]string, error) {
+func writeAll(environment *command.Environment, directory *os.Root, files []outputFile) ([]string, error) {
 	var names []string
 	for _, file := range files {
 		name := file.name
@@ -602,9 +822,8 @@ func writeAll(directory *os.Root, files []outputFile) ([]string, error) {
 			err = writePrivate(directory, name, file.data)
 		}
 		if err != nil {
-			for _, written := range names {
-				_ = directory.Remove(written)
-			}
+			err = removeAfter(err, directory, names...)
+			warnLeftovers(environment, err)
 			return nil, err
 		}
 		names = append(names, name)
@@ -671,8 +890,7 @@ func writePrivate(directory *os.Root, name string, data []byte) error {
 		_, err = file.Write(data)
 	}
 	if err = errors.Join(err, file.Sync(), file.Close()); err != nil {
-		_ = directory.Remove(name)
-		return err
+		return removeAfter(err, directory, name)
 	}
 	return nil
 }

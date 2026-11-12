@@ -255,6 +255,6 @@ func timesValid(times ...string) bool {
 	return true
 }
 
-func transferTime(size int64) time.Duration {
+func TransferTime(size int64) time.Duration {
 	return max(minTransfer, time.Duration(size)*time.Second/minTransferBytesPerSecond) + transferMargin
 }
