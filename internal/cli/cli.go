@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/signal"
 	"regexp"
 	"slices"
@@ -16,6 +17,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli/harden"
 	"github.com/misaon/nylzo/internal/cli/messages"
 	"github.com/misaon/nylzo/internal/cli/operator"
+	"github.com/misaon/nylzo/internal/cli/stopsignal"
 	"github.com/misaon/nylzo/internal/cli/verifyclient"
 	"github.com/misaon/nylzo/internal/core"
 )
@@ -25,6 +27,22 @@ type subcommand struct {
 	summary string
 	run     func(context.Context, *command.Environment, []string) int
 	protect harden.Level
+	stop    stopRule
+}
+
+// stopRule tells how the process ends after a stop signal stopped the command: by that signal, or, for the server,
+// with its exit code, so that its supervisor sees a failed shutdown.
+type stopRule int
+
+const (
+	endsBySignal stopRule = iota
+	endsWithCode
+)
+
+// Exit is how the process ends after a command: by Signal when a stop signal ended the command, otherwise with Code.
+type Exit struct {
+	Code   int
+	Signal os.Signal
 }
 
 var (
@@ -40,84 +58,113 @@ var (
 
 func commands() []subcommand {
 	return []subcommand{
-		{"create", "encrypt text from stdin or a file and print its link", messages.RunCreate, harden.Full},
+		{
+			"create",
+			"encrypt text from stdin or a file and print its link",
+			messages.RunCreate,
+			harden.Full,
+			endsBySignal,
+		},
 		{
 			"read",
 			"read a link from stdin and decrypt the message into private files",
 			messages.RunRead,
 			harden.Full,
+			endsBySignal,
 		},
 		{
 			"open",
 			"open a link from stdin in the browser with the verified web client of this nylzo",
 			runOpen,
 			harden.Full,
+			endsBySignal,
 		},
 		{
 			"web",
 			"serve the verified web client of this nylzo on this computer for an instance",
 			runWeb,
 			harden.Full,
+			endsBySignal,
 		},
-		{"status", "show the state of a message from its manage token", messages.RunStatus, harden.Full},
-		{"cancel", "end a message with its manage token", messages.RunCancel, harden.Full},
-		{"report", "report a message for abuse from its link on stdin", messages.RunReport, harden.Full},
-		{"burn", "delete the remaining opens of a message from its link", messages.RunBurn, harden.Full},
-		{"serve", "run the server with the embedded web client", operator.RunServe, harden.ProcessOnly},
-		{"sweep-once", "run one sweep of the server store and exit", operator.RunSweepOnce, harden.Full},
+		{"status", "show the state of a message from its manage token", messages.RunStatus, harden.Full, endsBySignal},
+		{"cancel", "end a message with its manage token", messages.RunCancel, harden.Full, endsBySignal},
+		{"report", "report a message for abuse from its link on stdin", messages.RunReport, harden.Full, endsBySignal},
+		{"burn", "delete the remaining opens of a message from its link", messages.RunBurn, harden.Full, endsBySignal},
+		{
+			"serve",
+			"run the server with the embedded web client",
+			operator.RunServe,
+			harden.ProcessOnly,
+			endsWithCode,
+		},
+		{"sweep-once", "run one sweep of the server store and exit", operator.RunSweepOnce, harden.Full, endsBySignal},
 		{
 			"store-check",
 			"tell, without writing, whether this build can open the data directory",
 			operator.RunStoreCheck,
 			harden.Full,
+			endsBySignal,
 		},
 		{
 			"takedown",
 			"remove reported messages by id from stdin, on the server host",
 			operator.RunTakedown,
 			harden.Full,
+			endsBySignal,
 		},
 		{
 			"report-key",
 			"create the key pair that seals abuse reports for the operator",
 			operator.RunReportKey,
 			harden.Full,
+			endsBySignal,
 		},
 		{
 			"reports",
 			"open sealed abuse reports from stdin with the operator's private key",
 			operator.RunReports,
 			harden.Full,
+			endsBySignal,
 		},
 		{
 			"verify-client",
 			"check that a server sends the same web client as this nylzo",
 			verifyclient.Run,
 			harden.Off,
+			endsBySignal,
 		},
-		{"version", "print the version", runVersion, harden.Off},
+		{"version", "print the version", runVersion, harden.Off, endsBySignal},
 	}
 }
 
+// Main runs a command and then ends the process as the command stopped.
+func Main(arguments []string, environment *command.Environment) {
+	exit := Run(arguments, environment)
+	if exit.Signal != nil {
+		stopsignal.Exit(exit.Signal)
+	}
+	os.Exit(exit.Code)
+}
+
 // Run refuses a link with its key anywhere in the arguments, where other processes could read it (AK14).
-func Run(arguments []string, environment *command.Environment) int {
+func Run(arguments []string, environment *command.Environment) Exit {
 	if slices.ContainsFunc(arguments, fragmentLike.MatchString) {
 		fmt.Fprintln(
 			environment.Stderr,
 			command.Program+": a link with its key must not be on the command line; pass it on stdin, with --link-file or in NYLZO_LINK",
 		)
-		return command.ExitUsage
+		return Exit{Code: command.ExitUsage}
 	}
 	if len(arguments) > 0 && arguments[0] == "--version" {
 		arguments = append([]string{"version"}, arguments[1:]...)
 	}
 	if len(arguments) == 0 {
 		fmt.Fprint(environment.Stderr, usage())
-		return command.ExitUsage
+		return Exit{Code: command.ExitUsage}
 	}
 	if slices.Contains([]string{"help", "-h", "--help"}, arguments[0]) {
 		fmt.Fprint(environment.Stdout, usage())
-		return command.ExitOK
+		return Exit{Code: command.ExitOK}
 	}
 	index := slices.IndexFunc(commands(), func(candidate subcommand) bool { return candidate.name == arguments[0] })
 	if index < 0 {
@@ -126,16 +173,60 @@ func Run(arguments []string, environment *command.Environment) int {
 			name += " " + arguments[0]
 		}
 		fmt.Fprintf(environment.Stderr, "%s: %s\n\n%s", command.Program, name, usage())
-		return command.ExitUsage
+		return Exit{Code: command.ExitUsage}
 	}
 	listed := commands()[index]
 	if code, ok := protect(environment, listed.protect); !ok {
-		return code
+		return Exit{Code: code}
 	}
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
-	context.AfterFunc(ctx, stop)
-	return listed.run(ctx, environment, arguments[1:])
+	running := *environment
+	running.Stop = new(stopsignal.Pending)
+	ctx, cancel := context.WithCancelCause(context.Background())
+	release := stopOnSignal(running.Stop, cancel)
+	exit := Exit{Code: listed.run(ctx, &running, arguments[1:])}
+	release()
+	exit.Signal = listed.endingSignal(exit.Code, running.Stop)
+	return exit
+}
+
+// endingSignal is the stop signal the process ends by after the command returned code: one the command held back,
+// or one that stopped it, so that it failed. A command that finished its work ends with its code, and so does serve.
+func (s *subcommand) endingSignal(code int, pending *stopsignal.Pending) os.Signal {
+	if s.stop == endsWithCode || code == command.ExitOK && !pending.Held() {
+		return nil
+	}
+	return pending.Signal()
+}
+
+// stopOnSignal cancels the command on the first Ctrl-C or termination request and keeps that signal in pending; a
+// second one takes its default action and ends the process at once. The returned function stops listening, cancels
+// the command and keeps a signal that arrived meanwhile.
+func stopOnSignal(pending *stopsignal.Pending, cancel context.CancelCauseFunc) func() {
+	received := make(chan os.Signal, 1)
+	stopsignal.Notify(received, os.Interrupt, syscall.SIGTERM)
+	listened := make(chan struct{})
+	stopped := make(chan struct{})
+	go func() {
+		defer close(listened)
+		select {
+		case stop := <-received:
+			signal.Stop(received)
+			pending.Keep(stop)
+			cancel(stopsignal.StopError{Signal: stop})
+		case <-stopped:
+		}
+	}()
+	return func() {
+		signal.Stop(received)
+		cancel(nil)
+		close(stopped)
+		<-listened
+		select {
+		case stop := <-received:
+			pending.Keep(stop)
+		default:
+		}
+	}
 }
 
 // protect hardens the process before the command reads anything secret, and fails closed without the hook (F07).

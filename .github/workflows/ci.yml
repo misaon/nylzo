@@ -106,9 +106,9 @@ jobs:
       - uses: $/.github/actions/setup
         with:
           tools: go
-      - name: Cross-compile the private file, download mark, process hardening and entry point tests for Windows
+      - name: Cross-compile the private file, download mark, process hardening, stop signal and entry point tests for Windows
         run: |
-          for package in internal/privatefile internal/quarantine internal/cli/harden cmd/nylzo; do
+          for package in internal/privatefile internal/quarantine internal/cli/harden internal/cli/stopsignal cmd/nylzo; do
             GOOS=windows GOARCH=amd64 go test -c -o "$RUNNER_TEMP/windows-tests/${package##*/}.test.exe" "./${package}/"
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -153,6 +153,11 @@ jobs:
             & "$env:RUNNER_TEMP/windows-tests/$test.test.exe" '-test.v' '-test.count=1'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+      - name: A stop signal ends the process with 128 plus its number
+        shell: pwsh
+        run: |
+          & "$env:RUNNER_TEMP/windows-tests/stopsignal.test.exe" '-test.v' '-test.count=1'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   macos:
     name: Go platform tests on macOS
@@ -167,8 +172,10 @@ jobs:
       - uses: $/.github/actions/setup
         with:
           tools: go
-      - name: Private files, download marks, process hardening and the entry point on macOS
-        run: go test -count=1 ./internal/privatefile/ ./internal/quarantine/ ./internal/cli/messages/ ./internal/cli/harden/ ./cmd/nylzo/
+      - name: Private files, download marks, process hardening, stop signals and the entry point on macOS
+        run: |
+          go test -count=1 ./internal/privatefile/ ./internal/quarantine/ ./internal/cli/messages/ ./internal/cli/harden/ ./internal/cli/stopsignal/ ./cmd/nylzo/
+          go test -count=1 -run '^(TestAStopSignalEndsTheProcessByThatSignal|TestAJobThatStartedIgnoringCtrlCKeepsIgnoringIt|TestServeEndsNormallyOnATerminationRequest|TestASecondSignalStopsTheCommand)$' ./internal/cli/
 
   sca:
     name: Dependency vulnerabilities, malware, and licenses

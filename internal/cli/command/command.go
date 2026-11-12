@@ -17,6 +17,7 @@ import (
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/cli/harden"
+	"github.com/misaon/nylzo/internal/cli/stopsignal"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/privatefile"
 	"github.com/misaon/nylzo/internal/server/web"
@@ -55,6 +56,8 @@ type Environment struct {
 	Browser   func(target string) error
 	// Harden protects the process before a command reads a secret; main sets harden.Protect.
 	Harden func(harden.Level) (warning string, err error)
+	// Stop keeps the stop signal of a command, received or held back; cli.Main ends the process by it.
+	Stop *stopsignal.Pending
 }
 
 func (e *Environment) BuildInformation() buildinfo.Info {

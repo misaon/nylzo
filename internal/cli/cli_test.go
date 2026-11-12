@@ -52,18 +52,16 @@ var testPepper = bytes.Repeat([]byte{7}, pepper.SecretLen)
 
 func TestMain(tests *testing.M) {
 	if os.Getenv(reexecEnv) == "1" {
-		os.Exit(
-			Run(
-				os.Args[1:],
-				&command.Environment{
-					Stdin:    os.Stdin,
-					Stdout:   os.Stdout,
-					Stderr:   os.Stderr,
-					Getenv:   os.Getenv,
-					Terminal: noTerminal{},
-					Harden:   noHarden,
-				},
-			),
+		Main(
+			os.Args[1:],
+			&command.Environment{
+				Stdin:    os.Stdin,
+				Stdout:   os.Stdout,
+				Stderr:   os.Stderr,
+				Getenv:   os.Getenv,
+				Terminal: noTerminal{},
+				Harden:   noHarden,
+			},
 		)
 	}
 	tests.Run()
@@ -169,7 +167,7 @@ func runWith(
 			Version:  "test",
 			Harden:   noHarden,
 		},
-	)
+	).Code
 	return commandResult{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
@@ -1306,29 +1304,35 @@ func TestASecondSignalStopsTheCommand(t *testing.T) {
 		t.Skip("signals")
 	}
 	t.Parallel()
-	stdin, keep, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer keep.Close()
-	process := exec.Command(os.Args[0], "burn")
-	process.Env = append(os.Environ(), reexecEnv+"=1")
-	process.Stdin = stdin
-	if err = process.Start(); err != nil {
-		t.Fatal(err)
-	}
-	stdin.Close()
-	done := make(chan error, 1)
-	go func() { done <- process.Wait() }()
-	time.Sleep(300 * time.Millisecond)
-	process.Process.Signal(syscall.SIGTERM)
-	time.Sleep(300 * time.Millisecond)
-	process.Process.Signal(syscall.SIGTERM)
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		process.Process.Kill()
-		t.Fatal("two signals did not stop a command blocked on stdin")
+	for _, stop := range []syscall.Signal{syscall.SIGTERM, syscall.SIGINT} {
+		stdin, keep, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		process := exec.Command(os.Args[0], "burn")
+		process.Env = append(os.Environ(), reexecEnv+"=1")
+		process.Stdin = stdin
+		if err = process.Start(); err != nil {
+			t.Fatal(err)
+		}
+		stdin.Close()
+		done := make(chan error, 1)
+		go func() { done <- process.Wait() }()
+		time.Sleep(300 * time.Millisecond)
+		process.Process.Signal(stop)
+		time.Sleep(300 * time.Millisecond)
+		process.Process.Signal(stop)
+		select {
+		case err = <-done:
+		case <-time.After(10 * time.Second):
+			process.Process.Kill()
+			t.Fatalf("two %v signals did not stop a command blocked on stdin", stop)
+		}
+		keep.Close()
+		if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != -1 ||
+			exit.Sys().(syscall.WaitStatus).Signal() != stop {
+			t.Fatalf("the second %v did not end the command by itself: %v", stop, err)
+		}
 	}
 }
 

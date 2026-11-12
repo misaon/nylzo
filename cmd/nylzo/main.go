@@ -17,7 +17,7 @@ var (
 )
 
 func main() {
-	os.Exit(cli.Run(os.Args[1:], &command.Environment{
+	cli.Main(os.Args[1:], &command.Environment{
 		Stdin:    os.Stdin,
 		Stdout:   os.Stdout,
 		Stderr:   os.Stderr,
@@ -28,5 +28,5 @@ func main() {
 		Date:     date,
 		Dirty:    dirty,
 		Harden:   harden.Protect,
-	}))
+	})
 }
