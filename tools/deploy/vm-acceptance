@@ -184,6 +184,15 @@ if [[ ! -e "$directory/rebooted" ]]; then
   "$directory/nylzo" read --stdout < "$directory/restart-link" > "$directory/received"
   cmp "$directory/message" "$directory/received"
   echo 'NYLZO_VM_HOST_BUNDLE_ROLLBACK_VERIFIED'
+  "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h --generate-passphrase-file "$directory/passphrase" < "$directory/message" > "$directory/rotation-link"
+  mv /var/lib/nylzo-secrets/pepper /var/lib/nylzo-secrets/pepper.previous
+  /opt/nylzo/runtime/prepare
+  systemctl restart nylzo.service
+  verify_client
+  docker inspect nylzo --format '{{json .Config.Env}}' | grep --fixed-strings --quiet '"NYLZO_PEPPER_PREVIOUS_FILE=/run/nylzo-pepper-previous"'
+  "$directory/nylzo" read --stdout --passphrase-file "$directory/passphrase" < "$directory/rotation-link" > "$directory/received"
+  cmp "$directory/message" "$directory/received"
+  echo 'NYLZO_VM_PEPPER_ROTATION_VERIFIED'
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/live-link"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/burned-link"
   "$directory/nylzo" burn < "$directory/burned-link"
