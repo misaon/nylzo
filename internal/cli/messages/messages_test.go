@@ -7,13 +7,19 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
@@ -42,6 +48,11 @@ type testServer struct {
 
 func newTestServer(t *testing.T) *testServer {
 	t.Helper()
+	return serveWith(t, func(*http.Request) {})
+}
+
+func serveWith(t *testing.T, before func(*http.Request)) *testServer {
+	t.Helper()
 	directory := t.TempDir()
 	reportKey, err := abuse.NewKeyPair()
 	if err != nil {
@@ -68,7 +79,11 @@ func newTestServer(t *testing.T) *testServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	httpServer := httptest.NewServer(apiServer.HTTPServer().Handler)
+	handler := apiServer.HTTPServer().Handler
+	httpServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		before(request)
+		handler.ServeHTTP(writer, request)
+	}))
 	t.Cleanup(httpServer.Close)
 	t.Cleanup(apiServer.Close)
 	return &testServer{url: httpServer.URL}
@@ -99,9 +114,9 @@ func runWith(t *testing.T, stdin string, arguments ...string) commandResult {
 	return commandResult{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
-func createText(t *testing.T, instance *testServer, text string) string {
+func createText(t *testing.T, instance *testServer, text string, arguments ...string) string {
 	t.Helper()
-	result := runWith(t, text, "create", "--server", instance.url)
+	result := runWith(t, text, append([]string{"create", "--server", instance.url}, arguments...)...)
 	if result.code != command.ExitOK {
 		t.Fatalf("create: exit %d, %s", result.code, result.stderr)
 	}
@@ -333,7 +348,11 @@ func TestNamesThatFoldTogetherDoNotClash(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(directory, "taken.bin"), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	paths, err := writeAll(openRoot(t, directory), []outputFile{{"taken.bin", []byte("new")}})
+	paths, err := writeAll(
+		&command.Environment{Stderr: io.Discard},
+		openRoot(t, directory),
+		[]outputFile{{"taken.bin", []byte("new")}},
+	)
 	if err != nil || filepath.Base(paths[0]) != attachmentPrefix+"taken.bin" {
 		t.Fatalf("an existing name was not avoided: %v %v", paths, err)
 	}
@@ -384,6 +403,7 @@ func TestFallbackStaysInsideOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err = writeAll(
+		&command.Environment{Stderr: io.Discard},
 		openRoot(t, partial),
 		[]outputFile{{textFileName, []byte("x")}, {"a.bin", []byte("y")}},
 	); err == nil {
@@ -417,19 +437,23 @@ func notesPayload(text *string) envelope.Payload {
 
 func readWith(t *testing.T, link string, stdout, stderr io.Writer, arguments ...string) int {
 	t.Helper()
-	return RunRead(t.Context(), &command.Environment{
+	return RunRead(t.Context(), readEnvironment(link, stdout, stderr), arguments)
+}
+
+func readEnvironment(link string, stdout, stderr io.Writer) *command.Environment {
+	return &command.Environment{
 		Stdin:    strings.NewReader(link),
 		Stdout:   stdout,
 		Stderr:   stderr,
 		Getenv:   func(string) string { return "" },
 		Terminal: noTerminal{},
 		Version:  "test",
-	}, arguments)
+	}
 }
 
 func savedAttachments(t *testing.T, out string) []string {
 	t.Helper()
-	saved, err := filepath.Glob(filepath.Join(out, outputDirectoryPrefix+"*", "notes.bin"))
+	saved, err := filepath.Glob(filepath.Join(out, outputDirectoryPrefix+"*", "*.bin"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -529,7 +553,13 @@ func TestHelpIntoAClosedPipeFails(t *testing.T) {
 	}
 }
 
-const closedPipesChild = "NYLZO_TEST_CLOSED_PIPES"
+const (
+	closedPipesChild     = "NYLZO_TEST_CLOSED_PIPES"
+	stopSignalsChild     = "NYLZO_TEST_STOP_SIGNALS"
+	secondInterruptChild = "NYLZO_TEST_SECOND_INTERRUPT"
+	afterGraceChild      = "NYLZO_TEST_AFTER_GRACE"
+	nohupChild           = "NYLZO_TEST_NOHUP"
+)
 
 func TestReadOutlivesClosedOutputPipes(t *testing.T) {
 	if runtime.GOOS == "windows" {
@@ -540,26 +570,9 @@ func TestReadOutlivesClosedOutputPipes(t *testing.T) {
 		return
 	}
 	t.Parallel()
-	report, reportWriter, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer report.Close()
-	child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestReadOutlivesClosedOutputPipes$")
-	child.Env = append(os.Environ(), closedPipesChild+"=1")
-	child.Stdout, child.Stderr = closedPipe(t), closedPipe(t)
-	child.ExtraFiles = []*os.File{reportWriter}
-	err = child.Run()
-	reportWriter.Close()
-	exit, exited := errors.AsType[*exec.ExitError](err)
-	if err != nil && !exited {
-		t.Fatal(err)
-	}
-	if exited && exit.ExitCode() == -1 {
-		t.Fatalf("read died on its closed pipes: %v", err)
-	}
-	if reported, _ := io.ReadAll(report); string(reported) != "saved" {
-		t.Fatalf("the child reported %q", reported)
+	verdict := childVerdict(t, "TestReadOutlivesClosedOutputPipes", closedPipesChild, true)
+	if verdict != "saved" {
+		t.Fatalf("the child reported %q", verdict)
 	}
 }
 
@@ -572,6 +585,388 @@ func readIntoClosedPipes(t *testing.T) {
 	if saved := savedAttachments(t, out); code != command.ExitError || len(saved) != 1 {
 		verdict = fmt.Sprintf("exit %d, attachment %v", code, saved)
 	}
+	reportVerdict(t, verdict)
+}
+
+// A hangup, a termination request or a first Ctrl-C after the claim must not end read before the message is saved.
+func TestReadSavesTheMessageThroughStopSignalsAfterTheClaim(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no SIGHUP")
+	}
+	if os.Getenv(stopSignalsChild) != "" {
+		readThroughStopSignals(t)
+		return
+	}
+	t.Parallel()
+	verdict := childVerdict(t, "TestReadSavesTheMessageThroughStopSignalsAfterTheClaim", stopSignalsChild, false)
+	if verdict != "saved saved" {
+		t.Fatalf("the child reported %q", verdict)
+	}
+}
+
+// readThroughStopSignals cancels the context as cli.Run does on a first Ctrl-C or SIGTERM, sends the process a hangup,
+// a termination request and a Ctrl-C while the claim is on its way to the server, and with --stdout sends the first two
+// again while read prints the text.
+func readThroughStopSignals(t *testing.T) {
+	t.Helper()
+	var verdicts []string
+	for _, arguments := range [][]string{nil, {"--stdout"}} {
+		ctx, stop := context.WithCancel(t.Context())
+		instance := serveWith(t, func(request *http.Request) {
+			if strings.HasSuffix(request.URL.Path, api.ClaimAction) {
+				stop()
+				signalSelf(t, syscall.SIGHUP, syscall.SIGTERM, os.Interrupt)
+			}
+		})
+		text := "after the claim"
+		link := createWithFile(t, instance, text, "signals.bin", []byte{1})
+		out := t.TempDir()
+		stdout := &recordingStdout{}
+		if arguments != nil {
+			stdout.beforeFirstWrite = func() { signalSelf(t, syscall.SIGHUP, syscall.SIGTERM) }
+		}
+		stderr := &lockedBuffer{}
+		code := RunRead(ctx, readEnvironment(link, stdout, stderr), append(arguments, "--out", out))
+		stop()
+		saved := savedAttachments(t, out)
+		got := deliveredText(arguments, stdout.String(), saved)
+		verdict := "saved"
+		stoppedBy := []int{129, 130, 143}
+		if !slices.Contains(stoppedBy, code) || len(saved) != 1 || got != text ||
+			!strings.Contains(
+				stderr.String(),
+				"a second Ctrl-C",
+			) || strings.Contains(stderr.String(), "did not confirm") {
+			verdict = fmt.Sprintf(
+				"%v: exit %d, attachment %v, text %q, stderr %q",
+				arguments,
+				code,
+				saved,
+				got,
+				stderr.String(),
+			)
+		}
+		verdicts = append(verdicts, verdict)
+	}
+	reportVerdict(t, strings.Join(verdicts, " "))
+}
+
+type lockedBuffer struct {
+	mutex  sync.Mutex
+	buffer bytes.Buffer
+
+	afterWrite func(string)
+}
+
+func (b *lockedBuffer) Write(data []byte) (int, error) {
+	b.mutex.Lock()
+	written, err := b.buffer.Write(data)
+	b.mutex.Unlock()
+	if b.afterWrite != nil {
+		b.afterWrite(string(data))
+	}
+	return written, err
+}
+
+func (b *lockedBuffer) String() string {
+	b.mutex.Lock()
+	defer b.mutex.Unlock()
+	return b.buffer.String()
+}
+
+// A second Ctrl-C after the claim ends read at once, as the warning after the first one says.
+func TestASecondCtrlCAfterTheClaimStopsRead(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test sends itself signals")
+	}
+	if os.Getenv(secondInterruptChild) != "" {
+		interruptReadTwice(t)
+		return
+	}
+	t.Parallel()
+	child := runChild(t, "TestASecondCtrlCAfterTheClaimStopsRead", secondInterruptChild, false)
+	if child.code != 128+int(syscall.SIGINT) {
+		t.Fatalf("exit %d after a second Ctrl-C\n%s", child.code, child.output)
+	}
+}
+
+func interruptReadTwice(t *testing.T) {
+	t.Helper()
+	instance := serveWith(t, func(request *http.Request) {
+		if strings.HasSuffix(request.URL.Path, api.ClaimAction) {
+			signalSelf(t, os.Interrupt)
+		}
+	})
+	link := createWithFile(t, instance, "never saved", "signals.bin", []byte{1})
+	stderr := &lockedBuffer{afterWrite: func(written string) {
+		if strings.Contains(written, "a second Ctrl-C") {
+			signalSelf(t, os.Interrupt)
+		}
+	}}
+	code := RunRead(t.Context(), readEnvironment(link, io.Discard, stderr), []string{"--out", t.TempDir()})
+	t.Fatalf("read returned %d after a second Ctrl-C: %q", code, stderr.String())
+}
+
+func signalSelf(t *testing.T, signals ...os.Signal) {
+	t.Helper()
+	self, err := os.FindProcess(os.Getpid())
+	for _, sent := range signals {
+		if err == nil {
+			err = self.Signal(sent)
+		}
+	}
+	if err != nil {
+		t.Error(err)
+	}
+}
+
+type stalledWriter struct {
+	entered chan<- struct{}
+	release <-chan struct{}
+}
+
+func (w stalledWriter) Write(data []byte) (int, error) {
+	select {
+	case w.entered <- struct{}{}:
+	default:
+	}
+	<-w.release
+	return len(data), nil
+}
+
+func TestAStalledStderrDoesNotHoldUpStdout(t *testing.T) {
+	t.Parallel()
+	var loss outputLoss
+	entered, release := make(chan struct{}, 1), make(chan struct{})
+	defer close(release)
+	stderr := &lossWatch{writer: stalledWriter{entered: entered, release: release}, loss: &loss}
+	stdout := &lossWatch{writer: io.Discard, loss: &loss}
+	go func() { _, _ = stderr.Write([]byte("warning")) }()
+	<-entered
+	written := make(chan struct{})
+	go func() {
+		_, _ = stdout.Write([]byte("text"))
+		close(written)
+	}()
+	select {
+	case <-written:
+	case <-time.After(time.Minute):
+		t.Fatal("stdout waited for a stalled stderr")
+	}
+}
+
+type cancellingTerminal struct {
+	noTerminal
+
+	cancel     context.CancelFunc
+	passphrase string
+}
+
+func (c cancellingTerminal) ReadSecret(string) ([]byte, error) {
+	c.cancel()
+	return []byte(c.passphrase), nil
+}
+
+// A Ctrl-C before the claim, here during the passphrase prompt, ends read without spending the open.
+func TestACtrlCBeforeTheClaimSpendsNothing(t *testing.T) {
+	t.Parallel()
+	passphrase := "correct horse battery staple"
+	passphraseFile := filepath.Join(t.TempDir(), "passphrase")
+	if err := os.WriteFile(passphraseFile, []byte(passphrase+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	instance := newTestServer(t)
+	text := "still unopened"
+	link := createText(t, instance, text, "--passphrase-file", passphraseFile)
+	ctx, stop := context.WithCancel(t.Context())
+	defer stop()
+	environment := readEnvironment(link, io.Discard, io.Discard)
+	environment.Terminal = cancellingTerminal{cancel: stop, passphrase: passphrase}
+	if code := RunRead(ctx, environment, []string{"--stdout"}); code == command.ExitOK {
+		t.Fatal("read went on after a Ctrl-C before the claim")
+	}
+	result := runWith(t, link, "read", "--stdout", "--passphrase-file", passphraseFile)
+	if result.code != command.ExitOK || result.stdout != text+"\n" {
+		t.Fatalf("the open was spent: exit %d, stdout %q, stderr %q", result.code, result.stdout, result.stderr)
+	}
+}
+
+func TestReadHoldsAHangupOnlyWhenItCanStillDeliver(t *testing.T) {
+	if signal.Ignored(syscall.SIGHUP) {
+		t.Skip("the tests run with hangups ignored")
+	}
+	t.Parallel()
+	for hangup, want := range map[bool][]os.Signal{
+		true:  {syscall.SIGTERM, syscall.SIGHUP},
+		false: {syscall.SIGTERM},
+	} {
+		if got := (&claimGuard{hangup: hangup}).heldSignals(); !slices.Equal(got, want) {
+			t.Errorf("hangup %v: held %v, want %v", hangup, got, want)
+		}
+	}
+}
+
+func TestReadLeavesAHangupThatNohupIgnoresAlone(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no SIGHUP")
+	}
+	if os.Getenv(nohupChild) != "" {
+		signal.Ignore(syscall.SIGHUP)
+		reportVerdict(t, fmt.Sprint((&claimGuard{hangup: true}).heldSignals()))
+		return
+	}
+	t.Parallel()
+	if verdict := childVerdict(
+		t,
+		"TestReadLeavesAHangupThatNohupIgnoresAlone",
+		nohupChild,
+		false,
+	); verdict != "[terminated]" {
+		t.Fatalf("held %s under nohup", verdict)
+	}
+}
+
+func TestAStalledWarningDoesNotHoldUpTheEndOfRead(t *testing.T) {
+	t.Parallel()
+	entered, unblock := make(chan struct{}, 1), make(chan struct{})
+	defer close(unblock)
+	guard := &claimGuard{environment: &command.Environment{Stderr: stalledWriter{entered: entered, release: unblock}}}
+	if _, err := guard.hold(t.Context(), time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	guard.interrupt <- os.Interrupt
+	<-entered
+	released := make(chan struct{})
+	go func() {
+		guard.release()
+		close(released)
+	}()
+	select {
+	case <-released:
+	case <-time.After(time.Minute):
+		t.Fatal("read waited for a stalled warning")
+	}
+}
+
+// Once the time after a stop request has run out, a further termination request ends read at once, even though
+// cli.Run, as emulated here, still listens for SIGTERM.
+func TestAStopRequestAfterTheGraceEndsRead(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test sends itself signals")
+	}
+	if os.Getenv(afterGraceChild) != "" {
+		ctx, stop := signal.NotifyContext(t.Context(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		guard := &claimGuard{environment: &command.Environment{Stderr: io.Discard}}
+		claimCtx, err := guard.hold(ctx, time.Millisecond)
+		if err != nil {
+			t.Fatal(err)
+		}
+		guard.held <- syscall.SIGTERM
+		<-claimCtx.Done()
+		signalSelf(t, syscall.SIGTERM)
+		time.Sleep(time.Minute)
+		reportVerdict(t, "survived")
+		return
+	}
+	t.Parallel()
+	if child := runChild(t, "TestAStopRequestAfterTheGraceEndsRead", afterGraceChild, false); child.code != -1 {
+		t.Fatalf("exit %d, verdict %q after the grace\n%s", child.code, child.verdict, child.output)
+	}
+}
+
+func TestAStopRequestLeavesTheClaimOneTransferTime(t *testing.T) {
+	t.Parallel()
+	guard := &claimGuard{environment: &command.Environment{Stderr: io.Discard}, hangup: true}
+	claimCtx, err := guard.hold(t.Context(), time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-claimCtx.Done():
+		t.Fatal("the claim ended before a stop request")
+	default:
+	}
+	guard.held <- syscall.SIGTERM
+	select {
+	case <-claimCtx.Done():
+	case <-time.After(time.Minute):
+		t.Fatal("the claim outlived its time after a stop request")
+	}
+	if cause := context.Cause(claimCtx); !errors.Is(cause, errStopTimedOut) {
+		t.Fatalf("the claim ended with %v", cause)
+	}
+	guard.release()
+	if code := guard.exitCode(command.ExitOK); code != 128+int(syscall.SIGTERM) {
+		t.Fatalf("exit %d after a held SIGTERM", code)
+	}
+}
+
+// deliveredText is the text read printed with --stdout, or the text file it saved beside the attachment.
+func deliveredText(arguments []string, stdout string, saved []string) string {
+	if arguments != nil || len(saved) != 1 {
+		return strings.TrimSuffix(stdout, "\n")
+	}
+	data, err := os.ReadFile(filepath.Join(filepath.Dir(saved[0]), textFileName))
+	if err != nil {
+		return err.Error()
+	}
+	return string(data)
+}
+
+// childVerdict runs one test of this binary again in a child process, which reports its verdict on descriptor 3. A
+// child with closed output pipes cannot report a clean exit, so only a death by signal fails it; any other child must
+// pass.
+func childVerdict(t *testing.T, test, variable string, closedOutput bool) string {
+	t.Helper()
+	child := runChild(t, test, variable, closedOutput)
+	if child.code == -1 {
+		t.Fatalf("a signal ended read\n%s", child.output)
+	}
+	if child.code != 0 && !closedOutput {
+		t.Fatalf("the child exited with %d\n%s", child.code, child.output)
+	}
+	return child.verdict
+}
+
+type childRun struct {
+	verdict string
+	code    int
+	output  []byte
+}
+
+func runChild(t *testing.T, test, variable string, closedOutput bool) childRun {
+	t.Helper()
+	report, reportWriter, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer report.Close()
+	child := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^"+test+"$")
+	child.Env = append(os.Environ(), variable+"=1")
+	var combined bytes.Buffer
+	child.Stdout, child.Stderr = &combined, &combined
+	if closedOutput {
+		child.Stdout, child.Stderr = closedPipe(t), closedPipe(t)
+	}
+	child.ExtraFiles = []*os.File{reportWriter}
+	err = child.Run()
+	reportWriter.Close()
+	code := 0
+	if exit, exited := errors.AsType[*exec.ExitError](err); exited {
+		code = exit.ExitCode()
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	reported, err := io.ReadAll(report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return childRun{verdict: string(reported), code: code, output: combined.Bytes()}
+}
+
+func reportVerdict(t *testing.T, verdict string) {
+	t.Helper()
 	if _, err := os.NewFile(3, "report").WriteString(verdict); err != nil {
 		t.Fatal(err)
 	}

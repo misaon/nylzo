@@ -188,6 +188,25 @@ func TestServerStringsAreValidated(t *testing.T) {
 	}
 }
 
+func TestMetadataRefusesASizeTheProtocolDoesNotAllow(t *testing.T) {
+	t.Parallel()
+	challenge := `{"challenge":"` + core.Encode(
+		make([]byte, signing.ChallengeLen),
+	) + `","expires_at":"2026-10-24T00:00:00Z"}`
+	for _, size := range []int64{-1, envelope.MaxObjectBytes + 1} {
+		client := serve(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/v1/challenge" {
+				w.Write([]byte(challenge))
+				return
+			}
+			w.Write([]byte(`{"state":"available","kdf_id":0,"size":` + strconv.FormatInt(size, 10) + `}`))
+		})
+		if _, err := client.Metadata(t.Context(), core.NewID(), core.NewSecret()); !errors.Is(err, ErrResponse) {
+			t.Fatalf("size %d accepted: %v", size, err)
+		}
+	}
+}
+
 func TestEnvelopesAreBoundedByTheProtocol(t *testing.T) {
 	t.Parallel()
 	limit := envelope.ObjectLimit(envelope.MaxFileBytes)

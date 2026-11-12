@@ -11,6 +11,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
+	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/core/report"
 	"github.com/misaon/nylzo/internal/core/share"
@@ -130,7 +131,7 @@ func (c *Client) Create(ctx context.Context, request *CreateRequest) (time.Time,
 	if request.PoWToken != "" {
 		headers[api.WorkHeaderName] = request.PoWToken
 	}
-	timeout := transferTime(int64(len(request.Object)))
+	timeout := TransferTime(int64(len(request.Object)))
 	response, err := c.do(ctx, http.MethodPost, api.MessagesPath, headers, request.Object, timeout)
 	if err != nil {
 		return time.Time{}, err
@@ -166,7 +167,7 @@ func (c *Client) Metadata(ctx context.Context, id core.ID, read *[core.SeedLen]b
 	if err != nil {
 		return api.Metadata{}, err
 	}
-	if !api.KnownState(metadata.State) ||
+	if !api.KnownState(metadata.State) || metadata.Size < 0 || metadata.Size > envelope.MaxObjectBytes ||
 		!timesValid(metadata.CreatedAt, metadata.ExpiresAt, metadata.FirstOpenedAt, metadata.EndedAt) {
 		return api.Metadata{}, ErrResponse
 	}
