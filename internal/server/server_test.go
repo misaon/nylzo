@@ -399,7 +399,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 }
 
 func issueIDToken(server *Server, id core.ID) string {
-	token, _ := server.idTokens.Issue(id, shareEpochFor(60), server.epochs.ID(), time.Now())
+	token, _ := server.idTokens.Issue(id, shareEpochFor(60), issuingGeneration(server), time.Now())
 	return token
 }
 
@@ -987,26 +987,38 @@ func openWithShares(t *testing.T, directory string, link *core.Link, policy enve
 	defer ratchet.Close()
 	locator := seal.LocatorOf(link.ID[:])
 	now := epoch.Hour(time.Now())
-	for hour := now; hour < now+200; hour++ {
-		expiryShare, shareErr := ratchet.Share(ratchet.ID(), hour, locator, time.Now())
-		if shareErr != nil {
-			t.Fatal(shareErr)
-		}
-		derived, deriveErr := keys.DeriveAll(link.ID, &link.Secret, link.KDF, "", &expiryShare)
-		if deriveErr != nil {
-			t.Fatal(deriveErr)
-		}
-		expected := envelope.Expected{
-			ID:         link.ID,
-			Policy:     policy,
-			KDF:        link.KDF,
-			ObjectHash: &link.ObjectHash,
-		}
-		if _, _, openErr := envelope.Open(&derived.Content, &expected, object); openErr == nil {
-			return true
+	for _, generation := range ratchet.Generations() {
+		for hour := now; hour <= now+epoch.Span; hour++ {
+			expiryShare, shareErr := ratchet.Share(generation, hour, locator, time.Now())
+			if errors.Is(shareErr, epoch.ErrShareGone) {
+				continue
+			}
+			if shareErr != nil {
+				t.Fatal(shareErr)
+			}
+			if opensWith(t, link, policy, object, &expiryShare) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func opensWith(
+	t *testing.T,
+	link *core.Link,
+	policy envelope.Policy,
+	object []byte,
+	expiryShare *[core.ShareLen]byte,
+) bool {
+	t.Helper()
+	derived, err := keys.DeriveAll(link.ID, &link.Secret, link.KDF, "", expiryShare)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := envelope.Expected{ID: link.ID, Policy: policy, KDF: link.KDF, ObjectHash: &link.ObjectHash}
+	_, _, err = envelope.Open(&derived.Content, &expected, object)
+	return err == nil
 }
 
 func seedCopy(t *testing.T, seed []byte) string {
@@ -1062,13 +1074,18 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		oldSeed := liveSeed[epoch.SeedOffset : epoch.SeedOffset+epoch.SeedLen]
-		if bytes.Contains(currentSeed, oldSeed) {
-			t.Fatal("the seed file still holds the seed of the hour that has passed")
+		oldSeeds := epoch.Seeds(liveSeed)
+		if len(oldSeeds) == 0 {
+			t.Fatal("the live seed file holds no seed")
 		}
-		for where, data := range dataCopy {
-			if bytes.Contains(data, oldSeed) {
-				t.Fatalf("the copy of the data directory holds the seed in %s", where)
+		for _, oldSeed := range oldSeeds {
+			if bytes.Contains(currentSeed, oldSeed[:]) {
+				t.Fatal("the seed file still holds the seed of the hour that has passed")
+			}
+			for where, data := range dataCopy {
+				if bytes.Contains(data, oldSeed[:]) {
+					t.Fatalf("the copy of the data directory holds the seed in %s", where)
+				}
 			}
 		}
 		if openWithShares(t, seedCopy(t, currentSeed), &link, policy, object) {
@@ -1086,6 +1103,47 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 		}
 		if _, _, err = envelope.Open(&withoutShare.Content, &missing, object); err == nil {
 			t.Fatal("the link alone opened the copy")
+		}
+	})
+}
+
+// TestF12ASeedCopiedEarlierOpensNoMessageIssuedInALaterHour copies the seed file, lets the hour end and creates a
+// message: its share comes from a generation of fresh entropy that the copy cannot make (spec section 5.6).
+func TestF12ASeedCopiedEarlierOpensNoMessageIssuedInALaterHour(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.EpochDirectoryOverride = t.TempDir()
+		harness := newHarness(t, settings)
+		seedPath := filepath.Join(settings.EpochDirectoryOverride, epoch.FileName)
+		stolenSeed, err := os.ReadFile(seedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Sleep(time.Until(epoch.End(epoch.Hour(time.Now()))) + time.Minute)
+		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "issued after the copy")
+		harness.mustCreate(message)
+		response, object := harness.claim(message, message.verifier, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("claim: %d", response.StatusCode)
+		}
+		policy, err := decodePolicy(response.Header.Get(api.PolicyHeaderName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		link, err := core.ParseLink(message.linkText())
+		if err != nil {
+			t.Fatal(err)
+		}
+		currentSeed, err := os.ReadFile(seedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !openWithShares(t, seedCopy(t, currentSeed), &link, policy, object) {
+			t.Fatal("the current seed must open the message; the test would prove nothing")
+		}
+		if openWithShares(t, seedCopy(t, stolenSeed), &link, policy, object) {
+			t.Fatal("a seed copied in an earlier hour opened a message issued after that hour")
 		}
 	})
 }

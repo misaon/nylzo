@@ -80,6 +80,21 @@ func Replace(path string, content []byte) error {
 	return closeSynced(file, err)
 }
 
+// Pad writes zeros from start up to end where they lie, growing a shorter file, and syncs them. It writes them on
+// every call, so a later Replace of that length overwrites in place even after an earlier write or sync failed.
+func Pad(path string, start, end int64) error {
+	iolimit.Hold()
+	defer iolimit.Release()
+	file, err := openForOverwrite(path)
+	if err != nil {
+		return err
+	}
+	if _, err = regularSize(file); err == nil {
+		err = writeZeros(file, start, end-start)
+	}
+	return closeSynced(file, err)
+}
+
 // Shred overwrites the first length bytes and unlinks the file; the caller syncs the directory, once per batch.
 func Shred(path string, length int64) error {
 	err := Overwrite(path, length)

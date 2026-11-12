@@ -172,13 +172,13 @@ func TestIDTokensFollowTheSpec(t *testing.T) {
 	now := time.Now()
 	id := core.NewID()
 	const shareEpoch = 493_000
-	ratchet := epoch.RatchetID{7}
-	ahead, _ := tokens.Issue(id, shareEpoch, ratchet, now.Add(5*time.Second))
-	if named, ok := tokens.Valid(id, shareEpoch, ahead, now); !ok || named != ratchet {
-		t.Fatal("a token from an instance 5 s ahead must pass and name its ratchet")
+	generation := epoch.GenerationID{7}
+	ahead, _ := tokens.Issue(id, shareEpoch, generation, now.Add(5*time.Second))
+	if named, ok := tokens.Valid(id, shareEpoch, ahead, now); !ok || named != generation {
+		t.Fatal("a token from an instance 5 s ahead must pass and name its generation")
 	}
-	future, _ := tokens.Issue(id, shareEpoch, ratchet, now.Add(time.Minute))
-	expired, _ := tokens.Issue(id, shareEpoch, ratchet, now.Add(-idTokenTTL-time.Second))
+	future, _ := tokens.Issue(id, shareEpoch, generation, now.Add(time.Minute))
+	expired, _ := tokens.Issue(id, shareEpoch, generation, now.Add(-idTokenTTL-time.Second))
 	if valid(tokens, id, shareEpoch, future, now) || valid(tokens, id, shareEpoch, expired, now) ||
 		valid(tokens, core.NewID(), shareEpoch, ahead, now) {
 		t.Fatal("a token outside its window or for another id was accepted")
@@ -192,7 +192,7 @@ func TestIDTokensFollowTheSpec(t *testing.T) {
 	}
 	raw[8] ^= 1
 	if valid(tokens, id, shareEpoch, core.Encode(raw), now) {
-		t.Fatal("a token whose ratchet was changed passed")
+		t.Fatal("a token whose generation was changed passed")
 	}
 }
 

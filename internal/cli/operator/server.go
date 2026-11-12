@@ -230,10 +230,20 @@ func prepareEpoch(settings *config.Server, logger *slog.Logger) error {
 		return err
 	}
 	directory := settings.EpochDirectory()
-	if _, err := epoch.Inspect(directory); err != nil {
+	if _, err := inspectEpoch(directory); err != nil {
 		return err
 	}
 	return requireErasable(epoch.ErasablePaths(directory), settings.Development, logger)
+}
+
+// inspectEpoch runs in secret mode, because it reads every seed of the file.
+func inspectEpoch(directory string) (epoch.State, error) {
+	var (
+		state epoch.State
+		err   error
+	)
+	secretmode.Do(func() { state, err = epoch.Inspect(directory) })
+	return state, err
 }
 
 // upgradingOpen erases a data directory of nylzo 0.1 or 0.2 before it opens it, because protocol version 2 reads
