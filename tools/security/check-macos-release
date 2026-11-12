@@ -1,0 +1,193 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Usage: check-macos-release DIR, where DIR holds the release build's nylzo_darwin_*/nylzo binaries.
+# Every probe must first reach a control copy signed without the hardened runtime, so a broken probe fails the check.
+# Without System Integrity Protection macOS loads DYLD_INSERT_LIBRARIES into hardened processes and hands out their
+# task ports, so those probes run only where it is on; GitHub's macOS runners have it off.
+
+fail() {
+  echo "check-macos-release: $1" >&2
+  exit 1
+}
+
+[[ $# -eq 1 ]] || fail 'usage: check-macos-release DIR'
+[[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]] ||
+  fail 'this check turns on Developer Tools access without a password, so it runs only on GitHub-hosted runners'
+sip=$(csrutil status)
+
+work=$(mktemp -d)
+cleanup() {
+  exec 2> /dev/null
+  pkill -KILL -P $$ || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+# Go ignores SIGALRM, so the child is killed. SIP drops DYLD_* for /usr/bin/perl, so INJECT reaches only the child.
+within() {
+  perl -e 'my $seconds = shift; my $child = fork; defined $child or die "fork: $!";
+    if ($child == 0) { $ENV{DYLD_INSERT_LIBRARIES} = $ENV{INJECT} if exists $ENV{INJECT}; exec @ARGV or exit 127 }
+    $SIG{ALRM} = sub { kill "KILL", $child }; alarm $seconds; waitpid $child, 0;
+    exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
+}
+
+build_probes() {
+  cat > "$work/inject.c" << 'C'
+#include <stdio.h>
+__attribute__((constructor)) static void injected(void) { fputs("injected library ran\n", stderr); }
+C
+  cat > "$work/memory.c" << 'C'
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#include <stdlib.h>
+#include <string.h>
+
+extern kern_return_t task_read_for_pid(mach_port_t target_tport, int pid, mach_port_t *t);
+
+int main(int argc, char **argv) {
+  mach_port_t task;
+  if (argc != 3) return 1;
+  int pid = atoi(argv[2]);
+  kern_return_t granted = strcmp(argv[1], "read") == 0 ? task_read_for_pid(mach_task_self(), pid, &task)
+                                                        : task_for_pid(mach_task_self(), pid, &task);
+  if (granted != KERN_SUCCESS) return 3;
+  mach_vm_address_t address = 0;
+  mach_vm_size_t size = 0;
+  int regions = 0;
+  for (;;) {
+    vm_region_basic_info_data_64_t info;
+    mach_msg_type_number_t count = VM_REGION_BASIC_INFO_COUNT_64;
+    mach_port_t object;
+    if (mach_vm_region(task, &address, &size, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&info, &count, &object) != KERN_SUCCESS) {
+      return regions == 0 ? 5 : 4;
+    }
+    regions++;
+    if (info.protection & VM_PROT_WRITE) {
+      vm_offset_t data;
+      mach_msg_type_number_t read;
+      if (mach_vm_read(task, address, 16, &data, &read) == KERN_SUCCESS) return 0;
+    }
+    address += size;
+  }
+}
+C
+  cat > "$work/debugger.plist" << 'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>com.apple.security.cs.debugger</key><true/></dict></plist>
+PLIST
+  clang -dynamiclib -arch arm64 -arch x86_64 -o "$work/inject.dylib" "$work/inject.c"
+  clang -o "$work/memory" "$work/memory.c"
+  codesign --force --sign - --entitlements "$work/debugger.plist" "$work/memory" 2> /dev/null
+}
+
+start_silent_server() {
+  perl -MIO::Socket::INET -e '$| = 1; my $server = IO::Socket::INET->new(Listen => 8, LocalAddr => "127.0.0.1", LocalPort => 0)
+    or die "listen: $!"; print $server->sockport, "\n"; my @held; while (my $client = $server->accept) { push @held, $client }' \
+    > "$work/port" &
+  local attempt
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
+    [[ -s "$work/port" ]] && break
+    sleep 0.5
+  done
+  port=$(cat "$work/port")
+  [[ "$port" =~ ^[0-9]+$ ]] || fail "the silent server did not start after $attempt attempts"
+}
+
+check_signature() {
+  local binary=$1 details entitlements
+  codesign --verify --strict "$binary" || fail "$binary has no valid signature"
+  details=$(codesign --display --verbose=1 "$binary" 2>&1)
+  grep -qx 'Identifier=nylzo' <<< "$details" || fail "$binary is not signed as nylzo"
+  grep -q 'flags=0x10002(adhoc,runtime) ' <<< "$details" || fail "$binary lacks the hardened runtime: $details"
+  entitlements=$(codesign --display --entitlements - --xml "$binary" 2> /dev/null) || fail "codesign cannot read $binary"
+  [[ -z "$entitlements" ]] || fail "$binary carries entitlements: $entitlements"
+}
+
+check_injection() {
+  local binary=$1 control=$2 version output
+  version=$(within 30 "$binary" version) || fail "$binary does not run"
+  output=$(INJECT="$work/inject.dylib" within 30 "$control" version 2>&1) || fail "the control copy of $binary does not run"
+  grep -q 'injected library ran' <<< "$output" || fail "the control copy of $binary did not load the injected library"
+  output=$(INJECT="$work/inject.dylib" within 30 "$binary" version 2>&1) || fail "$binary does not run with DYLD_INSERT_LIBRARIES"
+  [[ "$output" == "$version" ]] || fail "$binary loaded a library from DYLD_INSERT_LIBRARIES: $output"
+}
+
+memory() {
+  local status=0
+  within 10 "$work/memory" "$1" "$2" || status=$?
+  echo "$status"
+}
+
+lldb_attach() {
+  within 20 lldb --batch --attach-pid "$1" -o 'process detach' 2>&1 || true
+}
+
+# verify-client does not protect itself, so only the signature decides what the probe gets. It waits about 30 seconds
+# for the silent server, longer than any probe may take, and must still be alive afterwards.
+on_waiting() {
+  local binary=$1 probe=$2 target
+  shift 2
+  "$binary" verify-client --server "http://127.0.0.1:$port" > /dev/null 2>&1 &
+  target=$!
+  sleep 2
+  kill -0 "$target" || fail "$binary did not wait for the silent server"
+  "$probe" "$@" "$target"
+  kill -0 "$target" || fail "$binary exited before the probe finished"
+  kill -KILL "$target"
+  wait "$target" 2> /dev/null || true
+}
+
+check_debuggers() {
+  local binary=$1 control=$2 mode output
+  for mode in full read; do
+    [[ "$(on_waiting "$control" memory "$mode")" == 0 ]] ||
+      fail "the $mode probe could not read the memory of the control copy of $binary"
+    [[ "$(on_waiting "$binary" memory "$mode")" == 3 ]] ||
+      fail "another process of the user got the $mode task port of $binary"
+  done
+  output=$(on_waiting "$control" lldb_attach)
+  if grep -q 'attach failed' <<< "$output" || ! grep -q 'Process [0-9]* stopped' <<< "$output"; then
+    fail "lldb could not attach to the control copy of $binary: $output"
+  fi
+  output=$(on_waiting "$binary" lldb_attach)
+  grep -q 'attach failed' <<< "$output" || fail "lldb was not refused by $binary: $output"
+  if grep -qi 'no such process' <<< "$output"; then
+    fail "lldb did not find $binary: $output"
+  fi
+}
+
+arch -x86_64 /usr/bin/true 2> /dev/null || sudo softwareupdate --install-rosetta --agree-to-license > /dev/null
+build_probes
+protected=false
+if grep -q 'status: enabled' <<< "$sip"; then
+  protected=true
+  sudo DevToolsSecurity -enable > /dev/null
+  sudo dseditgroup -o edit -a "$(id -un)" -t user _developer
+  within 60 lldb --batch -o 'version' > /dev/null
+  start_silent_server
+else
+  echo "check-macos-release: DYLD_INSERT_LIBRARIES, task ports and lldb are not checked here: $sip"
+fi
+architectures=''
+for binary in "$1"/nylzo_darwin_*/nylzo; do
+  [[ -f "$binary" ]] || fail "no darwin binaries in $1"
+  chmod +x "$binary"
+  architecture=$(lipo -archs "$binary")
+  architectures="$architectures $architecture"
+  control="$work/control-$architecture/nylzo"
+  mkdir "$(dirname "$control")"
+  cp "$binary" "$control"
+  codesign --force --sign - --identifier nylzo "$control" 2> /dev/null
+  check_signature "$binary"
+  within 30 "$binary" version > /dev/null || fail "$binary does not run"
+  if [[ "$protected" == true ]]; then
+    check_injection "$binary" "$control"
+    check_debuggers "$binary" "$control"
+    echo "$binary: hardened runtime; DYLD_INSERT_LIBRARIES, both task ports and lldb are refused"
+  else
+    echo "$binary: valid signature with the hardened runtime, runs"
+  fi
+done
+[[ "$architectures" == ' x86_64 arm64' ]] || fail "expected the x86_64 and arm64 binaries, found:$architectures"

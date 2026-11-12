@@ -39,6 +39,7 @@ test("Go and web changes retain integration coverage and their language security
   assert.equal(web.jobs.web, true);
   assert.equal(web.jobs["codeql-web"], true);
   assert.equal(web.jobs.build, true);
+  assert.equal(web.jobs["macos-release"], true);
   assert.equal(web.jobs.go, false);
   assert.equal(planChecks(["web/package.json"], "pull_request").dependencies, true);
 });

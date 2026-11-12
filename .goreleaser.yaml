@@ -21,6 +21,9 @@ builds:
     ldflags: &ldflags
       - -s -w -X main.version={{ .Version }} -X main.commit={{ .FullCommit }} -X main.date={{ .CommitDate }} -X main.dirty={{ .IsGitDirty }}
     mod_timestamp: "{{ .CommitTimestamp }}"
+    hooks:
+      post:
+        - cmd: '{{ if eq .Os "darwin" }}go run ./tools/codesign "{{ .Path }}"{{ else }}true{{ end }}'
   - id: caddy
     dir: deploy/caddy
     main: &caddy_main .
