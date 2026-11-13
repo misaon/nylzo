@@ -90,6 +90,15 @@ func requirePathInPlace(path string, checked map[uint64]mount) error {
 	return checkInPlace(path, found)
 }
 
+// OnTmpfs reports whether the path lies on a tmpfs, which no disk image or backup of the host holds.
+func OnTmpfs(path string) (bool, error) {
+	var stat unix.Statfs_t
+	if err := unix.Statfs(path, &stat); err != nil {
+		return false, err
+	}
+	return stat.Type == unix.TMPFS_MAGIC, nil
+}
+
 func describeMount(path string, device uint64) (mount, error) {
 	var stat unix.Statfs_t
 	if err := unix.Statfs(path, &stat); err != nil {
@@ -100,8 +109,7 @@ func describeMount(path string, device uint64) (mount, error) {
 		options, err := ext4Options(device)
 		return mount{fileSystem: ext4Name, dataOptions: options}, err
 	case unix.TMPFS_MAGIC:
-		active, err := swapActive()
-		return mount{fileSystem: tmpfsName, swapActive: active}, err
+		return describeTmpfs(device)
 	default:
 		name, known := fileSystemNames[stat.Type]
 		if !known {
@@ -109,6 +117,21 @@ func describeMount(path string, device uint64) (mount, error) {
 		}
 		return mount{fileSystem: name}, nil
 	}
+}
+
+// describeTmpfs reads the mount options only while swap is active: a tmpfs mounted with noswap (Linux 6.4 or later)
+// never writes its pages to swap.
+func describeTmpfs(device uint64) (mount, error) {
+	active, err := swapActive()
+	if err != nil || !active {
+		return mount{fileSystem: tmpfsName, swapActive: active}, err
+	}
+	found, err := mountOf(device)
+	if err != nil {
+		return mount{}, err
+	}
+	noSwap := hasOption(strings.Split(found.superOptions, ","), "noswap")
+	return mount{fileSystem: tmpfsName, swapActive: true, noSwap: noSwap}, nil
 }
 
 // ext4Options joins the effective options with the super options of the mount table and refuses to guess without

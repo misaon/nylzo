@@ -446,6 +446,7 @@ type Ratchet struct {
 	state    state
 	unsynced bool
 	closed   bool
+	pinned   []byte
 	replace  func(path string, content []byte) error
 }
 
@@ -588,12 +589,30 @@ func (r *Ratchet) Covers(id GenerationID, shareEpoch uint32) bool {
 	return named != nil && named.makes(r.state.minute, shareEpoch)
 }
 
+// Pin locks the pages of the seed file in memory until Close, so swap turned on while the ratchet runs never receives
+// them; it does nothing outside Linux. The file is rewritten in place, so the same pages stay locked.
+func (r *Ratchet) Pin() error {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	if r.closed {
+		return errClosed
+	}
+	if r.pinned != nil {
+		return nil
+	}
+	mapping, err := pinFile(r.path)
+	r.pinned = mapping
+	return err
+}
+
 // Close erases the seeds from memory; a share asked for afterwards fails instead of reading as lost.
 func (r *Ratchet) Close() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	r.closed = true
 	clear(r.state.slots[:])
+	unpinFile(r.pinned)
+	r.pinned = nil
 }
 
 func (r *Ratchet) advanceLocked(now time.Time) error {

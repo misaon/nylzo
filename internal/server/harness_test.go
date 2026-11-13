@@ -141,6 +141,7 @@ func baseSettings(pepper, previous []byte) *config.Server {
 	settings.Rates.SourcePerSecond = 1 << 20
 	settings.Rates.SourceBurst = 1 << 20
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
+	settings.Development.AllowSwap = true
 	return &settings
 }
 

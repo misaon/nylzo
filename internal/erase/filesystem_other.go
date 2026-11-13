@@ -11,3 +11,8 @@ func RequireInPlace(paths ...string) error {
 	}
 	return checkInPlace(paths[0], mount{fileSystem: "a " + runtime.GOOS + " file system"})
 }
+
+// OnTmpfs reports false outside Linux, where the server knows no file system that keeps files only in memory.
+func OnTmpfs(string) (bool, error) {
+	return false, nil
+}

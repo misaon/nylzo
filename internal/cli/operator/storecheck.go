@@ -12,6 +12,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/epoch"
+	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
@@ -96,6 +97,9 @@ func checkEpochDirectory(settings *config.Server, output io.Writer, logger *slog
 		return nil
 	case err != nil:
 		return err
+	}
+	if leftoverErr := server.RefuseEpochInDataDirectory(settings); leftoverErr != nil {
+		return leftoverErr
 	}
 	if erasableErr := requireErasable(
 		epoch.ErasablePaths(directory),

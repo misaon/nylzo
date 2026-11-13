@@ -130,14 +130,14 @@ func TestStoreCheckRefusesWhatServeRefuses(t *testing.T) {
 			}
 		})
 	}
-	unreadable := map[string]func(t *testing.T, epochDirectory string){
-		"a missing epoch directory": func(t *testing.T, epochDirectory string) {
+	unreadable := map[string]func(t *testing.T, dataDirectory, epochDirectory string){
+		"a missing epoch directory": func(t *testing.T, _, epochDirectory string) {
 			t.Helper()
 			if err := os.Remove(epochDirectory); err != nil {
 				t.Fatal(err)
 			}
 		},
-		"a seed others can read": func(t *testing.T, epochDirectory string) {
+		"a seed others can read": func(t *testing.T, _, epochDirectory string) {
 			t.Helper()
 			if err := os.WriteFile(
 				filepath.Join(epochDirectory, epoch.FileName),
@@ -147,7 +147,7 @@ func TestStoreCheckRefusesWhatServeRefuses(t *testing.T) {
 				t.Fatal(err)
 			}
 		},
-		"an epoch directory nobody can read": func(t *testing.T, epochDirectory string) {
+		"an epoch directory nobody can read": func(t *testing.T, _, epochDirectory string) {
 			t.Helper()
 			if os.Getuid() == 0 {
 				t.Skip("root reads every directory")
@@ -164,18 +164,29 @@ func TestStoreCheckRefusesWhatServeRefuses(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = os.Chmod(epochDirectory, 0o700) })
 		},
+		"a seed left in the data directory": func(t *testing.T, dataDirectory, _ string) {
+			t.Helper()
+			leftover := filepath.Join(dataDirectory, "epoch")
+			if err := os.Mkdir(leftover, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			seed := filepath.Join(leftover, epoch.FileName)
+			if err := os.WriteFile(seed, make([]byte, epoch.FileLen), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		},
 	}
 	for name, prepare := range unreadable {
 		t.Run(name, func(t *testing.T) {
 			if runtime.GOOS == "windows" {
 				t.Skip("Windows has no POSIX modes")
 			}
-			epochDirectory := filepath.Join(t.TempDir(), "epoch")
+			dataDirectory, epochDirectory := t.TempDir(), filepath.Join(t.TempDir(), "epoch")
 			if err := os.Mkdir(epochDirectory, 0o700); err != nil {
 				t.Fatal(err)
 			}
-			prepare(t, epochDirectory)
-			if result := storeCheck(t, t.TempDir(), epochDirectory); result.code != command.ExitError {
+			prepare(t, dataDirectory, epochDirectory)
+			if result := storeCheck(t, dataDirectory, epochDirectory); result.code != command.ExitError {
 				t.Fatalf("store-check accepted %s: %q", name, result.stdout)
 			}
 		})

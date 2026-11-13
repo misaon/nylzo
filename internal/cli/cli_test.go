@@ -83,6 +83,7 @@ func newTestServer(t *testing.T, change func(*config.Server)) *testServer {
 	settings.Pepper = bytes.Clone(testPepper)
 	settings.ReportKey = testReportKey.PublicKey()
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
+	settings.Development.AllowSwap = true
 	settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1<<20, 1<<20
 	settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1<<20, 1<<20
 	settings.Rates.CreatePerHour, settings.Rates.CreatePerDay, settings.Rates.ReadPerHour = 1000, 1000, 1000

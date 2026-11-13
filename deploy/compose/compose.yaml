@@ -18,6 +18,7 @@ services:
     environment:
       NYLZO_LISTEN: ":8080"
       NYLZO_DATA_DIR: /home/nonroot
+      NYLZO_EPOCH_DIR: /run/nylzo-epoch
       NYLZO_PEPPER_FILE: /run/secrets/nylzo_pepper
       NYLZO_REPORT_KEY: ${NYLZO_REPORT_KEY:?set NYLZO_REPORT_KEY; create it with nylzo report-key on your own computer}
       NYLZO_TRUSTED_PROXIES: 172.30.80.2/32,fd1f:9791:e50b::2/128
@@ -29,6 +30,11 @@ services:
     secrets: [nylzo_pepper]
     volumes:
       - nylzo-data:/home/nonroot
+      - type: bind
+        source: /run/nylzo/epoch
+        target: /run/nylzo-epoch
+        bind:
+          create_host_path: false
     networks: [nylzo]
     logging: &logging
       driver: local

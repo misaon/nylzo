@@ -98,6 +98,28 @@ export function installLines(tab: InstallTab, domain: string): readonly (readonl
           number('0700'),
           argument('caddy-state'),
         ],
+        [
+          command('sudo'),
+          command('swapoff'),
+          flag('-a'),
+          operator('&&'),
+          command('sudo'),
+          command('sed'),
+          flag('-i.bak'),
+          argument(String.raw`'/\sswap\s/s/^/#/'`),
+          argument('/etc/fstab'),
+        ],
+        [
+          command('sudo'),
+          command('cp'),
+          argument('nylzo-epoch.conf'),
+          argument('/etc/tmpfiles.d/'),
+          operator('&&'),
+          command('sudo'),
+          command('systemd-tmpfiles'),
+          flag('--create'),
+          argument('nylzo-epoch.conf'),
+        ],
         [command('docker'), word('compose'), word('up'), flag('-d')],
       ];
     }
@@ -157,4 +179,6 @@ export const LINE_DELAYS = [
   '[--reveal-delay:1640ms]',
   '[--reveal-delay:1810ms]',
   '[--reveal-delay:1980ms]',
+  '[--reveal-delay:2150ms]',
+  '[--reveal-delay:2320ms]',
 ] as const;
