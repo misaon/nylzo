@@ -5,6 +5,7 @@ import {
   FLAG_DEADLINE,
   formatShareKey,
   idToString,
+  KE2_LENGTH,
   MAX_OBJECT_BYTES,
   MAX_POW_DIFFICULTY,
   parseChallenge,
@@ -12,11 +13,10 @@ import {
   parseWrappedShare,
   PURPOSE_MANAGE,
   PURPOSE_READ,
-  PURPOSE_VERIFIER,
+  REGISTRATION_RESPONSE_LENGTH,
   signRequest,
   transferSeconds,
   utf8,
-  verifierHeader,
 } from '@nylzo/core';
 import type { KdfId, Purpose, RequestKey, ShareKey } from '@nylzo/core';
 
@@ -69,6 +69,7 @@ export interface Issued {
   readonly epoch: number;
   readonly deadline: number;
   readonly share: Uint8Array<ArrayBuffer>;
+  readonly registration: Uint8Array<ArrayBuffer>;
 }
 
 export interface Instance {
@@ -80,6 +81,7 @@ export interface Instance {
 interface Creation {
   readonly ttlSeconds: number;
   readonly shareKey: Uint8Array;
+  readonly registrationRequest: Uint8Array;
 }
 
 export interface CreateRequest {
@@ -88,7 +90,7 @@ export interface CreateRequest {
   readonly epoch: number;
   readonly deadline: number;
   readonly readKey: Uint8Array;
-  readonly verifierKey: Uint8Array;
+  readonly registration: Uint8Array;
   readonly manageKey: Uint8Array;
   readonly kdfId: KdfId;
   readonly opensMax: number;
@@ -127,12 +129,34 @@ interface Claimed extends Envelope {
   readonly lease: string;
 }
 
+// KE2 of the handshake (spec 6.4) and the challenge that a claim or burn presents with its KE3.
+interface Handshake {
+  readonly ke2: Uint8Array<ArrayBuffer>;
+  readonly challenge: Uint8Array<ArrayBuffer>;
+  readonly attemptsLeft: number;
+  readonly retryAfter: number;
+}
+
+export interface Login {
+  readonly challenge: Uint8Array<ArrayBuffer>;
+  readonly ke3: Uint8Array;
+}
+
+// Runs a handshake and KE3 for each attempt, since a claim or burn spends the challenge of its handshake.
+export type Unlock = () => Promise<Login>;
+
 interface ClaimOptions {
-  readonly verifierKey: RequestKey;
+  readonly unlock: Unlock;
   readonly shareKeys: ShareKeys;
   readonly onLease?: (lease: string) => void;
   readonly onProgress?: DownloadProgress;
   readonly proceed?: () => boolean;
+}
+
+// A download that resumes a claimed open runs its own handshake, whose challenge it signs with KE3 (spec 6.5).
+interface BlobOptions {
+  readonly onProgress?: DownloadProgress;
+  readonly unlock?: Unlock;
 }
 
 export interface ApiOptions {
@@ -145,17 +169,18 @@ export interface Api {
   transparency: () => Promise<Transparency>;
   create: (request: CreateRequest) => Promise<{ readonly expiresAt: string }>;
   metadata: (id: Uint8Array, readKey: RequestKey) => Promise<Metadata>;
+  handshake: (id: Uint8Array, readKey: RequestKey, ke1: Uint8Array, lease?: string) => Promise<Handshake>;
   claim: (id: Uint8Array, readKey: RequestKey, options: ClaimOptions) => Promise<Claimed>;
   blob: (
     id: Uint8Array,
     readKey: RequestKey,
     lease: string,
     shareKeys: ShareKeys,
-    onProgress?: DownloadProgress,
+    options?: BlobOptions,
   ) => Promise<Envelope>;
   challenge: () => Promise<Uint8Array<ArrayBuffer>>;
   ack: (id: Uint8Array, readKey: RequestKey, lease: string, challenge?: Uint8Array<ArrayBuffer>) => Promise<void>;
-  burn: (id: Uint8Array, readKey: RequestKey, verifierKey: RequestKey) => Promise<void>;
+  burn: (id: Uint8Array, readKey: RequestKey, unlock: Unlock) => Promise<void>;
   cancel: (id: Uint8Array, manageKey: RequestKey) => Promise<void>;
   status: (id: Uint8Array, manageKey: RequestKey) => Promise<Status>;
 }
@@ -165,7 +190,7 @@ interface SignedRequest {
   readonly path: string;
   readonly purpose: Purpose;
   readonly key: RequestKey;
-  readonly verifier?: RequestKey | undefined;
+  readonly unlock?: Unlock | undefined;
   readonly headers?: Readonly<Record<string, string>>;
   readonly attemptHeaders?: () => Readonly<Record<string, string>>;
   readonly json?: Json;
@@ -185,7 +210,7 @@ function createHeader(request: CreateRequest): string {
     id_token: request.idToken,
     epoch: request.epoch,
     read_key: encodeBase64url(request.readKey),
-    verifier_key: encodeBase64url(request.verifierKey),
+    registration: encodeBase64url(request.registration),
     manage_key: encodeBase64url(request.manageKey),
     kdf_id: request.kdfId,
     opens_max: request.opensMax,
@@ -216,6 +241,17 @@ function shareOf(response: Response): Uint8Array<ArrayBuffer> | undefined {
   } catch {
     throw new ResponseError('a malformed share');
   }
+}
+
+function bytesOf(json: Json, name: string, length: number): Uint8Array<ArrayBuffer> {
+  let bytes: Uint8Array<ArrayBuffer> | undefined;
+  try {
+    bytes = decodeBase64url(text(json, name));
+  } catch {}
+  if (bytes?.length !== length) {
+    throw new ResponseError(`a malformed ${name}`);
+  }
+  return bytes;
 }
 
 // The envelope flags this client opens, so the server refuses a message it could not open before a claim spends an
@@ -255,6 +291,7 @@ function issuedOf(create: Json, ttlSeconds: number): Issued {
     epoch: integer(create, 'epoch'),
     deadline: deadlineOf(create, ttlSeconds),
     share: parseWrappedShare(text(create, 'share')),
+    registration: bytesOf(create, 'registration', REGISTRATION_RESPONSE_LENGTH),
   };
 }
 
@@ -323,13 +360,22 @@ export function createApi(options: ApiOptions = {}): Api {
   }
 
   async function signedOnce(request: SignedRequest, timeoutMs: number): Promise<Response> {
-    const fresh = request.challenge ?? (await challenge());
+    const login = await request.unlock?.();
+    const fresh = login?.challenge ?? request.challenge ?? (await challenge());
     const headers: Record<string, string> = { ...request.headers, ...request.attemptHeaders?.() };
+    if (login) {
+      headers['X-Nylzo-KE3'] = encodeBase64url(login.ke3);
+    }
     const body = request.json === undefined ? undefined : utf8(JSON.stringify(request.json));
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
     }
-    const components = { shareKey: headers['X-Nylzo-Share-Key'] ?? '', lease: headers['X-Nylzo-Lease'] ?? '' };
+    const components = {
+      shareKey: headers['X-Nylzo-Share-Key'] ?? '',
+      lease: headers['X-Nylzo-Lease'] ?? '',
+      ke1: headers['X-Nylzo-KE1'] ?? '',
+      ke3: headers['X-Nylzo-KE3'] ?? '',
+    };
     const signature = await signRequest(
       request.key,
       request.purpose,
@@ -340,18 +386,6 @@ export function createApi(options: ApiOptions = {}): Api {
       components,
     );
     headers['Authorization'] = authorizationHeader(signature);
-    if (request.verifier) {
-      const verifier = await signRequest(
-        request.verifier,
-        PURPOSE_VERIFIER,
-        request.method,
-        request.path,
-        fresh,
-        undefined,
-        components,
-      );
-      headers['X-Nylzo-Verifier'] = verifierHeader(verifier);
-    }
     if (request.proceed?.() === false) {
       throw new StoppedError();
     }
@@ -380,7 +414,11 @@ export function createApi(options: ApiOptions = {}): Api {
       const headers =
         creation === undefined
           ? undefined
-          : { 'X-Nylzo-Ttl': String(creation.ttlSeconds), 'X-Nylzo-Share-Key': formatShareKey(creation.shareKey) };
+          : {
+              'X-Nylzo-Ttl': String(creation.ttlSeconds),
+              'X-Nylzo-Share-Key': formatShareKey(creation.shareKey),
+              'X-Nylzo-Registration': encodeBase64url(creation.registrationRequest),
+            };
       const { limits, pow, create } = await fetchJson('/api/v1/instance', headers);
       if (!isObject(limits) || !isObject(pow) || typeof pow['required'] !== 'boolean') {
         throw new ResponseError();
@@ -470,6 +508,24 @@ export function createApi(options: ApiOptions = {}): Api {
       };
     },
 
+    // A reader that resumes a claimed open names its lease, so the handshake runs on a message it already opened.
+    async handshake(id, readKey, ke1, lease) {
+      const response = await signed({
+        method: 'POST',
+        path: `${messagePath(id)}/handshake`,
+        purpose: PURPOSE_READ,
+        key: readKey,
+        headers: { 'X-Nylzo-KE1': encodeBase64url(ke1), ...(lease !== undefined && { 'X-Nylzo-Lease': lease }) },
+      });
+      const json = await readJson(response);
+      return {
+        ke2: bytesOf(json, 'ke2', KE2_LENGTH),
+        challenge: parseChallenge(text(json, 'challenge')),
+        attemptsLeft: integer(json, 'attempts_left'),
+        retryAfter: integer(json, 'retry_after'),
+      };
+    },
+
     async claim(id, readKey, claimOptions) {
       const sent = sentShareKey(claimOptions.shareKeys);
       return sent.completed(async () => {
@@ -479,7 +535,7 @@ export function createApi(options: ApiOptions = {}): Api {
             path: `${messagePath(id)}/claim`,
             purpose: PURPOSE_READ,
             key: readKey,
-            verifier: claimOptions.verifierKey,
+            unlock: claimOptions.unlock,
             headers: READER_FLAGS,
             attemptHeaders: sent.headers,
             proceed: claimOptions.proceed,
@@ -495,7 +551,7 @@ export function createApi(options: ApiOptions = {}): Api {
       });
     },
 
-    async blob(id, readKey, lease, shareKeys, onProgress) {
+    async blob(id, readKey, lease, shareKeys, blobOptions = {}) {
       const sent = sentShareKey(shareKeys);
       return sent.completed(async () => {
         const response = await signed(
@@ -504,6 +560,7 @@ export function createApi(options: ApiOptions = {}): Api {
             path: `${messagePath(id)}/blob`,
             purpose: PURPOSE_READ,
             key: readKey,
+            unlock: blobOptions.unlock,
             headers: { ...READER_FLAGS, 'X-Nylzo-Lease': lease },
             attemptHeaders: sent.headers,
           },
@@ -511,7 +568,7 @@ export function createApi(options: ApiOptions = {}): Api {
         );
         const policy = servedPolicy(response.headers.get('X-Nylzo-Policy'));
         const share = shareOf(response);
-        return { policy, share, shareKey: sent.last(), object: await readObject(response, onProgress) };
+        return { policy, share, shareKey: sent.last(), object: await readObject(response, blobOptions.onProgress) };
       });
     },
 
@@ -530,14 +587,8 @@ export function createApi(options: ApiOptions = {}): Api {
       });
     },
 
-    async burn(id, readKey, verifierKey) {
-      await signed({
-        method: 'POST',
-        path: `${messagePath(id)}/burn`,
-        purpose: PURPOSE_READ,
-        key: readKey,
-        verifier: verifierKey,
-      });
+    async burn(id, readKey, unlock) {
+      await signed({ method: 'POST', path: `${messagePath(id)}/burn`, purpose: PURPOSE_READ, key: readKey, unlock });
     },
 
     async cancel(id, manageKey) {

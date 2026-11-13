@@ -5,7 +5,7 @@ import { prefersReducedMotion } from 'svelte/motion';
 
 import { createApi } from '../../../shared/api/api.ts';
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
-import { scryptInWorker, solvePowInWorker, stopRunningWorkers } from '../../../shared/kdf/kdf.ts';
+import { solvePowInWorker, stopRunningWorkers, stretchInWorker } from '../../../shared/kdf/kdf.ts';
 import { formatBytes, formatDuration, formatWait } from '../../../shared/language/format.ts';
 import type { Translator } from '../../../shared/language/translator.svelte.ts';
 import { instanceOrigin, servedByLocalClient } from '../../../shared/local-client/instance-origin.ts';
@@ -480,7 +480,7 @@ export class Composer {
     try {
       const created = await createMessage(
         input,
-        { api: this.#api, origin: instanceOrigin(), scrypt: scryptInWorker, solvePow: solvePowInWorker },
+        { api: this.#api, origin: instanceOrigin(), stretch: stretchInWorker, solvePow: solvePowInWorker },
         (progress) => {
           if (!stale()) {
             this.#onProgress(progress);

@@ -159,6 +159,7 @@ export const messages: Catalog = {
   'problem.opens.out_of_range': 'Die Anzahl der Aufrufe muss zwischen 1 und {max} liegen.',
   'problem.passphrase.too_short': 'Noch {missing} zu kurz (mindestens {min}), oder wählen Sie „Generieren“.',
   'problem.passphrase.malformed': 'Das Passwort enthält ungültige Zeichen.',
+  'problem.passphrase.too_long': 'Das Passwort ist zu lang.',
   'problem.passphrase.repetitive': 'Das Passwort besteht aus zu wenigen verschiedenen Zeichen.',
   'problem.passphrase.sequential': 'Das Passwort ist eine fortlaufende Folge von Buchstaben, Ziffern oder Tasten.',
   'problem.passphrase.context': 'Das Passwort besteht hauptsächlich aus dem Wort Nylzo.',
@@ -208,7 +209,7 @@ export const messages: Catalog = {
   'sent.state.deleted': 'Gelöscht',
   'sent.label.time': 'Gültigkeit',
   'sent.label.opens': 'Aufrufe',
-  'sent.label.attempts': 'Falsche Passwörter',
+  'sent.label.attempts': 'Fehlgeschlagene Versuche',
   'sent.label.first_opened': 'Erster Aufruf',
   'sent.not_opened': 'noch nicht',
   'sent.until': 'bis {time}',
@@ -252,6 +253,7 @@ export const messages: Catalog = {
   'read.title': 'Einmalige Nachricht',
   'read.loading': 'Nachricht wird geladen…',
   'read.retry_later': 'Der Dienst ist überlastet. Versuchen Sie es in {time} erneut.',
+  'read.wait': 'Nach zu vielen fehlgeschlagenen Versuchen ist das Öffnen pausiert. Versuchen Sie es in {time} erneut.',
   'read.ended.opened': 'Die Nachricht wurde bereits geöffnet.',
   'read.ended.expired': 'Die Nachricht ist abgelaufen.',
   'read.ended.cancelled': 'Der Absender hat die Nachricht widerrufen.',
@@ -268,8 +270,7 @@ export const messages: Catalog = {
     'Das Passwort stimmt nicht. Sie haben die Nachricht noch nicht geöffnet. Noch {attempts}, danach müssen Sie kurz warten.',
   'read.rejected.wait': 'Das Passwort stimmt nicht. Der nächste Versuch ist in {time} möglich.',
   'read.rejected.malformed': 'Das Passwort enthält ungültige Zeichen.',
-  'read.rejected.wrong_or_changed':
-    'Die Nachricht konnte nicht entschlüsselt werden: Das Passwort stimmt nicht oder die Daten wurden verändert. Geben Sie das Passwort erneut ein.',
+  'read.rejected.long': 'Das Passwort ist zu lang.',
   'read.delete': 'Ohne Öffnen löschen',
   'read.delete.rest': 'Nachricht löschen',
   'read.delete.rest.short': 'Löschen',
@@ -516,7 +517,7 @@ export const messages: Catalog = {
   'step.derive.title': 'Schlüssel werden abgeleitet',
   'step.derive.detail':
     'HKDF-SHA-256 leitet den Inhaltsschlüssel und die Schlüssel ab, mit denen das Öffnen signiert wird',
-  'step.derive.detail.passphrase': 'scrypt aus dem Passwort, dann HKDF-SHA-256',
+  'step.derive.detail.passphrase': 'OPAQUE und scrypt aus dem Passwort, dann HKDF-SHA-256',
   'step.encrypt.label': 'Verschlüsselung',
   'step.encrypt.title': 'Inhalt wird verschlüsselt',
   'step.encrypt.detail': 'AES-256-GCM, auf ganze Blöcke aufgefüllt',
@@ -667,7 +668,7 @@ export const messages: Catalog = {
   'how.link.meta.title': 'Version',
   'how.link.meta.meta': 'nur zur Kompatibilität',
   'how.link.meta.body':
-    'Die 2 ist die Version des Linkformats, die 0 steht für eine Nachricht ohne Passwort. Eine ältere Nylzo-Version erkennt an der Version einen Link aus einer neueren und meldet das, statt ihn als beschädigt zu bezeichnen. Der Server kennt beide Werte auch aus der Nachricht, dieser Teil verrät ihm also nichts Neues.',
+    'Die 3 ist die Version des Linkformats, die 0 steht für eine Nachricht ohne Passwort. Eine ältere Nylzo-Version erkennt an der Version einen Link aus einer neueren und meldet das, statt ihn als beschädigt zu bezeichnen. Der Server kennt beide Werte auch aus der Nachricht, dieser Teil verrät ihm also nichts Neues.',
   'how.link.id.title': 'Nachrichten-ID',
   'how.link.id.meta': 'damit findet der Server die Nachricht',
   'how.link.id.body':

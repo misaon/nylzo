@@ -27,7 +27,7 @@ interface Sample {
 
 async function sample(file?: Uint8Array): Promise<Sample> {
   const id = randomId();
-  const keys = await deriveContent(id, newSecret(), new Uint8Array(0), newSecret());
+  const keys = await deriveContent(id, newSecret(), new Uint8Array(64), newSecret());
   return {
     id,
     keys,

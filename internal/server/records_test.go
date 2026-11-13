@@ -239,6 +239,17 @@ func TestTheWrapLayersFollowTheSpec(t *testing.T) {
 	if err != nil || opened != recordKey {
 		t.Fatalf("a wrap built from the spec does not open: %v", err)
 	}
+	salt, registration := seal.NewEraseSalt(), bytes.Repeat([]byte{7}, seal.RegistrationLen)
+	registrationWrap := aead(salt[:], locator[:], "nylzo/v3/record/registration").
+		Seal(nil, nil, registration, aad("registration"))
+	unwrapped, err := seal.UnwrapRegistration(&salt, locator, registrationWrap)
+	if err != nil || !bytes.Equal(unwrapped, registration) {
+		t.Fatalf("a registration wrap built from the spec does not open: %v", err)
+	}
+	otherSalt := seal.NewEraseSalt()
+	if _, err = seal.UnwrapRegistration(&otherSalt, locator, registrationWrap); err == nil {
+		t.Fatal("another erase salt opened the registration")
+	}
 }
 
 // failingRebuild seals rows as the store does and then fails, as a rebuild that a reader blocks would.

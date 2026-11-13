@@ -10,13 +10,12 @@ import { hash } from '../primitives/identifiers.ts';
 export const PUBLIC_KEY_LENGTH = 32;
 export const CHALLENGE_LENGTH = 36;
 export const PURPOSE_READ = 'read';
-export const PURPOSE_VERIFIER = 'verifier';
 export const PURPOSE_MANAGE = 'manage';
 
-export type Purpose = typeof PURPOSE_READ | typeof PURPOSE_VERIFIER | typeof PURPOSE_MANAGE;
+export type Purpose = typeof PURPOSE_READ | typeof PURPOSE_MANAGE;
 
 const AUTHORIZATION_SCHEME = 'Nylzo-Sig';
-const REQUEST_LABEL = 'nylzo/v2/request';
+const REQUEST_LABEL = 'nylzo/v3/request';
 const FIELD_SEPARATOR = new Uint8Array(1);
 const PKCS8_ED25519_PREFIX = decodeBase64urlExact('MC4CAQAwBQYDK2VwBCIEIA', 16);
 const GENERATE_ATTEMPTS = 8;
@@ -136,6 +135,8 @@ export async function newRequestKey(): Promise<RequestKey> {
 export interface RequestComponents {
   readonly shareKey?: string;
   readonly lease?: string;
+  readonly ke1?: string;
+  readonly ke3?: string;
 }
 
 function encodedComponent(value = ''): Uint8Array<ArrayBuffer> {
@@ -161,6 +162,8 @@ export async function requestMessage(
     await hash(body),
     encodedComponent(components.shareKey),
     encodedComponent(components.lease),
+    encodedComponent(components.ke1),
+    encodedComponent(components.ke3),
   );
 }
 
@@ -184,10 +187,6 @@ export async function signRequest(
 export function authorizationHeader({ publicKey, challenge, signature }: RequestSignature): string {
   const credentials = [publicKey, challenge, signature].map((bytes) => encodeBase64url(bytes)).join('.');
   return `${AUTHORIZATION_SCHEME} ${credentials}`;
-}
-
-export function verifierHeader({ publicKey, signature }: RequestSignature): string {
-  return `${encodeBase64url(publicKey)}.${encodeBase64url(signature)}`;
 }
 
 export function parseChallenge(text: string): Uint8Array<ArrayBuffer> {

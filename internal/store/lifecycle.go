@@ -10,10 +10,7 @@ import (
 	"github.com/misaon/nylzo/internal/seal"
 )
 
-var (
-	errClaimParameters = errors.New("store: claim needs a clock, and a verifier check when a verifier is sent")
-	errVerifierCheck   = errors.New("store: a sent verifier needs a check")
-)
+var errClaimParameters = errors.New("store: claim needs a clock")
 
 type Removal int
 
@@ -54,49 +51,113 @@ func (r *Record) Lease(mac []byte) *Lease {
 	return nil
 }
 
+// Claim spends an open of a message whose handshake the caller has finished with a matching KE3.
 func Claim(ctx context.Context, messages Messages, record *Record, parameters ClaimParameters) (ClaimResult, error) {
-	if parameters.Clock == nil || !parameters.Verifier.checkable() {
+	if parameters.Clock == nil {
 		return ClaimResult{}, errClaimParameters
 	}
 	var result ClaimResult
-	var refusal PassphraseError
-	refused := false
 	err := record.update(ctx, messages, parameters.Clock(), func(current *Record) error {
 		now := parameters.Clock()
-		result, refused = ClaimResult{}, false
+		result = ClaimResult{}
 		if err := claimClosed(current, now); err != nil {
 			return err
-		}
-		if current.Message.PassphraseRequired() {
-			if refusal, refused = checkPassphrase(current.Message, &parameters.Verifier, now); refused {
-				return nil
-			}
 		}
 		result = ClaimResult{Message: current.Message, Lease: consumeOpen(current, &parameters, now)}
 		return nil
 	})
+	if err != nil {
+		return ClaimResult{}, err
+	}
+	return result, nil
+}
+
+// CountAttempt counts a handshake as a failed passphrase attempt until a matching KE3 takes it back, because its KE2
+// lets the client test one passphrase (spec section 6.4, RFC 9807 section 9.2). A refusal counts nothing. It also runs
+// on a message whose last open is spent while a lease is active, which a burn and a resumed download need.
+func CountAttempt(
+	ctx context.Context,
+	messages Messages,
+	record *Record,
+	clock func() time.Time,
+) (Attempt, PassphraseError, error) {
+	var attempt Attempt
+	var status PassphraseError
+	var refusal *PassphraseError
+	err := record.update(ctx, messages, clock(), func(current *Record) error {
+		now := clock()
+		attempt, status, refusal = Attempt{}, PassphraseError{}, nil
+		if current.Ended(now) {
+			return &GoneError{State: current.State(now)}
+		}
+		message := current.Message
+		if locked, refused := lockedOut(message, now); refused {
+			refusal = &locked
+			return nil
+		}
+		attempt.Previous = message.NextAttemptAt
+		message.FailCountTotal++
+		message.NextAttemptAt = time.Time{}
+		if wait := backoff(message.FailCountTotal); wait > 0 {
+			message.NextAttemptAt = CeilMinute(now.Add(wait))
+		}
+		attempt.Set = message.NextAttemptAt
+		status = PassphraseStatus(message, now)
+		return nil
+	})
 	switch {
 	case err != nil:
-		return ClaimResult{}, err
-	case refused:
-		return ClaimResult{}, &refusal
+		return Attempt{}, PassphraseError{}, err
+	case refusal != nil:
+		return Attempt{}, PassphraseError{}, refusal
 	default:
-		return result, nil
+		return attempt, status, nil
 	}
 }
 
-// RefuseClaim answers a claim that the transaction would refuse without testing a passphrase, so such a claim reads no
-// blob; the transaction decides again.
-func RefuseClaim(record *Record, now time.Time) error {
-	if err := claimClosed(record, now); err != nil {
-		return err
+// PassphraseStatus is what a reader is told after an attempt: the attempts left before waits and the current wait, or
+// the lock until the expiry once the waits have run out.
+func PassphraseStatus(message *Message, now time.Time) PassphraseError {
+	status := PassphraseError{AttemptsLeft: max(0, FreeAttempts-message.FailCountTotal)}
+	switch {
+	case message.NextAttemptAt.After(now):
+		status.RetryAfter = message.NextAttemptAt.Sub(now)
+	case message.FailCountTotal >= MaxFailedAttempts:
+		status.RetryAfter = max(0, message.ExpiresAt.Sub(now))
+	default:
 	}
-	if record.Message.PassphraseRequired() {
-		if refusal, refused := lockedOut(record.Message, now); refused {
-			return &refusal
+	return status
+}
+
+// TakeBack undoes the count of a handshake whose KE3 matched, in a transaction of its own, so it stands whatever the
+// claim or burn then answers.
+func TakeBack(ctx context.Context, messages Messages, record *Record, attempt Attempt, now time.Time) error {
+	return record.update(ctx, messages, now, func(current *Record) error {
+		message := current.Message
+		message.FailCountTotal = max(0, message.FailCountTotal-1)
+		if message.NextAttemptAt.Equal(attempt.Set) {
+			message.NextAttemptAt = attempt.Previous
 		}
+		return nil
+	})
+}
+
+// RefuseAttempt answers a handshake that CountAttempt would refuse, so such a handshake reads no blob; the transaction
+// decides again.
+func RefuseAttempt(record *Record, now time.Time) error {
+	if record.Ended(now) {
+		return &GoneError{State: record.State(now)}
+	}
+	if refusal, refused := lockedOut(record.Message, now); refused {
+		return &refusal
 	}
 	return nil
+}
+
+// RefuseClaim answers a claim that the transaction would refuse, so such a claim reads no blob; the transaction
+// decides again. The handshake before it has already applied the passphrase waits.
+func RefuseClaim(record *Record, now time.Time) error {
+	return claimClosed(record, now)
 }
 
 func claimClosed(record *Record, now time.Time) error {
@@ -107,28 +168,6 @@ func claimClosed(record *Record, now time.Time) error {
 		return &BusyError{RetryAfter: wait}
 	}
 	return nil
-}
-
-func (v *Verifier) checkable() bool {
-	return !v.Sent || v.Check != nil
-}
-
-// checkPassphrase commits a failed attempt with the claim or burn transaction, so it reports a refusal, not an error.
-func checkPassphrase(message *Message, verifier *Verifier, now time.Time) (PassphraseError, bool) {
-	if refusal, refused := lockedOut(message, now); refused {
-		return refusal, true
-	}
-	if verifier.Sent && verifier.Check(message.VerifierPepperID, message.VerifierMAC) {
-		return PassphraseError{}, false
-	}
-	message.FailCountTotal++
-	message.NextAttemptAt = time.Time{}
-	wait := backoff(message.FailCountTotal)
-	if wait > 0 {
-		message.NextAttemptAt = CeilMinute(now.Add(wait))
-		wait = message.NextAttemptAt.Sub(now)
-	}
-	return PassphraseError{RetryAfter: wait, AttemptsLeft: max(0, FreeAttempts-message.FailCountTotal)}, true
 }
 
 // lockedOut refuses an attempt after the lifetime cap or before next_attempt_at without testing the passphrase.
@@ -229,44 +268,24 @@ func Ack(ctx context.Context, messages Messages, blobs Blobs, record *Record, le
 	return deleteBlobOf(ctx, messages, blobs, record)
 }
 
-// MarkEnding records an ending that needs no passphrase unless the message has already ended, and reports its state.
+// MarkEnding records an ending unless the message has already ended, and reports its state.
 func MarkEnding(ctx context.Context, messages Messages, record *Record, requested State, now time.Time) (State, error) {
-	final, _, err := recordEnding(ctx, messages, record, requested, now, nil)
-	return final, err
-}
-
-// recordEnding checks the passphrase first when a verifier comes with the request, and a refusal commits the failed
-// attempt instead of the ending.
-func recordEnding(
-	ctx context.Context,
-	messages Messages,
-	record *Record,
-	requested State,
-	now time.Time,
-	verifier *Verifier,
-) (State, *PassphraseError, error) {
 	var final State
-	var refusal *PassphraseError
 	err := record.update(ctx, messages, now, func(current *Record) error {
-		final, refusal = current.State(now), nil
+		final = current.State(now)
 		if current.Ended(now) {
 			return nil
-		}
-		if verifier != nil && current.Message.PassphraseRequired() {
-			if refused, ok := checkPassphrase(current.Message, verifier, now); ok {
-				refusal = &refused
-				return nil
-			}
 		}
 		final = requested
 		current.Message.Ending = requested
 		current.recordEnd(now)
 		return nil
 	})
-	return final, refusal, err
+	return final, err
 }
 
-// End records a cancel or another ending that needs no passphrase, then deletes the blob even when the caller has gone.
+// End records a cancel or a burn, whose KE3 the caller has checked (F05), then deletes the blob even when the caller
+// has gone.
 func End(
 	ctx context.Context,
 	messages Messages,
@@ -275,40 +294,11 @@ func End(
 	requested State,
 	now time.Time,
 ) (State, error) {
-	return endMessage(ctx, messages, blobs, record, requested, now, nil)
-}
-
-// Burn ends a message with a passphrase only for a request that proves it, counting a mismatch as a claim does (F05).
-func Burn(
-	ctx context.Context,
-	messages Messages,
-	blobs Blobs,
-	record *Record,
-	verifier Verifier,
-	now time.Time,
-) (State, error) {
-	if !verifier.checkable() {
-		return "", errVerifierCheck
-	}
-	return endMessage(ctx, messages, blobs, record, StateDeleted, now, &verifier)
-}
-
-func endMessage(
-	ctx context.Context,
-	messages Messages,
-	blobs Blobs,
-	record *Record,
-	requested State,
-	now time.Time,
-	verifier *Verifier,
-) (State, error) {
 	ctx = context.WithoutCancel(ctx)
-	final, refusal, err := recordEnding(ctx, messages, record, requested, now, verifier)
+	final, err := MarkEnding(ctx, messages, record, requested, now)
 	switch {
 	case err != nil:
 		return "", err
-	case refusal != nil:
-		return "", refusal
 	case record.Row.BlobReference == "":
 		return final, nil
 	default:

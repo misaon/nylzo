@@ -22,13 +22,13 @@ function passphraseFile(): string {
 
 test('messages from the CLI, with and without a passphrase, open in the browser', async ({ page }) => {
   const plain = runCli(['create', '--server', BASE_URL], 'z příkazové řádky').trim();
-  expect(plain).toContain('#2.0.');
+  expect(plain).toContain('#3.0.');
   await showMessage(page, plain);
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('z příkazové řádky');
 
   const guarded = runCli(['create', '--server', BASE_URL, '--passphrase-file', passphraseFile()], 'chráněno').trim();
-  expect(guarded).toContain('#2.3.');
+  expect(guarded).toContain('#3.3.');
   await showMessage(page, guarded, PASSPHRASE);
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('chráněno');

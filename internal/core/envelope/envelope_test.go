@@ -23,9 +23,9 @@ type sealed struct {
 	payload envelope.Payload
 }
 
-func contentKeys(tb testing.TB, id core.ID, passphraseKey []byte) keys.ContentKeys {
+func contentKeys(tb testing.TB, id core.ID) keys.ContentKeys {
 	tb.Helper()
-	content, err := keys.DeriveContent(id, core.NewSecret(), passphraseKey, core.NewSecret())
+	content, err := keys.DeriveContent(id, core.NewSecret(), new(keys.ExportKey), core.NewSecret())
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func seal(tb testing.TB, text string, file []byte) sealed {
 	id := core.NewID()
 	sample := sealed{
 		id:      id,
-		content: contentKeys(tb, id, nil),
+		content: contentKeys(tb, id),
 		header:  envelope.NewHeader(core.KDFNone),
 		policy:  envelope.Policy{OpensMax: 1, TTLSeconds: 86400, Deadline: testDeadline},
 		payload: envelope.Payload{Meta: envelope.Meta{Text: &text}},
@@ -107,7 +107,7 @@ func TestAK8TamperingFailsIntegrity(t *testing.T) {
 	t.Parallel()
 	sample := seal(t, "integrity", nil)
 	prefix := envelope.PrefixLen
-	otherKeys := contentKeys(t, sample.id, bytes.Repeat([]byte{1}, core.KeyLen))
+	otherKeys := contentKeys(t, sample.id)
 	cases := map[string]struct {
 		content keys.ContentKeys
 		id      core.ID
@@ -234,14 +234,16 @@ func TestEveryHeaderGetsAFreshRandomIV(t *testing.T) {
 func TestOpenRejectsAnUnsupportedHeader(t *testing.T) {
 	t.Parallel()
 	sample := seal(t, "header", nil)
-	version, flags, released := bytes.Clone(sample.object), bytes.Clone(sample.object), bytes.Clone(sample.object)
-	version[0], flags[2], released[0] = 3, 1, 1
+	version, flags := bytes.Clone(sample.object), bytes.Clone(sample.object)
+	earlier, released := bytes.Clone(sample.object), bytes.Clone(sample.object)
+	version[0], flags[2], earlier[0], released[0] = 4, 1, 2, 1
 	for name, test := range map[string]struct {
 		kdf    core.KDF
 		object []byte
 		want   error
 	}{
 		"version":         {core.KDFNone, version, envelope.ErrVersion},
+		"version 2":       {core.KDFNone, earlier, envelope.ErrVersion},
 		"version 1":       {core.KDFNone, released, envelope.ErrVersion},
 		"flags":           {core.KDFNone, flags, envelope.ErrFlags},
 		"kdf":             {core.KDFScrypt, sample.object, core.ErrKDFMismatch},

@@ -38,22 +38,27 @@ type Claimed struct {
 	Lease string
 }
 
-// Claim always sends a verifier and a share key, so its headers do not show whether the message has a passphrase.
+// Claim finishes a login with its KE3 and always sends a share key, so its headers do not show whether the message
+// has a passphrase.
 func (c *Client) Claim(
 	ctx context.Context,
 	id core.ID,
-	read, verifier *[core.SeedLen]byte,
+	read *[core.SeedLen]byte,
+	login *Login,
 	size int64,
 	onLease func(string),
 ) (Claimed, error) {
 	sent := &sentShareKey{}
 	request := signedRequest{
-		method:         http.MethodPost,
-		path:           api.MessagePath(id.String()) + api.ClaimAction,
-		purpose:        signing.PurposeRead,
-		seed:           read,
-		verifier:       verifier,
-		headers:        map[string]string{api.FlagsHeaderName: readerFlags},
+		method:    http.MethodPost,
+		path:      api.MessagePath(id.String()) + api.ClaimAction,
+		purpose:   signing.PurposeRead,
+		seed:      read,
+		challenge: &login.Challenge,
+		headers: map[string]string{
+			api.KE3HeaderName:   core.Encode(login.KE3[:]),
+			api.FlagsHeaderName: readerFlags,
+		},
 		attemptHeaders: sent.headers,
 	}
 	response, err := c.signed(ctx, &request, TransferTime(size))

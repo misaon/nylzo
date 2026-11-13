@@ -269,13 +269,13 @@ for (const [state, hide] of Object.entries(HIDDEN_STATES)) {
   });
 }
 
-test('the reader stops without a verifier when the server reports another passphrase profile (AK24)', async ({
+test('the reader stops before the handshake when the server reports another passphrase profile (AK24)', async ({
   page,
 }) => {
   const message = await createMessageThroughApi({ passphrase: PASSPHRASE });
   const sensitive: string[] = [];
   page.on('request', (request) => {
-    if (request.url().endsWith('/claim') || request.headers()['x-nylzo-verifier'] !== undefined) {
+    if (request.url().endsWith('/handshake') || request.url().endsWith('/claim')) {
       sensitive.push(request.url());
     }
   });

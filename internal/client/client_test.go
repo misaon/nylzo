@@ -129,6 +129,7 @@ func TestInstanceRefusesWhatTheSpecForbids(t *testing.T) {
 	t.Parallel()
 	creation := &Creation{TTLSeconds: 3600, ShareKey: share.NewKey().PublicKey()}
 	wrapped := core.Encode(make([]byte, share.WrappedLen))
+	response := core.Encode(make([]byte, 64))
 	epochOf := func(deadline string) string {
 		parsed, err := time.Parse(time.RFC3339, deadline)
 		if err != nil {
@@ -139,7 +140,7 @@ func TestInstanceRefusesWhatTheSpecForbids(t *testing.T) {
 	issued := func(deadline string) string {
 		return `{"limits":{},"pow":{},"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t",` +
 			`"expires_at":"2026-11-12T10:10:00Z","epoch":` + epochOf(deadline) + `,"deadline":"` + deadline +
-			`","share":"` + wrapped + `"}}`
+			`","share":"` + wrapped + `","registration":"` + response + `"}}`
 	}
 	valid := issued("2026-11-12T11:00:00Z")
 	for name, test := range map[string]struct {
@@ -160,6 +161,7 @@ func TestInstanceRefusesWhatTheSpecForbids(t *testing.T) {
 		"an id without an epoch":     {strings.Replace(valid, `"epoch":`, `"skipped":`, 1), creation, false},
 		"a short share":              {strings.Replace(valid, wrapped, "AAAA", 1), creation, false},
 		"a server without deadlines": {strings.Replace(valid, `"deadline":`, `"skipped":`, 1), creation, false},
+		"no registration":            {strings.Replace(valid, `,"registration":"`+response+`"`, "", 1), creation, false},
 	} {
 		server := serve(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(test.body)) })
 		if _, err := server.Instance(t.Context(), test.creation); (err == nil) != test.valid {
@@ -315,14 +317,14 @@ func TestCreateRefusesAnotherExpiryAndReadersNameTheirFlags(t *testing.T) {
 		w.Write([]byte(`{"error":"gone","state":"expired"}`))
 	})
 	id := core.NewID()
-	reader.Claim(t.Context(), id, core.NewSecret(), core.NewSecret(), 0, nil)
+	reader.Claim(t.Context(), id, core.NewSecret(), &Login{}, 0, nil)
 	reader.Blob(t.Context(), id, core.NewSecret(), "lease", 0)
 	if len(flags) != 2 || flags[0] != "2" || flags[1] != "2" {
 		t.Fatalf("readers sent X-Nylzo-Flags %q", flags)
 	}
 }
 
-func TestRetriedClaimDrawsANewShareKeyAndReportsTheOneAnswered(t *testing.T) {
+func TestRetriedDownloadDrawsANewShareKeyAndReportsTheOneAnswered(t *testing.T) {
 	t.Parallel()
 	challenge := `{"challenge":"` + core.Encode(
 		make([]byte, signing.ChallengeLen),
@@ -340,19 +342,58 @@ func TestRetriedClaimDrawsANewShareKeyAndReportsTheOneAnswered(t *testing.T) {
 			w.Write([]byte(`{"error":"not_found"}`))
 			return
 		}
-		w.Header().Set("X-Nylzo-Lease", core.Encode(make([]byte, 32)))
 		w.Header().Set("X-Nylzo-Policy", policy)
 		w.WriteHeader(http.StatusOK)
 	})
-	claimed, err := client.Claim(t.Context(), core.NewID(), core.NewSecret(), core.NewSecret(), 0, nil)
+	fetched, err := client.Blob(t.Context(), core.NewID(), core.NewSecret(), core.Encode(make([]byte, 32)), 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(sent) != 2 || sent[0] == sent[1] || sent[0] == "" {
 		t.Fatalf("share keys sent: %q", sent)
 	}
-	if claimed.ShareKey == nil || share.FormatKey(claimed.ShareKey.PublicKey()) != sent[1] {
-		t.Fatal("the claim did not report the share key of the answered attempt")
+	if fetched.ShareKey == nil || share.FormatKey(fetched.ShareKey.PublicKey()) != sent[1] {
+		t.Fatal("the download did not report the share key of the answered attempt")
+	}
+}
+
+func TestAClaimSignsTheChallengeOfItsHandshakeAndNeverRetries(t *testing.T) {
+	t.Parallel()
+	var claims atomic.Int32
+	login := &Login{Challenge: [signing.ChallengeLen]byte{7}, KE3: [64]byte{3}}
+	client := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == api.ChallengePath {
+			t.Error("a claim fetched a challenge of its own")
+		}
+		claims.Add(1)
+		signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
+		components := signing.Components{
+			ShareKey: r.Header.Get(api.ShareKeyHeaderName),
+			KE3:      r.Header.Get(api.KE3HeaderName),
+		}
+		if err != nil || signature.Challenge != login.Challenge || components.KE3 != core.Encode(login.KE3[:]) ||
+			!signature.Verify(signing.PurposeRead, r.Method, r.URL.Path, nil, components) {
+			t.Error("the claim does not sign the handshake's challenge and its KE3")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"not_found"}`))
+	})
+	if _, err := client.Claim(
+		t.Context(),
+		core.NewID(),
+		core.NewSecret(),
+		login,
+		0,
+		nil,
+	); !IsKind(
+		err,
+		api.ErrorNotFound,
+	) {
+		t.Fatalf("got %v", err)
+	}
+	if claims.Load() != 1 {
+		t.Fatalf("a claim with the challenge of a handshake was sent %d times", claims.Load())
 	}
 }
 
@@ -377,10 +418,6 @@ func TestSignedRetryBindsFreshAttemptHeaders(t *testing.T) {
 		if err != nil || !signature.Verify(signing.PurposeRead, r.Method, r.URL.Path, nil, components) {
 			t.Error("read signature does not cover the attempt headers")
 		}
-		verifier, err := signing.ParseVerifierHeader(r.Header.Get(api.VerifierHeaderName), signature.Challenge)
-		if err != nil || !verifier.Verify(signing.PurposeVerifier, r.Method, r.URL.Path, nil, components) {
-			t.Error("verifier signature does not cover the attempt headers")
-		}
 		if attempts.Add(1) == 1 {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusNotFound)
@@ -391,7 +428,7 @@ func TestSignedRetryBindsFreshAttemptHeaders(t *testing.T) {
 	})
 	request := signedRequest{
 		method: http.MethodPost, path: "/claim", purpose: signing.PurposeRead,
-		seed: core.NewSecret(), verifier: core.NewSecret(),
+		seed:    core.NewSecret(),
 		headers: map[string]string{api.LeaseHeaderName: "lease-token"},
 		attemptHeaders: func() map[string]string {
 			return map[string]string{api.ShareKeyHeaderName: strconv.Itoa(int(drawn.Add(1)))}

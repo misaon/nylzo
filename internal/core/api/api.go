@@ -20,22 +20,27 @@ const (
 )
 
 const (
-	ClaimAction  = "/claim"
-	BlobAction   = "/blob"
-	AckAction    = "/ack"
-	BurnAction   = "/burn"
-	CancelAction = "/cancel"
-	StatusAction = "/status"
+	HandshakeAction = "/handshake"
+	ClaimAction     = "/claim"
+	BlobAction      = "/blob"
+	AckAction       = "/ack"
+	BurnAction      = "/burn"
+	CancelAction    = "/cancel"
+	StatusAction    = "/status"
 )
 
 const (
-	CreateHeaderName   = "X-Nylzo-Create"
-	WorkHeaderName     = "X-Nylzo-Pow"
-	TTLHeaderName      = "X-Nylzo-Ttl"
-	ShareKeyHeaderName = "X-Nylzo-Share-Key"
-	ShareHeaderName    = "X-Nylzo-Share"
-	LeaseHeaderName    = "X-Nylzo-Lease"
-	PolicyHeaderName   = "X-Nylzo-Policy"
+	CreateHeaderName       = "X-Nylzo-Create"
+	WorkHeaderName         = "X-Nylzo-Pow"
+	TTLHeaderName          = "X-Nylzo-Ttl"
+	ShareKeyHeaderName     = "X-Nylzo-Share-Key"
+	ShareHeaderName        = "X-Nylzo-Share"
+	LeaseHeaderName        = "X-Nylzo-Lease"
+	PolicyHeaderName       = "X-Nylzo-Policy"
+	RegistrationHeaderName = "X-Nylzo-Registration"
+	KE1HeaderName          = "X-Nylzo-KE1"
+	KE3HeaderName          = "X-Nylzo-KE3"
+	// VerifierHeaderName comes only from a client of protocol v2, which the server answers with client_outdated.
 	VerifierHeaderName = "X-Nylzo-Verifier"
 	// FlagsHeaderName names the envelope flags a reader opens, on every claim and download (spec 6.4).
 	FlagsHeaderName = "X-Nylzo-Flags"

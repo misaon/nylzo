@@ -98,7 +98,7 @@ func TestACommandReadsNoSecretWithoutProtection(t *testing.T) {
 }
 
 // TestACommandRefusesSettingsThatLogRequestHeaders covers F11: GODEBUG=http2debug makes net/http print every header,
-// verifier and signature included, and the refusal comes before stdin is read.
+// signatures and leases included, and the refusal comes before stdin is read.
 func TestACommandRefusesSettingsThatLogRequestHeaders(t *testing.T) {
 	for _, listed := range commands() {
 		if listed.protect == harden.Off {

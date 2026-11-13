@@ -109,32 +109,29 @@ func (e *PassphraseError) Error() string {
 
 // Message holds the fields of a sealed record; only a request that brings pk_R or pk_M can read them.
 type Message struct {
-	Version          uint8
-	KDF              uint8
-	Flags            uint8
-	CreatedAt        time.Time
-	ExpiresAt        time.Time
-	TTLSeconds       uint32
-	OpensMax         uint16
-	OpensRemaining   uint16
-	Size             int64
-	VerifierPepperID byte
-	VerifierMAC      []byte
-	FailCountTotal   int
-	NextAttemptAt    time.Time
-	FirstOpenedAt    *time.Time
-	Ending           State
-	EndedAt          time.Time
-	Leases           []Lease
-	ReportDay        int64
-	Reports          int
+	Version        uint8
+	KDF            uint8
+	Flags          uint8
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+	TTLSeconds     uint32
+	OpensMax       uint16
+	OpensRemaining uint16
+	Size           int64
+	// Registration is the OPAQUE registration sealed under the erase salt; its pepper made the OPAQUE keys.
+	RegistrationPepperID byte
+	Registration         []byte
+	FailCountTotal       int
+	NextAttemptAt        time.Time
+	FirstOpenedAt        *time.Time
+	Ending               State
+	EndedAt              time.Time
+	Leases               []Lease
+	ReportDay            int64
+	Reports              int
 	// Epoch and Generation name the expiry share of the message (spec section 5.6).
 	Epoch      uint32
 	Generation epoch.GenerationID
-}
-
-func (m *Message) PassphraseRequired() bool {
-	return len(m.VerifierMAC) > 0
 }
 
 type Lease struct {
@@ -165,15 +162,15 @@ type DueBlob struct {
 	Reference string
 }
 
-// Verifier is the passphrase proof of a claim or a burn; Check compares it with the verifier mac of the record.
-type Verifier struct {
-	Sent  bool
-	Check func(pepperID byte, storedMAC []byte) bool
+// Attempt is the passphrase attempt that a handshake counted; a matching KE3 takes it back (spec section 6.4).
+type Attempt struct {
+	// Previous is next_attempt_at before the handshake, Set the value the handshake left.
+	Previous time.Time
+	Set      time.Time
 }
 
 type ClaimParameters struct {
 	Clock         func() time.Time
-	Verifier      Verifier
 	LeaseMAC      []byte
 	LeasePepperID byte
 }

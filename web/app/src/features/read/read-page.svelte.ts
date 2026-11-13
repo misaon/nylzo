@@ -6,7 +6,7 @@ import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
 import { clearClipboard } from '../../shared/clipboard/clear-clipboard.ts';
 import { revokeSavedFiles } from '../../shared/files/save-file.ts';
-import { scryptInWorker, stopRunningWorkers } from '../../shared/kdf/kdf.ts';
+import { stopRunningWorkers, stretchInWorker } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
 import { formatClock, formatMoment } from '../../shared/language/format.ts';
 import type { Translator } from '../../shared/language/translator.svelte.ts';
@@ -417,7 +417,7 @@ export class ReadPage {
         },
         prepared: prepareWorker,
         shown: async () => this.#displayed(),
-        scrypt: scryptInWorker,
+        stretch: stretchInWorker,
         now: () => Date.now(),
       },
       (view) => this.#onView(view),

@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	Version = 2
+	Version = 3
 
 	IVLen         = 12
 	TagLen        = 16
@@ -38,8 +38,8 @@ const (
 
 	MinTTLSeconds = 60
 
-	labelCommitment = "nylzo/v2/commitment"
-	labelObjectHash = "nylzo/v2/object"
+	labelCommitment = "nylzo/v3/commitment"
+	labelObjectHash = "nylzo/v3/object"
 )
 
 var (

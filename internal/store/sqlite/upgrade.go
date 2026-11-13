@@ -5,11 +5,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 )
 
-// releasedSchema is the schema of nylzo 0.1 and 0.2.
-const releasedSchema = 5
+// releasedSchemas are the schemas of protocol v1 (nylzo 0.1 and 0.2) and protocol v2; serve upgrades either by
+// erasing every message, because no reader of protocol v3 could open one.
+var releasedSchemas = []int{5, 7}
+
+func isReleased(version int) bool {
+	return slices.Contains(releasedSchemas, version)
+}
 
 var errUpgradeRaced = errors.New("sqlite: another process changed the schema during the upgrade")
 
@@ -22,7 +28,7 @@ func UpgradeFromReleased(ctx context.Context, path string, eraseBlobs func() err
 	}
 	writer.SetMaxOpenConns(1)
 	version, err := userVersion(ctx, writer)
-	if err != nil || version != releasedSchema {
+	if err != nil || !isReleased(version) {
 		return false, errors.Join(err, writer.Close())
 	}
 	if err = eraseBlobs(); err != nil {
@@ -46,7 +52,7 @@ func deleteReleasedMessages(ctx context.Context, database *sql.DB) error {
 	if err != nil {
 		return err
 	}
-	if version != releasedSchema {
+	if !isReleased(version) {
 		return errUpgradeRaced
 	}
 	for _, statement := range []string{
@@ -67,7 +73,7 @@ func deleteReleasedMessages(ctx context.Context, database *sql.DB) error {
 func finishUpgrade(ctx context.Context, path string) error {
 	opened, err := openWith(ctx, path, func(ctx context.Context, database *sql.DB) error {
 		version, versionErr := userVersion(ctx, database)
-		if versionErr == nil && version != releasedSchema {
+		if versionErr == nil && !isReleased(version) {
 			versionErr = errUpgradeRaced
 		}
 		return versionErr

@@ -1,9 +1,14 @@
 import {
+  createRegistrationRequest,
   deriveContent,
   deriveLink,
-  deriveVerifier,
+  derivePassphraseSalt,
   encodeBase64url,
+  finalizeRegistrationRequest,
   formatLink,
+  generateKE1,
+  generateKE3,
+  identityStretch,
   idToString,
   KDF_NONE,
   KDF_SCRYPT,
@@ -11,13 +16,15 @@ import {
   newSecret,
   newShareKey,
   objectHash,
+  opaqueContext,
+  opaquePassword,
   parseLink,
   requestKey,
   seal,
   unwrapShare,
   utf8,
 } from '@nylzo/core';
-import { scryptPassphraseKey } from '@nylzo/core/scrypt';
+import { stretchScrypt } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../shared/api/api-errors.ts';
@@ -30,10 +37,9 @@ import type { CreateDependencies, CreateInput } from '../create/create-message.t
 import { createReader } from './reader.ts';
 import type { ReaderDependencies, ReadView, SessionStore } from './reader.ts';
 
-type Scrypt = ReaderDependencies['scrypt'];
+type Stretch = ReaderDependencies['stretch'];
 
-const scrypt: Scrypt = (passphrase, passphraseSalt, onProgress) =>
-  Promise.resolve(scryptPassphraseKey(passphrase, passphraseSalt, onProgress));
+const stretch: Stretch = (message, onProgress) => Promise.resolve(stretchScrypt(message, onProgress));
 
 class ImpostorError extends Error {
   override readonly name = 'KdfWorkerError';
@@ -49,11 +55,11 @@ function refuseSigningKeyImport() {
         : importKey(...parameters)) as typeof crypto.subtle.importKey);
 }
 
-function workerScrypt(calls: string[] = []): Scrypt {
-  return async (passphrase, passphraseSalt, onProgress) => {
+function workerStretch(calls: string[] = []): Stretch {
+  return async (message, onProgress) => {
     calls.push('scrypt');
     try {
-      return await scrypt(passphrase, passphraseSalt, onProgress);
+      return await stretch(message, onProgress);
     } catch {
       throw new KdfWorkerError();
     }
@@ -61,7 +67,7 @@ function workerScrypt(calls: string[] = []): Scrypt {
 }
 
 function createDependencies(api: FakeApi): CreateDependencies {
-  return { api, origin: 'https://nylzo.test', scrypt, solvePow: () => Promise.resolve('') };
+  return { api, origin: 'https://nylzo.test', stretch, solvePow: () => Promise.resolve('') };
 }
 
 function input(overrides: Partial<CreateInput> = {}): CreateInput {
@@ -98,7 +104,7 @@ interface ReaderOverrides {
   readonly session?: ReturnType<typeof memorySession>;
   readonly visible?: boolean;
   readonly prerendering?: boolean;
-  readonly scrypt?: Scrypt;
+  readonly stretch?: Stretch;
   readonly shown?: () => Promise<void>;
   readonly reloaded?: boolean;
 }
@@ -123,7 +129,7 @@ function openReader(api: FakeApi, link: string, overrides: ReaderOverrides = {})
       session,
       page: { visible: () => overrides.visible ?? true, prerendering: () => overrides.prerendering ?? false },
       ...(overrides.shown && { shown: overrides.shown }),
-      scrypt: overrides.scrypt ?? scrypt,
+      stretch: overrides.stretch ?? stretch,
       now: () => Date.now(),
     },
     (view) => {
@@ -138,13 +144,35 @@ function idTextOf(link: string): string {
   return idToString(parseLink(link).id);
 }
 
+// Claims with an OPAQUE login of its own, as another tab of the same reader would.
+async function claimElsewhere(api: FakeApi, link: string, passphrase: string, onLease: (lease: string) => void) {
+  const { id, kdfId, secret } = parseLink(link);
+  const keys = await deriveLink(id, secret);
+  const readKey = await requestKey(keys.readSeed);
+  const password = opaquePassword(keys.passphraseSalt, kdfId, passphrase);
+  const config = {
+    context: opaqueContext(id, kdfId),
+    stretch: kdfId === KDF_NONE ? identityStretch : (message: Uint8Array) => Promise.resolve(stretchScrypt(message)),
+  };
+  await api.claim(id, readKey, {
+    unlock: async () => {
+      const { ke1, login } = generateKE1(password);
+      const handshake = await api.handshake(id, readKey, ke1);
+      const result = await generateKE3(login, handshake.ke2, config);
+      return { challenge: handshake.challenge, ke3: result.ke3 };
+    },
+    shareKeys: newShareKey,
+    onLease,
+  });
+}
+
 // Every link opens on /r, so the read page keeps its state under `r`.
 const PAGE_KEY = 'r';
 const LEASE_KEY = `nylzo:lease:${PAGE_KEY}`;
 
 // Recomputed here from the link, so the test also pins that a stored lease names no message id.
 async function leaseValue(link: string, lease: string): Promise<string> {
-  const label = utf8('nylzo/v2/lease-tag');
+  const label = utf8('nylzo/v3/lease-tag');
   const { secret } = parseLink(link);
   const tagged = new Uint8Array([...label, ...secret]);
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', tagged));
@@ -157,18 +185,24 @@ async function storeRaw(
   file?: Uint8Array,
 ): Promise<string> {
   const issuing = newShareKey();
-  const { create } = await api.instance({ ttlSeconds: 3600, shareKey: issuing.publicKey });
+  const secret = newSecret();
+  const password = opaquePassword(await derivePassphraseSalt(secret), KDF_NONE, '');
+  const { request, state } = createRegistrationRequest(password);
+  const { create } = await api.instance({
+    ttlSeconds: 3600,
+    shareKey: issuing.publicKey,
+    registrationRequest: request,
+  });
   if (create === undefined) {
     throw new Error('the fake server issued no id');
   }
-  const secret = newSecret();
+  const registration = await finalizeRegistrationRequest(state, create.registration, identityStretch);
   const keys = await deriveLink(create.id, secret);
   const share = await unwrapShare(issuing, create.share);
-  const content = await deriveContent(create.id, secret, new Uint8Array(0), share);
+  const content = await deriveContent(create.id, secret, registration.exportKey, share);
   const policy = { opensMax: 1, ttlSeconds: 3600, deadline: create.deadline };
   const object = await seal(content, newHeader(KDF_NONE), create.id, policy, { meta, file });
   const readKey = await requestKey(keys.readSeed);
-  const verifierKey = await requestKey(await deriveVerifier(create.id, secret, new Uint8Array(0)));
   const manageKey = await requestKey(newSecret());
   await api.create({
     id: create.id,
@@ -176,7 +210,7 @@ async function storeRaw(
     epoch: create.epoch,
     deadline: create.deadline,
     readKey: readKey.publicKey,
-    verifierKey: verifierKey.publicKey,
+    registration: registration.record,
     manageKey: manageKey.publicKey,
     kdfId: KDF_NONE,
     opensMax: 1,
@@ -194,7 +228,8 @@ describe('reading a message', () => {
     const reader = openReader(api, created.link, { shown: () => display.promise });
     await reader.load();
     const revealing = reader.reveal('four random words here');
-    await vi.waitFor(() => expect(reader.last()?.view).toBe('revealed'));
+    // The reveal runs a real scrypt, which coverage slows down well past the default second on a CI runner.
+    await vi.waitFor(() => expect(reader.last()?.view).toBe('revealed'), { timeout: 20_000 });
     expect(
       reader.session.map
         .keys()
@@ -250,7 +285,7 @@ describe('reading a message', () => {
     await reloaded.load();
     expect(reloaded.last()).toEqual({ view: 'removed' });
     expect(api.calls.slice(before).filter((call) => !call.startsWith('view:'))).toEqual([]);
-    const damaged = openReader(api, created.link.replace('#2.', '#0.'));
+    const damaged = openReader(api, created.link.replace('#3.', '#0.'));
     await damaged.load();
     expect(damaged.last()).toEqual({ view: 'invalid' });
     expect(damaged.dropped()).toBe(1);
@@ -284,16 +319,7 @@ describe('reading a message', () => {
     const created = await createMessage(input(), createDependencies(api));
     const session = memorySession();
     const id = idTextOf(created.link);
-    const stored = api.stored.get(id);
-    await api.claim(
-      stored?.request.id ?? new Uint8Array(16),
-      { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
-      {
-        verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
-        shareKeys: newShareKey,
-        onLease: (lease) => session.setItem(LEASE_KEY, `${id} ${lease}`),
-      },
-    );
+    await claimElsewhere(api, created.link, '', (lease) => session.setItem(LEASE_KEY, `${id} ${lease}`));
     const reader = openReader(api, created.link, { session });
     await reader.load();
     expect(reader.last()).toMatchObject({ view: 'ready', resumable: true });
@@ -319,7 +345,7 @@ describe('reading a message', () => {
   it('shows the text before it acknowledges the lease and then forgets the lease', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
-    expect(created.link).toMatch(/^https:\/\/nylzo\.test\/r#2\.0\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/u);
+    expect(created.link).toMatch(/^https:\/\/nylzo\.test\/r#3\.0\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/u);
     const reader = openReader(api, created.link);
     await reader.load();
     expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, deviceFailed: false });
@@ -347,7 +373,7 @@ describe('reading a message', () => {
     ]);
   });
 
-  it('rejects a wrong passphrase without spending an open, then opens the file', async () => {
+  it('rejects a wrong passphrase after the handshake, without a claim, then opens the file', async () => {
     const api = fakeApi();
     const bytes = new Uint8Array(70_000).map((_, index) => index % 251);
     const created = await createMessage(
@@ -358,7 +384,7 @@ describe('reading a message', () => {
       }),
       createDependencies(api),
     );
-    expect(created.link).toContain('#2.3.');
+    expect(created.link).toContain('#3.3.');
     const reader = openReader(api, created.link);
     await reader.load();
     await reader.reveal('špatná passphrase tady');
@@ -379,7 +405,12 @@ describe('reading a message', () => {
       mime: 'application/pdf',
       bytes,
     });
-    expect(api.calls.filter((call) => call.startsWith('claim'))).toEqual(['claim', 'claim']);
+    expect(api.calls.filter((call) => call === 'handshake' || call.startsWith('claim'))).toEqual([
+      'handshake',
+      'handshake',
+      'claim',
+    ]);
+    expect(storedOf(api, created.link).failures).toBe(1);
   });
 
   it('marks the scrypt derivation in the session and removes the mark afterwards', async () => {
@@ -436,14 +467,14 @@ describe('reading a message', () => {
     });
   });
 
-  it('stops before any verifier when the server reports another profile (AK24)', async () => {
+  it('stops before any handshake when the server reports another profile (AK24)', async () => {
     const api = fakeApi({ metadataKdfId: KDF_NONE });
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const reader = openReader(api, created.link);
     await reader.load();
     expect(reader.last()).toEqual({ view: 'tampered' });
     await reader.reveal('correct horse battery staple');
-    expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
+    expect(api.calls.some((call) => call === 'handshake' || call.startsWith('claim'))).toBe(false);
   });
 
   it.each<[string, FakeOptions]>([
@@ -455,6 +486,7 @@ describe('reading a message', () => {
     ['metadata whose opens_max differs from X-Nylzo-Policy (SEC-9)', { metadataOpensMax: 2 }],
     ['metadata whose ttl_s differs from X-Nylzo-Policy (SEC-9)', { metadataTtlSeconds: 7200 }],
     ['a changed ciphertext', { tamperObject: true }],
+    ['a handshake answered with other server keys for a message without a passphrase', { otherServerKeys: true }],
   ])('treats %s as tampered', async (_, options) => {
     const api = fakeApi(options);
     const created = await createMessage(input(), createDependencies(api));
@@ -481,35 +513,24 @@ describe('reading a message', () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const session = memorySession();
-    const id = idTextOf(created.link);
     const leaseEntry = await leaseValue(created.link, '');
     const owner = leaseEntry.trimEnd();
-    const stored = api.stored.get(id);
-    await api.claim(
-      stored?.request.id ?? new Uint8Array(16),
-      { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
-      {
-        verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
-        shareKeys: newShareKey,
-        onLease: (lease) => session.setItem(LEASE_KEY, `${owner} ${lease}`),
-      },
-    );
+    await claimElsewhere(api, created.link, '', (lease) => session.setItem(LEASE_KEY, `${owner} ${lease}`));
     const second = openReader(api, created.link, { session });
     await second.load();
     expect(second.last()).toMatchObject({ view: 'ready', resumable: true });
     await second.reveal();
     expect(second.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
-    expect(api.calls.filter((call) => call === 'blob' || call === 'ack' || call.startsWith('claim'))).toEqual([
-      'claim',
-      'blob',
-      'ack',
-    ]);
+    expect(api.calls.filter((call) => ['blob', 'ack', 'claim', 'handshake', 'handshake+lease'].includes(call))).toEqual(
+      ['handshake', 'claim', 'handshake+lease', 'blob', 'ack'],
+    );
+    expect(storedOf(api, created.link).failures).toBe(0);
     const third = openReader(api, created.link);
     await third.load();
     expect(third.last()).toMatchObject({ view: 'ended', state: 'opened' });
   });
 
-  it('lets the reader retry a mistyped passphrase on the lease path (SEC-7)', async () => {
+  it('tells a mistyped passphrase on the lease path from a changed message, through the handshake (SEC-7)', async () => {
     const api = fakeApi();
     const passphrase = 'correct horse battery staple';
     const created = await createMessage(input({ passphrase, opensMax: 2 }), createDependencies(api));
@@ -517,25 +538,18 @@ describe('reading a message', () => {
     const first = openReader(api, created.link, { session });
     await first.load();
     await first.reveal(passphrase);
-    const id = idTextOf(created.link);
     const leaseEntry = await leaseValue(created.link, '');
     const owner = leaseEntry.trimEnd();
-    const stored = api.stored.get(id);
-    await api.claim(
-      stored?.request.id ?? new Uint8Array(16),
-      { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
-      {
-        verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
-        shareKeys: newShareKey,
-        onLease: (lease) => session.setItem(LEASE_KEY, `${owner} ${lease}`),
-      },
-    );
+    await claimElsewhere(api, created.link, passphrase, (lease) => session.setItem(LEASE_KEY, `${owner} ${lease}`));
     const again = openReader(api, created.link, { session });
     await again.load();
     await again.reveal('mistyped passphrase here');
-    expect(again.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong_or_changed' } });
+    expect(again.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong', attemptsLeft: 4 } });
+    expect(api.calls.filter((call) => call === 'blob')).toEqual([]);
     await again.reveal(passphrase);
     expect(again.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
+    // The mistyped attempt stays counted; the resumed download took its own handshake's attempt back.
+    expect(storedOf(api, created.link).failures).toBe(1);
   });
 
   it('tells the reader when wrong attempts locked the message for its lifetime', async () => {
@@ -572,35 +586,38 @@ describe('reading a message', () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const before = api.calls.length;
-    const broken = openReader(api, created.link.replace('#2.', '#0.'));
+    const broken = openReader(api, created.link.replace('#3.', '#0.'));
     await broken.load();
     expect(broken.last()).toEqual({ view: 'invalid' });
     const brokenPath = openReader(api, created.link.replace('/r#', '/rx#'));
     await brokenPath.load();
     expect(brokenPath.last()).toEqual({ view: 'invalid' });
     for (const newerLink of [
-      created.link.replace('#2.', '#3.'),
+      created.link.replace('#3.', '#4.'),
       created.link.replace('/r#', '/rx#').replace(/#.*$/u, '#10.a.b.c'),
     ]) {
       const newer = openReader(api, newerLink);
       await newer.load();
       expect(newer.last()).toEqual({ view: 'newer' });
     }
-    const retired = openReader(api, created.link.replace('#2.0.', '#2.2.'));
+    const retired = openReader(api, created.link.replace('#3.0.', '#3.2.'));
     await retired.load();
     expect(retired.last()).toEqual({ view: 'retired' });
-    const retiredBadPath = openReader(api, created.link.replace('/r#', '/rx#').replace('#2.0.', '#2.2.'));
+    const retiredBadPath = openReader(api, created.link.replace('/r#', '/rx#').replace('#3.0.', '#3.2.'));
     await retiredBadPath.load();
     expect(retiredBadPath.last()).toEqual({ view: 'invalid' });
     const secret = encodeBase64url(new Uint8Array(32).fill(3));
     const released = openReader(api, `https://nylzo.test/m/${idTextOf(created.link)}#1.0.${secret}`);
     await released.load();
     expect(released.last()).toEqual({ view: 'released' });
+    const releasedV2 = openReader(api, created.link.replace('#3.0.', '#2.0.'));
+    await releasedV2.load();
+    expect(releasedV2.last()).toEqual({ view: 'released' });
     expect(api.calls.slice(before).filter((call) => !call.startsWith('view:') && call !== 'drop-fragment')).toEqual([]);
     const other = encodeBase64url(new Uint8Array(32).fill(5));
     const unknown = openReader(
       api,
-      created.link.replace(/#2\.0\.([^.]+)\..*$/u, (_, id: string) => `#2.0.${id}.${other}.${other}`),
+      created.link.replace(/#3\.0\.([^.]+)\..*$/u, (_, id: string) => `#3.0.${id}.${other}.${other}`),
     );
     await unknown.load();
     expect(unknown.last()).toEqual({ view: 'unknown' });
@@ -626,12 +643,14 @@ describe('reading through the lease and claim edge cases', () => {
     expect(reader.last()).toMatchObject({ view: 'ready', resumable: true });
     api.calls.length = 0;
     await reader.reveal();
-    expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['blob']);
+    const reads = () =>
+      api.calls.filter((call) => call === 'blob' || call.startsWith('claim') || call === 'handshake+lease');
+    expect(reads()).toEqual(['handshake+lease']);
     expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, leaseEnded: true });
     expect(session.map.has(LEASE_KEY)).toBe(false);
-    expect(storedOf(api, created.link).opensRemaining).toBe(3);
+    expect(storedOf(api, created.link)).toMatchObject({ opensRemaining: 3, failures: 0 });
     await reader.reveal();
-    expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['blob', 'claim']);
+    expect(reads()).toEqual(['handshake+lease', 'claim']);
     expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj', burnable: true });
     expect(storedOf(api, created.link).opensRemaining).toBe(2);
   });
@@ -654,9 +673,11 @@ describe('reading through the lease and claim edge cases', () => {
     const created = await createMessage(input({ opensMax: 2 }), createDependencies(api));
     const session = memorySession();
     session.setItem(LEASE_KEY, await leaseValue(created.link, 'lease-1'));
-    api.blob = () => {
+    storedOf(api, created.link).leases.add('lease-1');
+    api.blob = async (...parameters) => {
+      await parameters[4]?.unlock?.();
       api.calls.push('blob');
-      return Promise.reject(new ApiError(429, 'rate_limited', { retryAfter: 90 }));
+      throw new ApiError(429, 'rate_limited', { retryAfter: 90 });
     };
     const reader = openReader(api, created.link, { session });
     await reader.load();
@@ -751,17 +772,20 @@ describe('reading through the lease and claim edge cases', () => {
 });
 
 describe('passphrase handling on the read page', () => {
-  it('refuses a malformed passphrase before any derivation or claim', async () => {
+  it.each([
+    { reason: 'malformed', passphrase: 'caf\u{D800} correct horse' },
+    { reason: 'long', passphrase: 'correct horse '.repeat(5000) },
+  ])('refuses a $reason passphrase before any derivation or claim', async ({ reason, passphrase }) => {
     const api = fakeApi();
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const derivations: string[] = [];
-    const reader = openReader(api, created.link, { scrypt: workerScrypt(derivations) });
+    const reader = openReader(api, created.link, { stretch: workerStretch(derivations) });
     await reader.load();
-    await reader.reveal('caf\u{D800} correct horse');
-    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: false, rejected: { reason: 'malformed' } });
+    await reader.reveal(passphrase);
+    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: false, rejected: { reason } });
     expect(reader.views.some((readView) => readView.view === 'busy')).toBe(false);
     expect(derivations).toEqual([]);
-    expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
+    expect(api.calls.some((call) => call === 'handshake' || call.startsWith('claim'))).toBe(false);
     expect(Object.fromEntries(reader.session.map)).toEqual({ [`nylzo:dropped:${PAGE_KEY}`]: '1' });
   });
 
@@ -769,13 +793,13 @@ describe('passphrase handling on the read page', () => {
     const api = fakeApi();
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const reader = openReader(api, created.link, {
-      scrypt: () => Promise.reject(new KdfWorkerError()),
+      stretch: () => Promise.reject(new KdfWorkerError()),
     });
     await reader.load();
     await reader.reveal('correct horse battery staple');
     expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: true, rejected: undefined });
     const other = openReader(api, created.link, {
-      scrypt: () => Promise.reject(new ImpostorError('not the worker')),
+      stretch: () => Promise.reject(new ImpostorError('not the worker')),
     });
     await other.load();
     await other.reveal('correct horse battery staple');
@@ -905,10 +929,10 @@ describe('leaving the page', () => {
     const gate = Promise.withResolvers<undefined>();
     const asked = Promise.withResolvers<undefined>();
     const reader = openReader(api, created.link, {
-      scrypt: async (...parameters) => {
+      stretch: async (...parameters) => {
         asked.resolve(undefined);
         await gate.promise;
-        return scrypt(...parameters);
+        return stretch(...parameters);
       },
     });
     await reader.load();
@@ -919,7 +943,8 @@ describe('leaving the page', () => {
     await revealing;
     expect(reader.last()).toEqual({ view: 'cleared' });
     expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
-    expect(storedOf(api, created.link).failures).toBe(0);
+    // The handshake counted the attempt and no KE3 took it back (RFC 9807 section 9.2).
+    expect(storedOf(api, created.link).failures).toBe(1);
   });
 });
 
@@ -956,6 +981,20 @@ describe('deleting from the read page (D40)', () => {
     expect(await reader.burn()).toEqual({ outcome: 'ignored' });
   });
 
+  it('deletes a shown message with a passphrase without a second key derivation', async () => {
+    const api = fakeApi();
+    const passphrase = 'correct horse battery staple';
+    const created = await createMessage(input({ passphrase, opensMax: 3 }), createDependencies(api));
+    const derivations: string[] = [];
+    const reader = openReader(api, created.link, { stretch: workerStretch(derivations) });
+    await reader.load();
+    await reader.reveal(passphrase);
+    expect(reader.last()).toMatchObject({ view: 'revealed', burnable: true });
+    expect(await reader.burn()).toEqual({ outcome: 'deleted' });
+    expect(derivations).toEqual(['scrypt']);
+    expect(api.calls.filter((call) => call.startsWith('handshake'))).toHaveLength(2);
+  });
+
   it('deletes a message with a passphrase only with that passphrase, without showing a reveal (F05)', async () => {
     const api = fakeApi();
     const passphrase = 'tři slova a ještě čtvrté';
@@ -970,7 +1009,7 @@ describe('deleting from the read page (D40)', () => {
     expect(reader.views.some((view) => view.view === 'busy')).toBe(false);
   });
 
-  it('deletes the remaining opens of a message with a passphrase with the verifier of its reveal (F05)', async () => {
+  it('deletes the remaining opens of a message with a passphrase with the passphrase of its reveal (F05)', async () => {
     const api = fakeApi({ failBurn: [new ApiError(403, 'passphrase', { retryAfter: 60, attemptsLeft: 0 })] });
     const passphrase = 'tři slova a ještě čtvrté';
     const created = await createMessage(input({ opensMax: 3, passphrase }), createDependencies(api));

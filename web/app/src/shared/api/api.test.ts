@@ -16,6 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { ResponseError, StoppedError } from './api-errors.ts';
 import type { ApiError } from './api-errors.ts';
 import { createApi, TRANSFER_TIMEOUT_MS } from './api.ts';
+import type { Unlock } from './api.ts';
 import { servedPolicy } from './responses.ts';
 
 const randomId = () => crypto.getRandomValues(new Uint8Array(16));
@@ -90,15 +91,12 @@ async function expectSignedRequest(request: Request): Promise<void> {
   const components = {
     shareKey: request.headers.get('X-Nylzo-Share-Key') ?? '',
     lease: request.headers.get('X-Nylzo-Lease') ?? '',
+    ke1: request.headers.get('X-Nylzo-KE1') ?? '',
+    ke3: request.headers.get('X-Nylzo-KE3') ?? '',
   };
   const body = new Uint8Array(await request.clone().arrayBuffer());
   expect(await verifies(...parts, purpose, request.method, path, body, components)).toBe(true);
-  const verifier = request.headers.get('X-Nylzo-Verifier');
-  if (!verifier) {
-    return;
-  }
-  const [publicKey = '', signature = ''] = verifier.split('.');
-  expect(await verifies(publicKey, parts[1], signature, 'verifier', request.method, path, body, components)).toBe(true);
+  expect(request.headers.has('X-Nylzo-Verifier')).toBe(false);
 }
 
 const policy = encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 3, flags: 0 })));
@@ -106,9 +104,24 @@ const WRAPPED_SHARE_LENGTH = 1168;
 const { publicKey: shareKey } = newShareKey();
 const shareKeys = (): ShareKey => ({ seed: new Uint8Array(32).fill(5), publicKey: shareKey });
 const wrappedShare = encodeBase64url(new Uint8Array(WRAPPED_SHARE_LENGTH).fill(6));
+const HANDSHAKE_CHALLENGE = new Uint8Array(CHALLENGE_LENGTH).fill(42);
+const KE3 = new Uint8Array(64).fill(3);
+const registrationRequest = new Uint8Array(32).fill(4);
 
 // The last minute before the deadline of instanceBody, as the server issues it (spec 5.6).
 const ISSUED_EPOCH = 29_879_219;
+
+// Stands in for the handshake and KE3 of the reader, counting how often a request asked for one.
+function unlocker(): Unlock & { readonly count: () => number } {
+  let count = 0;
+  return Object.assign(
+    () => {
+      count++;
+      return Promise.resolve({ challenge: new Uint8Array(HANDSHAKE_CHALLENGE), ke3: KE3 });
+    },
+    { count: () => count },
+  );
+}
 
 const instanceBody = {
   limits: {
@@ -127,8 +140,9 @@ const instanceBody = {
     epoch: ISSUED_EPOCH,
     deadline: '2026-10-23T11:00:00Z',
     share: wrappedShare,
+    registration: encodeBase64url(new Uint8Array(64).fill(7)),
   },
-  versions: { api: 1, envelope: 2, fragment: 2, server: 'dev' },
+  versions: { api: 1, envelope: 3, fragment: 3, server: 'dev' },
 };
 
 const CHUNKED_OBJECT = Uint8Array.from({ length: 200_000 }, (_, index) => index % 251);
@@ -145,16 +159,27 @@ function chunkedStream(object: Uint8Array): ReadableStream<Uint8Array> {
 }
 
 describe('api client', () => {
-  it('asks for an id with the TTL and a share key, and reads the wrapped share (spec 5.6)', async () => {
+  it('asks for an id with the TTL, a share key and a registration request, and reads the answers (spec 5.6, 6.6)', async () => {
     const server = fakeServer(() => json(200, instanceBody));
-    const instance = await server.api.instance({ ttlSeconds: 3600, shareKey });
+    const instance = await server.api.instance({ ttlSeconds: 3600, shareKey, registrationRequest });
     const request = server.last();
     expect(new URL(request.url).search).toBe('');
     expect(request.headers.get('X-Nylzo-Ttl')).toBe('3600');
     expect(request.headers.get('X-Nylzo-Share-Key')).toBe(formatShareKey(shareKey));
+    expect(request.headers.get('X-Nylzo-Registration')).toBe(encodeBase64url(registrationRequest));
     expect(instance.create?.epoch).toBe(ISSUED_EPOCH);
     expect(instance.create?.deadline).toBe(Date.parse('2026-10-23T11:00:00Z') / 1000);
     expect(instance.create?.share).toEqual(new Uint8Array(WRAPPED_SHARE_LENGTH).fill(6));
+    expect(instance.create?.registration).toEqual(new Uint8Array(64).fill(7));
+    const short = fakeServer(() =>
+      json(200, {
+        ...instanceBody,
+        create: { ...instanceBody.create, registration: encodeBase64url(new Uint8Array(32)) },
+      }),
+    );
+    await expect(short.api.instance({ ttlSeconds: 3600, shareKey, registrationRequest })).rejects.toBeInstanceOf(
+      ResponseError,
+    );
     await server.api.instance();
     expect(server.last().headers.has('X-Nylzo-Share-Key')).toBe(false);
   });
@@ -227,10 +252,10 @@ describe('api client', () => {
     expect(request.headers.get('X-Nylzo-Verifier')).toBeNull();
   });
 
-  it('burns with R and V and cancels and reads the status with M, each without a body', async () => {
+  it('burns with R over the challenge of its handshake and cancels and reads the status with M, each without a body', async () => {
     const id = randomId();
     const readKey = await requestKey(new Uint8Array(32).fill(7));
-    const verifierKey = await requestKey(new Uint8Array(32).fill(8));
+    const unlock = unlocker();
     const manageKey = await requestKey(new Uint8Array(32).fill(9));
     const server = fakeServer((request) =>
       new URL(request.url).pathname.endsWith('/status')
@@ -243,7 +268,7 @@ describe('api client', () => {
           })
         : new Response(null, { status: 204 }),
     );
-    await server.api.burn(id, readKey, verifierKey);
+    await server.api.burn(id, readKey, unlock);
     await server.api.cancel(id, manageKey);
     expect(await server.api.status(id, manageKey)).toEqual({
       state: 'cancelled',
@@ -255,21 +280,24 @@ describe('api client', () => {
     const signed = server.seen.filter((request) => !request.url.endsWith('/challenge'));
     const base = `/api/v1/messages/${idToString(id)}`;
     const expected = [
-      ['POST', `${base}/burn`, 'read', readKey, verifierKey],
-      ['POST', `${base}/cancel`, 'manage', manageKey, undefined],
-      ['GET', `${base}/status`, 'manage', manageKey, undefined],
+      ['POST', `${base}/burn`, 'read', readKey, encodeBase64url(KE3)],
+      ['POST', `${base}/cancel`, 'manage', manageKey, null],
+      ['GET', `${base}/status`, 'manage', manageKey, null],
     ] as const;
     expect(signed).toHaveLength(expected.length);
-    for (const [index, [method, path, purpose, key, verifier]] of expected.entries()) {
+    for (const [index, [method, path, purpose, key, ke3]] of expected.entries()) {
       const request = requestAt(signed, index);
       expect([request.method, new URL(request.url).pathname]).toEqual([method, path]);
       const parts = authorizationParts(request.headers.get('Authorization') ?? '');
       expect(parts[0]).toBe(encodeBase64url(key.publicKey));
-      expect(await verifies(...parts, purpose, method, path)).toBe(true);
-      const [verifierPublicKey = null] = request.headers.get('X-Nylzo-Verifier')?.split('.') ?? [];
-      expect(verifierPublicKey).toBe(verifier ? encodeBase64url(verifier.publicKey) : null);
+      expect(await verifies(...parts, purpose, method, path, undefined, { ke3: ke3 ?? '' })).toBe(true);
+      expect(request.headers.get('X-Nylzo-KE3')).toBe(ke3);
       expect(await request.arrayBuffer()).toHaveProperty('byteLength', 0);
     }
+    expect(authorizationParts(requestAt(signed, 0).headers.get('Authorization') ?? '')[1]).toBe(
+      encodeBase64url(HANDSHAKE_CHALLENGE),
+    );
+    expect(unlock.count()).toBe(1);
   });
 
   it.each([
@@ -287,7 +315,7 @@ describe('api client', () => {
     );
     const sent = shareKeys();
     await expect(
-      server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys: () => sent }),
+      server.api.claim(randomId(), readKey, { unlock: unlocker(), shareKeys: () => sent }),
     ).rejects.toBeInstanceOf(ResponseError);
     expect(sent.seed.every((byte) => byte === 0)).toBe(true);
   });
@@ -308,10 +336,10 @@ describe('api client', () => {
     }
   });
 
-  it('claims with R and V over the same challenge and streams the object', async () => {
+  it('claims with R and KE3 over the challenge of its handshake and streams the object', async () => {
     const id = randomId();
     const readKey = await requestKey(new Uint8Array(32).fill(1));
-    const verifierKey = await requestKey(new Uint8Array(32).fill(2));
+    const unlock = unlocker();
     const object = new Uint8Array(70_000).fill(9);
     const server = fakeServer(
       () =>
@@ -329,7 +357,7 @@ describe('api client', () => {
     const progress: [number, number | undefined][] = [];
     const leases: string[] = [];
     const claimed = await server.api.claim(id, readKey, {
-      verifierKey,
+      unlock,
       shareKeys,
       onLease: (lease) => {
         leases.push(lease);
@@ -346,56 +374,13 @@ describe('api client', () => {
     expect(progress.at(-1)).toEqual([object.length, object.length]);
     const request = server.last();
     const authorization = request.headers.get('Authorization') ?? '';
-    const verifier = request.headers.get('X-Nylzo-Verifier') ?? '';
     expect(request.method).toBe('POST');
     const [, challenge] = authorizationParts(authorization);
-    const [verifierPublicKey = '', , ...rest] = verifier.split('.');
-    expect(rest).toEqual([]);
-    expect(challenge).toBe(encodeBase64url(new Uint8Array(CHALLENGE_LENGTH).fill(1)));
-    expect(verifierPublicKey).toBe(encodeBase64url(verifierKey.publicKey));
+    expect(challenge).toBe(encodeBase64url(HANDSHAKE_CHALLENGE));
+    expect(request.headers.get('X-Nylzo-KE3')).toBe(encodeBase64url(KE3));
     expect(request.headers.get('X-Nylzo-Share-Key')).toBe(formatShareKey(shareKey));
     expect(request.headers.get('X-Nylzo-Flags')).toBe('2');
-  });
-
-  it('retries a 404 once with a new challenge and then reports it', async () => {
-    const readKey = await requestKey(new Uint8Array(32).fill(3));
-    let calls = 0;
-    const flaky = fakeServer(() =>
-      ++calls === 1 ? json(404, { error: 'not_found' }) : new Response(null, { status: 204 }),
-    );
-    await flaky.api.ack(randomId(), readKey, 'lease');
-    expect(flaky.issued()).toBe(2);
-    const gone = fakeServer(() => json(404, { error: 'not_found' }));
-    await expect(gone.api.ack(randomId(), readKey, 'lease')).rejects.toMatchObject({ kind: 'not_found', status: 404 });
-    expect(gone.issued()).toBe(2);
-  });
-
-  it('draws a new share key for the retry after a 404, erases the first and reports the one answered', async () => {
-    const readKey = await requestKey(new Uint8Array(32).fill(3));
-    let attempt = 0;
-    const drawn: ShareKey[] = [];
-    const sent: (string | null)[] = [];
-    const flaky = fakeServer((request) => {
-      sent.push(request.headers.get('X-Nylzo-Share-Key'));
-      return ++attempt === 1
-        ? json(404, { error: 'not_found' })
-        : new Response(new Uint8Array(16), {
-            status: 200,
-            headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy, 'X-Nylzo-Share': wrappedShare },
-          });
-    });
-    const claimed = await flaky.api.claim(randomId(), readKey, {
-      verifierKey: readKey,
-      shareKeys: () => {
-        const key = newShareKey();
-        drawn.push(key);
-        return key;
-      },
-    });
-    expect(sent).toEqual(drawn.map((key) => formatShareKey(key.publicKey)));
-    expect(new Set(sent).size).toBe(2);
-    expect(claimed.shareKey).toBe(drawn[1]);
-    expect(drawn.map((key) => key.seed.every((byte) => byte === 0))).toEqual([true, false]);
+    expect(server.issued()).toBe(0);
   });
 
   it('sends the ack as one keepalive request when its challenge was fetched before the message showed', async () => {
@@ -432,6 +417,7 @@ describe('api client', () => {
         { kind: 'passphrase', retryAfter: 60, attemptsLeft: 0 },
       ],
       [json(410, { error: 'gone', state: 'opened' }), { kind: 'gone', state: 'opened' }],
+      [json(400, { error: 'client_outdated' }), { kind: 'client_outdated', status: 400 }],
       [
         json(429, { error: 'rate_limited', retry_after: 5 }, { 'Retry-After': '5' }),
         { kind: 'rate_limited', retryAfter: 5 },
@@ -441,7 +427,7 @@ describe('api client', () => {
     ];
     for (const [response, expected] of cases) {
       const server = fakeServer(() => response.clone());
-      await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys })).rejects.toMatchObject(
+      await expect(server.api.claim(randomId(), readKey, { unlock: unlocker(), shareKeys })).rejects.toMatchObject(
         expected,
       );
     }
@@ -456,7 +442,7 @@ describe('api client', () => {
       epoch: 493_000,
       deadline: Date.parse('2026-10-24T09:00:00Z') / 1000,
       readKey: new Uint8Array(32).fill(1),
-      verifierKey: new Uint8Array(32).fill(2),
+      registration: new Uint8Array(192).fill(2),
       manageKey: new Uint8Array(32).fill(3),
     };
     await server.api.create({
@@ -476,7 +462,7 @@ describe('api client', () => {
       id_token: 'token',
       epoch: 493_000,
       read_key: encodeBase64url(keys.readKey),
-      verifier_key: encodeBase64url(keys.verifierKey),
+      registration: encodeBase64url(keys.registration),
       manage_key: encodeBase64url(keys.manageKey),
       kdf_id: 0,
       opens_max: 1,
@@ -522,7 +508,7 @@ describe('api client', () => {
   it('leaves retryAfter empty when the server sends no Retry-After', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(6));
     const server = fakeServer(() => json(503, { error: 'unavailable' }));
-    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys })).rejects.toMatchObject({
+    await expect(server.api.claim(randomId(), readKey, { unlock: unlocker(), shareKeys })).rejects.toMatchObject({
       kind: 'unavailable',
       retryAfter: undefined,
     });
@@ -537,7 +523,7 @@ describe('api client', () => {
           headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy, 'Content-Length': String(MAX_OBJECT_BYTES + 1) },
         }),
     );
-    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys })).rejects.toThrow(
+    await expect(server.api.claim(randomId(), readKey, { unlock: unlocker(), shareKeys })).rejects.toThrow(
       ResponseError,
     );
   });
@@ -545,16 +531,15 @@ describe('api client', () => {
   it('sends no claim once the caller stops it after the challenge', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(9));
     const server = fakeServer(() => json(500, { error: 'internal' }));
-    let challenged = false;
+    const unlock = unlocker();
+    let unlocked = false;
     const proceed = () => {
-      challenged = server.issued() > 0;
+      unlocked = unlock.count() > 0;
       return false;
     };
-    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys, proceed })).rejects.toThrow(
-      StoppedError,
-    );
-    expect(challenged).toBe(true);
-    expect(server.seen.map((request) => new URL(request.url).pathname)).toEqual(['/api/v1/challenge']);
+    await expect(server.api.claim(randomId(), readKey, { unlock, shareKeys, proceed })).rejects.toThrow(StoppedError);
+    expect(unlocked).toBe(true);
+    expect(server.seen).toEqual([]);
   });
 
   it('sends every request without credentials, cache, referrer or redirects', async () => {
@@ -567,6 +552,15 @@ describe('api client', () => {
       }
       if (path === '/api/v1/messages') {
         return json(201, { id: 'AAAAAAAAAAAAAAAAAAAAAA', expires_at: '2026-10-24T09:00:00Z' });
+      }
+      if (path.endsWith('/handshake')) {
+        return json(200, {
+          ke2: encodeBase64url(new Uint8Array(320)),
+          challenge: encodeBase64url(HANDSHAKE_CHALLENGE),
+          expires_at: '2026-10-23T10:01:00Z',
+          attempts_left: 5,
+          retry_after: 0,
+        });
       }
       if (path.endsWith('/claim') || path.endsWith('/blob')) {
         return new Response(object, { status: 200, headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy } });
@@ -581,18 +575,19 @@ describe('api client', () => {
       epoch: 1,
       deadline: Date.parse('2026-10-24T09:00:00Z') / 1000,
       readKey: readKey.publicKey,
-      verifierKey: readKey.publicKey,
+      registration: new Uint8Array(192),
       manageKey: readKey.publicKey,
       kdfId: 0,
       opensMax: 1,
       ttlSeconds: 3600,
       object,
     });
-    await server.api.claim(id, readKey, { verifierKey: readKey, shareKeys });
+    await server.api.handshake(id, readKey, new Uint8Array(96));
+    await server.api.claim(id, readKey, { unlock: unlocker(), shareKeys });
     await server.api.blob(id, readKey, LEASE, shareKeys);
     await server.api.ack(id, readKey, LEASE);
-    await server.api.burn(id, readKey, readKey);
-    expect(new Set(server.seen.map((request) => new URL(request.url).pathname)).size).toBe(7);
+    await server.api.burn(id, readKey, unlocker());
+    expect(new Set(server.seen.map((request) => new URL(request.url).pathname)).size).toBe(8);
     expect(
       server.seenOptions.map((request) => ({
         url: request.url,
@@ -635,7 +630,7 @@ describe('api client', () => {
     const server = fakeServer(
       () => new Response(body, { status: 200, headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy } }),
     );
-    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys })).rejects.toThrow(
+    await expect(server.api.claim(randomId(), readKey, { unlock: unlocker(), shareKeys })).rejects.toThrow(
       ResponseError,
     );
     expect(sent).toBeLessThanOrEqual(MAX_OBJECT_BYTES + 2 * chunk.length);
@@ -654,8 +649,10 @@ describe('api client', () => {
     };
     const progress: [number, number | undefined][] = [];
     const server = fakeServer(() => new Response(chunkedStream(CHUNKED_OBJECT), { status: 200, headers }));
-    const envelope = await server.api.blob(randomId(), readKey, LEASE, shareKeys, (received, total) => {
-      progress.push([received, total]);
+    const envelope = await server.api.blob(randomId(), readKey, LEASE, shareKeys, {
+      onProgress: (received, total) => {
+        progress.push([received, total]);
+      },
     });
     expect(envelope.object).toEqual(CHUNKED_OBJECT);
     expect(envelope.object.buffer.byteLength).toBe(CHUNKED_OBJECT.length);
@@ -802,13 +799,15 @@ describe('F13: deadlines', () => {
     ['an epoch of another minute', { epoch: ISSUED_EPOCH + 1 }],
   ])('F13: refuses an id with %s', async (_, changed) => {
     const server = fakeServer(() => json(200, { ...instanceBody, create: { ...instanceBody.create, ...changed } }));
-    await expect(server.api.instance({ ttlSeconds: 3600, shareKey })).rejects.toThrow(ResponseError);
+    await expect(server.api.instance({ ttlSeconds: 3600, shareKey, registrationRequest })).rejects.toThrow(
+      ResponseError,
+    );
   });
 
   it('F13: accepts a deadline rounded up to the next minute', async () => {
     const changed = { deadline: '2026-10-23T11:01:00Z', epoch: ISSUED_EPOCH + 1 };
     const server = fakeServer(() => json(200, { ...instanceBody, create: { ...instanceBody.create, ...changed } }));
-    const instance = await server.api.instance({ ttlSeconds: 3600, shareKey });
+    const instance = await server.api.instance({ ttlSeconds: 3600, shareKey, registrationRequest });
     expect(instance.create?.epoch).toBe(ISSUED_EPOCH + 1);
   });
 
@@ -820,7 +819,7 @@ describe('F13: deadlines', () => {
       epoch: 1,
       deadline: Date.parse('2026-10-24T09:00:00Z') / 1000,
       readKey: new Uint8Array(32).fill(1),
-      verifierKey: new Uint8Array(32).fill(2),
+      registration: new Uint8Array(192).fill(2),
       manageKey: new Uint8Array(32).fill(3),
       kdfId: 0 as const,
       opensMax: 1,
@@ -834,3 +833,106 @@ describe('F13: deadlines', () => {
 function missing(message: string): never {
   throw new Error(message);
 }
+
+describe('api client handshake and retries (spec 5.5, 6.4)', () => {
+  it('retries a 404 once with a new challenge and then reports it', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(3));
+    let calls = 0;
+    const flaky = fakeServer(() =>
+      ++calls === 1 ? json(404, { error: 'not_found' }) : new Response(null, { status: 204 }),
+    );
+    await flaky.api.ack(randomId(), readKey, 'lease');
+    expect(flaky.issued()).toBe(2);
+    const gone = fakeServer(() => json(404, { error: 'not_found' }));
+    await expect(gone.api.ack(randomId(), readKey, 'lease')).rejects.toMatchObject({ kind: 'not_found', status: 404 });
+    expect(gone.issued()).toBe(2);
+  });
+
+  it('draws a new share key for the retry after a 404 and reports the one the answer is wrapped to', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(3));
+    let attempt = 0;
+    const drawn: ShareKey[] = [];
+    const sent: (string | null)[] = [];
+    const flaky = fakeServer((request) => {
+      sent.push(request.headers.get('X-Nylzo-Share-Key'));
+      return ++attempt === 1
+        ? json(404, { error: 'not_found' })
+        : new Response(new Uint8Array(16), {
+            status: 200,
+            headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy, 'X-Nylzo-Share': wrappedShare },
+          });
+    });
+    const unlock = unlocker();
+    const claimed = await flaky.api.claim(randomId(), readKey, {
+      unlock,
+      shareKeys: () => {
+        const key = newShareKey();
+        drawn.push(key);
+        return key;
+      },
+    });
+    expect(sent).toEqual(drawn.map((key) => formatShareKey(key.publicKey)));
+    expect(new Set(sent).size).toBe(2);
+    expect(claimed.shareKey).toBe(drawn[1]);
+    expect(drawn.map((key) => key.seed.every((byte) => byte === 0))).toEqual([true, false]);
+    expect(unlock.count()).toBe(2);
+  });
+
+  it('sends KE1 with a signed handshake and reads KE2, its challenge and the attempts', async () => {
+    const id = randomId();
+    const readKey = await requestKey(new Uint8Array(32).fill(1));
+    const ke2 = new Uint8Array(320).fill(5);
+    const answer = { ke2: encodeBase64url(ke2), challenge: encodeBase64url(HANDSHAKE_CHALLENGE) };
+    const server = fakeServer(() =>
+      json(200, { ...answer, expires_at: '2026-10-23T10:01:00Z', attempts_left: 4, retry_after: 0 }),
+    );
+    const ke1 = new Uint8Array(96).fill(2);
+    expect(await server.api.handshake(id, readKey, ke1)).toEqual({
+      ke2,
+      challenge: HANDSHAKE_CHALLENGE,
+      attemptsLeft: 4,
+      retryAfter: 0,
+    });
+    const request = server.last();
+    expect(new URL(request.url).pathname).toBe(`/api/v1/messages/${idToString(id)}/handshake`);
+    expect(request.headers.get('X-Nylzo-KE1')).toBe(encodeBase64url(ke1));
+    const short = fakeServer(() =>
+      json(200, { ...answer, ke2: encodeBase64url(ke2.subarray(1)), attempts_left: 4, retry_after: 0 }),
+    );
+    await expect(short.api.handshake(id, readKey, ke1)).rejects.toBeInstanceOf(ResponseError);
+  });
+
+  it('names the lease of a resumed open in the signed handshake and resumes the download with KE3 (spec 6.4, 6.5)', async () => {
+    const id = randomId();
+    const readKey = await requestKey(new Uint8Array(32).fill(1));
+    const server = fakeServer((request) =>
+      new URL(request.url).pathname.endsWith('/handshake')
+        ? json(200, {
+            ke2: encodeBase64url(new Uint8Array(320)),
+            challenge: encodeBase64url(HANDSHAKE_CHALLENGE),
+            expires_at: '2026-10-23T10:01:00Z',
+            attempts_left: 4,
+            retry_after: 0,
+          })
+        : new Response(new Uint8Array(16), {
+            status: 200,
+            headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy, 'X-Nylzo-Share': wrappedShare },
+          }),
+    );
+    await server.api.handshake(id, readKey, new Uint8Array(96), LEASE);
+    expect(server.last().headers.get('X-Nylzo-Lease')).toBe(LEASE);
+    const unlock = unlocker();
+    await server.api.blob(id, readKey, LEASE, shareKeys, { unlock });
+    const download = server.last();
+    expect(authorizationParts(download.headers.get('Authorization') ?? '')[1]).toBe(
+      encodeBase64url(HANDSHAKE_CHALLENGE),
+    );
+    expect(download.headers.get('X-Nylzo-KE3')).toBe(encodeBase64url(KE3));
+    expect(download.headers.get('X-Nylzo-Lease')).toBe(LEASE);
+    expect(unlock.count()).toBe(1);
+    expect(server.issued()).toBe(1);
+    await server.api.blob(id, readKey, LEASE, shareKeys);
+    expect(server.last().headers.has('X-Nylzo-KE3')).toBe(false);
+    expect(server.issued()).toBe(2);
+  });
+});

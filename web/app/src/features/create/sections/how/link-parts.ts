@@ -29,7 +29,7 @@ export const LINK_PARTS: readonly LinkPart[] = [
   },
   {
     id: 'meta',
-    text: '#2.0.',
+    text: '#3.0.',
     title: 'how.link.meta.title',
     meta: 'how.link.meta.meta',
     body: 'how.link.meta.body',

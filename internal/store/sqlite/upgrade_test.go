@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -19,8 +20,9 @@ type released struct {
 	marker []byte
 }
 
-// releasedDatabase has the tables, guards and version of nylzo 0.2.3 and one row whose bytes nothing else holds.
-func releasedDatabase(t *testing.T) released {
+// releasedDatabase has the tables and version of a release, the guards of nylzo 0.2.3 for schema 5, and one row whose
+// bytes nothing else holds.
+func releasedDatabase(t *testing.T, version int) released {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
 	database, err := sql.Open("sqlite", dataSourceName(path, true))
@@ -37,10 +39,12 @@ func releasedDatabase(t *testing.T) released {
 			key TEXT NOT NULL, window_start INTEGER NOT NULL, count INTEGER NOT NULL, bytes INTEGER NOT NULL,
 			purge_at INTEGER NOT NULL, PRIMARY KEY (key, window_start)
 		) WITHOUT ROWID;
-		CREATE TRIGGER rate_counters_guard_insert BEFORE INSERT ON rate_counters WHEN NEW.key GLOB 'create:*'
-			BEGIN SELECT RAISE(ABORT, 'older build'); END;
 		INSERT INTO rate_counters VALUES ('global:day', 0, 3, 0, 0);
-		PRAGMA user_version = 5;`)
+		PRAGMA user_version = ` + strconv.Itoa(version))
+	if err == nil && version == 5 {
+		_, err = database.Exec(`CREATE TRIGGER rate_counters_guard_insert BEFORE INSERT ON rate_counters
+			WHEN NEW.key GLOB 'create:*' BEGIN SELECT RAISE(ABORT, 'older build'); END`)
+	}
 	if err == nil {
 		_, err = database.Exec(
 			`INSERT INTO messages VALUES (?, ?, ?, ?, 'ref', NULL, NULL, 0)`,
@@ -53,13 +57,14 @@ func releasedDatabase(t *testing.T) released {
 	return released{path: path, marker: marker}
 }
 
+var errInterrupted = errors.New("interrupted")
+
 func TestUpgradeFromAReleaseFinishesAfterAnInterruptionAtEveryStep(t *testing.T) {
 	t.Parallel()
-	interrupted := errors.New("interrupted")
 	for name, interrupt := range map[string]func(t *testing.T, path string){
 		"while erasing the blobs": func(t *testing.T, path string) {
 			t.Helper()
-			if _, err := UpgradeFromReleased(t.Context(), path, func() error { return interrupted }); !errors.Is(err, interrupted) {
+			if _, err := UpgradeFromReleased(t.Context(), path, func() error { return errInterrupted }); !errors.Is(err, errInterrupted) {
 				t.Fatalf("an interrupted blob erase: %v", err)
 			}
 		},
@@ -76,7 +81,16 @@ func TestUpgradeFromAReleaseFinishesAfterAnInterruptionAtEveryStep(t *testing.T)
 		},
 		"never": func(*testing.T, string) {},
 	} {
-		database := releasedDatabase(t)
+		for _, version := range releasedSchemas {
+			upgradeAfterInterruption(t, name+", schema "+strconv.Itoa(version), version, interrupt)
+		}
+	}
+}
+
+func upgradeAfterInterruption(t *testing.T, name string, version int, interrupt func(t *testing.T, path string)) {
+	t.Helper()
+	{
+		database := releasedDatabase(t, version)
 		path, marker := database.path, database.marker
 		interrupt(t, path)
 		erased := 0
@@ -110,7 +124,7 @@ func TestUpgradeFromAReleaseFinishesAfterAnInterruptionAtEveryStep(t *testing.T)
 				t.Fatalf("%s: %s still holds a row from before the upgrade", name, filepath.Base(file))
 			}
 		}
-		if again, againErr := UpgradeFromReleased(t.Context(), path, func() error { return interrupted }); again ||
+		if again, againErr := UpgradeFromReleased(t.Context(), path, func() error { return errInterrupted }); again ||
 			againErr != nil {
 			t.Fatalf("%s: a second start upgraded again: %t %v", name, again, againErr)
 		}
@@ -118,8 +132,8 @@ func TestUpgradeFromAReleaseFinishesAfterAnInterruptionAtEveryStep(t *testing.T)
 }
 
 // TestOpenAddsTheCounterPurgeIndexAndKeepsEveryRow covers the counter purge index: the purge reads an index on
-// purge_at, so a flood of challenge rows costs no scan of the table per batch, a database of nylzo 0.3 to 0.8 keeps its
-// rows, and its schema version stays 7, so that release still opens it.
+// purge_at, so a flood of challenge rows costs no scan of the table per batch, and a database of the current schema
+// without the index keeps its rows and its schema version.
 func TestOpenAddsTheCounterPurgeIndexAndKeepsEveryRow(t *testing.T) {
 	t.Parallel()
 	for name, open := range map[string]func(context.Context, string) (*Store, error){

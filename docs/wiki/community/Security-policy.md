@@ -23,7 +23,7 @@ Some limits are known and documented in [the protocol](../reference/Protocol.md)
 - Whoever controls the running server or its hosting can send a modified web client and read the messages created or opened in it. The CLI from a signed release protects against this. `nylzo verify-client` detects modified files served to that check. A hostile server can recognize the command and send browsers different JavaScript.
 - Anyone who has the link can delete a message that has no passphrase, and can lock readers out with wrong passphrases, which also holds back deleting. Deleting a message that has a passphrase needs the passphrase as well as the link.
 - Someone with both the link and a copy of the server can guess a weak passphrase offline.
-- Someone with both the link and a recorded request that creates, opens or deletes the message, such as a log of its `X-Nylzo-Create` or `X-Nylzo-Verifier` header, can guess a weak passphrase offline. Nylzo and its deployment profiles record no such header; [Passphrase verifier and PAKE](../maintainers/Passphrase-verifier.md) explains the limit and the protocol change that would remove it.
+- Someone who controls the server, or has a copy of it with its pepper, and also has the link can guess a weak passphrase offline while the message lives, as with any single-server password protocol. A recorded request no longer helps since protocol v3 checks the passphrase with OPAQUE; [Passphrase verifier and PAKE](../maintainers/Passphrase-verifier.md) explains the change and what stays.
 - The server sees the padded size of a message and times to the minute.
 
 A report that shows one of these is worse than documented is welcome.

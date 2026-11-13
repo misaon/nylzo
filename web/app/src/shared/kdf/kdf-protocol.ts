@@ -1,9 +1,5 @@
 export type KdfRequest =
-  | {
-      readonly kind: 'scrypt';
-      readonly passphrase: string;
-      readonly passphraseSalt: Uint8Array<ArrayBuffer>;
-    }
+  | { readonly kind: 'stretch'; readonly message: Uint8Array<ArrayBuffer> }
   | {
       readonly kind: 'pow';
       readonly challenge: string;
@@ -18,7 +14,8 @@ export type KdfResponse =
   | { readonly kind: 'token'; readonly token: string }
   | { readonly kind: 'error'; readonly timeout: boolean };
 
-const KEY_LENGTH = 32;
+// The OPRF output that profile 3 stretches and the stretched key are both 64 bytes (spec 2.1).
+const STRETCH_LENGTH = 64;
 const ID_LENGTH = 16;
 
 function field(value: object, name: string): unknown {
@@ -38,10 +35,7 @@ function isBudget(value: unknown): value is number {
 }
 
 const REQUEST_CHECKS = new Map<unknown, (value: object) => boolean>([
-  [
-    'scrypt',
-    (value) => typeof field(value, 'passphrase') === 'string' && isBytes(field(value, 'passphraseSalt'), KEY_LENGTH),
-  ],
+  ['stretch', (value) => isBytes(field(value, 'message'), STRETCH_LENGTH)],
   [
     'pow',
     (value) =>
@@ -54,7 +48,7 @@ const REQUEST_CHECKS = new Map<unknown, (value: object) => boolean>([
 
 const RESPONSE_CHECKS = new Map<unknown, (value: object) => boolean>([
   ['progress', (value) => isFraction(field(value, 'fraction'))],
-  ['key', (value) => isBytes(field(value, 'key'), KEY_LENGTH)],
+  ['key', (value) => isBytes(field(value, 'key'), STRETCH_LENGTH)],
   ['token', (value) => typeof field(value, 'token') === 'string'],
   ['error', (value) => typeof field(value, 'timeout') === 'boolean'],
 ]);

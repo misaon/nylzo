@@ -11,11 +11,9 @@ import {
   parseChallenge,
   PURPOSE_MANAGE,
   PURPOSE_READ,
-  PURPOSE_VERIFIER,
   requestKey,
   requestMessage,
   signRequest,
-  verifierHeader,
   wipeRequestKey,
 } from './signature.ts';
 import type { RequestKey } from './signature.ts';
@@ -31,7 +29,12 @@ describe('AK9: request vectors', () => {
 
     const challenge = parseChallenge(vector.challenge);
     const body = hexToBytes(vector.body_hex);
-    const components = { shareKey: vector.components.share_key, lease: vector.components.lease };
+    const components = {
+      shareKey: vector.components.share_key,
+      lease: vector.components.lease,
+      ke1: vector.components.ke1,
+      ke3: vector.components.ke3,
+    };
     const message = await requestMessage(vector.purpose, vector.method, vector.path, challenge, body, components);
     expect(message.toHex()).toBe(vector.message_hex);
 
@@ -39,51 +42,47 @@ describe('AK9: request vectors', () => {
       signRequest(signingKey, vector.purpose, vector.method, vector.path, challenge, body, components);
     const signature = await sign(key);
     expect(encodeBase64url(signature.signature)).toBe(vector.signature);
-    expect({ authorization: vector.authorization, verifier_header: vector.verifier_header }).toEqual(
-      vector.purpose === PURPOSE_VERIFIER
-        ? { verifier_header: verifierHeader(signature) }
-        : { authorization: authorizationHeader(signature) },
-    );
+    expect(authorizationHeader(signature)).toBe(vector.authorization);
   });
 });
 
 describe('request signatures (spec 5.5)', () => {
-  it.each([PURPOSE_READ, PURPOSE_MANAGE, PURPOSE_VERIFIER] as const)(
-    'binds security headers for %s',
-    async (purpose) => {
-      const key = await requestKey(new Uint8Array(SEED_LENGTH).fill(7));
-      const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(3);
-      const original = { shareKey: 'share-key', lease: 'lease-token' };
-      const signature = await signRequest(key, purpose, 'POST', path, challenge, undefined, original);
-      const publicKey = await crypto.subtle.importKey('raw', key.publicKey, 'Ed25519', false, ['verify']);
-      for (const components of [
-        original,
-        { ...original, shareKey: 'other' },
-        { ...original, lease: 'other' },
-        { shareKey: original.shareKey },
-        { lease: original.lease },
-        {},
-        { shareKey: original.lease, lease: original.shareKey },
-      ]) {
-        const message = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), components);
-        expect(await crypto.subtle.verify('Ed25519', publicKey, signature.signature, message)).toBe(
-          components === original,
-        );
-      }
-      const unsigned = await signRequest(key, purpose, 'POST', path, challenge);
-      const injected = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), original);
-      expect(await crypto.subtle.verify('Ed25519', publicKey, unsigned.signature, injected)).toBe(false);
-      const one = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), {
-        shareKey: 'a\0b',
-        lease: 'c',
-      });
-      const two = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), {
-        shareKey: 'a',
-        lease: 'b\0c',
-      });
-      expect(one).not.toEqual(two);
-    },
-  );
+  it.each([PURPOSE_READ, PURPOSE_MANAGE] as const)('binds security headers for %s', async (purpose) => {
+    const key = await requestKey(new Uint8Array(SEED_LENGTH).fill(7));
+    const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(3);
+    const original = { shareKey: 'share-key', lease: 'lease-token', ke1: 'ke1', ke3: 'ke3' };
+    const signature = await signRequest(key, purpose, 'POST', path, challenge, undefined, original);
+    const publicKey = await crypto.subtle.importKey('raw', key.publicKey, 'Ed25519', false, ['verify']);
+    for (const components of [
+      original,
+      { ...original, shareKey: 'other' },
+      { ...original, lease: 'other' },
+      { ...original, ke1: 'other' },
+      { ...original, ke3: 'other' },
+      { ...original, ke1: original.ke3, ke3: original.ke1 },
+      { shareKey: original.shareKey },
+      { lease: original.lease },
+      {},
+      { shareKey: original.lease, lease: original.shareKey },
+    ]) {
+      const message = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), components);
+      expect(await crypto.subtle.verify('Ed25519', publicKey, signature.signature, message)).toBe(
+        components === original,
+      );
+    }
+    const unsigned = await signRequest(key, purpose, 'POST', path, challenge);
+    const injected = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), original);
+    expect(await crypto.subtle.verify('Ed25519', publicKey, unsigned.signature, injected)).toBe(false);
+    const one = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), {
+      shareKey: 'a\0b',
+      lease: 'c',
+    });
+    const two = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), {
+      shareKey: 'a',
+      lease: 'b\0c',
+    });
+    expect(one).not.toEqual(two);
+  });
 
   it('rejects a seed or challenge of the wrong length', async () => {
     await expect(requestKey(new Uint8Array(SEED_LENGTH - 1))).rejects.toBeInstanceOf(Error);

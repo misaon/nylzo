@@ -3,7 +3,7 @@ import { encodeBase64url, utf8 } from '@nylzo/core';
 import { servedByLocalClient } from '../../shared/local-client/instance-origin.ts';
 import type { SessionStore } from './reader.ts';
 
-const LEASE_TAG_LABEL = utf8('nylzo/v2/lease-tag');
+const LEASE_TAG_LABEL = utf8('nylzo/v3/lease-tag');
 const LEASE_TAG_BYTES = 16;
 
 // Names a stored lease without the message id; only the key in the link can compute it again.

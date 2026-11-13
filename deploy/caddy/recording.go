@@ -22,7 +22,7 @@ var (
 	errTLSSecretsFile = errors.New("insecure_secrets_log writes TLS keys that decrypt every recorded request")
 	errFastCGI        = errors.New("the FastCGI transport logs every request header at debug level")
 	errRecordsHeaders = errors.New(
-		"makes Caddy record request headers, which carry keys and passphrase verifiers; unset it",
+		"makes Caddy record request headers, which carry signatures and leases; unset it",
 	)
 )
 

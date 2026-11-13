@@ -17,9 +17,9 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/epoch"
-	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -38,17 +38,17 @@ const (
 )
 
 type createRequest struct {
-	header      api.CreateHeader
-	id          core.ID
-	readKey     []byte
-	verifierKey []byte
-	manageKey   []byte
-	opensMax    uint16
-	ttlSeconds  uint32
-	bodyBy      time.Time
-	outdated    bool
-	generation  epoch.GenerationID
-	deadline    time.Time
+	header       api.CreateHeader
+	id           core.ID
+	readKey      []byte
+	registration []byte
+	manageKey    []byte
+	opensMax     uint16
+	ttlSeconds   uint32
+	bodyBy       time.Time
+	outdated     bool
+	generation   epoch.GenerationID
+	deadline     time.Time
 }
 
 // The create checks run in the order of spec §6.2, each before the body is read.
@@ -137,7 +137,7 @@ func parseCreateHeader(raw string, limits config.Limits) (createRequest, bool) {
 		return request, false
 	}
 	header := &request.header
-	if header.Epoch == nil {
+	if header.Epoch == nil || (header.VerifierKey != nil && header.Registration == nil) {
 		request.outdated = true
 		return request, false
 	}
@@ -185,14 +185,14 @@ func (c *createRequest) decodeKeys() bool {
 	kdf := core.KDF(c.header.KDFID)
 	keysOK := signing.ValidPublicKey(c.readKey) && signing.ValidPublicKey(c.manageKey) &&
 		!bytes.Equal(c.readKey, c.manageKey)
-	if !kdf.Valid() || !keysOK || c.header.VerifierKey == nil {
+	if !kdf.Valid() || !keysOK || c.header.Registration == nil || c.header.VerifierKey != nil {
 		return false
 	}
-	if c.verifierKey, err = core.DecodeExact(*c.header.VerifierKey, signing.PublicKeyLen); err != nil {
+	if c.registration, err = core.DecodeExact(*c.header.Registration, opaque.RecordLen); err != nil {
 		return false
 	}
-	return signing.ValidPublicKey(c.verifierKey) && !bytes.Equal(c.verifierKey, c.readKey) &&
-		!bytes.Equal(c.verifierKey, c.manageKey)
+	_, err = opaque.DeserializeElement(c.registration[:opaque.ElementLen])
+	return err == nil
 }
 
 func releaseUnlessStored(ctx context.Context, release func(context.Context), stored *bool) {
@@ -415,7 +415,7 @@ func (s *Server) storeMessage(
 	blob *storedBlob,
 	uploaded, now time.Time,
 ) bool {
-	message := s.newMessage(request, envelopeHeader, uploaded, blob.salt)
+	message := s.newMessage(request, envelopeHeader, uploaded, blob.salt, seal.LocatorOf(request.id[:]))
 	err := s.persistMessage(r.Context(), request, message, blob, uploaded, now)
 	if err == nil {
 		writeJSON(
@@ -487,6 +487,7 @@ func (s *Server) newMessage(
 	envelopeHeader envelope.Header,
 	uploaded time.Time,
 	salt seal.EraseSalt,
+	locator seal.Locator,
 ) *store.Message {
 	message := &store.Message{
 		Version:        envelopeHeader.Version,
@@ -501,11 +502,8 @@ func (s *Server) newMessage(
 		Epoch:          *request.header.Epoch,
 		Generation:     request.generation,
 	}
-	if envelopeHeader.KDF.RequiresPassphrase() {
-		verifier := s.ring.MAC(pepper.Verifier, verifierInput(salt, request.verifierKey))
-		message.VerifierMAC = verifier.MAC[:]
-		message.VerifierPepperID = verifier.PepperID
-	}
+	message.Registration = seal.WrapRegistration(&salt, locator, request.registration)
+	message.RegistrationPepperID = s.ring.CurrentID()
 	return message
 }
 

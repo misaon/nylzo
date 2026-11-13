@@ -38,9 +38,7 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	create(t, storage, record)
 	locator, sealed := record.Row.Locator, slices.Clone(record.Row.Record)
 	claimedAt := testNow.Add(time.Minute)
-	parameters := claimParameters(claimedAt)
-	parameters.Verifier = store.Verifier{Sent: true, Check: func(byte, []byte) bool { return true }}
-	claimed, err := store.Claim(t.Context(), storage, record, parameters)
+	claimed, err := store.Claim(t.Context(), storage, record, claimParameters(claimedAt))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,10 +71,13 @@ func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 	locked := newRecord(1, true)
 	create(t, storage, locked)
 	attemptAt := testNow.Add(17*time.Second + 123*time.Millisecond)
-	parameters := claimParameters(attemptAt)
-	parameters.Verifier = store.Verifier{Sent: true, Check: func(byte, []byte) bool { return false }}
 	for attempt := 1; attempt <= store.FreeAttempts+1; attempt++ {
-		if _, err := store.Claim(t.Context(), storage, locked, parameters); !isPassphraseError(err) {
+		if _, _, err := store.CountAttempt(
+			t.Context(),
+			storage,
+			locked,
+			func() time.Time { return attemptAt },
+		); err != nil {
 			t.Fatalf("attempt %d: %v", attempt, err)
 		}
 	}
@@ -92,7 +93,7 @@ func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, secret := range map[string][]byte{
-		"a verifier mac":       testMAC,
+		"the registration":     testRegistration,
 		"a lease mac":          leaseMACs[0],
 		"the record key":       shared.Key[:],
 		"a time to the second": binary.BigEndian.AppendUint64(nil, uint64(testNow.UnixMilli())),
@@ -157,11 +158,6 @@ func TestLookupDoesTheSameWorkForEveryLocator(t *testing.T) {
 	if spread > driverNoise || lengths["live"] != lengths["unknown"] || lengths["ended"] != lengths["unknown"] {
 		t.Fatalf("a lookup must do the same work for every locator: allocations %v, sealed bytes %v", work, lengths)
 	}
-}
-
-func isPassphraseError(err error) bool {
-	_, ok := errors.AsType[*store.PassphraseError](err)
-	return ok
 }
 
 // TestTheLogKeepsNoOlderRowVersionAfterAWrite reproduces the audit probe: a write that fills fewer frames than an

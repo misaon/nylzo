@@ -20,8 +20,8 @@ import type { Header, Policy } from './header.ts';
 import { decodeStoredMeta, encodeMeta, encodeStoredMeta } from './meta.ts';
 import type { Meta } from './meta.ts';
 
-const COMMITMENT_LABEL = 'nylzo/v2/commitment';
-const OBJECT_HASH_LABEL = 'nylzo/v2/object';
+const COMMITMENT_LABEL = 'nylzo/v3/commitment';
+const OBJECT_HASH_LABEL = 'nylzo/v3/object';
 
 export interface Payload {
   readonly meta: Meta;

@@ -41,7 +41,7 @@ func TestInspectMissingAndEmptyDatabasesWithoutCreatingFiles(t *testing.T) {
 
 func TestInspectRecognizesReleasedAndUnsupportedSchemasReadOnly(t *testing.T) {
 	t.Parallel()
-	for _, version := range []int{releasedSchema, 0, 9999} {
+	for _, version := range []int{5, 7, 0, 9999} {
 		t.Run(strconv.Itoa(version), func(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(t.TempDir(), "nylzo.db")
@@ -61,7 +61,7 @@ func TestInspectRecognizesReleasedAndUnsupportedSchemasReadOnly(t *testing.T) {
 				t.Fatal(err)
 			}
 			readiness, err := Inspect(t.Context(), path)
-			if version == releasedSchema {
+			if isReleased(version) {
 				if err != nil || readiness != ReadinessUpgrade {
 					t.Fatalf("released schema: %v %v", readiness, err)
 				}

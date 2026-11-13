@@ -11,14 +11,15 @@ import (
 	"slices"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 )
 
 const (
-	recordFormat = 2
+	recordFormat = 3
 	macLen       = 32
-	fieldsLen    = 123
+	fieldsLen    = 310
 	leaseLen     = 42
 )
 
@@ -38,7 +39,18 @@ func NewDummyRow() Row {
 	rand.Read(manageKey[:])
 	rand.Read(reference[:])
 	far := time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
-	message := &Message{Version: 2, OpensMax: 1, OpensRemaining: 1, CreatedAt: far, ExpiresAt: far}
+	message := &Message{
+		Version:        envelope.Version,
+		OpensMax:       1,
+		OpensRemaining: 1,
+		CreatedAt:      far,
+		ExpiresAt:      far,
+		Registration: seal.WrapRegistration(
+			new(seal.NewEraseSalt()),
+			DummyLocator,
+			make([]byte, seal.RegistrationLen),
+		),
+	}
 	blobReference := base64.RawURLEncoding.EncodeToString(reference[:BlobReferenceLen])
 	blob := seal.NewBlobKey()
 	return NewRecord(seal.NewKey(), DummyLocator, message, readKey[:], manageKey[:], blobReference, &blob).Row
@@ -223,8 +235,8 @@ func encodeMessage(message *Message) []byte {
 	data = binary.BigEndian.AppendUint16(data, message.OpensMax)
 	data = binary.BigEndian.AppendUint16(data, message.OpensRemaining)
 	data = binary.BigEndian.AppendUint64(data, narrow64(message.Size))
-	data = append(data, message.VerifierPepperID, boolByte(message.PassphraseRequired()))
-	data = append(data, fixedMAC(message.VerifierMAC)...)
+	data = append(data, message.RegistrationPepperID)
+	data = append(data, fixed(message.Registration, seal.SealedRegistrationLen)...)
 	data = binary.BigEndian.AppendUint16(data, saturate[uint16](int64(message.FailCountTotal)))
 	data = appendTime(data, message.NextAttemptAt)
 	data = appendTime(data, optional(message.FirstOpenedAt))
@@ -288,11 +300,8 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.OpensMax = fields.readUint16()
 	message.OpensRemaining = fields.readUint16()
 	message.Size = signed(fields.readUint64())
-	message.VerifierPepperID = fields.readByte()
-	hasVerifier, verifierMAC := fields.readByte(), fields.readMAC()
-	if hasVerifier == 1 {
-		message.VerifierMAC = verifierMAC
-	}
+	message.RegistrationPepperID = fields.readByte()
+	message.Registration = slices.Clone(fields.next(seal.SealedRegistrationLen))
 	message.FailCountTotal = int(fields.readUint16())
 	message.NextAttemptAt = fields.readTime()
 	if firstOpened := fields.readTime(); !firstOpened.IsZero() {
@@ -305,7 +314,7 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.Epoch = fields.readUint32()
 	copy(message.Generation[:], fields.next(epoch.GenerationIDLen))
 	leases := int(fields.readByte())
-	if fields.truncated() || ending >= len(endings) || hasVerifier > 1 || !fields.remaining(leases*leaseLen) {
+	if fields.truncated() || ending >= len(endings) || !fields.remaining(leases*leaseLen) {
 		return nil, fmt.Errorf("%w: truncated or unknown field", ErrCorrupt)
 	}
 	message.Ending = endings[ending]
@@ -369,14 +378,11 @@ func optional(moment *time.Time) time.Time {
 }
 
 func fixedMAC(mac []byte) []byte {
-	fixed := make([]byte, macLen)
-	copy(fixed, mac)
-	return fixed
+	return fixed(mac, macLen)
 }
 
-func boolByte(value bool) byte {
-	if value {
-		return 1
-	}
-	return 0
+func fixed(value []byte, length int) []byte {
+	padded := make([]byte, length)
+	copy(padded, value)
+	return padded
 }

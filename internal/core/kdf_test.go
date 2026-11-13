@@ -13,37 +13,34 @@ import (
 func TestRetiredProfileIsRefusedEverywhere(t *testing.T) {
 	t.Parallel()
 	secret := core.Encode(make([]byte, core.SecretLen))
-	link := "https://nylzo.example/r#2.2." + core.NewID().String() + "." + secret + "." + secret
+	link := "https://nylzo.example/r#3.2." + core.NewID().String() + "." + secret + "." + secret
 	if _, err := core.ParseLink(link); !errors.Is(err, core.ErrLinkRetiredKDF) {
 		t.Fatalf("a link with kdf_id 2: %v", err)
 	}
 	if _, err := core.ParseKDF("2"); !errors.Is(err, core.ErrKDF) || core.KDFRetired.Valid() {
 		t.Fatalf("ParseKDF accepted the retired profile: %v", err)
 	}
-	var salt [32]byte
-	passphrase := "correct horse battery staple"
-	key, err := keys.DerivePassphraseKey(core.KDFRetired, passphrase, &salt)
-	if !errors.Is(err, core.ErrKDF) || key != nil {
-		t.Fatalf("derived a key for the retired profile: %v", err)
-	}
-	_, err = keys.DeriveAll(
-		core.NewID(),
+	if _, err := keys.Password(
 		core.NewSecret(),
 		core.KDFRetired,
-		passphrase,
-		new([core.ShareLen]byte),
-	)
-	if !errors.Is(err, core.ErrKDF) {
-		t.Fatalf("DeriveAll accepted the retired profile: %v", err)
+		"correct horse battery staple",
+	); !errors.Is(
+		err,
+		core.ErrKDF,
+	) {
+		t.Fatalf("an OPRF input for the retired profile: %v", err)
+	}
+	if _, err := keys.OPAQUEConfig(core.NewID(), core.KDFRetired); !errors.Is(err, core.ErrKDF) {
+		t.Fatalf("an OPAQUE configuration for the retired profile: %v", err)
 	}
 	header := envelope.NewHeader(core.KDFScrypt).Bytes()
 	header[1] = byte(core.KDFRetired)
-	if _, err = envelope.ParseHeader(header); !errors.Is(err, core.ErrKDF) {
+	if _, err := envelope.ParseHeader(header); !errors.Is(err, core.ErrKDF) {
 		t.Fatalf("an envelope header with kdf_id 2: %v", err)
 	}
 	payload := envelope.Payload{Meta: envelope.Meta{Text: new("x")}}
 	policy := envelope.Policy{OpensMax: 1, TTLSeconds: 60}
-	_, err = envelope.Seal(&keys.ContentKeys{}, envelope.NewHeader(core.KDFRetired), core.NewID(), policy, payload)
+	_, err := envelope.Seal(&keys.ContentKeys{}, envelope.NewHeader(core.KDFRetired), core.NewID(), policy, payload)
 	if !errors.Is(err, core.ErrKDF) {
 		t.Fatalf("sealed an envelope for the retired profile: %v", err)
 	}

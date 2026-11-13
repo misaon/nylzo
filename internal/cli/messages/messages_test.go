@@ -864,13 +864,13 @@ func TestTheClaimWipesItsKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	passphraseKey := unlocked.passphraseKey
+	password := unlocked.password
 	guard := &claimGuard{environment: environment}
 	_, _, err = claimMessage(t.Context(), apiClient, &link, unlocked, guard)
 	guard.release()
-	keyWiped := len(passphraseKey) > 0 && !slices.ContainsFunc(passphraseKey, func(b byte) bool { return b != 0 })
-	if err != nil || unlocked.verifier != [core.SeedLen]byte{} || !keyWiped {
-		t.Fatalf("claim: %v, verifier %x, passphrase key wiped: %v", err, unlocked.verifier, keyWiped)
+	wiped := len(password) > 0 && !slices.ContainsFunc(password, func(b byte) bool { return b != 0 })
+	if err != nil || !wiped {
+		t.Fatalf("claim: %v, OPRF input wiped: %v", err, wiped)
 	}
 }
 

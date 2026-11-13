@@ -1,63 +1,19 @@
 import { scrypt } from '@noble/hashes/scrypt.js';
 
-import { deriveContent, deriveLink, deriveVerifier } from './keys/derive.ts';
-import type { DerivedKeys } from './keys/derive.ts';
-import {
-  assertWellFormedPassphrase,
-  KDF_NONE,
-  KDF_SCRYPT,
-  normalizePassphrase,
-  SCRYPT_N,
-  SCRYPT_P,
-  SCRYPT_R,
-} from './keys/kdf.ts';
-import type { KdfId } from './keys/kdf.ts';
-import { KEY_LENGTH } from './limits.ts';
+import { SCRYPT_N, SCRYPT_P, SCRYPT_R } from './keys/kdf.ts';
 import { arrayBufferBacked } from './primitives/bytes.ts';
 
-export function scryptPassphraseKey(
-  passphrase: string,
-  passphraseSalt: Uint8Array,
-  onProgress?: (fraction: number) => void,
-): Uint8Array<ArrayBuffer> {
-  assertWellFormedPassphrase(KDF_SCRYPT, passphrase);
-  const parameters = { N: SCRYPT_N, r: SCRYPT_R, p: SCRYPT_P, dkLen: KEY_LENGTH, ...(onProgress && { onProgress }) };
-  const password = normalizePassphrase(passphrase);
-  try {
-    return arrayBufferBacked(scrypt(password, passphraseSalt, parameters));
-  } finally {
-    password.fill(0);
-  }
-}
+const STRETCH_LENGTH = 64;
+const STRETCH_SALT = new Uint8Array(16);
 
-export function derivePassphraseKey(
-  kdfId: KdfId,
-  passphrase: string,
-  passphraseSalt: Uint8Array,
-): Uint8Array<ArrayBuffer> {
-  return kdfId === KDF_NONE ? new Uint8Array(0) : scryptPassphraseKey(passphrase, passphraseSalt);
-}
-
-export async function deriveAll(
-  id: Uint8Array,
-  secret: Uint8Array,
-  kdfId: KdfId,
-  passphrase: string,
-  share: Uint8Array,
-): Promise<DerivedKeys> {
-  assertWellFormedPassphrase(kdfId, passphrase);
-  const link = await deriveLink(id, secret);
-  let passphraseKey: Uint8Array | undefined;
-  try {
-    passphraseKey = derivePassphraseKey(kdfId, passphrase, link.passphraseSalt);
-    const verifierSeed = await deriveVerifier(id, secret, passphraseKey);
-    const content = await deriveContent(id, secret, passphraseKey, share);
-    return { link, verifierSeed, content };
-  } catch (error) {
-    link.readSeed.fill(0);
-    link.passphraseSalt.fill(0);
-    throw error;
-  } finally {
-    passphraseKey?.fill(0);
-  }
+// The key stretching function of profile 3: scrypt over the OPRF output with 16 zero bytes as salt (spec section 2.1).
+export function stretchScrypt(message: Uint8Array, onProgress?: (fraction: number) => void): Uint8Array<ArrayBuffer> {
+  const parameters = {
+    N: SCRYPT_N,
+    r: SCRYPT_R,
+    p: SCRYPT_P,
+    dkLen: STRETCH_LENGTH,
+    ...(onProgress && { onProgress }),
+  };
+  return arrayBufferBacked(scrypt(message, STRETCH_SALT, parameters));
 }

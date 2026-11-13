@@ -139,38 +139,28 @@ func (f *fixture) passphraseBackoff() {
 	t := f.t
 	created := f.create(2, oneDay, true)
 	now := baseTime
-	expectRefusal := func(seed int, retryAfter time.Duration, attemptsLeft int) {
-		t.Helper()
-		_, err := f.claimWithVerifier(created, now, seed, false)
-		refusal, ok := errors.AsType[*store.PassphraseError](err)
-		if !ok || refusal.RetryAfter != retryAfter || refusal.AttemptsLeft != attemptsLeft {
-			t.Fatalf("got %v, want retry after %s with %d attempts left", err, retryAfter, attemptsLeft)
+	for counted := 1; counted <= store.FreeAttempts; counted++ {
+		_, status, err := f.attempt(created, now)
+		if err != nil || status.RetryAfter != 0 || status.AttemptsLeft != store.FreeAttempts-counted {
+			t.Fatalf("handshake %d: %+v %v", counted, status, err)
 		}
 	}
-	for attempt := 1; attempt <= store.FreeAttempts; attempt++ {
-		expectRefusal(1, 0, store.FreeAttempts-attempt)
-	}
-	expectRefusal(1, time.Minute, 0)
-	expectRefusal(2, time.Minute, 0)
-	for range 4 {
+	for range 5 {
+		_, status, err := f.attempt(created, now)
+		if err != nil || status.RetryAfter != time.Minute || status.AttemptsLeft != 0 {
+			t.Fatalf("a handshake past the free attempts sets the wait: %+v %v", status, err)
+		}
+		_, _, err = f.attempt(created, now)
+		if refusal, ok := errors.AsType[*store.PassphraseError](err); !ok || refusal.RetryAfter != time.Minute {
+			t.Fatalf("a handshake during the wait is refused and counts nothing: %v", err)
+		}
 		now = now.Add(time.Minute)
-		expectRefusal(1, time.Minute, 0)
 	}
 	if record := f.get(created); record.Message.FailCountTotal != 10 || record.Message.OpensRemaining != 2 {
-		t.Fatalf("after ten failures: %+v", record.Message)
+		t.Fatalf("after ten counted handshakes: %+v", record.Message)
 	}
-	if _, err := f.claimWithVerifier(created, now, 2, true); err == nil {
-		t.Fatal("the backoff belongs to the message, so every reader waits, even with the right passphrase")
-	}
-	if _, err := f.claimWithVerifier(created, now.Add(time.Minute), 2, true); err != nil {
-		t.Fatalf("after the backoff: %v", err)
-	}
-	if record := f.get(created); record.Message.OpensRemaining != 1 || record.Message.FailCountTotal != 10 {
-		t.Fatalf("after the right passphrase: %+v", record.Message)
-	}
-	missing := f.create(1, oneDay, true)
-	if _, err := f.claim(missing, baseTime, 1); err == nil || f.get(missing).Message.FailCountTotal != 1 {
-		t.Fatalf("a claim without a verifier must count as a failure: %v", err)
+	if _, err := f.claim(created, now, 1); err != nil || f.get(created).Message.FailCountTotal != 10 {
+		t.Fatalf("a claim counts no attempt; its KE3 has already been checked: %v", err)
 	}
 }
 
@@ -178,25 +168,74 @@ func (f *fixture) lifetimeCap() {
 	t := f.t
 	created := f.create(1, oneWeek, true)
 	now := baseTime
-	for attempt := 1; attempt <= store.MaxFailedAttempts; attempt++ {
-		_, err := f.claimWithVerifier(created, now, attempt, false)
-		refusal, ok := errors.AsType[*store.PassphraseError](err)
-		if !ok || refusal.RetryAfter > store.MaxBackoff {
-			t.Fatalf("attempt %d: %v", attempt, err)
+	for counted := 1; counted <= store.MaxFailedAttempts; counted++ {
+		_, status, err := f.attempt(created, now)
+		if err != nil || status.RetryAfter > store.MaxBackoff {
+			t.Fatalf("handshake %d: %v", counted, err)
 		}
-		if attempt == 17 && refusal.RetryAfter != store.MaxBackoff {
-			t.Fatalf("the 17th failure waits %s, want the cap %s", refusal.RetryAfter, store.MaxBackoff)
+		if counted == 17 && status.RetryAfter != store.MaxBackoff {
+			t.Fatalf("the 17th handshake waits %s, want the cap %s", status.RetryAfter, store.MaxBackoff)
 		}
-		now = now.Add(refusal.RetryAfter)
+		now = now.Add(status.RetryAfter)
 	}
 	later := now.Add(24 * time.Hour)
-	_, err := f.claimWithVerifier(created, later, 201, true)
+	_, _, err := f.attempt(created, later)
 	refusal, ok := errors.AsType[*store.PassphraseError](err)
 	if !ok || refusal.RetryAfter != created.Message.ExpiresAt.Sub(later) || refusal.AttemptsLeft != 0 {
-		t.Fatalf("after %d failures the message stays locked until it expires: %v", store.MaxFailedAttempts, err)
+		t.Fatalf("after %d handshakes the message stays locked until it expires: %v", store.MaxFailedAttempts, err)
 	}
 	if record := f.get(created); record.Message.FailCountTotal != store.MaxFailedAttempts ||
 		record.Message.OpensRemaining != 1 {
 		t.Fatalf("lifetime cap counters: %+v", record.Message)
+	}
+}
+
+func (f *fixture) takeBackRestoresOnlyItsOwnWait() {
+	t := f.t
+	created := f.create(3, oneDay, false)
+	for range store.FreeAttempts {
+		if _, _, err := f.attempt(created, baseTime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	honest, status, err := f.attempt(created, baseTime)
+	if err != nil || status.RetryAfter != time.Minute {
+		t.Fatalf("the sixth handshake sets a wait: %+v %v", status, err)
+	}
+	f.takeBack(created, honest, baseTime)
+	if record := f.get(created); record.Message.FailCountTotal != store.FreeAttempts ||
+		!record.Message.NextAttemptAt.IsZero() {
+		t.Fatalf("a matching KE3 takes its attempt and its wait back: %+v", record.Message)
+	}
+	first, _, err := f.attempt(created, baseTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	later := baseTime.Add(time.Minute)
+	if _, _, err = f.attempt(created, later); err != nil {
+		t.Fatal(err)
+	}
+	f.takeBack(created, first, later)
+	if record := f.get(created); record.Message.FailCountTotal != store.FreeAttempts+1 ||
+		!record.Message.NextAttemptAt.After(later) {
+		t.Fatalf("a wait that a later handshake set stays: %+v", record.Message)
+	}
+}
+
+func (f *fixture) endedMessagesCountNoAttempt() {
+	t := f.t
+	created := f.create(1, oneDay, true)
+	if _, err := f.end(created, store.StateDeleted, baseTime, f.blobs); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.attempt(created, baseTime); goneState(err) != store.StateDeleted {
+		t.Fatalf("a handshake on an ended message: %v", err)
+	}
+	expired := f.create(1, oneHour, false)
+	if _, _, err := f.attempt(expired, baseTime.Add(2*time.Hour)); goneState(err) != store.StateExpired {
+		t.Fatalf("a handshake on an expired message: %v", err)
+	}
+	if f.get(created).Message.FailCountTotal != 0 || f.get(expired).Message.FailCountTotal != 0 {
+		t.Fatal("an ended message counts no attempt")
 	}
 }

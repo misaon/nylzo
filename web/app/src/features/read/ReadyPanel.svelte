@@ -34,8 +34,8 @@
     if (rejected.reason === 'malformed') {
       return translate('read.rejected.malformed');
     }
-    if (rejected.reason === 'wrong_or_changed') {
-      return translate('read.rejected.wrong_or_changed');
+    if (rejected.reason === 'long') {
+      return translate('read.rejected.long');
     }
     if (rejected.retryAfter > 0) {
       return translate('read.rejected.wait', { time: formatWait(rejected.retryAfter, translator.plural) });
@@ -47,6 +47,10 @@
   const alert = $derived.by(() => {
     if (page.ready?.deviceFailed) {
       return translate('read.device');
+    }
+    const rejected = page.ready?.rejected;
+    if (!page.passphraseRequired && rejected?.reason === 'wrong' && rejected.retryAfter > 0) {
+      return translate('read.wait', { time: formatWait(rejected.retryAfter, translator.plural) });
     }
     return page.ready?.leaseEnded ? translate('read.lease_ended') : '';
   });
