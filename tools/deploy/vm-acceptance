@@ -47,6 +47,8 @@ ip link delete nylzo-probe 2>/dev/null || true
 trap - EXIT
 echo 'NYLZO_VM_HOST_FIREWALL_VERIFIED'
 if [[ -s /etc/nylzo/tang.json ]]; then
+  grep --quiet --line-regexp 'ENCRYPTED_STORAGE_REQUIRED=true' /etc/nylzo/host.env
+  systemctl is-active --quiet nylzo-storage.service
   for target in /var/lib/nylzo /var/lib/nylzo-secrets /var/lib/caddy /var/log/journal; do
     [[ "$(findmnt --noheadings --output SOURCE --mountpoint "$target")" = "/dev/mapper/nylzo-storage[/${target##*/}]" ]]
   done

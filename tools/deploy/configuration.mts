@@ -3,7 +3,7 @@ import { isIP } from "node:net";
 import { X509Certificate, createPublicKey } from "node:crypto";
 
 export function configuration(input: any) {
-  const allowed = ["name", "domain", "location", "serverType", "architecture", "administratorNetworks", "administratorPublicKey", "reportPublicKey", "operator", "contact", "hosting", "dailyCreates", "initialRelease", "automaticUpdates", "dnsZone", "cloudflareAccountId", "publicAccess", "monitorClientCertificate", "heartbeatUrl", "tang", "acmeAccountUri"];
+  const allowed = ["name", "domain", "location", "serverType", "architecture", "administratorNetworks", "administratorPublicKey", "reportPublicKey", "operator", "contact", "hosting", "dailyCreates", "initialRelease", "automaticUpdates", "dnsZone", "cloudflareAccountId", "publicAccess", "monitorClientCertificate", "heartbeatUrl", "tang", "acmeAccountUri", "profile"];
   assert(input && typeof input === "object" && !Array.isArray(input));
   assert(Object.keys(input).every(key => allowed.includes(key)), "Unknown deployment option");
   assert.match(input.name, /^[a-z][a-z0-9-]{0,30}$/u);
@@ -58,6 +58,10 @@ export function configuration(input: any) {
     }
     assert.equal(new Set(servers.map((server: { url: string }) => server.url)).size, servers.length, "Tang servers must differ");
     assert(Number.isSafeInteger(threshold) && threshold >= 1 && threshold <= servers.length, "The Tang threshold must be between 1 and the number of servers");
+  }
+  if (input.profile !== undefined) {
+    assert.equal(input.profile, "strict", "The only deployment profile is strict");
+    assert(input.tang !== undefined, "The strict profile requires the encrypted data volume; configure tang");
   }
   if (input.acmeAccountUri !== undefined) assert.match(input.acmeAccountUri, /^https:\/\/acme-v02\.api\.letsencrypt\.org\/acme\/acct\/[1-9][0-9]{0,19}$/u, "Set acmeAccountUri to the Let's Encrypt account URL from the server's Caddy storage");
   if (input.publicAccess !== undefined) assert.equal(typeof input.publicAccess, "boolean");

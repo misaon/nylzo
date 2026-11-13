@@ -13,7 +13,8 @@ interface=$(ip -o -4 route show default | awk '{ for (i=1; i<NF; i++) if ($i == 
 for check in "net.ipv4.conf.$interface.rp_filter=2" "net.ipv4.conf.$interface.accept_redirects=0" "net.ipv4.conf.$interface.send_redirects=0" "net.ipv6.conf.$interface.accept_redirects=0"; do
   [[ "$(sysctl -n "${check%%=*}")" = "${check#*=}" ]] || { echo "Host policy failed: ${check%%=*}" >&2; exit 1; }
 done
-if [[ -s "${NYLZO_TANG_CONFIGURATION:-/etc/nylzo/tang.json}" ]]; then
+if grep --quiet --line-regexp 'ENCRYPTED_STORAGE_REQUIRED=true' "${NYLZO_HOST_SETTINGS:-/etc/nylzo/host.env}" ||
+  [[ -e "${NYLZO_TANG_CONFIGURATION:-/etc/nylzo/tang.json}" || -e "${NYLZO_STORAGE_IMAGE:-/var/lib/nylzo-storage.luks}" ]]; then
   for directory in /var/lib/nylzo /var/lib/nylzo-secrets /var/lib/caddy /var/log/journal; do
     [[ "$(findmnt --noheadings --output SOURCE --mountpoint "$directory")" = "/dev/mapper/nylzo-storage[/${directory##*/}]" ]] || { echo "Encrypted storage is not mounted at $directory." >&2; exit 1; }
   done

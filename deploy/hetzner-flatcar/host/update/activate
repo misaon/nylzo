@@ -83,6 +83,11 @@ case "$(setting HARDWARE_KEYS_ONLY)" in
   false | '') hardware_only=false ;;
   *) fail "set HARDWARE_KEYS_ONLY to true or false in $settings" ;;
 esac
+case "$(setting ENCRYPTED_STORAGE_REQUIRED)" in
+  true) [[ -s /etc/nylzo/tang.json ]] || fail 'ENCRYPTED_STORAGE_REQUIRED=true needs /etc/nylzo/tang.json' ;;
+  false | '') ;;
+  *) fail "set ENCRYPTED_STORAGE_REQUIRED to true or false in $settings" ;;
+esac
 current=$(readlink -e "$library/current" 2>/dev/null || true)
 if [[ -n "$current" && "$current" != "$generation" && -s "$current/manifest" ]]; then
   while read -r target _; do
@@ -146,6 +151,11 @@ done
 if ! systemctl restart nylzo-firewall.service; then
   systemctl status --no-pager --lines=20 nylzo-firewall.service >&2 || true
   fail 'the host firewall did not load'
+fi
+if [[ "$first_boot" = false ]]; then
+  storage=start
+  if systemctl is-active --quiet nylzo-storage.service; then storage=reload; fi
+  systemctl "$storage" nylzo-storage.service || fail 'the data volume step failed'
 fi
 if [[ "$first_boot" = false && ${#restart[@]} -gt 0 ]]; then
   mapfile -t restart < <(printf '%s\n' "${restart[@]}" | sort --unique)
