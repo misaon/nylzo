@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 
-test("boot health rejects missing host isolation, kernel policy, host firewall or traffic protection", { timeout: 30000 }, () => {
+test("boot health rejects missing host isolation, kernel policy, host firewall, traffic protection or a required encrypted volume", { timeout: 30000 }, () => {
   const directory = mkdtempSync(join(tmpdir(), "nylzo-host-policy-"));
   try {
     const values = Object.fromEntries(["kernel.dmesg_restrict=1", "kernel.kptr_restrict=2", "kernel.kexec_load_disabled=1", "kernel.io_uring_disabled=2", "kernel.sysrq=0", "dev.tty.ldisc_autoload=0", "fs.suid_dumpable=0", "net.ipv4.conf.all.rp_filter=2", "net.ipv4.conf.eth0.rp_filter=2", "net.ipv4.conf.eth0.accept_redirects=0", "net.ipv4.conf.eth0.send_redirects=0", "net.ipv6.conf.eth0.accept_redirects=0"].map(value => value.split("=")));
@@ -15,7 +15,10 @@ test("boot health rejects missing host isolation, kernel policy, host firewall o
       writeFileSync(join(directory, command), program);
       chmodSync(join(directory, command), 0o700);
     }
-    const run = (input: any) => spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/host-policy")], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, POLICY_STATE: JSON.stringify(input), NYLZO_RUNTIME_PROFILE: resolve("deploy/hetzner-flatcar/host/system/runtime.json"), NYLZO_TANG_CONFIGURATION: input.mounts ? tang : join(directory, "absent") } });
+    const settings = join(directory, "host.env");
+    writeFileSync(settings, "PUBLIC_ACCESS=true\n");
+    const absent = join(directory, "absent");
+    const run = (input: any, storage: Record<string, string> = {}) => spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/host-policy")], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, POLICY_STATE: JSON.stringify(input), NYLZO_RUNTIME_PROFILE: resolve("deploy/hetzner-flatcar/host/system/runtime.json"), NYLZO_HOST_SETTINGS: settings, NYLZO_TANG_CONFIGURATION: absent, NYLZO_STORAGE_IMAGE: absent, ...storage } });
     assert.equal(run(state).status, 0);
     assert.equal(run({ ...state, versions: "Engine=29.10.0\ncontainerd=v2.5.0\nrunc=1.6.0" }).status, 0);
     const changes = [
@@ -52,10 +55,20 @@ test("boot health rejects missing host isolation, kernel policy, host firewall o
       ...state.options.map(option => (data: any) => data.options = data.options.filter((value: string) => value !== option)),
     ];
     for (const mutate of changes) { const data = structuredClone(state); mutate(data); assert.notEqual(run(data).status, 0); }
-    const tang = join(directory, "tang.json");
-    writeFileSync(tang, "{}");
+    const present = join(directory, "present");
+    writeFileSync(present, "{}");
+    const empty = join(directory, "empty");
+    writeFileSync(empty, "");
+    const required = join(directory, "required.env");
+    writeFileSync(required, "PUBLIC_ACCESS=true\nENCRYPTED_STORAGE_REQUIRED=true\n");
+    const unrequired = join(directory, "unrequired.env");
+    writeFileSync(unrequired, "PUBLIC_ACCESS=true\nENCRYPTED_STORAGE_REQUIRED=false\n");
+    assert.equal(run(state, { NYLZO_HOST_SETTINGS: unrequired }).status, 0);
     const mounts = Object.fromEntries(["nylzo", "nylzo-secrets", "caddy"].map(name => [`/var/lib/${name}`, `/dev/mapper/nylzo-storage[/${name}]`]).concat([["/var/log/journal", "/dev/mapper/nylzo-storage[/journal]"]]));
-    assert.equal(run({ ...state, mounts }).status, 0);
-    for (const target of Object.keys(mounts)) assert.notEqual(run({ ...state, mounts: { ...mounts, [target]: "/dev/sda9" } }).status, 0, target);
+    for (const storage of [{ NYLZO_TANG_CONFIGURATION: present }, { NYLZO_TANG_CONFIGURATION: empty }, { NYLZO_STORAGE_IMAGE: present }, { NYLZO_HOST_SETTINGS: required }]) {
+      assert.equal(run({ ...state, mounts }, storage).status, 0);
+      assert.notEqual(run(state, storage).status, 0, JSON.stringify(storage));
+    }
+    for (const target of Object.keys(mounts)) assert.notEqual(run({ ...state, mounts: { ...mounts, [target]: "/dev/sda9" } }, { NYLZO_HOST_SETTINGS: required }).status, 0, target);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

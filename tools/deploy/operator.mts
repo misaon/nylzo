@@ -122,6 +122,7 @@ async function validatedSite(siteFile: string, kind: string) {
   const site = configuration(JSON.parse(await readFile(siteFile, "utf8")));
   assert(!/(^|\.)example\.(org|com|net)$/u.test(site.domain), "Replace the example domain before provisioning");
   assert(site.administratorNetworks.every((network: string) => !/^(192\.0\.2\.|198\.51\.100\.|203\.0\.113\.|2001:db8:)/iu.test(network)), "Replace the example administrator networks before provisioning");
+  assert(!(site.tang?.servers ?? []).some((server: { url: string }) => /(^|\.)example\.(org|com|net)$/u.test(new URL(server.url).hostname)), "Replace the example Tang servers before provisioning");
   assert(site.operator.length > 0 && site.contact.length > 0, "Set the public operator and contact details before provisioning");
   return site;
 }

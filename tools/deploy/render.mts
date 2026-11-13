@@ -59,6 +59,7 @@ export async function render(input: unknown, bundle: HostBundle) {
     AUTOMATIC_UPDATES: site.automaticUpdates, PUBLIC_ACCESS: site.publicAccess ?? false,
     WWW_REDIRECT: site.dnsZone === site.domain, ADMINISTRATOR_NETWORKS: site.administratorNetworks.map((network: string) => network.toLowerCase()).join(","),
     HARDWARE_KEYS_ONLY: administratorKeyIsHardware(site.administratorPublicKey),
+    ENCRYPTED_STORAGE_REQUIRED: site.tang !== undefined,
   });
   const manifest = new Map(host.get("manifest")!.trimEnd().split("\n").slice(1).map(line => line.split(" ") as [string, string]));
   const runtime = JSON.parse(host.get("system/runtime.json")!);
