@@ -89,7 +89,7 @@ func newRecord(opens uint16, passphrase bool) *store.Record {
 		core.NewSecret()[:],
 		core.NewSecret()[:],
 		reference.String(),
-		seal.NewKey(),
+		new(seal.NewBlobKey()),
 	)
 	return &record
 }

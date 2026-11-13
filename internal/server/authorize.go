@@ -162,19 +162,29 @@ func (s *Server) verifierProof(
 	}}
 }
 
-// readEraseSalt reads the salt that the verifier mac covers, and answers a blob that is gone as a claim does.
+// readEraseSalt reads the salt that the verifier mac covers and checks it against its tag, so a changed salt costs no
+// passphrase attempt, and answers a blob that is gone as a claim does.
 func (s *Server) readEraseSalt(
 	w http.ResponseWriter,
 	r *http.Request,
 	record *store.Record,
 	salt *seal.EraseSalt,
 ) bool {
+	var key seal.BlobKey
+	defer key.Clear()
+	if !s.readBlobKey(w, r, record, &key) {
+		return false
+	}
 	file, read, ok := s.openOrFinishBlob(w, r, record)
 	defer clear(read[:])
 	if !ok {
 		return false
 	}
 	file.Close()
+	if err := seal.CheckSaltTag(&key, read); err != nil {
+		s.writeBlobFailure(w, r, err)
+		return false
+	}
 	*salt = read
 	return true
 }
@@ -292,7 +302,7 @@ func newDummyRow(recordsKey seal.Key) store.Row {
 		core.NewSecret()[:],
 		core.NewSecret()[:],
 		"",
-		seal.NewKey(),
+		new(seal.NewBlobKey()),
 	)
 	return record.Row
 }

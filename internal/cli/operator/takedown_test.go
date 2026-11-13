@@ -52,7 +52,7 @@ func storeMessage(t *testing.T, directory string) core.ID {
 		core.NewSecret()[:],
 		core.NewSecret()[:],
 		core.Encode(blobID[:]),
-		seal.NewKey(),
+		new(seal.NewBlobKey()),
 	)
 	blob := bytes.NewReader(make([]byte, storedBlobBytes))
 	if _, err = blobs.PutExpiring(

@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/hpke"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -439,6 +443,41 @@ func (h *testHarness) blobExists(message *testMessage) bool {
 	return true
 }
 
+func (h *testHarness) blobFile(message *testMessage) string {
+	return filepath.Join(h.directory, disk.Directory, hex.EncodeToString([]byte(h.blobReference(message))))
+}
+
+// dropBlobTag stores the blob wrap as Nylzo 0.13 did, with the key alone, built from spec section 5.2 of that release.
+func (h *testHarness) dropBlobTag(message *testMessage) {
+	h.t.Helper()
+	record := h.mustRecord(message)
+	blobKey, err := record.BlobKey()
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	locator := record.Row.Locator
+	wrapKey, err := hkdf.Key(sha256.New, record.Key[:], locator[:], "nylzo/v2/record/blob", seal.KeyLen)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	block, err := aes.NewCipher(wrapKey)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	aead, err := cipher.NewGCMWithRandomNonce(block)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	earlier := aead.Seal(nil, nil, blobKey.Key[:], append(locator[:len(locator):len(locator)], "blob"...))
+	err = h.store.Update(h.t.Context(), locator, func(row *store.Row) error {
+		row.BlobWrap = earlier
+		return nil
+	})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+}
+
 func (h *testHarness) storedBlobs() int {
 	h.t.Helper()
 	objects, err := h.blobs.List(h.t.Context())
@@ -506,7 +545,7 @@ func (h *testHarness) rewrite(message *testMessage, change func(*store.Message))
 		readKey[:],
 		manageKey[:],
 		record.Row.BlobReference,
-		blobKey,
+		&blobKey,
 	)
 	rebuilt.Row.BlobPurgeAt, rebuilt.Row.PurgeAt = record.Row.BlobPurgeAt, record.Row.PurgeAt
 	err = h.store.Update(h.t.Context(), record.Row.Locator, func(row *store.Row) error {

@@ -8,6 +8,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"hash"
 	"io"
 	"math"
 	"net/http"
@@ -308,24 +309,37 @@ func (t *trackingReader) Read(buffer []byte) (int, error) {
 
 type storedBlob struct {
 	reference string
-	key       seal.Key
+	key       seal.BlobKey
 	salt      seal.EraseSalt
+	mac       hash.Hash
 }
 
 func newStoredBlob() storedBlob {
 	reference := core.NewID()
-	return storedBlob{reference: core.Encode(reference[:]), key: seal.NewKey(), salt: seal.NewEraseSalt()}
+	blob := storedBlob{
+		reference: core.Encode(reference[:]),
+		key:       seal.NewBlobKey(),
+		salt:      seal.NewEraseSalt(),
+	}
+	blob.mac = seal.BlobMAC(blob.key.Key, blob.salt)
+	blob.key.SaltTag = seal.SaltTagOf(blob.key.Key, blob.salt)
+	return blob
 }
 
 // sealed puts the erase block first and pads the object with Padmé, so the stored length shows only a size class.
 func (b *storedBlob) sealed(object io.Reader, size int64) io.Reader {
 	plain := io.MultiReader(object, io.LimitReader(zeros{}, seal.PaddedSize(size)-size))
-	encrypted := cipher.StreamReader{S: seal.BlobStream(b.key, b.salt), R: plain}
-	return io.MultiReader(bytes.NewReader(seal.EraseBlock(b.salt)), encrypted)
+	encrypted := cipher.StreamReader{S: seal.BlobStream(b.key.Key, b.salt), R: plain}
+	return io.MultiReader(bytes.NewReader(seal.EraseBlock(b.salt)), io.TeeReader(encrypted, b.mac))
+}
+
+// finishTag runs once the blob is stored, so the wrap holds the tag of exactly the stored bytes.
+func (b *storedBlob) finishTag() {
+	b.key.Tag = seal.BlobTag(b.mac.Sum(nil))
 }
 
 func (b *storedBlob) clear() {
-	clear(b.key[:])
+	b.key.Clear()
 	clear(b.salt[:])
 }
 
@@ -369,6 +383,7 @@ func (s *Server) receiveBlob(
 	)
 	s.setWriteDeadline(w, time.Now().Add(writeTimeout))
 	if err == nil {
+		blob.finishTag()
 		return envelopeHeader, uploaded, true
 	}
 	switch {
@@ -454,7 +469,7 @@ func (s *Server) persistMessage(
 			request.readKey,
 			request.manageKey,
 			blob.reference,
-			blob.key,
+			&blob.key,
 		)
 	})
 	defer clear(record.Key[:])

@@ -21,6 +21,7 @@ type FaultyBlobs struct {
 	attempts map[string]int
 	open     error
 	read     error
+	readEnd  bool
 	put      error
 	list     error
 	onOpen   func(reference string)
@@ -46,7 +47,12 @@ func (b *FaultyBlobs) FailDeleteOnce(reference string, err error) {
 
 func (b *FaultyBlobs) FailOpen(err error) { b.locked(func() { b.open = err }) }
 
-func (b *FaultyBlobs) FailRead(err error) { b.locked(func() { b.read = err }) }
+// FailRead fails every read inside the encrypted object, so the server's check of the blob fails.
+func (b *FaultyBlobs) FailRead(err error) { b.locked(func() { b.read, b.readEnd = err, false }) }
+
+// FailStream fails reads inside the encrypted object once the whole file has been read, as a disk fault after the
+// server checked the blob would.
+func (b *FaultyBlobs) FailStream(err error) { b.locked(func() { b.read, b.readEnd = err, true }) }
 
 func (b *FaultyBlobs) FailPut(err error) { b.locked(func() { b.put = err }) }
 
@@ -84,9 +90,9 @@ func (b *FaultyBlobs) DeleteBatch(ctx context.Context, references []string) []er
 	return errs
 }
 
-func (b *FaultyBlobs) Open(ctx context.Context, reference string) (io.ReadCloser, int64, error) {
+func (b *FaultyBlobs) Open(ctx context.Context, reference string) (io.ReadSeekCloser, int64, error) {
 	b.mutex.Lock()
-	openErr, readErr, hook := b.open, b.read, b.onOpen
+	openErr, readErr, readEnd, hook := b.open, b.read, b.readEnd, b.onOpen
 	b.mutex.Unlock()
 	if hook != nil {
 		hook(reference)
@@ -98,7 +104,7 @@ func (b *FaultyBlobs) Open(ctx context.Context, reference string) (io.ReadCloser
 	if err != nil || readErr == nil {
 		return blob, size, err
 	}
-	return &failingReader{ReadCloser: blob, err: readErr}, size, nil
+	return &failingReader{ReadSeekCloser: blob, err: readErr, afterEnd: readEnd, size: size}, size, nil
 }
 
 func (b *FaultyBlobs) PutExpiring(
@@ -158,21 +164,37 @@ func (b *FaultyBlobs) deleteFailure(reference string) error {
 	return fault.err
 }
 
-// failingReader passes the erase block and fails inside the encrypted object, as a disk fault during a stream would.
+// failingReader passes the erase block and fails inside the encrypted object, with afterEnd only once the whole file
+// has been read.
 type failingReader struct {
-	io.ReadCloser
+	io.ReadSeekCloser
 
-	err    error
-	passed int64
+	err       error
+	afterEnd  bool
+	size      int64
+	readWhole bool
+	offset    int64
 }
 
 func (f *failingReader) Read(buffer []byte) (int, error) {
-	if f.passed >= erase.BlockLen {
+	if f.offset >= erase.BlockLen && (f.readWhole || !f.afterEnd) {
 		return 0, f.err
 	}
-	read, err := f.ReadCloser.Read(buffer[:min(int64(len(buffer)), erase.BlockLen-f.passed)])
-	f.passed += int64(read)
+	if f.offset < erase.BlockLen {
+		buffer = buffer[:min(int64(len(buffer)), erase.BlockLen-f.offset)]
+	}
+	read, err := f.ReadSeekCloser.Read(buffer)
+	f.offset += int64(read)
+	f.readWhole = f.readWhole || f.offset >= f.size
 	return read, err
+}
+
+func (f *failingReader) Seek(offset int64, whence int) (int64, error) {
+	position, err := f.ReadSeekCloser.Seek(offset, whence)
+	if err == nil {
+		f.offset = position
+	}
+	return position, err
 }
 
 type batchRecorder struct {

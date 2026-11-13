@@ -64,11 +64,8 @@ func Claim(ctx context.Context, messages Messages, record *Record, parameters Cl
 	err := record.update(ctx, messages, parameters.Clock(), func(current *Record) error {
 		now := parameters.Clock()
 		result, refused = ClaimResult{}, false
-		if state := current.State(now); state != StateAvailable {
-			return &GoneError{State: state}
-		}
-		if wait, busy := leasesFull(current.Message, now); busy {
-			return &BusyError{RetryAfter: wait}
+		if err := claimClosed(current, now); err != nil {
+			return err
 		}
 		if current.Message.PassphraseRequired() {
 			if refusal, refused = checkPassphrase(current.Message, &parameters.Verifier, now); refused {
@@ -88,17 +85,38 @@ func Claim(ctx context.Context, messages Messages, record *Record, parameters Cl
 	}
 }
 
+// RefuseClaim answers a claim that the transaction would refuse without testing a passphrase, so such a claim reads no
+// blob; the transaction decides again.
+func RefuseClaim(record *Record, now time.Time) error {
+	if err := claimClosed(record, now); err != nil {
+		return err
+	}
+	if record.Message.PassphraseRequired() {
+		if refusal, refused := lockedOut(record.Message, now); refused {
+			return &refusal
+		}
+	}
+	return nil
+}
+
+func claimClosed(record *Record, now time.Time) error {
+	if state := record.State(now); state != StateAvailable {
+		return &GoneError{State: state}
+	}
+	if wait, busy := leasesFull(record.Message, now); busy {
+		return &BusyError{RetryAfter: wait}
+	}
+	return nil
+}
+
 func (v *Verifier) checkable() bool {
 	return !v.Sent || v.Check != nil
 }
 
 // checkPassphrase commits a failed attempt with the claim or burn transaction, so it reports a refusal, not an error.
 func checkPassphrase(message *Message, verifier *Verifier, now time.Time) (PassphraseError, bool) {
-	if message.FailCountTotal >= MaxFailedAttempts {
-		return PassphraseError{RetryAfter: message.ExpiresAt.Sub(now)}, true
-	}
-	if message.NextAttemptAt.After(now) {
-		return PassphraseError{RetryAfter: message.NextAttemptAt.Sub(now)}, true
+	if refusal, refused := lockedOut(message, now); refused {
+		return refusal, true
 	}
 	if verifier.Sent && verifier.Check(message.VerifierPepperID, message.VerifierMAC) {
 		return PassphraseError{}, false
@@ -111,6 +129,17 @@ func checkPassphrase(message *Message, verifier *Verifier, now time.Time) (Passp
 		wait = message.NextAttemptAt.Sub(now)
 	}
 	return PassphraseError{RetryAfter: wait, AttemptsLeft: max(0, FreeAttempts-message.FailCountTotal)}, true
+}
+
+// lockedOut refuses an attempt after the lifetime cap or before next_attempt_at without testing the passphrase.
+func lockedOut(message *Message, now time.Time) (PassphraseError, bool) {
+	if message.FailCountTotal >= MaxFailedAttempts {
+		return PassphraseError{RetryAfter: message.ExpiresAt.Sub(now)}, true
+	}
+	if message.NextAttemptAt.After(now) {
+		return PassphraseError{RetryAfter: message.NextAttemptAt.Sub(now)}, true
+	}
+	return PassphraseError{}, false
 }
 
 // leasesFull caps the active leases, so every record fits one RecordBlock and its length says nothing (A4-4).
@@ -164,7 +193,7 @@ func RecordDownload(ctx context.Context, messages Messages, record *Record, leas
 		switch {
 		case lease == nil || !lease.Active(now):
 			return ErrLeaseInvalid
-		case current.Message.Ending != "" || !current.HasBlob():
+		case current.Ended(now):
 			return &GoneError{State: current.State(now)}
 		case lease.Downloads >= MaxLeaseDownload:
 			return ErrLeaseLimit

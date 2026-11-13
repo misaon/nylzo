@@ -79,7 +79,7 @@ func (b *Blobs) PutExpiring(
 	return b.putStamped(ctx, reference, content, size, store.BlobPurgeAt(expiresAt))
 }
 
-func (b *Blobs) Open(ctx context.Context, reference string) (io.ReadCloser, int64, error) {
+func (b *Blobs) Open(ctx context.Context, reference string) (io.ReadSeekCloser, int64, error) {
 	path, err := b.path(reference)
 	if err != nil {
 		return nil, 0, err
@@ -117,6 +117,10 @@ func (r *blobReader) Read(buffer []byte) (int, error) {
 	}
 	defer iolimit.Release()
 	return r.file.Read(buffer)
+}
+
+func (r *blobReader) Seek(offset int64, whence int) (int64, error) {
+	return r.file.Seek(offset, whence)
 }
 
 func (r *blobReader) Close() error {

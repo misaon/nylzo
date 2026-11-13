@@ -40,7 +40,8 @@ func NewDummyRow() Row {
 	far := time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
 	message := &Message{Version: 2, OpensMax: 1, OpensRemaining: 1, CreatedAt: far, ExpiresAt: far}
 	blobReference := base64.RawURLEncoding.EncodeToString(reference[:BlobReferenceLen])
-	return NewRecord(seal.NewKey(), DummyLocator, message, readKey[:], manageKey[:], blobReference, seal.NewKey()).Row
+	blob := seal.NewBlobKey()
+	return NewRecord(seal.NewKey(), DummyLocator, message, readKey[:], manageKey[:], blobReference, &blob).Row
 }
 
 // ResealRow puts both wraps of a row under the current pepper key (seal.ResealWrap). The dummy row gets new wraps when
@@ -76,7 +77,7 @@ func NewRecord(
 	message *Message,
 	readKey, manageKey []byte,
 	blobReference string,
-	blobKey seal.Key,
+	blob *seal.BlobKey,
 ) Record {
 	key := seal.NewKey()
 	record := Record{
@@ -85,7 +86,7 @@ func NewRecord(
 			ReadWrap:      seal.WrapRecordKey(pepperKey, readKey, key, locator, seal.Read),
 			ManageWrap:    seal.WrapRecordKey(pepperKey, manageKey, key, locator, seal.Manage),
 			BlobReference: blobReference,
-			BlobWrap:      seal.WrapBlobKey(key, blobKey, locator),
+			BlobWrap:      seal.WrapBlobKey(key, blob, locator),
 			BlobPurgeAt:   BlobPurgeAt(message.ExpiresAt),
 			PurgeAt:       ceil(message.ExpiresAt.Add(TombstoneTTL), RowPurgeStep),
 		},
@@ -112,9 +113,9 @@ func (r *Record) HasBlob() bool {
 	return r.Row.BlobWrap != nil
 }
 
-func (r *Record) BlobKey() (seal.Key, error) {
+func (r *Record) BlobKey() (seal.BlobKey, error) {
 	if !r.HasBlob() {
-		return seal.Key{}, ErrBlobMissing
+		return seal.BlobKey{}, ErrBlobMissing
 	}
 	return seal.UnwrapBlobKey(r.Key, r.Row.BlobWrap, r.Row.Locator)
 }
