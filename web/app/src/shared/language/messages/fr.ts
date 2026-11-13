@@ -207,6 +207,7 @@ export const messages: Catalog = {
   'sent.state.expired': 'Expiré',
   'sent.state.cancelled': 'Annulé',
   'sent.state.deleted': 'Supprimé',
+  'sent.state.lost': 'Perdu',
   'sent.label.time': 'Validité',
   'sent.label.opens': 'Ouvertures',
   'sent.label.attempts': 'Tentatives échouées',
@@ -244,6 +245,8 @@ export const messages: Catalog = {
     'Annulé le {time}. Il a été supprimé du serveur, l’entrée disparaîtra quand vous quitterez cette page.',
   'sent.ended.deleted':
     'Le destinataire l’a supprimé, ou l’exploitant l’a retiré. L’entrée disparaîtra quand vous quitterez cette page.',
+  'sent.ended.lost':
+    'Le serveur a perdu sa clé, le plus souvent lors d’un redémarrage, et plus personne ne peut l’ouvrir. Renvoyez-le s’il est encore utile. L’entrée disparaîtra quand vous quitterez cette page.',
   'sent.cancel.title': 'Annuler le message «\u{A0}{label}\u{A0}»\u{A0}?',
   'sent.cancel.title.untitled': 'Annuler le message\u{A0}?',
   'sent.forget.label': 'Retirer de la liste',
@@ -258,6 +261,7 @@ export const messages: Catalog = {
   'read.ended.expired': 'Le message a expiré.',
   'read.ended.cancelled': 'L’expéditeur a annulé le message.',
   'read.ended.deleted': 'Le message a été supprimé.',
+  'read.ended.lost': 'Le serveur ne peut plus ouvrir le message.',
   'read.passphrase': 'Mot de passe',
   'read.reveal': 'Afficher le message',
   'read.resumable':
@@ -597,6 +601,9 @@ export const messages: Catalog = {
     'Plus personne ne peut l’ouvrir. Si vous en avez encore besoin, demandez un nouveau lien à l’expéditeur.',
   'open.notice.deleted': 'Le message a été supprimé',
   'open.notice.deleted.text': 'Le destinataire l’a supprimé, ou l’exploitant l’a retiré.',
+  'open.notice.lost': 'Le serveur ne peut plus ouvrir ce message',
+  'open.notice.lost.text':
+    'Le serveur a perdu sa clé, le plus souvent lors d’un redémarrage. Plus personne ne peut l’ouvrir. Demandez à l’expéditeur de vous le renvoyer.',
   'open.notice.unknown': 'Nous n’avons pas trouvé le message',
   'open.notice.unknown.text':
     'Le lien est peut-être incomplet, ou le message a expiré depuis longtemps. Demandez-en un nouveau à l’expéditeur.',

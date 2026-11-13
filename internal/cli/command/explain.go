@@ -30,6 +30,7 @@ var endedStates = map[string]string{
 	api.StateExpired:   "the message has expired",
 	api.StateCancelled: "the sender cancelled the message",
 	api.StateDeleted:   "the message was deleted",
+	api.StateLost:      "the server lost the key to the message, usually in a restart; it has to be sent again",
 }
 
 // Explain turns an error into a message that never repeats text from the server or a certificate.

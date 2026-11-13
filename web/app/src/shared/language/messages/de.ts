@@ -207,6 +207,7 @@ export const messages: Catalog = {
   'sent.state.expired': 'Abgelaufen',
   'sent.state.cancelled': 'Widerrufen',
   'sent.state.deleted': 'Gelöscht',
+  'sent.state.lost': 'Verloren',
   'sent.label.time': 'Gültigkeit',
   'sent.label.opens': 'Aufrufe',
   'sent.label.attempts': 'Fehlgeschlagene Versuche',
@@ -244,6 +245,8 @@ export const messages: Catalog = {
     'Widerrufen am {time}. Vom Server gelöscht, der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
   'sent.ended.deleted':
     'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt. Der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
+  'sent.ended.lost':
+    'Der Server hat den Schlüssel dazu verloren, meist bei einem Neustart, daher kann sie niemand mehr öffnen. Senden Sie sie erneut, wenn sie noch gebraucht wird. Der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
   'sent.cancel.title': 'Nachricht „{label}“ widerrufen?',
   'sent.cancel.title.untitled': 'Nachricht widerrufen?',
   'sent.forget.label': 'Aus der Liste entfernen',
@@ -258,6 +261,7 @@ export const messages: Catalog = {
   'read.ended.expired': 'Die Nachricht ist abgelaufen.',
   'read.ended.cancelled': 'Der Absender hat die Nachricht widerrufen.',
   'read.ended.deleted': 'Die Nachricht wurde gelöscht.',
+  'read.ended.lost': 'Der Server kann die Nachricht nicht mehr öffnen.',
   'read.passphrase': 'Passwort',
   'read.reveal': 'Nachricht anzeigen',
   'read.resumable':
@@ -596,6 +600,9 @@ export const messages: Catalog = {
     'Niemand kann sie mehr öffnen. Wenn Sie sie noch brauchen, bitten Sie den Absender um einen neuen Link.',
   'open.notice.deleted': 'Die Nachricht wurde gelöscht',
   'open.notice.deleted.text': 'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt.',
+  'open.notice.lost': 'Der Server kann diese Nachricht nicht mehr öffnen',
+  'open.notice.lost.text':
+    'Der Server hat den Schlüssel dazu verloren, meist bei einem Neustart. Niemand kann sie mehr öffnen. Bitten Sie den Absender, sie erneut zu senden.',
   'open.notice.unknown': 'Wir haben die Nachricht nicht gefunden',
   'open.notice.unknown.text':
     'Vielleicht ist der Link unvollständig, oder die Nachricht ist schon vor längerer Zeit abgelaufen. Bitten Sie den Absender um einen neuen.',

@@ -374,7 +374,7 @@ func (s *Server) openRatchet() error {
 		s.logger.Warn(
 			"epoch-seed-created",
 			"notice",
-			"a new seed: messages created under an earlier one can no longer be opened and end at their next open",
+			"a new seed: messages created under an earlier one can no longer be opened and end at the next request about them",
 		)
 	}
 	s.epochs = ratchet

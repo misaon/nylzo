@@ -232,6 +232,7 @@ export const messages: Catalog = {
   'sent.state.expired': 'Wygasła',
   'sent.state.cancelled': 'Anulowana',
   'sent.state.deleted': 'Usunięta',
+  'sent.state.lost': 'Utracona',
   'sent.label.time': 'Ważność',
   'sent.label.opens': 'Otwarcia',
   'sent.label.attempts': 'Nieudane próby',
@@ -265,6 +266,8 @@ export const messages: Catalog = {
   'sent.ended.cancelled':
     'Anulowana {time}. Na serwerze już jej nie ma, a\u{A0}z\u{A0}listy zniknie, gdy opuścisz stronę.',
   'sent.ended.deleted': 'Usunął ją odbiorca albo zdjął ją operator. Z\u{A0}listy zniknie, gdy opuścisz stronę.',
+  'sent.ended.lost':
+    'Serwer utracił jej klucz, zwykle przy restarcie, więc nikt już jej nie otworzy. Jeśli jest jeszcze potrzebna, wyślij ją ponownie. Z\u{A0}listy zniknie, gdy opuścisz stronę.',
   'sent.cancel.title': 'Anulować wiadomość „{label}”?',
   'sent.cancel.title.untitled': 'Anulować wiadomość?',
   'sent.forget.label': 'Usuń z\u{A0}listy',
@@ -279,6 +282,7 @@ export const messages: Catalog = {
   'read.ended.expired': 'Ważność wiadomości wygasła.',
   'read.ended.cancelled': 'Nadawca anulował wiadomość.',
   'read.ended.deleted': 'Wiadomość została usunięta.',
+  'read.ended.lost': 'Serwer nie może już otworzyć wiadomości.',
   'read.passphrase': 'Hasło',
   'read.reveal': 'Pokaż wiadomość',
   'read.resumable':
@@ -625,6 +629,9 @@ export const messages: Catalog = {
     'Nikt już jej nie otworzy. Jeśli nadal jej potrzebujesz, poproś nadawcę o\u{A0}nowy link.',
   'open.notice.deleted': 'Wiadomość została usunięta',
   'open.notice.deleted.text': 'Usunął ją odbiorca albo zdjął ją operator.',
+  'open.notice.lost': 'Serwer nie może już otworzyć tej wiadomości',
+  'open.notice.lost.text':
+    'Serwer utracił jej klucz, zwykle przy restarcie. Nikt już tej wiadomości nie otworzy. Poproś nadawcę o\u{A0}ponowne wysłanie.',
   'open.notice.unknown': 'Nie znaleźliśmy wiadomości',
   'open.notice.unknown.text':
     'Link może być niepełny albo ważność wiadomości wygasła dawno temu. Poproś nadawcę o\u{A0}nowy.',

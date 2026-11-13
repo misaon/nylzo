@@ -202,6 +202,7 @@ export const messages: Catalog = {
   'sent.state.expired': 'Caducado',
   'sent.state.cancelled': 'Anulado',
   'sent.state.deleted': 'Borrado',
+  'sent.state.lost': 'Perdido',
   'sent.label.time': 'Validez',
   'sent.label.opens': 'Aperturas',
   'sent.label.attempts': 'Intentos fallidos',
@@ -239,6 +240,8 @@ export const messages: Catalog = {
     'Anulado el {time}. Ya se borró del servidor; la entrada desaparecerá cuando salgas de esta página.',
   'sent.ended.deleted':
     'Lo borró el destinatario o lo retiró el operador. La entrada desaparecerá cuando salgas de esta página.',
+  'sent.ended.lost':
+    'El servidor perdió su clave, normalmente al reiniciarse, así que ya nadie podrá abrirlo. Si aún lo necesitas, envíalo de nuevo. La entrada desaparecerá cuando salgas de esta página.',
   'sent.cancel.title': '¿Anular el mensaje «{label}»?',
   'sent.cancel.title.untitled': '¿Anular el mensaje?',
   'sent.forget.label': 'Quitar de la lista',
@@ -253,6 +256,7 @@ export const messages: Catalog = {
   'read.ended.expired': 'El mensaje ha caducado.',
   'read.ended.cancelled': 'El remitente ha anulado el mensaje.',
   'read.ended.deleted': 'El mensaje se ha borrado.',
+  'read.ended.lost': 'El servidor ya no puede abrir el mensaje.',
   'read.passphrase': 'Contraseña',
   'read.reveal': 'Mostrar el mensaje',
   'read.resumable':
@@ -589,6 +593,9 @@ export const messages: Catalog = {
   'open.notice.cancelled.text': 'Ya nadie podrá abrirlo. Si todavía lo necesitas, pide al remitente un enlace nuevo.',
   'open.notice.deleted': 'El mensaje se ha borrado',
   'open.notice.deleted.text': 'Lo borró el destinatario o lo retiró el operador.',
+  'open.notice.lost': 'El servidor ya no puede abrir este mensaje',
+  'open.notice.lost.text':
+    'El servidor perdió su clave, normalmente al reiniciarse. Ya nadie podrá abrirlo. Pide al remitente que te lo vuelva a enviar.',
   'open.notice.unknown': 'No encontramos el mensaje',
   'open.notice.unknown.text':
     'Puede que el enlace esté incompleto o que el mensaje haya caducado hace tiempo. Pide al remitente uno nuevo.',

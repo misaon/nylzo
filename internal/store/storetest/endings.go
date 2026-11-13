@@ -132,7 +132,7 @@ func (f *fixture) failedDeleteLeavesNothingToRead() {
 
 func (f *fixture) recordedEndingWins() {
 	t := f.t
-	for _, recorded := range []store.State{store.StateDeleted, store.StateCancelled} {
+	for _, recorded := range []store.State{store.StateDeleted, store.StateCancelled, store.StateLost} {
 		f.recordedEndingHoldsTheLease(recorded)
 	}
 	f.recordedReleaseEndsTheMessage()

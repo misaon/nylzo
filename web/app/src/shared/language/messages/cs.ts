@@ -192,6 +192,7 @@ export const messages = {
   'sent.state.expired': 'Vypršela',
   'sent.state.cancelled': 'Zrušená',
   'sent.state.deleted': 'Smazaná',
+  'sent.state.lost': 'Ztracená',
   'sent.label.time': 'Platnost',
   'sent.label.opens': 'Otevření',
   'sent.label.attempts': 'Neúspěšné pokusy',
@@ -224,6 +225,8 @@ export const messages = {
   'sent.ended.expired': 'Platnost skončila {time}. Ze serveru je smazaná a\u{A0}ze seznamu zmizí, až stránku opustíte.',
   'sent.ended.cancelled': 'Zrušena {time}. Ze serveru je smazaná a\u{A0}ze seznamu zmizí, až stránku opustíte.',
   'sent.ended.deleted': 'Smazal ji příjemce, nebo ji odstranil provozovatel. Ze seznamu zmizí, až stránku opustíte.',
+  'sent.ended.lost':
+    'Server ztratil její klíč, nejčastěji při restartu, takže ji už nikdo neotevře. Pokud ji ještě potřebujete, pošlete ji znovu. Ze seznamu zmizí, až stránku opustíte.',
   'sent.cancel.title': 'Zrušit zprávu „{label}“?',
   'sent.cancel.title.untitled': 'Zrušit zprávu?',
   'sent.forget.label': 'Odebrat ze seznamu',
@@ -238,6 +241,7 @@ export const messages = {
   'read.ended.expired': 'Platnost zprávy vypršela.',
   'read.ended.cancelled': 'Odesílatel zprávu zrušil.',
   'read.ended.deleted': 'Zpráva byla smazána.',
+  'read.ended.lost': 'Server už zprávu neotevře.',
   'read.passphrase': 'Heslo',
   'read.reveal': 'Zobrazit zprávu',
   'read.resumable':
@@ -575,6 +579,9 @@ export const messages = {
     'Zprávu už nikdo neotevře. Pokud ji stále potřebujete, požádejte odesílatele o\u{A0}nový odkaz.',
   'open.notice.deleted': 'Zpráva byla smazána',
   'open.notice.deleted.text': 'Smazal ji příjemce, nebo ji odstranil provozovatel.',
+  'open.notice.lost': 'Server už tuto zprávu neotevře',
+  'open.notice.lost.text':
+    'Server ztratil její klíč, nejčastěji při restartu. Zprávu už nikdo neotevře. Požádejte odesílatele, ať ji pošle znovu.',
   'open.notice.unknown': 'Zprávu jsme nenašli',
   'open.notice.unknown.text':
     'Odkaz možná není celý, nebo zprávě už dávno skončila platnost. Požádejte odesílatele o\u{A0}nový.',

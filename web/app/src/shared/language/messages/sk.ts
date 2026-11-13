@@ -194,6 +194,7 @@ export const messages: Catalog = {
   'sent.state.expired': 'Vypršala',
   'sent.state.cancelled': 'Zrušená',
   'sent.state.deleted': 'Vymazaná',
+  'sent.state.lost': 'Stratená',
   'sent.label.time': 'Platnosť',
   'sent.label.opens': 'Otvorenia',
   'sent.label.attempts': 'Neúspešné pokusy',
@@ -228,6 +229,8 @@ export const messages: Catalog = {
   'sent.ended.cancelled': 'Zrušená {time}. Zo servera je vymazaná a\u{A0}zo zoznamu zmizne, keď stránku opustíte.',
   'sent.ended.deleted':
     'Vymazal ju príjemca alebo ju odstránil prevádzkovateľ. Zo zoznamu zmizne, keď stránku opustíte.',
+  'sent.ended.lost':
+    'Server stratil jej kľúč, najčastejšie pri reštarte, takže ju už nikto neotvorí. Ak ju ešte potrebujete, pošlite ju znova. Zo zoznamu zmizne, keď stránku opustíte.',
   'sent.cancel.title': 'Zrušiť správu „{label}“?',
   'sent.cancel.title.untitled': 'Zrušiť správu?',
   'sent.forget.label': 'Odobrať zo zoznamu',
@@ -242,6 +245,7 @@ export const messages: Catalog = {
   'read.ended.expired': 'Platnosť správy vypršala.',
   'read.ended.cancelled': 'Odosielateľ správu zrušil.',
   'read.ended.deleted': 'Správa bola vymazaná.',
+  'read.ended.lost': 'Server už správu neotvorí.',
   'read.passphrase': 'Heslo',
   'read.reveal': 'Zobraziť správu',
   'read.resumable':
@@ -582,6 +586,9 @@ export const messages: Catalog = {
     'Správu už nikto neotvorí. Ak ju stále potrebujete, požiadajte odosielateľa o\u{A0}nový odkaz.',
   'open.notice.deleted': 'Správa bola vymazaná',
   'open.notice.deleted.text': 'Vymazal ju príjemca alebo ju odstránil prevádzkovateľ.',
+  'open.notice.lost': 'Server už túto správu neotvorí',
+  'open.notice.lost.text':
+    'Server stratil jej kľúč, najčastejšie pri reštarte. Správu už nikto neotvorí. Požiadajte odosielateľa, aby ju poslal znova.',
   'open.notice.unknown': 'Správu sme nenašli',
   'open.notice.unknown.text':
     'Odkaz možno nie je celý alebo správe už dávno skončila platnosť. Požiadajte odosielateľa o\u{A0}nový.',

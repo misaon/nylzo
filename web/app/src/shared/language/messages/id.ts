@@ -202,6 +202,7 @@ export const messages: Catalog = {
   'sent.state.expired': 'Kedaluwarsa',
   'sent.state.cancelled': 'Dibatalkan',
   'sent.state.deleted': 'Dihapus',
+  'sent.state.lost': 'Hilang',
   'sent.label.time': 'Masa berlaku',
   'sent.label.opens': 'Dibuka',
   'sent.label.attempts': 'Percobaan gagal',
@@ -239,6 +240,8 @@ export const messages: Catalog = {
     'Dibatalkan {time}. Pesan sudah dihapus dari server, catatannya hilang saat Anda meninggalkan halaman ini.',
   'sent.ended.deleted':
     'Penerima menghapusnya, atau operator menurunkannya. Catatannya hilang saat Anda meninggalkan halaman ini.',
+  'sent.ended.lost':
+    'Server kehilangan kuncinya, biasanya saat dimulai ulang, sehingga pesan ini tidak bisa dibuka lagi oleh siapa pun. Kirim lagi jika masih diperlukan. Catatannya hilang saat Anda meninggalkan halaman ini.',
   'sent.cancel.title': 'Batalkan pesan “{label}”?',
   'sent.cancel.title.untitled': 'Batalkan pesan?',
   'sent.forget.label': 'Keluarkan dari daftar',
@@ -253,6 +256,7 @@ export const messages: Catalog = {
   'read.ended.expired': 'Masa berlaku pesan ini sudah habis.',
   'read.ended.cancelled': 'Pengirim membatalkan pesan ini.',
   'read.ended.deleted': 'Pesan ini sudah dihapus.',
+  'read.ended.lost': 'Server tidak bisa lagi membuka pesan ini.',
   'read.passphrase': 'Kata sandi',
   'read.reveal': 'Tampilkan pesan',
   'read.resumable':
@@ -590,6 +594,9 @@ export const messages: Catalog = {
     'Pesan ini tidak bisa dibuka lagi oleh siapa pun. Jika Anda masih membutuhkannya, minta tautan baru kepada pengirim.',
   'open.notice.deleted': 'Pesan ini sudah dihapus',
   'open.notice.deleted.text': 'Penerima menghapusnya, atau operator menurunkannya.',
+  'open.notice.lost': 'Server tidak bisa lagi membuka pesan ini',
+  'open.notice.lost.text':
+    'Server kehilangan kuncinya, biasanya saat dimulai ulang. Pesan ini tidak bisa dibuka lagi oleh siapa pun. Minta pengirim untuk mengirimkannya lagi.',
   'open.notice.unknown': 'Pesan tidak ditemukan',
   'open.notice.unknown.text':
     'Tautan mungkin tidak lengkap, atau masa berlaku pesan sudah lama habis. Minta tautan baru kepada pengirim.',

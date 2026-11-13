@@ -71,12 +71,15 @@ const (
 	StateExpired   = "expired"
 	StateCancelled = "cancelled"
 	StateDeleted   = "deleted"
+	StateLost      = "lost"
 )
 
 func MessagePath(id string) string {
 	return MessagesPath + "/" + id
 }
 
+var knownStates = []string{StateAvailable, StateOpened, StateExpired, StateCancelled, StateDeleted, StateLost}
+
 func KnownState(state string) bool {
-	return slices.Contains([]string{StateAvailable, StateOpened, StateExpired, StateCancelled, StateDeleted}, state)
+	return slices.Contains(knownStates, state)
 }

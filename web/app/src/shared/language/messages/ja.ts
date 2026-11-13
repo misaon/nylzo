@@ -196,6 +196,7 @@ export const messages: Catalog = {
   'sent.state.expired': '期限切れ',
   'sent.state.cancelled': '取り消し済み',
   'sent.state.deleted': '削除済み',
+  'sent.state.lost': '開封不可',
   'sent.label.time': '有効期限',
   'sent.label.opens': '開封回数',
   'sent.label.attempts': '失敗した試行',
@@ -229,6 +230,8 @@ export const messages: Catalog = {
   'sent.ended.expired': '{time}に有効期限が切れました。サーバーからは削除済みで、このページを離れると項目も消えます。',
   'sent.ended.cancelled': '{time}に取り消されました。サーバーからは削除済みで、このページを離れると項目も消えます。',
   'sent.ended.deleted': '受信者が削除したか、運営者が撤去しました。このページを離れると項目も消えます。',
+  'sent.ended.lost':
+    'サーバーが再起動などでこのメッセージの鍵を失ったため、もう誰も開封できません。必要なら、もう一度送ってください。このページを離れると項目も消えます。',
   'sent.cancel.title': 'メッセージ「{label}」を取り消しますか？',
   'sent.cancel.title.untitled': 'メッセージを取り消しますか？',
   'sent.forget.label': '一覧から外す',
@@ -243,6 +246,7 @@ export const messages: Catalog = {
   'read.ended.expired': 'メッセージの有効期限が切れました。',
   'read.ended.cancelled': '送信者がメッセージを取り消しました。',
   'read.ended.deleted': 'メッセージは削除されました。',
+  'read.ended.lost': 'サーバーはこのメッセージをもう開封できません。',
   'read.passphrase': 'パスワード',
   'read.reveal': 'メッセージを表示',
   'read.resumable':
@@ -578,6 +582,9 @@ export const messages: Catalog = {
     'このメッセージはもう誰も開封できません。まだ必要な場合は、送信者に新しいリンクを依頼してください。',
   'open.notice.deleted': 'メッセージは削除されました',
   'open.notice.deleted.text': '受信者が削除したか、運営者が撤去しました。',
+  'open.notice.lost': 'サーバーはこのメッセージをもう開封できません',
+  'open.notice.lost.text':
+    'サーバーが再起動などでこのメッセージの鍵を失いました。もう誰も開封できません。送信者にもう一度送ってもらってください。',
   'open.notice.unknown': 'メッセージが見つかりません',
   'open.notice.unknown.text':
     'リンクが途中で切れているか、メッセージの有効期限がかなり前に切れています。送信者に新しいリンクを依頼してください。',
