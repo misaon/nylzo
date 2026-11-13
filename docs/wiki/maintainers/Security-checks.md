@@ -73,6 +73,14 @@ Module-level matches need review. For example, [GO-2026-5932](https://pkg.go.dev
 
 CI and release jobs install Go with mise from the version and checksum in `mise.lock`. Each job that uses Go runs `tools/verify-go-toolchain` and stops when `go` reports another version. Release jobs install tools without a cache.
 
+### Go 1.27.4 HTTP crash assessment (F32)
+
+[Go 1.27.4, released November 10, 2026](https://go.dev/doc/devel/release#go1.27.4), fixes [CVE-2026-97054](https://github.com/golang/go/issues/82563): an HTTP/1 server can crash when `MaxBytesReader` exceeds its limit while another goroutine writes response headers. The toolchain and cgo fixes in the same release also require updating build hosts. Both Go modules and mise pin 1.27.4; rebuild the combined server/CLI binary and the custom Caddy binary, including their release images. Updating the host's Go installation alone does not patch existing binaries.
+
+The server uses `MaxBytesReader` in `handleCreate` and `handleAbuse`. Uploads read synchronously through `receiveBlob`, the paced reader and disk storage; abuse reports finish `io.ReadAll` before responding. These handlers do not read the body concurrently with writing response headers, so source inspection found no path to this race in the current server handlers.
+
+Both shipped Caddyfiles enforce a 6 MiB `request_body` limit. Caddy 2.11.7 implements that limit with `MaxBytesReader` before reverse proxying, where upstream request-body reads can overlap response handling. Treat the HTTP/1 edge as potentially exposed until Caddy is rebuilt; the limit itself is not a mitigation. This is a source-level assessment, not a reproduced crash or a vulnerability exception. The existing `TestAK22SlowConnectionsAndLyingContentLength` and `TestCaddyfilesProtectTheEdge` checks cover request limits and edge behavior; passing them does not prove the race was unreachable on the old toolchain.
+
 ## Runner monitoring
 
 Harden-Runner starts before source checkout or other tools. The initial policy records outbound traffic for review. Audit mode does not enforce a project-specific domain allowlist. Review the observed destinations before adopting a blocking policy; do not disable monitoring or widen a policy merely to hide a finding.
