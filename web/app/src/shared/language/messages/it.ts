@@ -183,13 +183,14 @@ export const messages: Catalog = {
   'clipboard.cleared': 'Gli appunti sono vuoti. Le copie già presenti nella cronologia degli appunti restano lì.',
   'created.another': 'Nuovo messaggio',
   'created.remembered': 'Questo dispositivo ha memorizzato il messaggio.',
+  'created.remembered.session': 'Questa scheda ricorda il messaggio al massimo finché non la chiudi o la ricarichi.',
   'created.status_link': 'Apri Inviati',
   'created.not_remembered':
     'Non è stato possibile memorizzare il messaggio su questo dispositivo, quindi non potrai annullarlo da qui.',
 
   'sent.title': 'Inviati',
   'sent.note':
-    'L’elenco è salvato solo in questo browser e non contiene i link ai messaggi. Una voce scompare {days} dopo la fine del messaggio.',
+    'L’elenco non contiene i link ai messaggi. La pagina elimina la voce di un messaggio concluso appena ne vedi qui l’esito. Le altre voci le elimina durante le tue visite a Nylzo, non prima di {days} dalla scadenza.',
   'sent.loading': 'Caricamento dei messaggi inviati…',
   'sent.unavailable':
     'Questo browser non permette alla pagina di salvare dati, quindi non ricorda i messaggi inviati. Consenti a questo sito di salvare dati o usa un altro browser.',
@@ -208,7 +209,8 @@ export const messages: Catalog = {
   'sent.not_opened': 'non ancora',
   'sent.until': '{time}',
   'sent.opens': '{used} di {max}',
-  'sent.unknown': 'Il messaggio non è più sul server.',
+  'sent.unknown':
+    'Il server non ha trovato il messaggio. Potrebbe essere già concluso. Se qui non ti serve più, rimuovilo.',
   'sent.failed': 'Impossibile caricare lo stato. Controlla la connessione e riprova.',
   'sent.cancel': 'Annulla messaggio',
   'sent.cancel.confirm': 'Dopo l’annullamento nessuno potrà più aprire il messaggio.',
@@ -225,14 +227,16 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'Qui non è possibile salvare l’elenco dei messaggi inviati',
   'sent.empty.title': 'Qui non c’è ancora niente',
   'sent.created': 'Creato: {time}',
-  'sent.state.unknown': 'Non esiste più',
+  'sent.created.session': 'Creato: {time}, solo in questa scheda',
+  'sent.state.unknown': 'Non trovato',
   'sent.state.failed': 'Stato sconosciuto',
   'sent.state.loading': 'Caricamento',
-  'sent.ended.opened': 'Aperto: {time}. È stato eliminato dal server, la voce resta qui ancora per {days}.',
-  'sent.ended.expired': 'Scaduto: {time}. È stato eliminato dal server, la voce resta qui ancora per {days}.',
-  'sent.ended.cancelled': 'Annullato: {time}. È stato eliminato dal server, la voce resta qui ancora per {days}.',
+  'sent.ended.opened': 'Aperto: {time}. È stato eliminato dal server, la voce sparirà quando lasci questa pagina.',
+  'sent.ended.expired': 'Scaduto: {time}. È stato eliminato dal server, la voce sparirà quando lasci questa pagina.',
+  'sent.ended.cancelled':
+    'Annullato: {time}. È stato eliminato dal server, la voce sparirà quando lasci questa pagina.',
   'sent.ended.deleted':
-    'Lo ha eliminato il destinatario o lo ha rimosso il gestore. La voce resta qui ancora per {days}.',
+    'Lo ha eliminato il destinatario o lo ha rimosso il gestore. La voce sparirà quando lasci questa pagina.',
   'sent.cancel.title': 'Annullare il messaggio «{label}»?',
   'sent.cancel.title.untitled': 'Annullare il messaggio?',
   'sent.forget.label': 'Rimuovi dall’elenco',
@@ -398,7 +402,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Non usiamo servizi esterni per analizzare le visite.',
   'transparency.personal.browser.title': 'Nel tuo browser',
   'transparency.personal.browser':
-    'La lingua scelta, un dato temporaneo durante l’apertura di un messaggio e l’elenco Inviati, se segui un messaggio. Sono necessari per funzioni che hai richiesto e per questo non richiedono il consenso.',
+    'La lingua scelta, un dato temporaneo durante l’apertura di un messaggio e l’elenco Inviati, se tieni un messaggio seguito anche dopo aver chiuso la scheda. Sono necessari per funzioni che hai richiesto e per questo non richiedono il consenso.',
   'transparency.limits.title': 'Limiti di questa istanza',
   'transparency.limits.short': 'Limiti',
   'transparency.limits.file': 'Allegato più grande',
@@ -528,7 +532,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Copia password',
   'created.track.title': 'Segui in Inviati',
   'created.track.note':
-    'Vedrai se qualcuno ha aperto il messaggio e potrai annullarlo. Viene salvato solo in questo browser. Potrà annullarlo anche chiunque abbia accesso a questo browser.',
+    'Vedrai se qualcuno ha aperto il messaggio e potrai annullarlo. Lo ricorda solo questa scheda, al massimo finché non la chiudi o la ricarichi.',
+  'created.track.note.kept':
+    'Vedrai se qualcuno ha aperto il messaggio e potrai annullarlo. Viene salvato in questo browser, quindi potrà annullarlo anche chiunque vi abbia accesso.',
+  'created.track.keep': 'Ricorda anche dopo aver chiuso la scheda',
   'created.track.label': 'Etichetta, la vedi solo tu',
   'created.track.placeholder': 'Etichetta, ad es. «Password per Marco»',
   'created.track.save': 'Salva',

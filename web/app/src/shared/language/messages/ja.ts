@@ -177,12 +177,13 @@ export const messages: Catalog = {
   'clipboard.cleared': 'クリップボードを空にしました。すでにクリップボードの履歴にあるコピーは残ります。',
   'created.another': '新しいメッセージ',
   'created.remembered': 'この端末にメッセージを登録しました。',
+  'created.remembered.session': 'このタブがメッセージを記憶します。遅くともタブを閉じるか再読み込みすると消えます。',
   'created.status_link': '「送信済み」を開く',
   'created.not_remembered': 'この端末にメッセージを登録できなかったため、ここから取り消すことはできません。',
 
   'sent.title': '送信済み',
   'sent.note':
-    'この一覧はこのブラウザにのみ保存され、メッセージへのリンクは含みません。各項目は、メッセージの終了から{days}後に消えます。',
+    'この一覧にメッセージへのリンクは含まれません。終了したメッセージの項目は、ここで結果を確認した時点でページが削除します。そのほかの項目は、有効期限から{days}以上たった後、Nylzoを開いたときに削除します。',
   'sent.loading': '送信済みメッセージを読み込んでいます…',
   'sent.unavailable':
     'このブラウザではページがデータを保存できないため、送信済みメッセージを記憶できません。このサイトにデータの保存を許可するか、別のブラウザを使ってください。',
@@ -201,7 +202,8 @@ export const messages: Catalog = {
   'sent.not_opened': '未開封',
   'sent.until': '{time}まで',
   'sent.opens': '{max}回中{used}回',
-  'sent.unknown': 'メッセージはすでにサーバーから消えています。',
+  'sent.unknown':
+    'サーバーでメッセージが見つかりませんでした。すでに終了している可能性があります。不要ならこの一覧から削除してください。',
   'sent.failed': '状態を読み込めませんでした。接続を確認して、もう一度お試しください。',
   'sent.cancel': 'メッセージを取り消す',
   'sent.cancel.confirm': '取り消すと、誰もメッセージを開封できなくなります。',
@@ -218,14 +220,14 @@ export const messages: Catalog = {
   'sent.unavailable.title': '送信済みの一覧をここに保存できません',
   'sent.empty.title': 'まだ何もありません',
   'sent.created': '{time}に作成',
-  'sent.state.unknown': 'もう存在しません',
+  'sent.created.session': '{time}に作成・このタブのみ',
+  'sent.state.unknown': '見つかりません',
   'sent.state.failed': '状態不明',
   'sent.state.loading': '読み込み中',
-  'sent.ended.opened': '{time}に開封されました。サーバーからは削除済みで、この項目はあと{days}間ここに残ります。',
-  'sent.ended.expired':
-    '{time}に有効期限が切れました。サーバーからは削除済みで、この項目はあと{days}間ここに残ります。',
-  'sent.ended.cancelled': '{time}に取り消されました。サーバーからは削除済みで、この項目はあと{days}間ここに残ります。',
-  'sent.ended.deleted': '受信者が削除したか、運営者が撤去しました。この項目はあと{days}間ここに残ります。',
+  'sent.ended.opened': '{time}に開封されました。サーバーからは削除済みで、このページを離れると項目も消えます。',
+  'sent.ended.expired': '{time}に有効期限が切れました。サーバーからは削除済みで、このページを離れると項目も消えます。',
+  'sent.ended.cancelled': '{time}に取り消されました。サーバーからは削除済みで、このページを離れると項目も消えます。',
+  'sent.ended.deleted': '受信者が削除したか、運営者が撤去しました。このページを離れると項目も消えます。',
   'sent.cancel.title': 'メッセージ「{label}」を取り消しますか？',
   'sent.cancel.title.untitled': 'メッセージを取り消しますか？',
   'sent.forget.label': '一覧から外す',
@@ -392,7 +394,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': '訪問者のアクセス解析に外部サービスは利用していません。',
   'transparency.personal.browser.title': 'お使いのブラウザ内',
   'transparency.personal.browser':
-    '選択した言語、メッセージの開封中に使う一時的なデータ、そしてメッセージを追跡している場合は「送信済み」の一覧。いずれもあなたが求める機能に必要なものであるため、同意は不要です。',
+    '選択した言語、メッセージの開封中に使う一時的なデータ、そして追跡中のメッセージをタブを閉じた後も残す場合は「送信済み」の一覧。いずれもあなたが求める機能に必要なものであるため、同意は不要です。',
   'transparency.limits.title': 'このインスタンスの制限',
   'transparency.limits.short': '制限',
   'transparency.limits.file': '添付ファイルの最大サイズ',
@@ -522,7 +524,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'パスワードをコピー',
   'created.track.title': '「送信済み」で追跡',
   'created.track.note':
-    'メッセージが開封されたかどうかを確認でき、取り消すこともできます。このブラウザにのみ保存されます。このブラウザを使える人なら誰でも取り消せます。',
+    'メッセージが開封されたかどうかを確認でき、取り消すこともできます。このタブだけが記憶し、遅くともタブを閉じるか再読み込みすると消えます。',
+  'created.track.note.kept':
+    'メッセージが開封されたかどうかを確認でき、取り消すこともできます。このブラウザに保存されるため、このブラウザを使える人なら誰でも取り消せます。',
+  'created.track.keep': 'タブを閉じた後も記憶する',
   'created.track.label': 'ラベル（あなたにだけ表示）',
   'created.track.placeholder': 'ラベル（例：「健太さん用のパスワード」）',
   'created.track.save': '保存',

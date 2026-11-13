@@ -1,6 +1,10 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
+
   import Interpolated from '../../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import { getScreenWork } from '../../../shared/navigation/screen-work.ts';
+  import { getSessionSentStore } from '../../../shared/sent-records/session-sent-store.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import CreatedPanel from '../created/CreatedPanel.svelte';
   import { Composer } from './composer.svelte.ts';
@@ -10,7 +14,8 @@
 
   const translator = getTranslator();
   const { translate } = translator;
-  const composer = new Composer(translator);
+  const composer = new Composer(translator, getSessionSentStore());
+  onDestroy(getScreenWork().watch(() => composer.phase === 'encrypting'));
   const id = $props.id();
   const noticeId = `${id}-notice`;
   const HERO_STEPS = [
@@ -116,9 +121,10 @@
               created={composer.sealed.created}
               opensMax={composer.sealed.opensMax}
               passphrase={composer.sealed.passphrase}
-              canRemember={composer.canRemember}
+              canKeep={composer.canKeep}
+              canTrackInTab={composer.canTrackInTab}
               remembered={composer.remembered}
-              onremember={(label) => void composer.remember(label)}
+              onremember={(label, keep) => void composer.remember(label, keep)}
               onanother={() => void composer.another()}
             />
           {/if}

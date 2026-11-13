@@ -84,7 +84,8 @@ export class Composer {
   #pending: SealedMessage | undefined;
   #run = 0;
   #submitting = false;
-  #sentStore: SentStore | undefined;
+  #sentStore: ReturnType<typeof browserSentStore> | undefined;
+  readonly #sessionStore: SentStore;
   readonly #api = createApi();
   readonly #encoder = new TextEncoder();
   readonly #translator: Translator;
@@ -98,7 +99,8 @@ export class Composer {
   opensMax = $state(1);
   protect = $state(false);
   passphrase = $state('');
-  canRemember = $state(true);
+  canKeep = $state(true);
+  canTrackInTab = $state(true);
   menu = $state<Menu>();
   problems = $state.raw<readonly CreateProblem[]>([]);
   failure = $state.raw<CreateFailure>();
@@ -109,6 +111,7 @@ export class Composer {
   left = $state(false);
   sealingWithPassphrase = $state(false);
   remembered = $state<Remembered>('off');
+  kept = $state(false);
   readonly focus = new FocusTargets<ComposerTarget>();
 
   readonly timeline = new PacedTimeline(timelineSettings);
@@ -210,19 +213,26 @@ export class Composer {
 
   readonly start: Attachment = () => {
     if (servedByLocalClient()) {
-      this.canRemember = false;
+      this.canKeep = false;
+    }
+    // Without the Navigation API every move between pages loads a new document, which would forget a tab-only record.
+    if (typeof navigation === 'undefined') {
+      this.canTrackInTab = false;
     }
     void this.loadLimits();
-    return () => this.timeline.stop();
+    return () => this.#discard();
   };
 
-  readonly remember = async (label: string): Promise<void> => {
+  readonly remember = async (label: string, keep: boolean): Promise<void> => {
     const sealed = this.sealed;
-    if (!sealed || !this.canRemember || this.remembered === 'saving' || this.remembered === 'remembered') {
+    // A browser save that timed out may still land and be removed later, so only the tab can take a second try.
+    const refused = keep ? !this.canKeep || this.remembered === 'failed' : !this.canTrackInTab;
+    if (!sealed || refused || this.remembered === 'saving' || this.remembered === 'remembered') {
       return;
     }
     this.remembered = 'saving';
-    const stored = await this.#rememberMessage(sealed.created, label);
+    this.kept = keep;
+    const stored = await this.#rememberMessage(sealed.created, label, keep);
     if (this.sealed === sealed) {
       this.remembered = stored ? 'remembered' : 'failed';
     }
@@ -244,14 +254,7 @@ export class Composer {
   };
 
   readonly leave = (): void => {
-    stopRunningWorkers();
-    this.left = true;
-    this.#run++;
-    this.timeline.stop();
-    this.#pending = undefined;
-    this.cipher = '';
-    this.menu = undefined;
-    this.#reset();
+    this.#discard();
     // Commit removal before pagehide returns and the browser freezes this document.
     flushSync();
   };
@@ -363,8 +366,9 @@ export class Composer {
     this.#forgetProblems('passphrase');
   };
 
-  constructor(translator: Translator) {
+  constructor(translator: Translator, sessionStore: SentStore) {
     this.#translator = translator;
+    this.#sessionStore = sessionStore;
   }
 
   #failureText(failure: CreateFailure): string {
@@ -380,6 +384,7 @@ export class Composer {
     this.sealed = result;
     this.phase = 'done';
     this.remembered = 'off';
+    this.kept = false;
   }
 
   #forgetProblems(...fields: readonly CreateField[]): void {
@@ -392,7 +397,20 @@ export class Composer {
     this.timeline.fraction = 'fraction' in progress ? progress.fraction : undefined;
   }
 
-  async #rememberMessage(created: Created, label: string): Promise<boolean> {
+  #discard(): void {
+    this.#sentStore?.close();
+    this.#sentStore = undefined;
+    stopRunningWorkers();
+    this.left = true;
+    this.#run++;
+    this.timeline.stop();
+    this.#pending = undefined;
+    this.cipher = '';
+    this.menu = undefined;
+    this.#reset();
+  }
+
+  async #rememberMessage(created: Created, label: string, keep: boolean): Promise<boolean> {
     const expiresAt = Date.parse(created.expiresAt);
     const record = {
       id: created.id,
@@ -401,6 +419,9 @@ export class Composer {
       label: label.trim(),
       manageKey: created.manageKey,
     };
+    if (!keep) {
+      return rememberSent(this.#sessionStore, record, SAVE_TIMEOUT_MS);
+    }
     this.#sentStore ??= browserSentStore();
     return rememberSent(this.#sentStore, record, SAVE_TIMEOUT_MS);
   }
@@ -408,6 +429,7 @@ export class Composer {
   #reset(): void {
     this.sealed = undefined;
     this.remembered = 'off';
+    this.kept = false;
     this.text = '';
     this.passphrase = '';
     this.protect = false;

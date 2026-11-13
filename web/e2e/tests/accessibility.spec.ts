@@ -166,7 +166,7 @@ test('the sent list, empty and with a message, and its cancel dialog pass axe wi
   await page.goto('/sent');
   await expect(page.getByText('Nothing here yet')).toBeVisible();
   await expectAccessible(page, 'sent empty');
-  await createMessageInPage(page, { text: 'axe', remember: true });
+  await createMessageInPage(page, { text: 'axe', remember: 'browser' });
   await expectAccessible(page, 'created and remembered');
   await page.goto('/sent');
   await expect(page.getByText('Waiting to be opened')).toBeVisible();
@@ -205,7 +205,7 @@ test('keyboard focus on the comparison table and the self-host commands draws th
 });
 
 test('with reduced motion the confirmation backdrop appears without a fade (WCAG 2.3.3)', async ({ page }) => {
-  await createMessageInPage(page, { text: 'still', remember: true });
+  await createMessageInPage(page, { text: 'still', remember: 'browser' });
   await page.goto('/sent');
   await page.getByRole('button', { name: 'Cancel message' }).click();
   const dialog = page.getByRole('dialog');

@@ -12,7 +12,6 @@ export interface SentRecord {
   readonly id: string;
   readonly createdAt: number;
   readonly expiresAt: number;
-  readonly endedAt?: number | undefined;
   readonly label?: string | undefined;
   readonly manageKey: RequestKey;
 }
@@ -21,7 +20,6 @@ export interface StoredRecord {
   readonly id: string;
   readonly createdAt: number;
   readonly expiresAt: number;
-  readonly endedAt?: number;
   readonly label?: string;
   readonly privateKey: CryptoKey;
   readonly publicKey: Uint8Array<ArrayBuffer>;
@@ -59,14 +57,8 @@ function isTime(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MAX_TIME_MS;
 }
 
-function areTimes(createdAt: unknown, expiresAt: unknown, endedAt: unknown): boolean {
-  return (
-    isTime(createdAt) &&
-    isTime(expiresAt) &&
-    createdAt <= expiresAt &&
-    expiresAt - createdAt <= MAX_LIFETIME_MS &&
-    (endedAt === undefined || (isTime(endedAt) && endedAt <= expiresAt + MAX_LIFETIME_MS))
-  );
+function areTimes(createdAt: unknown, expiresAt: unknown): boolean {
+  return isTime(createdAt) && isTime(expiresAt) && createdAt <= expiresAt && expiresAt - createdAt <= MAX_LIFETIME_MS;
 }
 
 function isLabel(label: unknown): label is string {
@@ -95,7 +87,7 @@ export function storedForm(record: SentRecord): StoredRecord {
   }
   if (
     !isMessageId(record.id) ||
-    !areTimes(record.createdAt, record.expiresAt, record.endedAt) ||
+    !areTimes(record.createdAt, record.expiresAt) ||
     (record.label !== undefined && record.label !== '' && !isLabel(record.label)) ||
     !isSigningKey(record.manageKey.privateKey) ||
     !(record.manageKey.publicKey instanceof Uint8Array) ||
@@ -107,7 +99,6 @@ export function storedForm(record: SentRecord): StoredRecord {
     id: record.id,
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
-    ...(record.endedAt !== undefined && { endedAt: record.endedAt }),
     ...(isLabel(record.label) && { label: record.label }),
     privateKey: record.manageKey.privateKey,
     publicKey: record.manageKey.publicKey,
@@ -118,14 +109,16 @@ export function recordFrom(value: unknown): SentRecord | undefined {
   if (typeof value !== 'object' || value === null) {
     return undefined;
   }
-  const { id, createdAt, expiresAt, endedAt, label, privateKey, publicKey } = value as Partial<
+  const { id, createdAt, expiresAt, label, privateKey, publicKey } = value as Partial<
     Record<keyof StoredRecord, unknown>
   >;
+  // Older clients added endedAt once the message ended, so such a record has nothing left to manage.
   if (
+    'endedAt' in value ||
     !isMessageId(id) ||
-    !areTimes(createdAt, expiresAt, endedAt) ||
     !isTime(createdAt) ||
     !isTime(expiresAt) ||
+    !areTimes(createdAt, expiresAt) ||
     !isSigningKey(privateKey) ||
     privateKey.extractable ||
     !(publicKey instanceof Uint8Array) ||
@@ -137,12 +130,15 @@ export function recordFrom(value: unknown): SentRecord | undefined {
     id,
     createdAt,
     expiresAt,
-    ...(isTime(endedAt) && { endedAt }),
     ...(isLabel(label) && { label }),
     manageKey: { privateKey, publicKey: new Uint8Array(publicKey) },
   };
 }
 
-export function isRetained(record: Pick<SentRecord, 'endedAt' | 'expiresAt'>, now: number): boolean {
-  return now < Math.min(record.expiresAt, record.endedAt ?? Infinity) + RETENTION_MS;
+export function retainedUntil(record: Pick<SentRecord, 'expiresAt'>): number {
+  return record.expiresAt + RETENTION_MS;
+}
+
+export function isRetained(record: Pick<SentRecord, 'expiresAt'>, now: number): boolean {
+  return now < retainedUntil(record);
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { BUILD_INFO, buildSourceHref } from '../build-info.ts';
   import type { MessageKey } from '../language/catalog.ts';
+  import { homePath } from '../language/language.ts';
   import type { Language } from '../language/language.ts';
   import LanguageMenu from '../language/LanguageMenu.svelte';
   import { getTranslator } from '../language/translator.svelte.ts';
@@ -20,16 +21,18 @@
   }
 
   const { compact = false, current, onlanguage }: Props = $props();
-  const { translate } = getTranslator();
+  const translator = getTranslator();
+  const { translate } = translator;
   const id = $props.id();
+  const home = $derived(homePath(translator.language));
   const versionHref = buildSourceHref(BUILD_INFO);
   const LINK = 'transition hover:text-ink';
 
-  const groups: readonly { readonly key: MessageKey; readonly links: readonly FooterLink[] }[] = [
+  const groups: readonly { readonly key: MessageKey; readonly links: readonly FooterLink[] }[] = $derived([
     {
       key: 'footer.product',
       links: [
-        { href: '/', key: 'footer.create', page: 'create' },
+        { href: home, key: 'footer.create', page: 'create' },
         { href: '/sent', key: 'footer.sent', page: 'sent' },
         { href: '/transparency', key: 'footer.transparency', page: 'transparency' },
       ],
@@ -37,7 +40,7 @@
     {
       key: 'footer.security',
       links: [
-        { href: '/#how-it-works', key: 'footer.how' },
+        { href: `${home}#how-it-works`, key: 'footer.how' },
         { href: `${REPOSITORY_URL}/blob/main/SECURITY.md`, key: 'footer.vulnerabilities' },
       ],
     },
@@ -45,12 +48,12 @@
       key: 'footer.community',
       links: [
         { href: REPOSITORY_URL, key: 'footer.github' },
-        { href: '/#self-host', key: 'footer.selfhost' },
+        { href: `${home}#self-host`, key: 'footer.selfhost' },
         { href: '/agents', key: 'footer.agents', page: 'agents' },
-        { href: '/#about', key: 'footer.about' },
+        { href: `${home}#about`, key: 'footer.about' },
       ],
     },
-  ];
+  ]);
 </script>
 
 {#snippet version(extra: string)}
@@ -77,7 +80,7 @@
         <p class="text-body-sm text-ink-mute">{translate('footer.tagline')}</p>
       </div>
       <div class="flex flex-wrap items-center gap-x-5 gap-y-3 text-body-sm">
-        <a href="/#how-it-works" class={['text-ink-soft', LINK]}>{translate('footer.how')}</a>
+        <a href="{home}#how-it-works" class={['text-ink-soft', LINK]}>{translate('footer.how')}</a>
         <a href={REPOSITORY_URL} class={['text-ink-soft', LINK]}>{translate('footer.github')}</a>
         <div class="flex w-full items-center justify-between gap-4 sm:contents">
           {@render version('')}

@@ -22,7 +22,7 @@
   const rememberedShown = $derived(composer.remembered === 'remembered' || composer.remembered === 'failed');
   const rememberedText = $derived.by(() => {
     if (composer.remembered === 'remembered') {
-      return translate('created.remembered');
+      return translate(composer.kept ? 'created.remembered' : 'created.remembered.session');
     }
     return composer.remembered === 'failed' ? translate('created.not_remembered') : '';
   });

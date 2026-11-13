@@ -187,12 +187,14 @@ export const messages: Catalog = {
     'Le presse-papiers est vide. Les copies déjà présentes dans l’historique du presse-papiers y restent.',
   'created.another': 'Nouveau message',
   'created.remembered': 'Cet appareil a mémorisé le message.',
+  'created.remembered.session':
+    'Cet onglet mémorise le message, au plus tard jusqu’à sa fermeture ou son rechargement.',
   'created.status_link': 'Ouvrir Envoyés',
   'created.not_remembered': 'Cet appareil n’a pas pu mémoriser le message, vous ne pourrez donc pas l’annuler d’ici.',
 
   'sent.title': 'Envoyés',
   'sent.note':
-    'La liste est enregistrée uniquement dans ce navigateur et ne contient pas les liens vers les messages. Une entrée disparaît {days} après la fin du message.',
+    'La liste ne contient pas les liens vers les messages. La page supprime l’entrée d’un message terminé dès que vous voyez ici son issue. Elle supprime les autres entrées lors de vos visites sur Nylzo, au plus tôt {days} après leur expiration.',
   'sent.loading': 'Chargement des messages envoyés…',
   'sent.unavailable':
     'Ce navigateur ne permet pas à la page d’enregistrer des données, il ne peut donc pas mémoriser les messages envoyés. Autorisez l’enregistrement de données pour ce site ou utilisez un autre navigateur.',
@@ -211,7 +213,8 @@ export const messages: Catalog = {
   'sent.not_opened': 'pas encore',
   'sent.until': 'jusqu’au {time}',
   'sent.opens': '{used} sur {max}',
-  'sent.unknown': 'Le message a déjà disparu du serveur.',
+  'sent.unknown':
+    'Le serveur n’a pas trouvé le message. Il est peut-être déjà terminé. Si vous n’en avez plus besoin ici, retirez-le.',
   'sent.failed': 'Impossible de charger l’état. Vérifiez la connexion et réessayez.',
   'sent.cancel': 'Annuler le message',
   'sent.cancel.confirm': 'Une fois le message annulé, plus personne ne pourra l’ouvrir.',
@@ -228,13 +231,18 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'La liste des messages envoyés ne peut pas être enregistrée ici',
   'sent.empty.title': 'Rien pour l’instant',
   'sent.created': 'Créé le {time}',
-  'sent.state.unknown': 'N’existe plus',
+  'sent.created.session': 'Créé le {time}, dans cet onglet uniquement',
+  'sent.state.unknown': 'Introuvable',
   'sent.state.failed': 'État inconnu',
   'sent.state.loading': 'Chargement',
-  'sent.ended.opened': 'Ouvert le {time}. Il a été supprimé du serveur, l’entrée reste ici encore {days}.',
-  'sent.ended.expired': 'Expiré le {time}. Il a été supprimé du serveur, l’entrée reste ici encore {days}.',
-  'sent.ended.cancelled': 'Annulé le {time}. Il a été supprimé du serveur, l’entrée reste ici encore {days}.',
-  'sent.ended.deleted': 'Le destinataire l’a supprimé, ou l’exploitant l’a retiré. L’entrée reste ici encore {days}.',
+  'sent.ended.opened':
+    'Ouvert le {time}. Il a été supprimé du serveur, l’entrée disparaîtra quand vous quitterez cette page.',
+  'sent.ended.expired':
+    'Expiré le {time}. Il a été supprimé du serveur, l’entrée disparaîtra quand vous quitterez cette page.',
+  'sent.ended.cancelled':
+    'Annulé le {time}. Il a été supprimé du serveur, l’entrée disparaîtra quand vous quitterez cette page.',
+  'sent.ended.deleted':
+    'Le destinataire l’a supprimé, ou l’exploitant l’a retiré. L’entrée disparaîtra quand vous quitterez cette page.',
   'sent.cancel.title': 'Annuler le message «\u{A0}{label}\u{A0}»\u{A0}?',
   'sent.cancel.title.untitled': 'Annuler le message\u{A0}?',
   'sent.forget.label': 'Retirer de la liste',
@@ -404,7 +412,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Nous ne faisons appel à aucun service externe pour analyser les visites.',
   'transparency.personal.browser.title': 'Dans votre navigateur',
   'transparency.personal.browser':
-    'La langue choisie, une donnée temporaire pendant l’ouverture d’un message et la liste Envoyés si vous suivez un message. Ces données sont nécessaires aux fonctions que vous demandez et ne requièrent donc pas de consentement.',
+    'La langue choisie, une donnée temporaire pendant l’ouverture d’un message et la liste Envoyés si vous gardez un message suivi après la fermeture de l’onglet. Ces données sont nécessaires aux fonctions que vous demandez et ne requièrent donc pas de consentement.',
   'transparency.limits.title': 'Limites de cette instance',
   'transparency.limits.short': 'Limites',
   'transparency.limits.file': 'Taille maximale des pièces jointes',
@@ -534,7 +542,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Copier le mot de passe',
   'created.track.title': 'Suivre dans Envoyés',
   'created.track.note':
-    'Vous verrez si quelqu’un a ouvert le message, et vous pourrez l’annuler. Il est enregistré uniquement dans ce navigateur. Toute personne qui y a accès pourra alors aussi l’annuler.',
+    'Vous verrez si quelqu’un a ouvert le message, et vous pourrez l’annuler. Seul cet onglet le mémorise, au plus tard jusqu’à sa fermeture ou son rechargement.',
+  'created.track.note.kept':
+    'Vous verrez si quelqu’un a ouvert le message, et vous pourrez l’annuler. Il est enregistré dans ce navigateur, donc toute personne qui y a accès pourra aussi l’annuler.',
+  'created.track.keep': 'Garder après la fermeture de l’onglet',
   'created.track.label': 'Libellé, visible uniquement par vous',
   'created.track.placeholder': 'Libellé, p. ex. «\u{A0}Mot de passe pour Pierre\u{A0}»',
   'created.track.save': 'Enregistrer',

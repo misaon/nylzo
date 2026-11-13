@@ -187,13 +187,14 @@ export const messages: Catalog = {
     'Die Zwischenablage ist leer. Kopien, die schon im Verlauf der Zwischenablage sind, bleiben dort.',
   'created.another': 'Neue Nachricht',
   'created.remembered': 'Dieses Gerät hat sich die Nachricht gemerkt.',
+  'created.remembered.session': 'Dieser Tab merkt sich die Nachricht, höchstens bis Sie ihn schließen oder neu laden.',
   'created.status_link': 'Zur Seite Gesendet',
   'created.not_remembered':
     'Dieses Gerät konnte sich die Nachricht nicht merken. Sie können sie deshalb von hier aus nicht widerrufen.',
 
   'sent.title': 'Gesendet',
   'sent.note':
-    'Die Liste ist nur in diesem Browser gespeichert und enthält keine Links zu den Nachrichten. Ein Eintrag verschwindet {days} nach dem Ende der Nachricht.',
+    'Die Liste enthält keine Links zu den Nachrichten. Den Eintrag einer beendeten Nachricht löscht die Seite, sobald Sie hier ihr Ergebnis gesehen haben. Andere Einträge löscht sie bei Ihren Besuchen von Nylzo, frühestens {days} nach ihrem Ablauf.',
   'sent.loading': 'Gesendete Nachrichten werden geladen…',
   'sent.unavailable':
     'Dieser Browser erlaubt der Seite nicht, Daten zu speichern, deshalb kann sie sich gesendete Nachrichten nicht merken. Erlauben Sie dieser Website, Daten zu speichern, oder verwenden Sie einen anderen Browser.',
@@ -212,7 +213,8 @@ export const messages: Catalog = {
   'sent.not_opened': 'noch nicht',
   'sent.until': 'bis {time}',
   'sent.opens': '{used} von {max}',
-  'sent.unknown': 'Die Nachricht ist nicht mehr auf dem Server.',
+  'sent.unknown':
+    'Der Server hat die Nachricht nicht gefunden. Vielleicht ist sie schon beendet. Wenn Sie sie hier nicht mehr brauchen, entfernen Sie sie.',
   'sent.failed': 'Der Status konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.',
   'sent.cancel': 'Nachricht widerrufen',
   'sent.cancel.confirm': 'Nach dem Widerruf kann niemand mehr die Nachricht öffnen.',
@@ -229,14 +231,18 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'Die Liste gesendeter Nachrichten lässt sich hier nicht speichern',
   'sent.empty.title': 'Noch nichts da',
   'sent.created': 'Erstellt am {time}',
-  'sent.state.unknown': 'Existiert nicht mehr',
+  'sent.created.session': 'Erstellt am {time}, nur in diesem Tab',
+  'sent.state.unknown': 'Nicht gefunden',
   'sent.state.failed': 'Status unbekannt',
   'sent.state.loading': 'Wird geladen',
-  'sent.ended.opened': 'Geöffnet am {time}. Vom Server gelöscht, der Eintrag bleibt hier noch {days}.',
-  'sent.ended.expired': 'Abgelaufen am {time}. Vom Server gelöscht, der Eintrag bleibt hier noch {days}.',
-  'sent.ended.cancelled': 'Widerrufen am {time}. Vom Server gelöscht, der Eintrag bleibt hier noch {days}.',
+  'sent.ended.opened':
+    'Geöffnet am {time}. Vom Server gelöscht, der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
+  'sent.ended.expired':
+    'Abgelaufen am {time}. Vom Server gelöscht, der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
+  'sent.ended.cancelled':
+    'Widerrufen am {time}. Vom Server gelöscht, der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
   'sent.ended.deleted':
-    'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt. Der Eintrag bleibt hier noch {days}.',
+    'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt. Der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
   'sent.cancel.title': 'Nachricht „{label}“ widerrufen?',
   'sent.cancel.title.untitled': 'Nachricht widerrufen?',
   'sent.forget.label': 'Aus der Liste entfernen',
@@ -405,7 +411,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Wir nutzen keinen externen Dienst zur Besucheranalyse.',
   'transparency.personal.browser.title': 'In Ihrem Browser',
   'transparency.personal.browser':
-    'Die gewählte Sprache, eine vorübergehende Angabe während des Öffnens einer Nachricht und die Liste unter Gesendet, wenn Sie eine Nachricht verfolgen. Das ist für Funktionen erforderlich, die Sie anfordern, und bedarf daher keiner Einwilligung.',
+    'Die gewählte Sprache, eine vorübergehende Angabe während des Öffnens einer Nachricht und die Liste unter Gesendet, wenn Sie eine verfolgte Nachricht auch nach dem Schließen des Tabs behalten. Das ist für Funktionen erforderlich, die Sie anfordern, und bedarf daher keiner Einwilligung.',
   'transparency.limits.title': 'Limits dieser Instanz',
   'transparency.limits.short': 'Limits',
   'transparency.limits.file': 'Größter Anhang',
@@ -536,7 +542,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Passwort kopieren',
   'created.track.title': 'Unter Gesendet verfolgen',
   'created.track.note':
-    'Sie sehen, ob jemand die Nachricht geöffnet hat, und können sie widerrufen. Das wird nur in diesem Browser gespeichert. Widerrufen kann sie dann jeder, der Zugriff auf diesen Browser hat.',
+    'Sie sehen, ob jemand die Nachricht geöffnet hat, und können sie widerrufen. Nur dieser Tab merkt sie sich, höchstens bis Sie ihn schließen oder neu laden.',
+  'created.track.note.kept':
+    'Sie sehen, ob jemand die Nachricht geöffnet hat, und können sie widerrufen. Sie wird in diesem Browser gespeichert, also kann sie jeder widerrufen, der Zugriff auf diesen Browser hat.',
+  'created.track.keep': 'Auch nach dem Schließen des Tabs merken',
   'created.track.label': 'Bezeichnung, nur für Sie sichtbar',
   'created.track.placeholder': 'Bezeichnung, z.\u{A0}B. „Passwort für Thomas“',
   'created.track.save': 'Speichern',
