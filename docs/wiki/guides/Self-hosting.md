@@ -150,7 +150,7 @@ Messages keep expiring on schedule, because expiry follows `expires_at`.
 
 ## Reboots
 
-The epoch seed exists only in the host's memory, so a reboot ends every live message. After the boot Nylzo starts a new seed and logs `epoch-seed-created`, and each older message answers that it was deleted; new messages work at once. Nothing carries the seed across a reboot without writing it to a disk, so never copy it out to save messages.
+The epoch seed exists only in the host's memory, so a reboot ends every live message. After the boot Nylzo starts a new seed and logs `epoch-seed-created`. The first request about an older message, the sender's status or a reader opening the link, ends it as `lost` and erases its blob; new messages work at once. Nothing carries the seed across a reboot without writing it to a disk, so never copy it out to save messages.
 
 - Reboot only when an update needs it, such as a new kernel (Ubuntu, and Debian with unattended upgrades, then create `/var/run/reboot-required`), and do it in a fixed window with little traffic. Unattended upgrades reboot on their own only with `Unattended-Upgrade::Automatic-Reboot "true"`; leave that off or set `Unattended-Upgrade::Automatic-Reboot-Time` to your window.
 - Restarting the container or Docker, `docker compose up -d` with a new release and `docker compose down` keep the seed, because `/run/nylzo/epoch` stays until the host stops.
