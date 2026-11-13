@@ -90,6 +90,8 @@ test("planning stops before any cloud call without a Caddy build, or without a h
     await writeFile(siteFile, JSON.stringify(testSite));
     await assert.rejects(prepare(siteFile, "image"), /ships no Caddy build/u);
     await assert.rejects(prepare(siteFile, "server"), /hardware-backed sk-ssh-ed25519@openssh\.com/u);
+    await writeFile(siteFile, JSON.stringify({ ...testSite, profile: "strict", tang: { threshold: 2, servers: [{ url: "http://tang-a.example.net", thumbprint: "A".repeat(43) }, { url: "http://tang.operator.test", thumbprint: "B".repeat(43) }] } }));
+    await assert.rejects(prepare(siteFile, "dns"), /Replace the example Tang servers/u);
     assert.deepEqual(seen, ["https://github.com/misaon/nylzo/releases/download/v0.1.5/checksums.txt"]);
   } finally {
     fetch.mock.restore();

@@ -43,13 +43,15 @@ test("deployment input cannot inject services, expose SSH globally, or select a 
     { tang: { threshold: 3, servers: [{ url: "http://tang.example.org", thumbprint: "A".repeat(43) }, { url: "http://tang.example.net", thumbprint: "B".repeat(43) }] } },
     { tang: { threshold: 2, servers: [{ url: "http://tang.example.org/path", thumbprint: "A".repeat(43) }, { url: "http://tang.example.net", thumbprint: "B".repeat(43) }] } },
     { acmeAccountUri: "https://acme.example.org/acme/acct/1" },
+    { profile: "strict" }, { profile: "standard" },
+    { profile: "relaxed", tang: { threshold: 2, servers: [{ url: "http://tang.example.org", thumbprint: "A".repeat(43) }, { url: "http://tang.example.net", thumbprint: "B".repeat(43) }] } },
   ]) assert.throws(() => configuration({ ...site, ...changed }), JSON.stringify(changed));
   assert.equal(configuration(site), site);
   assert.equal(administratorKeyIsHardware(securityKey()), true);
   assert.equal(administratorKeyIsHardware(securityKey("ssh:nylzo")), true);
   assert.equal(administratorKeyIsHardware(enclaveKey()), true);
   assert.equal(administratorKeyIsHardware(ed25519), false);
-  configuration({ ...site, administratorPublicKey: securityKey(), heartbeatUrl: "https://hc-ping.com/0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", acmeAccountUri: "https://acme-v02.api.letsencrypt.org/acme/acct/3938438202",
+  configuration({ ...site, administratorPublicKey: securityKey(), heartbeatUrl: "https://hc-ping.com/0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", acmeAccountUri: "https://acme-v02.api.letsencrypt.org/acme/acct/3938438202", profile: "strict",
     tang: { threshold: 2, servers: [{ url: "http://tang.example.org", thumbprint: "A".repeat(43) }, { url: "https://tang.example.net:7500", thumbprint: "B".repeat(43) }] } });
 });
 
@@ -95,7 +97,7 @@ test("server user data stays small, carries no secret, and installs only the sig
   assert.match(files.get("/etc/selinux/config")!, /^SELINUX=enforcing$/mu);
   assert.match(files.get("/etc/nylzo/service.env")!, /NYLZO_TRUSTED_PROXIES=172\.30\.81\.1\/32/u);
   assert.equal(files.get("/etc/nylzo/caddy.env"), `NYLZO_DOMAIN=${site.domain}\nNYLZO_CONTACT=security@example.org\n`);
-  assert.equal(files.get("/etc/nylzo/host.env"), "AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=false\nADMINISTRATOR_NETWORKS=192.0.2.1/32,2001:db8::1/128\nHARDWARE_KEYS_ONLY=true\n");
+  assert.equal(files.get("/etc/nylzo/host.env"), "AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=false\nADMINISTRATOR_NETWORKS=192.0.2.1/32,2001:db8::1/128\nHARDWARE_KEYS_ONLY=true\nENCRYPTED_STORAGE_REQUIRED=true\n");
   assert.equal(JSON.parse(files.get("/etc/nylzo/tang.json")!).t, 2);
   assert.equal(ignition.storage.files.find(file => file.path === "/etc/nylzo/heartbeat.url")!.mode, 0o600);
   assert(!ignition.passwd.users.some(user => "sshAuthorizedKeys" in user && user.name !== "core"));
@@ -106,6 +108,7 @@ test("server user data stays small, carries no secret, and installs only the sig
   const apex = decode((await render({ ...site, dnsZone: site.domain }, bundle)).ignition);
   assert.match(apex.get("/etc/nylzo/host.env")!, /^WWW_REDIRECT=true$/mu);
   assert.match(apex.get("/etc/nylzo/host.env")!, /^HARDWARE_KEYS_ONLY=false$/mu);
+  assert.match(apex.get("/etc/nylzo/host.env")!, /^ENCRYPTED_STORAGE_REQUIRED=false$/mu);
   assert(!decode((await render(site, bundle)).ignition).has("/etc/nylzo/tang.json"));
 });
 
@@ -138,6 +141,15 @@ test("the host bundle isolates the pepper, the probe and the deployment credenti
   for (const expected of ["Requires=sshd-keygen.service", "-f /etc/ssh/ssh_host_ed25519_key.pub", "TTYPath=/dev/tty1"]) assert(identity.includes(expected));
   const ssh = sources.get("system/sshd.conf")!;
   for (const expected of ["PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com,ssh-ed25519", "PubkeyAuthOptions touch-required", "HostKeyAlgorithms ssh-ed25519", "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com", "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com"]) assert(ssh.includes(`${expected}\n`), expected);
+});
+
+test("services that keep data start only after the data volume step has run and succeeded", async () => {
+  const sources = await hostSources();
+  assert.doesNotMatch(sources.get("application/nylzo-storage.service")!, /^(Condition|Assert)/mu, "A skipped volume step lets the services that require it start on the plain root filesystem");
+  for (const name of ["application/nylzo-initialize.service", "application/nylzo.service", "proxy/caddy.service"]) {
+    assert.match(sources.get(name)!, /^Requires=.*nylzo-storage\.service/mu, name);
+    assert.match(sources.get(name)!, /^After=.*nylzo-storage\.service/mu, name);
+  }
 });
 
 test("public services require the shared traffic ceiling and DNS provisioning works on Cloudflare Free", async () => {
