@@ -40,6 +40,7 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	record := &granted.record
+	s.endLostMessage(r.Context(), record, now)
 	message := record.Message
 	if !record.HasBlob() {
 		writeJSON(w, http.StatusOK, api.Metadata{
@@ -60,6 +61,33 @@ func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
 		Size:           message.Size,
 		FirstOpenedAt:  formatOptionalTime(message.FirstOpenedAt),
 	})
+}
+
+// endLostMessage ends an available message whose generation the server no longer holds as lost and deletes its blob,
+// so the first request that finds it, metadata and status included, ends it as a claim would. The deadline is checked
+// after the lookup, which may read a seed file that another process moved past it. A failed lookup or ending is logged
+// and leaves the message to the next request (spec sections 6.3 and 7).
+func (s *Server) endLostMessage(ctx context.Context, record *store.Record, now time.Time) {
+	message := record.Message
+	if record.State(now) != store.StateAvailable {
+		return
+	}
+	held, err := s.holdsGeneration(message.Generation, now)
+	if err != nil {
+		s.events.ErrorContext(ctx, "epoch-lookup", "err", logging.ErrorText(err))
+		return
+	}
+	wentWithDeadline := message.Flags&envelope.FlagDeadline != 0 && s.epochs.Passed(message.Epoch)
+	if held || wentWithDeadline {
+		return
+	}
+	ctx = context.WithoutCancel(ctx)
+	if _, err = store.End(ctx, s.store, s.blobs, record, store.StateLost, now); err == nil {
+		err = s.reload(ctx, record)
+	}
+	if err != nil {
+		s.events.ErrorContext(ctx, "share-lost", "err", logging.ErrorText(err))
+	}
 }
 
 func formatEnd(end time.Time) string {
@@ -167,7 +195,7 @@ func (s *Server) wrappedShare(
 
 // shareGone answers a request whose share is gone. A share that went with its deadline, which another process or a
 // clock step may have reached before this clock, ends the message as it stands at the deadline, and this request
-// changes nothing while its own clock is still before it; a lost seed ends the message as deleted.
+// changes nothing while its own clock is still before it; a lost seed ends the message as lost.
 func (s *Server) shareGone(w http.ResponseWriter, r *http.Request, record *store.Record, expired bool) {
 	now, deadline := time.Now(), record.Message.ExpiresAt
 	if expired && now.Before(deadline) {
@@ -216,10 +244,10 @@ func (s *Server) shareOf(w http.ResponseWriter, r *http.Request, record *store.R
 
 // endLostShare ends a message nobody can open any more, because the seed that made its share is gone.
 func (s *Server) endLostShare(w http.ResponseWriter, r *http.Request, record *store.Record, now time.Time) {
-	final, err := store.End(r.Context(), s.store, s.blobs, record, store.StateDeleted, now)
+	final, err := store.End(r.Context(), s.store, s.blobs, record, store.StateLost, now)
 	if err != nil {
 		s.events.ErrorContext(r.Context(), "share-lost", "err", logging.ErrorText(err))
-		final = store.StateDeleted
+		final = store.StateLost
 	}
 	writeGone(w, string(final))
 }

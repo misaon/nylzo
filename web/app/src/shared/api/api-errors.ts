@@ -1,4 +1,4 @@
-export const MESSAGE_STATES = ['available', 'opened', 'expired', 'cancelled', 'deleted'] as const;
+export const MESSAGE_STATES = ['available', 'opened', 'expired', 'cancelled', 'deleted', 'lost'] as const;
 
 export const ERROR_KINDS = [
   'bad_request',

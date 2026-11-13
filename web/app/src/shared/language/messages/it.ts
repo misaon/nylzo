@@ -203,6 +203,7 @@ export const messages: Catalog = {
   'sent.state.expired': 'Scaduto',
   'sent.state.cancelled': 'Annullato',
   'sent.state.deleted': 'Eliminato',
+  'sent.state.lost': 'Perso',
   'sent.label.time': 'Scadenza',
   'sent.label.opens': 'Aperture',
   'sent.label.attempts': 'Tentativi falliti',
@@ -238,6 +239,8 @@ export const messages: Catalog = {
     'Annullato: {time}. È stato eliminato dal server, la voce sparirà quando lasci questa pagina.',
   'sent.ended.deleted':
     'Lo ha eliminato il destinatario o lo ha rimosso il gestore. La voce sparirà quando lasci questa pagina.',
+  'sent.ended.lost':
+    'Il server ha perso la sua chiave, di solito durante un riavvio, quindi nessuno potrà più aprirlo. Se serve ancora, invialo di nuovo. La voce sparirà quando lasci questa pagina.',
   'sent.cancel.title': 'Annullare il messaggio «{label}»?',
   'sent.cancel.title.untitled': 'Annullare il messaggio?',
   'sent.forget.label': 'Rimuovi dall’elenco',
@@ -252,6 +255,7 @@ export const messages: Catalog = {
   'read.ended.expired': 'Il messaggio è scaduto.',
   'read.ended.cancelled': 'Il mittente ha annullato il messaggio.',
   'read.ended.deleted': 'Il messaggio è stato eliminato.',
+  'read.ended.lost': 'Il server non può più aprire il messaggio.',
   'read.passphrase': 'Password',
   'read.reveal': 'Mostra messaggio',
   'read.resumable':
@@ -584,6 +588,9 @@ export const messages: Catalog = {
   'open.notice.cancelled.text': 'Nessuno potrà più aprirlo. Se ti serve ancora, chiedi al mittente un nuovo link.',
   'open.notice.deleted': 'Il messaggio è stato eliminato',
   'open.notice.deleted.text': 'Lo ha eliminato il destinatario o lo ha rimosso il gestore.',
+  'open.notice.lost': 'Il server non può più aprire questo messaggio',
+  'open.notice.lost.text':
+    'Il server ha perso la sua chiave, di solito durante un riavvio. Nessuno potrà più aprirlo. Chiedi al mittente di inviarlo di nuovo.',
   'open.notice.unknown': 'Non abbiamo trovato il messaggio',
   'open.notice.unknown.text':
     'Forse il link non è completo, oppure il messaggio è scaduto da tempo. Chiedi al mittente un nuovo link.',

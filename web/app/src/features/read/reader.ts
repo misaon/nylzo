@@ -153,7 +153,7 @@ const RELEASED_PAGE_PREFIX = '/m/';
 const LEASE_KEY = `nylzo:lease:${LINK_PAGE_KEY}`;
 
 function isTerminal(state: MessageState): state is Exclude<EndedState, 'opened'> {
-  return state === 'expired' || state === 'cancelled' || state === 'deleted';
+  return state === 'expired' || state === 'cancelled' || state === 'deleted' || state === 'lost';
 }
 
 function safely<Value>(action: () => Value, fallback: NoInfer<Value>): Value {

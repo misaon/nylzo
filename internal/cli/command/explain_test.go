@@ -83,6 +83,7 @@ func TestExplainAPIFailuresAndRetryAdvice(t *testing.T) {
 		{"gone", "expired", 0, 0, "the message has expired"},
 		{"gone", "cancelled", 0, 0, "the sender cancelled the message"},
 		{"gone", "deleted", 0, 0, "the message was deleted"},
+		{"gone", "lost", 0, 0, "the server lost the key to the message, usually in a restart; it has to be sent again"},
 		{"gone", "untrusted state", 0, 0, "the message is no longer available"},
 		{"not_found", "", 0, 0, "no such message: the link or token is wrong, or the message is gone"},
 		{"passphrase", "", 2, 0, "wrong passphrase; 2 attempts left before the message makes every reader wait"},

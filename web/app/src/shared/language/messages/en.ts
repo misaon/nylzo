@@ -196,6 +196,7 @@ export const messages: Catalog = {
   'sent.state.expired': 'Expired',
   'sent.state.cancelled': 'Cancelled',
   'sent.state.deleted': 'Deleted',
+  'sent.state.lost': 'Lost',
   'sent.label.time': 'Validity',
   'sent.label.opens': 'Opens',
   'sent.label.attempts': 'Failed attempts',
@@ -229,6 +230,8 @@ export const messages: Catalog = {
   'sent.ended.cancelled': 'Cancelled {time}. It is deleted from the server; the entry goes when you leave this page.',
   'sent.ended.deleted':
     'The recipient deleted it, or the operator removed it. The entry goes when you leave this page.',
+  'sent.ended.lost':
+    'The server lost the key to it, usually in a restart, so nobody can open it now. Send it again if it is still needed. The entry goes when you leave this page.',
   'sent.cancel.title': 'Cancel the message “{label}”?',
   'sent.cancel.title.untitled': 'Cancel the message?',
   'sent.forget.label': 'Remove from the list',
@@ -243,6 +246,7 @@ export const messages: Catalog = {
   'read.ended.expired': 'The message has expired.',
   'read.ended.cancelled': 'The sender cancelled the message.',
   'read.ended.deleted': 'The message was deleted.',
+  'read.ended.lost': 'The server can no longer open the message.',
   'read.passphrase': 'Passphrase',
   'read.reveal': 'Show message',
   'read.resumable':
@@ -571,6 +575,9 @@ export const messages: Catalog = {
   'open.notice.cancelled.text': 'Nobody can open it now. If you still need it, ask the sender for a new link.',
   'open.notice.deleted': 'The message was deleted',
   'open.notice.deleted.text': 'The recipient deleted it, or the operator removed it.',
+  'open.notice.lost': 'The server can no longer open this message',
+  'open.notice.lost.text':
+    'The server lost the key to it, usually in a restart. Nobody can open it now. Ask the sender to send it again.',
   'open.notice.unknown': 'We could not find the message',
   'open.notice.unknown.text':
     'The link may be incomplete, or the message expired long ago. Ask the sender for a new one.',

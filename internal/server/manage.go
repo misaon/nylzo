@@ -40,7 +40,7 @@ func (s *Server) handleBurn(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	granted, ok := s.authorizedLive(w, r, seal.Read)
+	granted, ok := s.authorizedOpenable(w, r, seal.Read)
 	defer granted.forget()
 	if !ok || !s.finishHandshake(w, r, &granted.record, ke3) {
 		return
@@ -53,7 +53,7 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	if !validPathID(w, r) || !s.allowRead(w, r) {
 		return
 	}
-	granted, ok := s.authorizedLive(w, r, seal.Manage)
+	granted, ok := s.authorizedOpenable(w, r, seal.Manage)
 	defer granted.forget()
 	if !ok {
 		return
@@ -94,6 +94,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	record := &granted.record
+	s.endLostMessage(r.Context(), record, now)
 	message := record.Message
 	if !record.HasBlob() {
 		writeJSON(w, http.StatusOK, api.Status{
@@ -146,6 +147,9 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeInternal(w, r, err)
 		return
+	}
+	if ok {
+		s.endLostMessage(r.Context(), &granted.record, now)
 	}
 	if !ok || granted.record.Ended(now) {
 		waitForTheFloor(r, now)
