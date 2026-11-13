@@ -9,8 +9,8 @@
   "ignition-arm64": {"package": "coreos/ignition", "version": "v2.28.0", "sha256": "a933969407e245646476ca06c610350f21a10704045ab375cdc99ae86975e0b3"},
   "syft-amd64": {"package": "anchore/syft", "version": "v1.57.1", "sha256": "bf52519eb57f675d47c07d43213cb6dff6449f3d6d1147ff6701ed91f44eef0c"},
   "syft-arm64": {"package": "anchore/syft", "version": "v1.57.1", "sha256": "aa3d3e07344f590bcce8d31043b752daa76c8a56c2aa34ceeee63c6168152582"},
-  "mise-amd64": {"package": "jdx/mise", "version": "v2026.11.5", "sha256": "d7dee029352bf4b8986e7c4696b8ce54746c3eb648ffca3cc69bdeecc0ff06e9"},
-  "mise-arm64": {"package": "jdx/mise", "version": "v2026.11.5", "sha256": "146b114c2714f6ed76a629778f162d578e14821e47b87389dbdd64068bd5cf06"},
+  "mise-amd64": {"package": "jdx/mise", "version": "v2026.11.6", "sha256": "d6ebb6f5601bdf5a8d1d56028b24fe575f45075b989941ccc920f95161c5fa28"},
+  "mise-arm64": {"package": "jdx/mise", "version": "v2026.11.6", "sha256": "c5c90bea46cae89fd02d09a034e5e2d171abbbb313dab9baa833ee65a8cd996c"},
   "codecov-amd64": {"package": "codecov/codecov-cli", "version": "v11.3.2", "sha256": "8e1bfb71661378530f6ea21e82b414095899e565cbb4cf555c613064be17b973"},
   "codecov-arm64": {"package": "codecov/codecov-cli", "version": "v11.3.2", "sha256": "a4b71cac685742e272e7cfd4a390cafc3736f57ebc3cf7ba2e24010f19c7f23f"}
 }
