@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+fail() {
+  echo "check-isolation: $*" >&2
+  exit 1
+}
+
+service() {
+  docker ps --quiet --filter label=com.docker.compose.project=nylzo \
+    --filter "label=com.docker.compose.service=$1" --filter label=com.docker.compose.oneoff=False
+}
+
+((EUID == 0)) || fail "run it as root, for example with sudo"
+version=$(docker version --format '{{.Server.Version}}')
+if [[ ! "$version" =~ ^([0-9]+)\. ]] || ((BASH_REMATCH[1] < 28)); then
+  fail "Docker Engine $version does not support the isolated gateway mode; use 28.0 or newer"
+fi
+
+backend=$(docker network inspect --format '{{.Id}}' nylzo_backend)
+bridge="br-${backend:0:12}"
+addresses=$(ip -o address show dev "$bridge")
+[[ -z "$addresses" ]] || fail "the host has an address on the backend network"
+filter=$(sort -n "/proc/sys/net/ipv4/conf/all/rp_filter" "/proc/sys/net/ipv4/conf/$bridge/rp_filter" | tail -1)
+((filter > 0)) || fail "reverse-path filtering is off for $bridge, so the host accepts broadcasts from nylzo; set net.ipv4.conf.all.rp_filter=2"
+
+members=$(docker ps --filter network=nylzo_backend \
+  --format '{{.Label "com.docker.compose.project"}}/{{.Label "com.docker.compose.service"}}/{{.Label "com.docker.compose.oneoff"}}' |
+  sort | tr '\n' ' ')
+[[ "$members" == "nylzo/caddy/False nylzo/nylzo/False " ]] ||
+  fail "nylzo_backend must hold only the running nylzo and caddy containers, not: $members"
+
+nylzo=$(service nylzo)
+networks=$(docker inspect --format '{{range $name, $_ := .NetworkSettings.Networks}}{{$name}} {{end}}' "$nylzo")
+[[ "$networks" == "nylzo_backend " ]] || fail "nylzo is attached to networks other than nylzo_backend: $networks"
+pid=$(docker inspect --format '{{.State.Pid}}' "$nylzo")
+for family in -4 -6; do
+  routes=$(nsenter --target "$pid" --net -- ip "$family" route show default)
+  [[ -z "$routes" ]] || fail "nylzo has a default route: $routes"
+done
+
+address=$(docker inspect --format '{{(index .NetworkSettings.Networks "nylzo_backend").IPAddress}}' "$nylzo")
+caddyfile=$(docker inspect --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}' "$(service caddy)")
+[[ -f "$caddyfile" ]] || fail "cannot find the Caddyfile that caddy runs"
+upstreams=$(grep -Eo 'reverse_proxy[[:space:]]+[^[:space:]{]+' "$caddyfile" | awk '{print $2}' | sort -u | tr '\n' ' ' || true)
+[[ "$upstreams" == "$address:8080 " ]] || fail "caddy proxies to ${upstreams:-nothing }instead of nylzo at $address:8080"
+
+echo "check-isolation: nylzo reaches only caddy, and caddy reaches nylzo at $address"
