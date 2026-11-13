@@ -63,6 +63,8 @@ cat > /fake/systemctl <<'SYSTEMCTL'
 #!/bin/bash
 printf '%s\n' "$*" >> /tmp/systemctl
 if [[ "$*" = 'is-active --quiet nylzo.service' && "$NYLZO_TEST_APPLICATION_ACTIVE" = false ]]; then exit 3; fi
+if [[ "$*" = 'is-active --quiet nylzo-storage.service' && "$NYLZO_TEST_STORAGE_ACTIVE" = false ]]; then exit 3; fi
+if [[ "$*" = *' nylzo-storage.service' && "$NYLZO_TEST_STORAGE_FAILS" = true ]]; then exit 1; fi
 SYSTEMCTL
 printf '#!/bin/bash\nprintf "%%s\\n" "$*" >> /tmp/systemd-run\n' > /fake/systemd-run
 printf '#!/bin/bash\nexit 0\n' > /opt/nylzo/bin/caddy
@@ -94,6 +96,7 @@ grep -qx 'stop systemd-sysupdate-reboot.timer' /tmp/systemctl
 if grep -Eq '^(stop|disable|mask) .* (update-engine|locksmithd)\.service$' /tmp/systemctl; then exit 1; fi
 grep -qx 'restart nylzo-firewall.service' /tmp/systemctl
 grep -q '^start --no-block nylzo-firewall.service .*nylzo-initialize.service' /tmp/systemctl
+if grep -Eq '^(start|reload) nylzo-storage\.service$' /tmp/systemctl; then exit 1; fi
 if grep -q try-restart /tmp/systemctl || [[ -e /tmp/systemd-run ]]; then exit 1; fi
 : > /tmp/systemctl
 printf 'AUTOMATIC_UPDATES=false\nPUBLIC_ACCESS=false\nWWW_REDIRECT=false\nADMINISTRATOR_NETWORKS=192.0.2.1/32\n' > /etc/nylzo/host.env
@@ -112,6 +115,21 @@ grep -qx 'try-restart caddy.service containerd.service docker.service nylzo-cloc
 grep -qx 'start nylzo.service' /tmp/systemctl
 grep -qx 'start --no-block nylzo-ipv6.service' /tmp/systemctl
 if grep -qx 'start --no-block nylzo-initialize.service' /tmp/systemctl; then exit 1; fi
+grep -qx 'reload nylzo-storage.service' /tmp/systemctl
+: > /tmp/systemctl
+sed -i 's/^WWW_REDIRECT=false$/WWW_REDIRECT=true/' /etc/nylzo/host.env
+stage next.tar release-v0.3.1
+if NYLZO_TEST_STORAGE_ACTIVE=false NYLZO_TEST_STORAGE_FAILS=true bash /opt/nylzo/host/release-v0.3.1/update/activate /opt/nylzo/host/release-v0.3.1 2>/dev/null; then exit 1; fi
+[[ "$(readlink /opt/nylzo/host/current)" = /opt/nylzo/host/release-v0.3.0 ]]
+if grep -q try-restart /tmp/systemctl; then exit 1; fi
+grep -qx 'start nylzo-storage.service' /tmp/systemctl
+sed -i 's/^WWW_REDIRECT=true$/WWW_REDIRECT=false/' /etc/nylzo/host.env
+for value in yes true; do
+  printf 'ENCRYPTED_STORAGE_REQUIRED=%s\n' "$value" >> /etc/nylzo/host.env
+  if bash /opt/nylzo/host/release-v0.3.1/update/activate /opt/nylzo/host/release-v0.3.1 2>/dev/null; then exit 1; fi
+  sed -i '/^ENCRYPTED_STORAGE_REQUIRED=/d' /etc/nylzo/host.env
+done
+rm -rf /opt/nylzo/host/release-v0.3.1
 for refused in foreign.tar format.tar; do
   stage "$refused" release-v9.9.9
   if bash /opt/nylzo/host/release-v9.9.9/update/activate /opt/nylzo/host/release-v9.9.9 2>/dev/null; then exit 1; fi

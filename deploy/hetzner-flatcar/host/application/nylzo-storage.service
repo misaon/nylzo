@@ -1,6 +1,5 @@
 [Unit]
-Description=Unlock the encrypted data volume through the operator's Tang servers
-ConditionPathExists=/etc/nylzo/tang.json
+Description=Open the encrypted data volume when the host requires one
 Wants=network-online.target
 # Flatcar grows the root filesystem on first boot; the free-space check must see the final size.
 After=network-online.target nylzo-firewall.service extend-filesystems.service
@@ -10,3 +9,4 @@ Type=oneshot
 RemainAfterExit=yes
 TimeoutStartSec=10min
 ExecStart=/opt/nylzo/runtime/storage
+ExecReload=/opt/nylzo/runtime/storage
