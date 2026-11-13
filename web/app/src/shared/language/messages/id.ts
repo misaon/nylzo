@@ -346,7 +346,7 @@ export const messages: Catalog = {
     'Tidak disimpan. Batas per alamat hanya disimpan di memori yang tidak pernah dipindahkan ke disk, dan dilupakan saat server dimulai ulang.',
   'transparency.stores.enforced.title': 'Masa berlaku juga dijaga kriptografi',
   'transparency.stores.enforced':
-    'Masa berlaku dan jumlah kali dibuka diawasi server. Paling lambat dua jam setelah masa berlaku habis, server juga menghapus bagian kunci yang dibutuhkan pesan, sehingga salinan data pun tidak bisa lagi membukanya. Salinan yang dibuat lebih awal tidak dapat membaca pesan tanpa tautan.',
+    'Masa berlaku dan jumlah kali dibuka diawasi server. Paling lambat satu menit setelah masa berlaku habis, server juga menghapus bagian kunci yang dibutuhkan pesan, sehingga salinan data pun tidak bisa lagi membukanya. Salinan yang dibuat lebih awal tidak dapat membaca pesan tanpa tautan.',
   'transparency.logs.title': 'Apa yang dicatat server di log',
   'transparency.logs.written': 'Dicatat',
   'transparency.logs.written.time': 'Waktu hingga menit',

@@ -351,7 +351,7 @@ export const messages: Catalog = {
     'Er speichert sie nicht. Limits pro Adresse hält er nur im Arbeitsspeicher, der nie auf den Datenträger ausgelagert wird, und vergisst sie beim Neustart.',
   'transparency.stores.enforced.title': 'Auch Kryptografie sichert die Gültigkeit ab',
   'transparency.stores.enforced':
-    'Gültigkeit und Zahl der Aufrufe überwacht der Server. Spätestens zwei Stunden nach Ablauf der Gültigkeit löscht er außerdem den Teil des Schlüssels, den die Nachricht braucht, sodass sie sich danach auch mit einer Kopie der Daten nicht mehr öffnen lässt. Eine früher angefertigte Kopie kann die Nachricht ohne den Link nicht lesen.',
+    'Gültigkeit und Zahl der Aufrufe überwacht der Server. Spätestens eine Minute nach Ablauf der Gültigkeit löscht er außerdem den Teil des Schlüssels, den die Nachricht braucht, sodass sie sich danach auch mit einer Kopie der Daten nicht mehr öffnen lässt. Eine früher angefertigte Kopie kann die Nachricht ohne den Link nicht lesen.',
   'transparency.logs.title': 'Was der Server protokolliert',
   'transparency.logs.written': 'Schreibt',
   'transparency.logs.written.time': 'Zeit, auf die Minute gekürzt',

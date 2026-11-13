@@ -15,7 +15,7 @@ import type { Expected, Payload } from './envelope.ts';
 import { aad, headerBytes, newHeader } from './header.ts';
 import { decodeMeta, encodeMeta } from './meta.ts';
 
-const policy = { opensMax: 1, ttlSeconds: 3600 };
+const policy = { opensMax: 1, ttlSeconds: 3600, deadline: 1_797_000_000 };
 const prefix = PREFIX_LENGTH;
 
 interface Sample {

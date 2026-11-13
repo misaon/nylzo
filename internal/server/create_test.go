@@ -31,7 +31,6 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/server/config"
-	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -57,12 +56,20 @@ func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
 				t.Fatalf("instance %v: %d %s", headers, response.StatusCode, body)
 			}
 		}
+		synctest.Sleep(17 * time.Second)
 		message := harness.issueMessage(core.KDFScrypt, "issued passphrase", 2, 7200, "issued")
-		latest := time.Now().Add(10*time.Minute + 5*time.Second + 336*time.Second + 2*time.Minute + 7200*time.Second)
-		if message.epoch != epoch.Hour(latest) {
-			t.Fatalf("epoch %d, want the hour %d of the latest expiry", message.epoch, epoch.Hour(latest))
+		deadline := time.Now().Add(7200*time.Second + 43*time.Second).UTC()
+		if message.epoch != epoch.Of(deadline) || int64(message.policy.Deadline) != deadline.Unix() {
+			t.Fatalf("epoch %d, want the minute before the deadline %v", message.epoch, deadline)
 		}
 		harness.mustCreate(message)
+		if _, metadata := harness.metadata(message); metadata["expires_at"] != deadline.Format(time.RFC3339) {
+			t.Fatalf(
+				"F13: the message expires at %v, not at the deadline of its share %v",
+				metadata["expires_at"],
+				deadline,
+			)
+		}
 		previous := ""
 		for range 2 {
 			response, object := harness.claim(message, message.verifier, "")
@@ -83,7 +90,7 @@ func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
 	})
 }
 
-func TestCreateTellsAnOldClientToUpdateAndRefusesASharelessEpoch(t *testing.T) {
+func TestCreateTellsAnOldClientToUpdateAndRefusesAnotherDeadline(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -104,12 +111,25 @@ func TestCreateTellsAnOldClientToUpdateAndRefusesASharelessEpoch(t *testing.T) {
 			!strings.Contains(string(body), `"client_outdated"`) {
 			t.Fatalf("a create header of protocol version 1: %d %s", response.StatusCode, body)
 		}
-		for name, shareEpoch := range map[string]uint32{
-			"an epoch before the expiry":          shareEpochFor(3600) - 2,
-			"an epoch two hours after the expiry": shareEpochFor(3600) + 2,
+		withoutDeadline := newMessage(t, core.KDFNone, "", 1, 3600, "no deadline")
+		withoutDeadline.object[2] = 0
+		if response, body := harness.create(withoutDeadline); response.StatusCode != http.StatusBadRequest ||
+			!strings.Contains(string(body), `"client_outdated"`) {
+			t.Fatalf("F13: an envelope without the deadline: %d %s", response.StatusCode, body)
+		}
+		for name, change := range map[string]func(*testMessage){
+			"a deadline that has passed": func(message *testMessage) {
+				message.epoch = epoch.Minute(time.Now()) - 1
+			},
+			"another TTL than the token": func(message *testMessage) {
+				message.idToken = harness.idToken(message.id, message.epoch, message.policy.TTLSeconds+60)
+			},
+			"another epoch than the token": func(message *testMessage) {
+				message.idToken = harness.idToken(message.id, message.epoch+1, message.policy.TTLSeconds)
+			},
 		} {
-			message := newMessage(t, core.KDFNone, "", 1, 3600, "epoch")
-			message.epoch = shareEpoch
+			message := newMessage(t, core.KDFNone, "", 1, 3600, "deadline")
+			change(message)
 			if response, body := harness.create(message); response.StatusCode != http.StatusForbidden ||
 				decodeJSON(t, body)["error"] != "id_token" {
 				t.Fatalf("%s: %d %s", name, response.StatusCode, body)
@@ -1350,29 +1370,37 @@ func (b slowPutBlobs) PutExpiring(
 	reference string,
 	body io.Reader,
 	size int64,
-	ttl time.Duration,
+	expiresAt time.Time,
 ) (time.Time, error) {
 	received, err := io.ReadAll(body)
 	if err != nil {
 		return time.Time{}, err
 	}
 	time.Sleep(b.delay)
-	return b.Blobs.PutExpiring(ctx, reference, bytes.NewReader(received), size, ttl)
+	return b.Blobs.PutExpiring(ctx, reference, bytes.NewReader(received), size, expiresAt)
 }
 
-func TestExpiryCountsFromTheStoredUpload(t *testing.T) {
+// F13: the TTL runs from the instance response, so a slow upload keeps the deadline its share was issued for, and an
+// upload stored at or after that deadline is refused and leaves nothing behind.
+func TestTheDeadlineDoesNotMoveWithTheUpload(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		harness.blobs = slowPutBlobs{Blobs: harness.blobs, delay: 90 * time.Second}
 		harness.reopen(&harness.settings)
-		message := newMessage(t, core.KDFNone, "", 1, 60, "x")
-		harness.mustCreate(message)
-		if response, metadata := harness.metadata(
-			message,
-		); response.StatusCode != http.StatusOK ||
-			metadata["state"] != "available" {
-			t.Fatalf("a slow upload must not use up the TTL: %d %v", response.StatusCode, metadata)
+		slow := newMessage(t, core.KDFNone, "", 1, 180, "slow")
+		response, body := harness.create(slow)
+		deadline := epoch.Deadline(slow.epoch).Format(time.RFC3339)
+		if response.StatusCode != http.StatusCreated || decodeJSON(t, body)["expires_at"] != deadline {
+			t.Fatalf("a slow upload moved the deadline %s: %d %s", deadline, response.StatusCode, body)
+		}
+		late := newMessage(t, core.KDFNone, "", 1, 60, "late")
+		if response, body = harness.create(late); response.StatusCode != http.StatusForbidden ||
+			decodeJSON(t, body)["error"] != "id_token" {
+			t.Fatalf("an upload stored after its deadline: %d %s", response.StatusCode, body)
+		}
+		if harness.storedBlobs() != 1 {
+			t.Fatalf("the refused upload left a blob: %d", harness.storedBlobs())
 		}
 	})
 }
@@ -1493,38 +1521,20 @@ func TestDailyCreateLimitsCountSourcesAndRanges(t *testing.T) {
 	}
 }
 
-// L4: on an instance whose upload limit takes less than the create body timeout, the share still covers an upload
-// that uses the whole timeout, plus the minute that rounds expires_at and the write of the upload.
-func TestShareEpochBudgetsTheWholeCreateBody(t *testing.T) {
+// F12: a generation of minutes makes shares until hour Span past the hour that starts it, so an id issued in the last
+// instant of an hour with the longest TTL still gets a deadline its generation covers.
+func TestTheLatestDeadlineFitsTheGenerationSpan(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		settings := baseSettings(pepperA, nil)
-		settings.Limits.MaxFileBytes = 64 << 10
-		settings.Limits.MaxObjectBytes = envelope.ObjectLimit(settings.Limits.MaxFileBytes)
-		harness := newHarness(t, settings)
-		base := time.Now().Add(proof.IDTokenTTL())
-		boundary := epoch.End(epoch.Hour(base.Add(time.Hour)))
-		ttl := boundary.Sub(base) - 120*time.Second - 120*time.Second
-		message := harness.issueMessage(core.KDFNone, "", 1, uint32(ttl/time.Second), "budget")
-		if message.epoch != epoch.Hour(boundary) {
-			t.Fatalf(
-				"epoch %d, want %d: the share would end before a slow upload's message",
-				message.epoch,
-				epoch.Hour(boundary),
-			)
-		}
-	})
-}
-
-// F12: a generation makes shares for Span hours past the hour that starts it, and a converted chain of an earlier
-// release starts an hour early, so an id issued in the last second of an hour, with the longest TTL and the largest
-// object, must expire within Span - 1 hours.
-func TestTheLatestShareEpochFitsTheGenerationSpan(t *testing.T) {
-	t.Parallel()
-	issued := epoch.End(493_000).Add(-time.Second)
-	latest := latestExpiry(issued, config.MaxTTL, envelope.MaxObjectBytes)
-	if epoch.Hour(latest) > epoch.Hour(issued)+epoch.Span-1 {
-		t.Fatalf("an id issued at %s may expire at %s, past the span of its generation", issued, latest)
+	hour := time.Unix(493_001*3600, 0)
+	issued := hour.Add(-time.Nanosecond)
+	deadline := store.ExpiresAt(issued, config.MaxTTL)
+	if last := hour.Add((epoch.Span - 1) * time.Hour); deadline.After(last) {
+		t.Fatalf(
+			"an id issued at %s may expire at %s, past the span of its generation ending %s",
+			issued,
+			deadline,
+			last,
+		)
 	}
 }
 
@@ -1534,7 +1544,7 @@ func TestAnIDIssuedBeforeTheHourEndsIsCreatedAfterIt(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
-		synctest.Sleep(time.Until(epoch.End(epoch.Hour(time.Now()))) - time.Minute)
+		synctest.Sleep(time.Until(time.Now().Truncate(time.Hour).Add(time.Hour)) - time.Minute)
 		late := harness.issueMessage(core.KDFNone, "", 1, 3600, "issued before the hour ends")
 		synctest.Sleep(2 * time.Minute)
 		harness.mustCreate(harness.issueMessage(core.KDFNone, "", 1, 3600, "issued in the next hour"))

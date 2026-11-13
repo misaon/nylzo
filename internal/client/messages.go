@@ -5,6 +5,7 @@ import (
 	"crypto/hpke"
 	"encoding/json"
 	"maps"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -18,12 +19,14 @@ import (
 	"github.com/misaon/nylzo/internal/core/signing"
 )
 
-// Issued is an id with its token and the expiry share, still wrapped to the client's one-time key.
+// Issued is an id with its token, the deadline of its message and the expiry share, still wrapped to the client's
+// one-time key.
 type Issued struct {
-	ID      core.ID
-	IDToken string
-	Epoch   uint32
-	Share   [share.WrappedLen]byte
+	ID       core.ID
+	IDToken  string
+	Epoch    uint32
+	Deadline time.Time
+	Share    [share.WrappedLen]byte
 }
 
 type Instance struct {
@@ -42,6 +45,7 @@ type CreateRequest struct {
 	ID         core.ID
 	IDToken    string
 	Epoch      uint32
+	Deadline   time.Time
 	ReadKey    [signing.PublicKeyLen]byte
 	Verifier   [signing.PublicKeyLen]byte
 	ManageKey  [signing.PublicKeyLen]byte
@@ -100,18 +104,51 @@ func (c *Client) Instance(ctx context.Context, creation *Creation) (Instance, er
 	if creation == nil {
 		return instance, nil
 	}
-	id, err := core.ParseID(body.Create.ID)
-	wrapped, shareErr := core.DecodeExact(body.Create.Share, share.WrappedLen)
-	if err != nil || shareErr != nil || body.Create.IDToken == "" || body.Create.Epoch == nil {
-		return Instance{}, ErrResponse
+	issued, err := issuedFrom(body.Create, creation.TTLSeconds)
+	if err != nil {
+		return Instance{}, err
 	}
-	instance.Create = &Issued{
-		ID:      id,
-		IDToken: body.Create.IDToken,
-		Epoch:   *body.Create.Epoch,
-		Share:   [share.WrappedLen]byte(wrapped),
-	}
+	instance.Create = issued
 	return instance, nil
+}
+
+func issuedFrom(create *api.InstanceCreate, ttlSeconds uint32) (*Issued, error) {
+	if create.Deadline == "" {
+		return nil, ErrServerOutdated
+	}
+	id, err := core.ParseID(create.ID)
+	wrapped, shareErr := core.DecodeExact(create.Share, share.WrappedLen)
+	deadline, deadlineOK := issuedDeadline(create, ttlSeconds)
+	if err != nil || shareErr != nil || create.IDToken == "" || create.Epoch == nil || !deadlineOK ||
+		int64(*create.Epoch) != deadline.Unix()/secondsPerMinute-1 {
+		return nil, ErrResponse
+	}
+	return &Issued{
+		ID:       id,
+		IDToken:  create.IDToken,
+		Epoch:    *create.Epoch,
+		Deadline: deadline,
+		Share:    [share.WrappedLen]byte(wrapped),
+	}, nil
+}
+
+// secondsPerMinute turns a deadline into its epoch, the last minute before it (spec section 5.6).
+const secondsPerMinute = 60
+
+// issuedDeadline accepts a deadline that is a whole minute and ends the TTL counted from the issue of the id, the
+// token's expiry less its lifetime, plus less than the minute of rounding and the second the expiry was cut to; the
+// server reads both from one clock, so the check needs no correct client clock (spec section 6.6).
+func issuedDeadline(issued *api.InstanceCreate, ttlSeconds uint32) (time.Time, bool) {
+	deadline, deadlineErr := time.Parse(time.RFC3339, issued.Deadline)
+	expires, expiresErr := time.Parse(time.RFC3339, issued.ExpiresAt)
+	if deadlineErr != nil || expiresErr != nil {
+		return time.Time{}, false
+	}
+	rounding := deadline.Sub(expires.Add(-api.IDTokenLifetime)) - time.Duration(ttlSeconds)*time.Second
+	seconds := deadline.Unix()
+	wholeMinute := seconds%secondsPerMinute == 0 && deadline.Nanosecond() == 0
+	return deadline, seconds > 0 && seconds <= math.MaxUint32 && wholeMinute &&
+		rounding >= 0 && rounding < time.Minute+time.Second
 }
 
 func (c *Client) Create(ctx context.Context, request *CreateRequest) (time.Time, error) {
@@ -145,7 +182,7 @@ func (c *Client) Create(ctx context.Context, request *CreateRequest) (time.Time,
 		return time.Time{}, err
 	}
 	expires, err := time.Parse(time.RFC3339, body.ExpiresAt)
-	if err != nil || body.ID != request.ID.String() {
+	if err != nil || body.ID != request.ID.String() || !expires.Equal(request.Deadline) {
 		return time.Time{}, ErrResponse
 	}
 	return expires, nil

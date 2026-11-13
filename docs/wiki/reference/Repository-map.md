@@ -9,7 +9,7 @@
 | [internal/vectors](../../../internal/vectors)                                                                       | Code behind the vector generator, kept apart from the protocol core                      |
 | [internal/pepper](../../../internal/pepper)                                                                         | Purpose-separated server keys and pepper rotation                                        |
 | [internal/seal](../../../internal/seal)                                                                             | Sealing of stored records: per-purpose keys, locators and padding                        |
-| [internal/epoch](../../../internal/epoch)                                                                           | Hourly epoch ratchet whose erased keys end messages cryptographically                    |
+| [internal/epoch](../../../internal/epoch)                                                                           | Per-minute epoch ratchet whose erased keys end messages at their deadline                |
 | [internal/erase](../../../internal/erase), [internal/iolimit](../../../internal/iolimit)                            | In-place erasure of files and the process-wide limit on concurrent file I/O              |
 | [internal/secretmode](../../../internal/secretmode)                                                                 | Runs request cryptography in Go's runtime/secret mode where the build supports it        |
 | [internal/store](../../../internal/store)                                                                           | SQLite and file-storage adapters and shared storage tests                                |

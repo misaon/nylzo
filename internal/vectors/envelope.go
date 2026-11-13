@@ -10,7 +10,11 @@ import (
 	"github.com/misaon/nylzo/internal/core/keys"
 )
 
-const octetStream = "application/octet-stream"
+const (
+	octetStream = "application/octet-stream"
+	// vectorDeadline is the deadline every case seals in, a whole minute; the legacy case has none.
+	vectorDeadline = 1_797_000_000
+)
 
 type Envelope struct {
 	Name         string       `json:"name"`
@@ -23,6 +27,7 @@ type Envelope struct {
 	IV           string       `json:"iv_hex"`
 	OpensMax     int          `json:"opens_max"`
 	TTLSeconds   int          `json:"ttl_s"`
+	Deadline     int          `json:"deadline"`
 	Text         *string      `json:"text,omitempty"`
 	File         *FileContent `json:"file,omitempty"`
 	MetaJSON     string       `json:"meta_json"`
@@ -44,7 +49,9 @@ type FileContent struct {
 }
 
 type envelopeCase struct {
-	name       string
+	name string
+	// legacy seals a message as releases before Nylzo 0.14.0 did, without the deadline.
+	legacy     bool
 	kdf        core.KDF
 	passphrase *string
 	opens      uint16
@@ -112,6 +119,7 @@ var envelopeCases = []envelopeCase{
 		text:       new("nfc"),
 	},
 	{name: "opens-10-ttl-7d", opens: 10, ttl: 604800, text: new("many opens")},
+	{name: "legacy-text", legacy: true, opens: 1, ttl: 86400, text: new("created before the deadline")},
 }
 
 func (f *File) envelope() error {
@@ -144,9 +152,13 @@ func sealCase(vector envelopeCase) (sealedCase, error) {
 		header: envelope.Header{
 			Version: envelope.Version,
 			KDF:     vector.kdf,
+			Flags:   envelope.FlagDeadline,
 			IV:      [envelope.IVLen]byte(deterministic("iv/"+vector.name, envelope.IVLen)),
 		},
-		policy: envelope.Policy{OpensMax: vector.opens, TTLSeconds: vector.ttl},
+		policy: envelope.Policy{OpensMax: vector.opens, TTLSeconds: vector.ttl, Deadline: vectorDeadline},
+	}
+	if vector.legacy {
+		sealed.header.Flags, sealed.policy.Deadline = 0, 0
 	}
 	derived, err := keys.DeriveAll(
 		sealed.id,
@@ -184,9 +196,11 @@ func envelopeVector(vector envelopeCase) (Envelope, error) {
 		S:            hex.EncodeToString(sealed.secret[:]),
 		KDFID:        int(vector.kdf),
 		Passphrase:   vector.passphrase,
+		Flags:        int(sealed.header.Flags),
 		IV:           hex.EncodeToString(sealed.header.IV[:]),
 		OpensMax:     int(vector.opens),
 		TTLSeconds:   int(vector.ttl),
+		Deadline:     int(sealed.policy.Deadline),
 		Text:         vector.text,
 		File:         file,
 		MetaJSON:     string(meta),

@@ -1,4 +1,4 @@
-import { encodeBase64url, idToString, wrapShare } from '@nylzo/core';
+import { encodeBase64url, FLAG_DEADLINE, idToString, wrapShare } from '@nylzo/core';
 import type { RequestKey, ShareKey } from '@nylzo/core';
 
 import { ApiError, StoppedError } from './api-errors.ts';
@@ -22,6 +22,7 @@ export interface FakeOptions {
   servedOpensMax?: number;
   servedTtlSeconds?: number;
   servedFlags?: number;
+  servedDeadline?: number;
   tombstone?: boolean;
   metadataKdfId?: number;
   metadataOpensMax?: number;
@@ -57,7 +58,15 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
   const failCancel = [...(options.failCancel ?? [])];
   const failBurn = [...(options.failBurn ?? [])];
   const shares = new Map<string, Uint8Array<ArrayBuffer>>();
-  const expiresAt = new Date(Date.now() + (options.expiresInSeconds ?? 3600) * 1000).toISOString();
+
+  // The deadline the server fixes when it issues an id: the TTL from now, rounded up to the minute (spec 5.6).
+  function deadlineAfter(ttlSeconds: number): number {
+    return Math.ceil((Date.now() / 1000 + (options.expiresInSeconds ?? ttlSeconds)) / 60) * 60;
+  }
+
+  function expiresAt(message: Stored): string {
+    return new Date(message.request.deadline * 1000).toISOString();
+  }
 
   function find(id: Uint8Array, readKey: RequestKey): Stored {
     const message = stored.get(idToString(id));
@@ -111,7 +120,8 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         opensMax: options.servedOpensMax ?? message.request.opensMax,
         ttlSeconds: options.servedTtlSeconds ?? message.request.ttlSeconds,
         kdfId: options.servedKdfId ?? message.request.kdfId,
-        flags: options.servedFlags ?? 0,
+        flags: options.servedFlags ?? FLAG_DEADLINE,
+        deadline: options.servedDeadline ?? message.request.deadline,
       },
       object,
       share:
@@ -132,7 +142,14 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         issuedIds.push(id);
         const share = crypto.getRandomValues(new Uint8Array(32));
         shares.set(idToString(id), share);
-        create = { id, idToken: 'token', epoch: 493_000, share: await wrapShare(share, creation.shareKey) };
+        const deadline = deadlineAfter(creation.ttlSeconds);
+        create = {
+          id,
+          idToken: 'token',
+          epoch: deadline / 60 - 1,
+          deadline,
+          share: await wrapShare(share, creation.shareKey),
+        };
       }
       return {
         limits: {
@@ -158,14 +175,15 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       if (failure) {
         throw failure;
       }
-      stored.set(idToString(request.id), {
+      const message: Stored = {
         request,
         state: 'available',
         opensRemaining: request.opensMax,
         failures: 0,
         leases: new Set(),
-      });
-      return { expiresAt };
+      };
+      stored.set(idToString(request.id), message);
+      return { expiresAt: expiresAt(message) };
     },
     async metadata(id, readKey): Promise<Metadata> {
       calls.push('metadata');
@@ -190,7 +208,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         kdfId: options.metadataKdfId ?? message.request.kdfId,
         size: message.request.object.length,
         createdAt: new Date().toISOString(),
-        expiresAt,
+        expiresAt: expiresAt(message),
       };
     },
     async claim(id, readKey, claimOptions) {
@@ -272,7 +290,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         opensMax: message.request.opensMax,
         failedPassphraseAttempts: message.failures,
         createdAt: '2026-10-23T10:00:00Z',
-        expiresAt,
+        expiresAt: expiresAt(message),
       };
     },
   };

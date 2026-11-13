@@ -373,7 +373,7 @@ export const messages: Catalog = {
     'Nie przechowuje ich. Limity dla poszczególnych adresów trzyma tylko w\u{A0}pamięci, która nigdy nie trafia na dysk, i\u{A0}po restarcie o\u{A0}nich zapomina.',
   'transparency.stores.enforced.title': 'Ważności pilnuje też kryptografia',
   'transparency.stores.enforced':
-    'Ważności i\u{A0}liczby otwarć pilnuje serwer. Najpóźniej dwie godziny po wygaśnięciu ważności usuwa też część klucza, której wiadomość potrzebuje, więc potem nie otworzy jej nawet kopia danych. Kopia wykonana wcześniej nie odczyta wiadomości bez linku.',
+    'Ważności i\u{A0}liczby otwarć pilnuje serwer. Najpóźniej minutę po wygaśnięciu ważności usuwa też część klucza, której wiadomość potrzebuje, więc potem nie otworzy jej nawet kopia danych. Kopia wykonana wcześniej nie odczyta wiadomości bez linku.',
   'transparency.logs.title': 'Co serwer zapisuje w\u{A0}logach',
   'transparency.logs.written': 'Zapisuje',
   'transparency.logs.written.time': 'Czas obcięty do minuty',

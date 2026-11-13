@@ -44,9 +44,9 @@ func CeilMinute(moment time.Time) time.Time {
 	return ceil(moment, time.Minute)
 }
 
-// ExpiresAt is when a message whose upload was stored at uploaded expires: ttl later, rounded up to the minute.
-func ExpiresAt(uploaded time.Time, ttl time.Duration) time.Time {
-	return CeilMinute(uploaded.UTC().Add(ttl))
+// ExpiresAt is when a message whose TTL starts at the moment expires: ttl later, rounded up to the minute.
+func ExpiresAt(moment time.Time, ttl time.Duration) time.Time {
+	return CeilMinute(moment.UTC().Add(ttl))
 }
 
 // BlobPurgeAt is when the sweep deletes the blob of a message that expires at expiresAt.
@@ -232,13 +232,13 @@ type BlobInfo struct {
 
 type Blobs interface {
 	// PutExpiring stores the content and reports when it was stored; the blob carries the BlobPurgeAt of a message
-	// stored then with ttl.
+	// that expires at expiresAt.
 	PutExpiring(
 		ctx context.Context,
 		reference string,
 		content io.Reader,
 		size int64,
-		ttl time.Duration,
+		expiresAt time.Time,
 	) (time.Time, error)
 	Open(ctx context.Context, reference string) (io.ReadCloser, int64, error)
 	Delete(ctx context.Context, reference string) error
