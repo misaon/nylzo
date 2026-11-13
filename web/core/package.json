@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@noble/curves": "2.4.0",
-    "@noble/hashes": "2.4.0"
+    "@noble/hashes": "2.4.0",
+    "@noble/post-quantum": "0.7.1"
   },
   "devDependencies": {
     "@vitest/browser-playwright": "5.0.5",

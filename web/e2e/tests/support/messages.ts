@@ -53,7 +53,7 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
   const kdfId = passphrase === '' ? KDF_NONE : KDF_SCRYPT;
   const policy = { opensMax: options.opensMax ?? 1, ttlSeconds: 3600 };
   const api = createApi({ base });
-  const shareKey = await newShareKey();
+  const shareKey = newShareKey();
   const { create } = await api.instance({ ttlSeconds: policy.ttlSeconds, shareKey: shareKey.publicKey });
   if (create === undefined) {
     throw new Error('the instance issued no id');

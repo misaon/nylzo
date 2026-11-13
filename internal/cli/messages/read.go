@@ -2,7 +2,7 @@ package messages
 
 import (
 	"context"
-	"crypto/ecdh"
+	"crypto/hpke"
 	"errors"
 	"flag"
 	"fmt"
@@ -636,7 +636,7 @@ func headerMatches(fetched *client.Envelope, link *openLink, metadata *api.Metad
 func contentKeysOf(
 	link *openLink,
 	passphraseKey []byte,
-	shareKey *ecdh.PrivateKey,
+	shareKey hpke.PrivateKey,
 	wrapped *[share.WrappedLen]byte,
 ) (keys.ContentKeys, error) {
 	if wrapped == nil || shareKey == nil {

@@ -1157,7 +1157,7 @@ func TestSecurityHeaderTamperingFailsBeforeSideEffects(t *testing.T) {
 						case "replace":
 							value := core.Encode(core.NewSecret()[:])
 							if name == "X-Nylzo-Share-Key" {
-								value = core.Encode(share.NewKey().PublicKey().Bytes())
+								value = share.FormatKey(share.NewKey().PublicKey())
 							}
 							r.Header.Set(name, value)
 						case "remove":
@@ -1221,7 +1221,7 @@ func TestVerifierSignatureBindsSecurityHeaders(t *testing.T) {
 		path := "/api/v1/messages/" + message.id.String() + "/claim"
 		current := signing.Components{ShareKey: testShareKeyHeader, Lease: core.Encode(core.NewSecret()[:])}
 		for _, altered := range []signing.Components{
-			{ShareKey: core.Encode(share.NewKey().PublicKey().Bytes()), Lease: current.Lease},
+			{ShareKey: share.FormatKey(share.NewKey().PublicKey()), Lease: current.Lease},
 			{ShareKey: current.ShareKey, Lease: core.Encode(core.NewSecret()[:])},
 			{Lease: current.Lease},
 			{ShareKey: current.ShareKey},

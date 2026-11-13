@@ -1579,49 +1579,56 @@ func TestCreateRefusesAnIDWhoseShareCameFromAnEarlierSeed(t *testing.T) {
 	})
 }
 
-// L5: a share key of small order would make every share zero, so it is malformed, not an internal error.
-func TestASmallOrderShareKeyIsMalformed(t *testing.T) {
+// L5 and F15: a share key the server cannot seal to is malformed, not an internal error, and an X25519 key from before
+// share suites tells its client to update.
+func TestRefusedShareKeysSpendNothing(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
-		for _, key := range smallOrderKeys(t) {
+		refused := loadSpecVectors(t).ShareKeyRejected
+		if len(refused) == 0 {
+			t.Fatal("the vectors hold no rejected share keys")
+		}
+		for _, vector := range refused {
 			response, body := harness.do(&testRequest{
 				method:  http.MethodGet,
 				path:    "/api/v1/instance",
-				headers: map[string]string{api.TTLHeaderName: "3600", api.ShareKeyHeaderName: key},
+				headers: map[string]string{api.TTLHeaderName: "3600", api.ShareKeyHeaderName: vector.Key},
 			})
-			if response.StatusCode != http.StatusBadRequest {
-				t.Fatalf("instance with the share key %s: %d %s", key, response.StatusCode, body)
-			}
+			requireRefusedShareKey(t, "instance", &vector, response, body)
 		}
-		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "small order")
+		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "refused share keys")
 		harness.mustCreate(message)
-		for _, key := range smallOrderKeys(t) {
-			if response, body := harness.claimWithShareKey(message, key); response.StatusCode != http.StatusBadRequest {
-				t.Fatalf("claim with the share key %s: %d %s", key, response.StatusCode, body)
-			}
+		for _, vector := range refused {
+			response, body := harness.claimWithShareKey(message, vector.Key)
+			requireRefusedShareKey(t, "claim", &vector, response, body)
 		}
 		if response, _ := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusOK {
 			t.Fatalf("the refused claims spent the open: %d", response.StatusCode)
 		}
 		harness.server.flushCounts(t.Context())
 		if strings.Contains(harness.logs.String(), `"level":"ERROR"`) {
-			t.Fatalf("a malformed share key logged an error: %s", harness.logs.String())
+			t.Fatalf("a refused share key logged an error: %s", harness.logs.String())
 		}
 	})
 }
 
-func smallOrderKeys(t *testing.T) []string {
+func requireRefusedShareKey(
+	t *testing.T,
+	route string,
+	vector *vectors.ShareKeyRejected,
+	response testResponse,
+	body responseBody,
+) {
 	t.Helper()
-	file := loadSpecVectors(t)
-	if len(file.ShareKeyRejected) == 0 {
-		t.Fatal("the vectors hold no rejected share keys")
+	want := api.ErrorBadRequest
+	if vector.Outdated {
+		want = api.ErrorClientOutdated
 	}
-	keys := make([]string, 0, len(file.ShareKeyRejected))
-	for _, vector := range file.ShareKeyRejected {
-		keys = append(keys, vector.Key)
+	var answer api.ErrorResponse
+	if response.StatusCode != http.StatusBadRequest || json.Unmarshal(body, &answer) != nil || answer.Error != want {
+		t.Fatalf("%s with the share key %s: %d %s, want 400 %s", route, vector.Name, response.StatusCode, body, want)
 	}
-	return keys
 }
 
 func (h *testHarness) claimWithShareKey(message *testMessage, key string) (testResponse, responseBody) {

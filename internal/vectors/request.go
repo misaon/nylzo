@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 )
 
@@ -37,7 +38,11 @@ type requestCase struct {
 func (f *File) request() error {
 	id := deterministicID("request").String()
 	messagePath := "/api/v1/messages/" + id
-	shareKey := core.Encode(deterministic("request-share-key", 32))
+	key, _, keyErr := deterministicShareKey("request-share-key")
+	if keyErr != nil {
+		return keyErr
+	}
+	shareKey := share.FormatKey(key.PublicKey())
 	lease := core.Encode(deterministic("request-lease", 32))
 	cases := []requestCase{
 		{"metadata read", signing.PurposeRead, http.MethodGet, messagePath, nil, signing.Components{}},

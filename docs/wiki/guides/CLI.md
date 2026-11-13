@@ -73,7 +73,7 @@ nylzo burn < link.txt
 
 `read` and `burn` accept the link through stdin, `--link-file`, or `NYLZO_LINK`. Using the environment variable produces a notice on stderr. Links using a newer protocol version prompt an upgrade; links using the retired passphrase profile (`kdf_id` 2) prompt a replacement link from the sender. A link from Nylzo 0.1 or 0.2 (`/m/{id}#1.…`) reports that the instance upgrade to protocol version 2 deleted its message.
 
-A CLI from Nylzo 0.1 or 0.2 can neither create nor read messages on an instance that runs protocol version 2: it reports a malformed response from the server, or the server answers `client_outdated`. Update it to a current release.
+A CLI from Nylzo 0.1 or 0.2 can neither create nor read messages on an instance that runs protocol version 2: it reports a malformed response from the server, or the server answers `client_outdated`. A CLI from before 0.14.0 sends the X25519 share key that later releases replaced with a post-quantum one, so a current instance refuses its creates and reads with `client_outdated`, which such a CLI reports only as status 400; a CLI from 0.14.0 on says that it is older than the server and needs an update, and gets `bad_request` from an older instance. Use a CLI of the same release as the instance. The local client of `nylzo web` and `nylzo open` has the same constraint, and its page then shows only a general error.
 
 `read` requires an explicit destination before making a request:
 

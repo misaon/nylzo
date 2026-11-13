@@ -2,7 +2,7 @@ package client
 
 import (
 	"context"
-	"crypto/ecdh"
+	"crypto/hpke"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -24,7 +24,7 @@ type Envelope struct {
 	Object []byte
 	Share  *[share.WrappedLen]byte
 	// ShareKey is the one-time key of the attempt the server answered, which Share is wrapped to.
-	ShareKey *ecdh.PrivateKey
+	ShareKey hpke.PrivateKey
 }
 
 type Claimed struct {
@@ -97,12 +97,12 @@ func (c *Client) Blob(
 }
 
 type sentShareKey struct {
-	key *ecdh.PrivateKey
+	key hpke.PrivateKey
 }
 
 func (s *sentShareKey) headers() map[string]string {
 	s.key = share.NewKey()
-	return map[string]string{api.ShareKeyHeaderName: core.Encode(s.key.PublicKey().Bytes())}
+	return map[string]string{api.ShareKeyHeaderName: share.FormatKey(s.key.PublicKey())}
 }
 
 func (c *Client) Ack(ctx context.Context, id core.ID, read *[core.SeedLen]byte, lease string) error {

@@ -35,7 +35,7 @@ const (
 	createBodyTimeout   = 120 * time.Second
 	writeTimeout        = 120 * time.Second
 	idleTimeout         = 30 * time.Second
-	maxHeaderBytes      = 4 << 10
+	maxHeaderBytes      = 8 << 10
 	maxHeaderValues     = 64
 	h2cMaxStreams       = 32
 	h2cStreamBuffer     = 64 << 10

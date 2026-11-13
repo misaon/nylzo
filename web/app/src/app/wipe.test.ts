@@ -11,9 +11,10 @@ import { fakeApi } from '../shared/api/fake-api.ts';
 import type { FakeApi, FakeOptions } from '../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../shared/kdf/kdf-protocol.ts';
 
-const { captured, passphraseKeys, failing } = vi.hoisted(() => ({
+const { captured, passphraseKeys, shareSeeds, failing } = vi.hoisted(() => ({
   captured: [] as Uint8Array[],
   passphraseKeys: [] as Uint8Array[],
+  shareSeeds: [] as Uint8Array[],
   failing: { requestKey: 0 },
 }));
 
@@ -40,6 +41,11 @@ vi.mock('@nylzo/core', async (importOriginal) => {
     },
     deriveVerifier: async (id: Uint8Array, secret: Uint8Array, passphraseKey: Uint8Array) =>
       keep(await core.deriveVerifier(id, secret, passphraseKey)),
+    newShareKey: () => {
+      const key = core.newShareKey();
+      shareSeeds.push(key.seed);
+      return key;
+    },
     unwrapShare: async (key: Core.ShareKey, wrapped: Uint8Array) => keep(await core.unwrapShare(key, wrapped)),
     requestKey: async (seed: Uint8Array) => {
       if (failing.requestKey > 0) {
@@ -118,6 +124,7 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
   beforeEach(() => {
     captured.length = 0;
     passphraseKeys.length = 0;
+    shareSeeds.length = 0;
     failing.requestKey = 0;
   });
 
@@ -151,6 +158,30 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     expect(zeroed().every(Boolean)).toBe(true);
     expect(passphraseKeys.length).toBeGreaterThan(0);
     expect(passphraseKeys.every((bytes) => wiped(bytes))).toBe(true);
+  });
+
+  it.each<[string, FakeOptions]>([
+    ['the message is created and read', {}],
+    ['the upload fails', { failCreate: [new ApiError(500, 'internal')] }],
+    ['the server withholds the share', { withholdShare: true }],
+    ['the server changes the policy', { servedOpensMax: 5 }],
+  ])('wipes the seed of every share key when %s', async (_scenario, options) => {
+    const api = fakeApi(options);
+    try {
+      const reader = readerFor(api, await created(api, 2));
+      await reader.load();
+      await reader.reveal();
+    } catch {}
+    expect(shareSeeds.length).toBeGreaterThan(0);
+    expect(shareSeeds.every((seed) => seed.length === 32 && wiped(seed))).toBe(true);
+  });
+
+  it('wipes the seed of the share key when the instance limits refuse the input', async () => {
+    const input = { text: 'a'.repeat(102_401), ttlSeconds: 3600, opensMax: 1, passphrase: '' };
+    const dependencies = createDependencies(fakeApi());
+    await expect(createMessage(input, dependencies)).rejects.toBeInstanceOf(Error);
+    expect(shareSeeds).toHaveLength(1);
+    expect(shareSeeds.every((seed) => wiped(seed))).toBe(true);
   });
 
   it('wipes E, S, R and salt_pw when the key derivation fails', async () => {

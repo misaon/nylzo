@@ -1,7 +1,8 @@
 package server
 
 import (
-	"crypto/ecdh"
+	"crypto/hpke"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -40,6 +41,7 @@ type instanceVersions struct {
 	API      int    `json:"api"`
 	Envelope int    `json:"envelope"`
 	Fragment int    `json:"fragment"`
+	Share    int    `json:"share"`
 	Server   string `json:"server"`
 }
 
@@ -72,8 +74,12 @@ type transparencyRetention struct {
 
 func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
-	creation, ok := s.parseCreation(r.Header)
-	if !ok {
+	creation, parseErr := s.parseCreation(r.Header)
+	if errors.Is(parseErr, share.ErrOutdated) {
+		writeError(w, http.StatusBadRequest, errClientOutdated)
+		return
+	}
+	if parseErr != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return
 	}
@@ -85,6 +91,7 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 			API:      1,
 			Envelope: int(envelope.Version),
 			Fragment: int(core.FragmentVersion),
+			Share:    share.Suite,
 			Server:   s.settings.Version,
 		},
 	}
@@ -112,28 +119,30 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 type creationRequest struct {
 	requested bool
 	ttl       time.Duration
-	shareKey  *ecdh.PublicKey
+	shareKey  hpke.PublicKey
 }
 
+var errCreationHeaders = errors.New("server: the TTL and share key headers do not ask for an id")
+
 // parseCreation reads the TTL and share key headers, which a client sends together when it is about to create a message.
-func (s *Server) parseCreation(header http.Header) (creationRequest, bool) {
+func (s *Server) parseCreation(header http.Header) (creationRequest, error) {
 	ttlValues, keyValues := header.Values(api.TTLHeaderName), header.Values(api.ShareKeyHeaderName)
 	if len(ttlValues) == 0 && len(keyValues) == 0 {
-		return creationRequest{}, true
+		return creationRequest{}, nil
 	}
 	if len(ttlValues) != 1 || len(keyValues) != 1 {
-		return creationRequest{}, false
+		return creationRequest{}, errCreationHeaders
 	}
 	seconds, err := strconv.ParseInt(ttlValues[0], 10, 64)
 	if err != nil || seconds < envelope.MinTTLSeconds || seconds > int64(s.settings.Limits.MaxTTL/time.Second) ||
 		strconv.FormatInt(seconds, 10) != ttlValues[0] {
-		return creationRequest{}, false
+		return creationRequest{}, errCreationHeaders
 	}
 	key, err := share.ParseKey(keyValues[0])
 	if err != nil {
-		return creationRequest{}, false
+		return creationRequest{}, err
 	}
-	return creationRequest{requested: true, ttl: time.Duration(seconds) * time.Second, shareKey: key}, true
+	return creationRequest{requested: true, ttl: time.Duration(seconds) * time.Second, shareKey: key}, nil
 }
 
 // issueID hands out an id with the share of the hour in which a message made with it can expire at the latest, made
