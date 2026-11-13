@@ -32,6 +32,8 @@ func contentKeys(tb testing.TB, id core.ID, passphraseKey []byte) keys.ContentKe
 	return content
 }
 
+const testDeadline = 1_797_000_000
+
 func seal(tb testing.TB, text string, file []byte) sealed {
 	tb.Helper()
 	id := core.NewID()
@@ -39,7 +41,7 @@ func seal(tb testing.TB, text string, file []byte) sealed {
 		id:      id,
 		content: contentKeys(tb, id, nil),
 		header:  envelope.NewHeader(core.KDFNone),
-		policy:  envelope.Policy{OpensMax: 1, TTLSeconds: 86400},
+		policy:  envelope.Policy{OpensMax: 1, TTLSeconds: 86400, Deadline: testDeadline},
 		payload: envelope.Payload{Meta: envelope.Meta{Text: &text}},
 	}
 	if file != nil {
@@ -125,13 +127,25 @@ func TestAK8TamperingFailsIntegrity(t *testing.T) {
 		"opens_max": {
 			sample.content,
 			sample.id,
-			envelope.Policy{OpensMax: 2, TTLSeconds: 86400},
+			envelope.Policy{OpensMax: 2, TTLSeconds: 86400, Deadline: testDeadline},
 			sample.object,
 		},
 		"ttl_s": {
 			sample.content,
 			sample.id,
-			envelope.Policy{OpensMax: 1, TTLSeconds: 86401},
+			envelope.Policy{OpensMax: 1, TTLSeconds: 86401, Deadline: testDeadline},
+			sample.object,
+		},
+		"deadline": {
+			sample.content,
+			sample.id,
+			envelope.Policy{OpensMax: 1, TTLSeconds: 86400, Deadline: testDeadline + 60},
+			sample.object,
+		},
+		"no deadline": {
+			sample.content,
+			sample.id,
+			envelope.Policy{OpensMax: 1, TTLSeconds: 86400},
 			sample.object,
 		},
 		"another id":  {sample.content, core.NewID(), sample.policy, sample.object},
@@ -275,6 +289,18 @@ func TestSealEnforcesTheLimits(t *testing.T) {
 		"no opens":     {sample.header, envelope.Policy{OpensMax: 0, TTLSeconds: 60}, sample.payload, envelope.ErrPolicy},
 		"ttl under 60": {sample.header, envelope.Policy{OpensMax: 1, TTLSeconds: 59}, sample.payload, envelope.ErrPolicy},
 		"flags":        {envelope.Header{Version: envelope.Version, Flags: 1}, sample.policy, sample.payload, envelope.ErrFlags},
+		"no deadline": {
+			sample.header,
+			envelope.Policy{OpensMax: 1, TTLSeconds: 60},
+			sample.payload,
+			envelope.ErrPolicy,
+		},
+		"a deadline without its flag": {
+			envelope.Header{Version: envelope.Version},
+			sample.policy,
+			sample.payload,
+			envelope.ErrPolicy,
+		},
 	} {
 		_, err := envelope.Seal(&sample.content, test.header, sample.id, test.policy, test.payload)
 		if !errors.Is(err, test.want) {

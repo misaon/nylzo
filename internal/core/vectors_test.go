@@ -172,8 +172,17 @@ func checkEnvelopeVector(t *testing.T, vector *vectors.Envelope) {
 		t.Fatal(err)
 	}
 	content := derived.Content
-	header := envelope.Header{Version: envelope.Version, KDF: kdf, IV: [envelope.IVLen]byte(decodeHex(t, vector.IV))}
-	policy := envelope.Policy{OpensMax: uint16(vector.OpensMax), TTLSeconds: uint32(vector.TTLSeconds)}
+	header := envelope.Header{
+		Version: envelope.Version,
+		KDF:     kdf,
+		Flags:   uint8(vector.Flags),
+		IV:      [envelope.IVLen]byte(decodeHex(t, vector.IV)),
+	}
+	policy := envelope.Policy{
+		OpensMax:   uint16(vector.OpensMax),
+		TTLSeconds: uint32(vector.TTLSeconds),
+		Deadline:   uint32(vector.Deadline),
+	}
 	payload := envelope.Payload{Meta: envelope.Meta{Text: vector.Text}, File: fileBytes(t, vector.File)}
 	if vector.File != nil {
 		payload.Meta.File = &envelope.FileMeta{
@@ -351,7 +360,11 @@ func openRejected(t *testing.T, envelopes map[string]vectors.Envelope, vector *v
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy := envelope.Policy{OpensMax: uint16(base.OpensMax), TTLSeconds: uint32(base.TTLSeconds)}
+	policy := envelope.Policy{
+		OpensMax:   uint16(base.OpensMax),
+		TTLSeconds: uint32(base.TTLSeconds),
+		Deadline:   uint32(base.Deadline),
+	}
 	var object []byte
 	if vector.Object != nil {
 		if object, err = core.DecodeExact(*vector.Object, (len(*vector.Object)*6)/8); err != nil {
@@ -388,6 +401,9 @@ func openRejected(t *testing.T, envelopes map[string]vectors.Envelope, vector *v
 	if vector.TTLSeconds != nil {
 		policy.TTLSeconds = uint32(*vector.TTLSeconds)
 	}
+	if vector.Deadline != nil {
+		policy.Deadline = uint32(*vector.Deadline)
+	}
 	kdf := core.KDF(vector.KDFID)
 	derived, err := keys.DeriveAll(
 		id,
@@ -415,8 +431,17 @@ func sealVector(t *testing.T, vector *vectors.Envelope) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	header := envelope.Header{Version: envelope.Version, KDF: kdf, IV: [envelope.IVLen]byte(decodeHex(t, vector.IV))}
-	policy := envelope.Policy{OpensMax: uint16(vector.OpensMax), TTLSeconds: uint32(vector.TTLSeconds)}
+	header := envelope.Header{
+		Version: envelope.Version,
+		KDF:     kdf,
+		Flags:   uint8(vector.Flags),
+		IV:      [envelope.IVLen]byte(decodeHex(t, vector.IV)),
+	}
+	policy := envelope.Policy{
+		OpensMax:   uint16(vector.OpensMax),
+		TTLSeconds: uint32(vector.TTLSeconds),
+		Deadline:   uint32(vector.Deadline),
+	}
 	object, err := envelope.Seal(
 		&derived.Content,
 		header,

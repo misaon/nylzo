@@ -2,6 +2,7 @@ import {
   authorizationHeader,
   decodeBase64url,
   encodeBase64url,
+  FLAG_DEADLINE,
   formatShareKey,
   idToString,
   MAX_OBJECT_BYTES,
@@ -60,11 +61,13 @@ export interface Transparency {
   readonly files: readonly ClientFile[];
 }
 
-// An id the instance issued, with the expiry share still wrapped to the client's one-time key.
+// An id the instance issued, with the deadline of its message in Unix seconds and the expiry share still wrapped to
+// the client's one-time key.
 export interface Issued {
   readonly id: Uint8Array<ArrayBuffer>;
   readonly idToken: string;
   readonly epoch: number;
+  readonly deadline: number;
   readonly share: Uint8Array<ArrayBuffer>;
 }
 
@@ -83,6 +86,7 @@ export interface CreateRequest {
   readonly id: Uint8Array;
   readonly idToken: string;
   readonly epoch: number;
+  readonly deadline: number;
   readonly readKey: Uint8Array;
   readonly verifierKey: Uint8Array;
   readonly manageKey: Uint8Array;
@@ -214,11 +218,42 @@ function shareOf(response: Response): Uint8Array<ArrayBuffer> | undefined {
   }
 }
 
-function issuedOf(create: Json): Issued {
+// The envelope flags this client opens, so the server refuses a message it could not open before a claim spends an
+// open (spec 6.4).
+const READER_FLAGS = { 'X-Nylzo-Flags': String(FLAG_DEADLINE) };
+const ID_TOKEN_SECONDS = 600;
+const MINUTE_SECONDS = 60;
+
+function secondsOf(time: string): number {
+  return Date.parse(time) / 1000;
+}
+
+// deadlineOf accepts a whole minute that ends the TTL counted from the issue of the id, the token's expiry less its
+// lifetime, plus less than the minute of rounding and the second the expiry was cut to; the server reads both from one
+// clock, so the check needs no correct client clock (spec 6.6).
+function deadlineOf(create: Json, ttlSeconds: number): number {
+  const deadline = secondsOf(timestamp(create, 'deadline'));
+  const issued = secondsOf(timestamp(create, 'expires_at')) - ID_TOKEN_SECONDS;
+  const rounding = deadline - issued - ttlSeconds;
+  const epochFits = integer(create, 'epoch') === deadline / MINUTE_SECONDS - 1;
+  if (
+    !Number.isSafeInteger(deadline) ||
+    deadline % MINUTE_SECONDS !== 0 ||
+    rounding < 0 ||
+    rounding > MINUTE_SECONDS ||
+    !epochFits
+  ) {
+    throw new ResponseError('the instance issued a deadline that does not end the TTL');
+  }
+  return deadline;
+}
+
+function issuedOf(create: Json, ttlSeconds: number): Issued {
   return {
     id: parseId(text(create, 'id')),
     idToken: text(create, 'id_token'),
     epoch: integer(create, 'epoch'),
+    deadline: deadlineOf(create, ttlSeconds),
     share: parseWrappedShare(text(create, 'share')),
   };
 }
@@ -361,7 +396,7 @@ export function createApi(options: ApiOptions = {}): Api {
           difficulty,
           ...(pow['challenge'] !== undefined && { challenge: text(pow, 'challenge') }),
         },
-        ...(isObject(create) && creation !== undefined && { create: issuedOf(create) }),
+        ...(isObject(create) && creation !== undefined && { create: issuedOf(create, creation.ttlSeconds) }),
       };
     },
 
@@ -414,7 +449,11 @@ export function createApi(options: ApiOptions = {}): Api {
       const response = await ensureOk(
         await call('/api/v1/messages', { method: 'POST', headers, body: request.object }, TRANSFER_TIMEOUT_MS),
       );
-      return { expiresAt: timestamp(await readJson(response), 'expires_at') };
+      const expiresAt = timestamp(await readJson(response), 'expires_at');
+      if (secondsOf(expiresAt) !== request.deadline) {
+        throw new ResponseError('the message expires at another time than its sealed deadline');
+      }
+      return { expiresAt };
     },
 
     async metadata(id, readKey) {
@@ -441,6 +480,7 @@ export function createApi(options: ApiOptions = {}): Api {
             purpose: PURPOSE_READ,
             key: readKey,
             verifier: claimOptions.verifierKey,
+            headers: READER_FLAGS,
             attemptHeaders: sent.headers,
             proceed: claimOptions.proceed,
           },
@@ -464,7 +504,7 @@ export function createApi(options: ApiOptions = {}): Api {
             path: `${messagePath(id)}/blob`,
             purpose: PURPOSE_READ,
             key: readKey,
-            headers: { 'X-Nylzo-Lease': lease },
+            headers: { ...READER_FLAGS, 'X-Nylzo-Lease': lease },
             attemptHeaders: sent.headers,
           },
           TRANSFER_TIMEOUT_MS,

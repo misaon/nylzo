@@ -259,7 +259,7 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 		record.Row.BlobReference,
 		bytes.NewReader(make([]byte, 64)),
 		64,
-		time.Hour,
+		time.Now().Add(time.Hour),
 	); err != nil {
 		t.Fatal(err)
 	}

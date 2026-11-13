@@ -20,6 +20,7 @@ export {
   passphraseProblem,
 } from './keys/passphrase.ts';
 export {
+  FLAG_DEADLINE,
   HEADER_LENGTH,
   ID_LENGTH,
   MAX_FILE_BYTES,

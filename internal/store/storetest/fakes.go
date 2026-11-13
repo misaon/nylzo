@@ -112,7 +112,7 @@ func (b *FaultyBlobs) PutExpiring(
 	reference string,
 	reader io.Reader,
 	size int64,
-	ttl time.Duration,
+	expiresAt time.Time,
 ) (time.Time, error) {
 	b.mutex.Lock()
 	err := b.put
@@ -121,7 +121,7 @@ func (b *FaultyBlobs) PutExpiring(
 		_, _ = io.Copy(io.Discard, reader)
 		return time.Time{}, err
 	}
-	return b.Blobs.PutExpiring(ctx, reference, reader, size, ttl)
+	return b.Blobs.PutExpiring(ctx, reference, reader, size, expiresAt)
 }
 
 func (b *FaultyBlobs) List(ctx context.Context) ([]store.BlobInfo, error) {

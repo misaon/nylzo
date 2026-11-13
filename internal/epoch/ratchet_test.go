@@ -37,7 +37,8 @@ func TestEpochVectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	var file vectors.File
-	if err = json.Unmarshal(data, &file); err != nil || len(file.Server.Epochs) < 2 {
+	if err = json.Unmarshal(data, &file); err != nil || len(file.Server.Epochs) < 2 ||
+		len(file.Server.MinuteEpochs) < 4 {
 		t.Fatalf("epoch vectors: %v", err)
 	}
 	seed := epoch.Seed(decode(t, file.Server.Epochs[0].Seed))
@@ -50,6 +51,34 @@ func TestEpochVectors(t *testing.T) {
 		}
 		seed = epoch.Next(&seed)
 	}
+	checkMinuteVectors(t, file.Server.MinuteEpochs)
+}
+
+// checkMinuteVectors walks the chain of minutes from the first case and starts the chain of each new hour from the
+// seed of that hour.
+func checkMinuteVectors(t *testing.T, cases []vectors.MinuteEpochCase) {
+	t.Helper()
+	first := cases[0]
+	hourSeed := epoch.Seed(decode(t, first.HourSeed))
+	minuteSeed := epoch.FirstMinute(&hourSeed)
+	minute := first.Minute
+	for _, vector := range cases {
+		for ; minute < vector.Minute; minute++ {
+			minuteSeed = epoch.NextMinute(&minuteSeed)
+			if (minute+1)%60 == 0 {
+				hourSeed = epoch.Next(&hourSeed)
+				minuteSeed = epoch.FirstMinute(&hourSeed)
+			}
+		}
+		key := epoch.MinuteKey(&minuteSeed)
+		share := epoch.ShareOf(&key, seal.Locator(decode(t, vector.Locator)))
+		if hex.EncodeToString(hourSeed[:]) != vector.HourSeed ||
+			hex.EncodeToString(minuteSeed[:]) != vector.MinuteSeed ||
+			hex.EncodeToString(key[:]) != vector.EpochKey ||
+			hex.EncodeToString(share[:]) != vector.Share {
+			t.Fatalf("minute %d differs", vector.Minute)
+		}
+	}
 }
 
 func decode(t *testing.T, text string) [32]byte {
@@ -61,29 +90,35 @@ func decode(t *testing.T, text string) [32]byte {
 	return [32]byte(decoded)
 }
 
-func TestF3ShareOfAPassedHourIsGone(t *testing.T) {
+// F13: a share lives exactly until the deadline that ends its epoch, the instant at which its message expires.
+func TestF3ShareGoesAtItsDeadline(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	ratchet := open(t, directory, start)
 	locator := seal.LocatorOf([]byte("message"))
-	hour := epoch.Hour(start)
-	generation, live, err := ratchet.Issue(hour+2, locator, start)
+	deadline := start.Add(2*time.Hour + 7*time.Minute)
+	shareEpoch := epoch.Of(deadline)
+	if epoch.Deadline(shareEpoch) != deadline {
+		t.Fatalf("epoch %d ends at %v, want %v", shareEpoch, epoch.Deadline(shareEpoch), deadline)
+	}
+	generation, live, err := ratchet.Issue(shareEpoch, locator, start)
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, err := ratchet.Share(generation, hour+2, locator, start.Add(90*time.Minute))
+	again, err := ratchet.Share(generation, shareEpoch, locator, deadline.Add(-time.Nanosecond))
 	if err != nil || again != live {
-		t.Fatalf("a share must stay the same while its hour lasts: %v", err)
+		t.Fatalf("a share must stay the same until its deadline: %v", err)
 	}
-	if _, err = ratchet.Share(generation, hour+2, locator, epoch.End(hour+2)); !errors.Is(err, epoch.ErrShareGone) {
-		t.Fatalf("the share outlived its hour: %v", err)
+	if _, err = ratchet.Share(generation, shareEpoch, locator, deadline); !errors.Is(err, epoch.ErrShareExpired) {
+		t.Fatalf("the share outlived its deadline: %v", err)
 	}
-	if _, err = ratchet.Share(epoch.GenerationID{1}, hour+5, locator, start); !errors.Is(err, epoch.ErrShareGone) {
-		t.Fatalf("a share of another generation: %v", err)
+	_, err = ratchet.Share(epoch.GenerationID{1}, shareEpoch+5, locator, start)
+	if !errors.Is(err, epoch.ErrShareGone) || errors.Is(err, epoch.ErrShareExpired) {
+		t.Fatalf("a share of another generation is lost, not expired: %v", err)
 	}
 }
 
-// The seed file must hold nothing that makes the share of an hour that has passed, and it fills whole blocks (L2).
+// The seed file must hold nothing that makes the share of a minute that has passed, and it fills whole blocks (L2).
 func TestF3AdvanceOverwritesTheSeedInPlace(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
@@ -97,7 +132,7 @@ func TestF3AdvanceOverwritesTheSeedInPlace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = ratchet.Advance(start.Add(time.Hour)); err != nil {
+	if err = ratchet.Advance(start.Add(time.Hour + time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	after, err := os.ReadFile(path)
@@ -114,7 +149,7 @@ func TestF3AdvanceOverwritesTheSeedInPlace(t *testing.T) {
 	}
 	for _, oldSeed := range oldSeeds {
 		if bytes.Contains(after, oldSeed[:]) {
-			t.Fatal("the seed of the passed hour is still in the file")
+			t.Fatal("a seed of the passed minutes is still in the file")
 		}
 	}
 	if info.Mode().Perm() != 0o600 {
@@ -129,17 +164,17 @@ func TestRatchetsSharingAFileAgree(t *testing.T) {
 	second := open(t, directory, start)
 	behind := open(t, directory, start)
 	locator := seal.LocatorOf([]byte("message"))
-	hour := epoch.Hour(start)
 	later := start.Add(2 * time.Hour)
-	generation, fromFirst, err := first.Issue(hour+3, locator, later)
+	shareEpoch := epoch.Minute(later) + 3*60
+	generation, fromFirst, err := first.Issue(shareEpoch, locator, later)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fromSecond, err := second.Share(generation, hour+3, locator, later)
+	fromSecond, err := second.Share(generation, shareEpoch, locator, later)
 	if err != nil || fromSecond != fromFirst {
 		t.Fatalf("two processes on one seed file disagree: %v", err)
 	}
-	if issuer, _, issueErr := second.Issue(hour+3, locator, later); issueErr != nil || issuer != generation {
+	if issuer, _, issueErr := second.Issue(shareEpoch, locator, later); issueErr != nil || issuer != generation {
 		t.Fatalf("two processes issued one hour from two generations: %v", issueErr)
 	}
 	if held, holdsErr := behind.Holds(generation, start); holdsErr != nil || !held {
@@ -152,8 +187,8 @@ func TestF12EveryHourIssuesFromANewGeneration(t *testing.T) {
 	t.Parallel()
 	ratchet := open(t, t.TempDir(), start)
 	locator := seal.LocatorOf([]byte("message"))
-	hour := epoch.Hour(start)
-	last := hour + epoch.Span
+	hour := epoch.Minute(start) / 60
+	last := (hour+epoch.Span)*60 - 1
 	first, issued, err := ratchet.Issue(last, locator, start)
 	if err != nil {
 		t.Fatal(err)
@@ -168,10 +203,10 @@ func TestF12EveryHourIssuesFromANewGeneration(t *testing.T) {
 	if again, _, againErr := ratchet.Issue(last, locator, start.Add(80*time.Minute)); againErr != nil || again != next {
 		t.Fatalf("one hour issued from two generations: %v", againErr)
 	}
-	if kept, keptErr := ratchet.Share(first, last, locator, epoch.End(last-1)); keptErr != nil || kept != issued {
+	if kept, keptErr := ratchet.Share(first, last, locator, epoch.Deadline(last-1)); keptErr != nil || kept != issued {
 		t.Fatalf("a generation lost its share before its last epoch: %v", keptErr)
 	}
-	if _, err = ratchet.Share(first, last, locator, epoch.End(last)); !errors.Is(err, epoch.ErrShareGone) ||
+	if _, err = ratchet.Share(first, last, locator, epoch.Deadline(last)); !errors.Is(err, epoch.ErrShareGone) ||
 		slices.Contains(ratchet.Generations(), first) {
 		t.Fatalf("a generation outlived its last epoch: %v", err)
 	}
@@ -313,12 +348,12 @@ func chmod(t *testing.T, path string, mode os.FileMode) {
 func TestShareBindsTheLocator(t *testing.T) {
 	t.Parallel()
 	ratchet := open(t, t.TempDir(), start)
-	hour := epoch.Hour(start)
-	_, first, err := ratchet.Issue(hour, newLocator(), start)
+	shareEpoch := epoch.Minute(start) + 1
+	_, first, err := ratchet.Issue(shareEpoch, newLocator(), start)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, second, err := ratchet.Issue(hour, newLocator(), start)
+	_, second, err := ratchet.Issue(shareEpoch, newLocator(), start)
 	if err != nil || first == second {
 		t.Fatalf("two messages got one share: %v", err)
 	}

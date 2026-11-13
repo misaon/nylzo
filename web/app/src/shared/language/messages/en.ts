@@ -333,7 +333,7 @@ export const messages: Catalog = {
     'It does not store them. Per-address limits live only in memory that is never swapped to disk, and are forgotten on restart.',
   'transparency.stores.enforced.title': 'Cryptography enforces expiry too',
   'transparency.stores.enforced':
-    'The server enforces expiry and the open limit. No later than two hours after a message expires it also erases the part of the key the message needs, so even a copy of the data can no longer open it. A copy taken earlier cannot read the message without the link.',
+    'The server enforces expiry and the open limit. No later than a minute after a message expires it also erases the part of the key the message needs, so even a copy of the data can no longer open it. A copy taken earlier cannot read the message without the link.',
   'transparency.logs.title': 'What the server logs',
   'transparency.logs.written': 'Writes',
   'transparency.logs.written.time': 'Time to the minute',

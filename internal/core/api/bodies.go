@@ -15,10 +15,11 @@ type CreateHeader struct {
 }
 
 type PolicyHeader struct {
-	OpensMax   *int `json:"opens_max"`
-	TTLSeconds *int `json:"ttl_s"`
-	KDFID      *int `json:"kdf_id"`
-	Flags      *int `json:"flags"`
+	OpensMax   *int   `json:"opens_max"`
+	TTLSeconds *int   `json:"ttl_s"`
+	KDFID      *int   `json:"kdf_id"`
+	Flags      *int   `json:"flags"`
+	Deadline   *int64 `json:"deadline,omitempty"`
 }
 
 type InstanceLimits struct {
@@ -41,6 +42,7 @@ type InstanceCreate struct {
 	IDToken   string  `json:"id_token"`
 	ExpiresAt string  `json:"expires_at"`
 	Epoch     *uint32 `json:"epoch"`
+	Deadline  string  `json:"deadline"`
 	Share     string  `json:"share"`
 }
 

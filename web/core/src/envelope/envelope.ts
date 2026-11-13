@@ -15,7 +15,7 @@ import {
 import { arrayBufferBacked, assertLength, concatenate, utf8 } from '../primitives/bytes.ts';
 import { hash } from '../primitives/identifiers.ts';
 import { compressAttachment, compressedLength, decompressAttachment } from './compression.ts';
-import { aad, headerBytes, parseHeader, policyBytes, validateHeader, validatePolicy } from './header.ts';
+import { aad, headerBytes, parseHeader, policyBytes, policyFits, validateHeader, validatePolicy } from './header.ts';
 import type { Header, Policy } from './header.ts';
 import { decodeStoredMeta, encodeMeta, encodeStoredMeta } from './meta.ts';
 import type { Meta } from './meta.ts';
@@ -57,7 +57,7 @@ export async function objectHash(object: Uint8Array): Promise<Uint8Array<ArrayBu
 }
 
 function commitmentInput(header: Header, id: Uint8Array, policy: Policy): Uint8Array<ArrayBuffer> {
-  return concatenate(utf8(COMMITMENT_LABEL), headerBytes(header), id, policyBytes(policy));
+  return concatenate(utf8(COMMITMENT_LABEL), headerBytes(header), id, policyBytes(header, policy));
 }
 
 export async function commitment(
@@ -123,7 +123,12 @@ export async function open(content: ContentKeys, expected: Expected, object: Uin
   if (header.kdfId !== expected.kdfId) {
     throw new KdfMismatchError();
   }
-  if (object.length > MAX_OBJECT_BYTES || object.length < OVERHEAD || object.length % PAD !== 0) {
+  if (
+    object.length > MAX_OBJECT_BYTES ||
+    object.length < OVERHEAD ||
+    object.length % PAD !== 0 ||
+    !policyFits(header, expected.policy)
+  ) {
     throw new IntegrityError();
   }
   const committed = object.slice(HEADER_LENGTH, PREFIX_LENGTH);

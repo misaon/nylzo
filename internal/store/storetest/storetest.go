@@ -108,7 +108,7 @@ func (f *fixture) create(opens uint16, ttlSeconds uint32, passphrase bool) *mess
 		created.reference(),
 		bytes.NewReader(bytes.Repeat([]byte{0xAB}, blobSize)),
 		blobSize,
-		time.Duration(ttlSeconds)*time.Second,
+		created.Message.ExpiresAt,
 	); err != nil {
 		f.t.Fatal(err)
 	}

@@ -25,6 +25,7 @@ import { endedStateOf, isApiError, shouldRetryLater, StoppedError } from '../../
 import type { ApiError, EndedState, MessageState } from '../../shared/api/api-errors.ts';
 import type { Api, Envelope, Metadata } from '../../shared/api/api.ts';
 import type { DownloadProgress } from '../../shared/api/object-body.ts';
+import { flagsAndDeadlineMatch } from '../../shared/api/responses.ts';
 import { attempt } from '../../shared/attempt.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
@@ -235,10 +236,10 @@ function burnOutcomeOf(error: unknown): BurnOutcome {
 function policyMatches(envelope: Envelope, secrets: Secrets, metadata: Metadata | undefined): boolean {
   const served = envelope.policy;
   return (
-    served.flags === 0 &&
     served.kdfId === secrets.kdfId &&
     served.opensMax === metadata?.opensMax &&
-    served.ttlSeconds === metadata.ttlSeconds
+    served.ttlSeconds === metadata.ttlSeconds &&
+    flagsAndDeadlineMatch(served, metadata.expiresAt)
   );
 }
 
@@ -601,13 +602,13 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     show({ view: 'busy', step: 'decrypting' });
     let opened: Awaited<ReturnType<typeof open>>;
     try {
-      const { opensMax, ttlSeconds } = fetched.envelope.policy;
+      const { opensMax, ttlSeconds, deadline } = fetched.envelope.policy;
       const keys = await contentKeys(current, access, fetched);
       opened = await open(
         keys,
         {
           id: current.id,
-          policy: { opensMax, ttlSeconds },
+          policy: { opensMax, ttlSeconds, ...(deadline !== undefined && { deadline }) },
           kdfId: current.kdfId,
           objectHash: current.objectHash,
         },

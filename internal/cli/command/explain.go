@@ -41,7 +41,8 @@ func Explain(err error) string {
 		return text
 	}
 	clientRefused := errors.Is(err, client.ErrInsecureServer) || errors.Is(err, client.ErrServerURL) ||
-		errors.Is(err, client.ErrRedirect) || errors.Is(err, client.ErrResponse)
+		errors.Is(err, client.ErrRedirect) || errors.Is(err, client.ErrResponse) ||
+		errors.Is(err, client.ErrServerOutdated)
 	if clientRefused {
 		return err.Error()
 	}

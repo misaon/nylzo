@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strconv"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
@@ -15,6 +16,10 @@ import (
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 )
+
+// readerFlags names the envelope flags this client opens, so the server refuses a message it could not open before
+// a claim spends an open (spec section 6.4).
+var readerFlags = strconv.Itoa(envelope.FlagDeadline)
 
 // Envelope is a served object with the expiry share, still wrapped to the client's one-time key.
 type Envelope struct {
@@ -48,6 +53,7 @@ func (c *Client) Claim(
 		purpose:        signing.PurposeRead,
 		seed:           read,
 		verifier:       verifier,
+		headers:        map[string]string{api.FlagsHeaderName: readerFlags},
 		attemptHeaders: sent.headers,
 	}
 	response, err := c.signed(ctx, &request, TransferTime(size))
@@ -83,7 +89,7 @@ func (c *Client) Blob(
 		path:           api.MessagePath(id.String()) + api.BlobAction,
 		purpose:        signing.PurposeRead,
 		seed:           read,
-		headers:        map[string]string{api.LeaseHeaderName: lease},
+		headers:        map[string]string{api.LeaseHeaderName: lease, api.FlagsHeaderName: readerFlags},
 		attemptHeaders: sent.headers,
 	}
 	response, err := c.signed(ctx, &request, TransferTime(size))
@@ -170,14 +176,33 @@ func decodePolicy(header string) (Envelope, error) {
 	if err != nil || policy.OpensMax == nil || policy.TTLSeconds == nil || policy.KDFID == nil || policy.Flags == nil {
 		return Envelope{}, ErrResponse
 	}
-	opensMax, ttl, kdf := *policy.OpensMax, *policy.TTLSeconds, *policy.KDFID
-	if opensMax < 1 || opensMax > math.MaxUint16 || ttl < 1 || ttl > math.MaxUint32 || kdf < 0 ||
-		kdf > math.MaxUint8 || !core.KDF(kdf).Valid() {
+	opensMax, ttl, kdf, flags := *policy.OpensMax, *policy.TTLSeconds, *policy.KDFID, *policy.Flags
+	deadline, deadlineOK := policyDeadline(&policy)
+	profile, kdfOK := kdfOf(kdf)
+	if opensMax < 1 || opensMax > math.MaxUint16 || ttl < 1 || ttl > math.MaxUint32 || !kdfOK || !deadlineOK {
 		return Envelope{}, ErrResponse
 	}
 	return Envelope{
-		Policy: envelope.Policy{OpensMax: uint16(opensMax), TTLSeconds: uint32(ttl)},
-		KDF:    core.KDF(kdf),
-		Flags:  *policy.Flags,
+		Policy: envelope.Policy{OpensMax: uint16(opensMax), TTLSeconds: uint32(ttl), Deadline: deadline},
+		KDF:    profile,
+		Flags:  flags,
 	}, nil
+}
+
+func kdfOf(value int) (core.KDF, bool) {
+	if value < 0 || value > math.MaxUint8 {
+		return 0, false
+	}
+	kdf := core.KDF(value)
+	return kdf, kdf.Valid()
+}
+
+// policyDeadline reads a deadline, which the policy reports exactly when its flags say the envelope seals one in.
+func policyDeadline(policy *api.PolicyHeader) (uint32, bool) {
+	sealed := *policy.Flags&envelope.FlagDeadline != 0
+	if policy.Deadline == nil {
+		return 0, !sealed
+	}
+	deadline := *policy.Deadline
+	return uint32(deadline), sealed && deadline > 0 && deadline <= math.MaxUint32 //nolint:gosec // G115: checked
 }

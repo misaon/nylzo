@@ -42,7 +42,13 @@ func newFixture(t *testing.T) fixture {
 
 func (f fixture) putBlob(t *testing.T, reference string) {
 	t.Helper()
-	if _, err := f.blobs.PutExpiring(t.Context(), reference, strings.NewReader("x"), 1, time.Minute); err != nil {
+	if _, err := f.blobs.PutExpiring(
+		t.Context(),
+		reference,
+		strings.NewReader("x"),
+		1,
+		time.Now().Add(time.Minute),
+	); err != nil {
 		t.Fatal(err)
 	}
 }

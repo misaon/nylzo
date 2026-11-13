@@ -51,13 +51,14 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
   const base = options.base ?? BASE_URL;
   const passphrase = options.passphrase ?? '';
   const kdfId = passphrase === '' ? KDF_NONE : KDF_SCRYPT;
-  const policy = { opensMax: options.opensMax ?? 1, ttlSeconds: 3600 };
+  const ttlSeconds = 3600;
   const api = createApi({ base });
   const shareKey = newShareKey();
-  const { create } = await api.instance({ ttlSeconds: policy.ttlSeconds, shareKey: shareKey.publicKey });
+  const { create } = await api.instance({ ttlSeconds, shareKey: shareKey.publicKey });
   if (create === undefined) {
     throw new Error('the instance issued no id');
   }
+  const policy = { opensMax: options.opensMax ?? 1, ttlSeconds, deadline: create.deadline };
   let secret = newSecret();
   while (options.readKeyStartsWithZero === true && !(await readKeyStartsWithZero(create.id, secret))) {
     secret = newSecret();

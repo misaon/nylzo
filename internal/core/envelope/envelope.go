@@ -22,7 +22,9 @@ const (
 	TagLen        = 16
 	HeaderLen     = 15
 	CommitmentLen = 32
-	PolicyLen     = 6
+	PolicyLen     = 10
+	// FlagDeadline says that the policy carries the deadline; every message created from Nylzo 0.14.0 on sets it.
+	FlagDeadline  = 0x02
 	MetaLenPrefix = 4
 	ObjectSlack   = 64
 	PrefixLen     = HeaderLen + CommitmentLen
@@ -60,6 +62,8 @@ type Header struct {
 type Policy struct {
 	OpensMax   uint16
 	TTLSeconds uint32
+	// Deadline is when the message expires, in Unix seconds; zero for a message created before Nylzo 0.14.0.
+	Deadline uint32
 }
 
 type Payload struct {
@@ -76,7 +80,7 @@ type Expected struct {
 }
 
 func NewHeader(kdf core.KDF) Header {
-	header := Header{Version: Version, KDF: kdf}
+	header := Header{Version: Version, KDF: kdf, Flags: FlagDeadline}
 	rand.Read(header.IV[:])
 	return header
 }
@@ -101,7 +105,7 @@ func (h Header) Validate() error {
 	if h.Version != Version {
 		return ErrVersion
 	}
-	if h.Flags != 0 {
+	if h.Flags != FlagDeadline && h.Flags != 0 {
 		return ErrFlags
 	}
 	if !h.KDF.Valid() {
@@ -117,8 +121,18 @@ func (p Policy) Validate() error {
 	return nil
 }
 
-func (p Policy) Bytes() []byte {
-	return binary.BigEndian.AppendUint32(binary.BigEndian.AppendUint16(nil, p.OpensMax), p.TTLSeconds)
+// Fits reports whether the policy carries a deadline exactly when the header says it does.
+func (p Policy) Fits(header Header) bool {
+	return (header.Flags&FlagDeadline != 0) == (p.Deadline != 0)
+}
+
+// Bytes encodes the policy of an object with the header, which tells whether the deadline belongs to it.
+func (p Policy) Bytes(header Header) []byte {
+	encoded := binary.BigEndian.AppendUint32(binary.BigEndian.AppendUint16(nil, p.OpensMax), p.TTLSeconds)
+	if header.Flags&FlagDeadline != 0 {
+		encoded = binary.BigEndian.AppendUint32(encoded, p.Deadline)
+	}
+	return encoded
 }
 
 func AAD(header Header, commitment []byte, id core.ID, policy Policy) []byte {
@@ -126,7 +140,7 @@ func AAD(header Header, commitment []byte, id core.ID, policy Policy) []byte {
 	aad = append(aad, header.Bytes()...)
 	aad = append(aad, commitment...)
 	aad = append(aad, id[:]...)
-	return append(aad, policy.Bytes()...)
+	return append(aad, policy.Bytes(header)...)
 }
 
 // Commitment binds the commitment key, and through it the content key, to the header, the id and the policy.
@@ -135,7 +149,7 @@ func Commitment(key *[core.KeyLen]byte, header Header, id core.ID, policy Policy
 	mac.Write([]byte(labelCommitment))
 	mac.Write(header.Bytes())
 	mac.Write(id[:])
-	mac.Write(policy.Bytes())
+	mac.Write(policy.Bytes(header))
 	return [CommitmentLen]byte(mac.Sum(nil))
 }
 
@@ -191,6 +205,9 @@ func sealEnvelope(
 	if err := policy.Validate(); err != nil {
 		return nil, err
 	}
+	if !policy.Fits(header) {
+		return nil, ErrPolicy
+	}
 	plaintext, err := padPlaintext(payload, compress)
 	if err != nil {
 		return nil, err
@@ -218,7 +235,8 @@ func Open(content *keys.ContentKeys, expected *Expected, object []byte) (Header,
 	if header.KDF != expected.KDF {
 		return header, Payload{}, core.ErrKDFMismatch
 	}
-	if len(object) > MaxObjectBytes || len(object) < PrefixLen+TagLen || len(object)%Pad != 0 {
+	if len(object) > MaxObjectBytes || len(object) < PrefixLen+TagLen || len(object)%Pad != 0 ||
+		!expected.Policy.Fits(header) {
 		return header, Payload{}, ErrIntegrity
 	}
 	commitment := object[HeaderLen:PrefixLen]

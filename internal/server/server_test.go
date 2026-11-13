@@ -198,11 +198,11 @@ func (b *gatedPut) PutExpiring(
 	reference string,
 	body io.Reader,
 	size int64,
-	ttl time.Duration,
+	expiresAt time.Time,
 ) (time.Time, error) {
 	close(b.entered)
 	<-b.release
-	return b.Blobs.PutExpiring(ctx, reference, body, size, ttl)
+	return b.Blobs.PutExpiring(ctx, reference, body, size, expiresAt)
 }
 
 func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
@@ -399,7 +399,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 }
 
 func issueIDToken(server *Server, id core.ID) string {
-	token, _ := server.idTokens.Issue(id, shareEpochFor(60), issuingGeneration(server), time.Now())
+	token, _ := server.idTokens.Issue(id, shareEpochFor(60), 60, issuingGeneration(server), time.Now())
 	return token
 }
 
@@ -1001,19 +1001,22 @@ func TestHeadersOver12KiBGet431WithTheSecurityHeaders(t *testing.T) {
 	}
 }
 
-// openWithShares tries every share a seed directory can still make, as an attacker with the link would.
+// openWithShares tries every share a seed directory can still make for the epochs around the deadline the policy
+// authenticates, as an attacker with the link would: with a clock in the past, so the copy keeps the minute it was
+// taken in.
 func openWithShares(t *testing.T, directory string, link *core.Link, policy envelope.Policy, object []byte) bool {
 	t.Helper()
-	ratchet, _, err := epoch.Open(directory, time.Now(), epoch.Options{})
+	attackerClock := time.Unix(0, 0)
+	ratchet, _, err := epoch.Open(directory, attackerClock, epoch.Options{})
 	if err != nil || ratchet == nil {
 		t.Fatalf("open the stolen seed: %v", err)
 	}
 	defer ratchet.Close()
 	locator := seal.LocatorOf(link.ID[:])
-	now := epoch.Hour(time.Now())
+	sealed := epoch.Of(time.Unix(int64(policy.Deadline), 0))
 	for _, generation := range ratchet.Generations() {
-		for hour := now; hour <= now+epoch.Span; hour++ {
-			expiryShare, shareErr := ratchet.Share(generation, hour, locator, time.Now())
+		for shareEpoch := sealed - 120; shareEpoch <= sealed+120; shareEpoch++ {
+			expiryShare, shareErr := ratchet.Share(generation, shareEpoch, locator, attackerClock)
 			if errors.Is(shareErr, epoch.ErrShareGone) {
 				continue
 			}
@@ -1054,10 +1057,10 @@ func seedCopy(t *testing.T, seed []byte) string {
 	return directory
 }
 
-// TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed copies the data directory and the object while a
-// message lives, lets it expire and the epoch advance, and shows that nothing the attacker can steal then,
-// the link included, opens the copy (spec section 5.6).
-func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
+// TestF3ACopyTakenWhileLiveStaysClosedOnceItsDeadlineHasPassed copies the data directory and the object while a
+// message lives, lets it expire and the epoch advance, and shows that nothing the attacker can steal from the minute
+// after the deadline on, the link included, opens the copy (spec section 5.6, F13).
+func TestF3ACopyTakenWhileLiveStaysClosedOnceItsDeadlineHasPassed(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
@@ -1087,25 +1090,39 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 			t.Fatal("the seed of a live message must open it; the test would prove nothing")
 		}
 
-		synctest.Sleep(time.Until(epoch.End(message.epoch)) + time.Minute)
-		if _, err = harness.server.sweepOnce(t.Context()); err != nil {
-			t.Fatal(err)
+		deadline := epoch.Deadline(message.epoch)
+		if int64(policy.Deadline) != deadline.Unix() ||
+			!deadline.Truncate(time.Hour).Equal(time.Now().Truncate(time.Hour)) {
+			t.Fatalf("the policy names deadline %d, want %v within this hour", policy.Deadline, deadline)
 		}
-		if response, _ = harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusGone {
-			t.Fatalf("a claim after the expiry: %d", response.StatusCode)
-		}
+		synctest.Sleep(17 * time.Second)
+		ratchetCtx, stopRatchet := context.WithCancel(t.Context())
+		ratchetDone := make(chan struct{})
+		go func() {
+			defer close(ratchetDone)
+			harness.server.RunRatchet(ratchetCtx)
+		}()
+		synctest.Sleep(time.Until(deadline))
 		currentSeed, err := os.ReadFile(seedPath)
+		stopRatchet()
+		<-ratchetDone
 		if err != nil {
 			t.Fatal(err)
 		}
-		oldSeeds := epoch.Seeds(liveSeed)
-		if len(oldSeeds) == 0 {
-			t.Fatal("the live seed file holds no seed")
+		response, body := harness.claim(message, message.verifier, "")
+		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" {
+			t.Fatalf("a claim at the deadline: %d %s", response.StatusCode, body)
 		}
-		for _, oldSeed := range oldSeeds {
+		oldMinutes := epoch.MinuteSeeds(liveSeed)
+		if len(oldMinutes) == 0 {
+			t.Fatal("the live seed file holds no seed of its minute")
+		}
+		for _, oldSeed := range oldMinutes {
 			if bytes.Contains(currentSeed, oldSeed[:]) {
-				t.Fatal("the seed file still holds the seed of the hour that has passed")
+				t.Fatal("the seed file still holds the seed of a minute that has passed")
 			}
+		}
+		for _, oldSeed := range epoch.Seeds(liveSeed) {
 			for where, data := range dataCopy {
 				if bytes.Contains(data, oldSeed[:]) {
 					t.Fatalf("the copy of the data directory holds the seed in %s", where)
@@ -1113,7 +1130,7 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 			}
 		}
 		if openWithShares(t, seedCopy(t, currentSeed), &link, policy, object) {
-			t.Fatal("the seed stolen after the expiry hour opened a copy taken while the message lived")
+			t.Fatal("the seed stolen at the deadline opened a copy taken while the message lived")
 		}
 		missing := envelope.Expected{
 			ID:         link.ID,
@@ -1144,7 +1161,7 @@ func TestF12ASeedCopiedEarlierOpensNoMessageIssuedInALaterHour(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		synctest.Sleep(time.Until(epoch.End(epoch.Hour(time.Now()))) + time.Minute)
+		synctest.Sleep(time.Until(time.Now().Truncate(time.Hour).Add(time.Hour)) + time.Minute)
 		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "issued after the copy")
 		harness.mustCreate(message)
 		response, object := harness.claim(message, message.verifier, "")

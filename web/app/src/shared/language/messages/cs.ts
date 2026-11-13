@@ -330,7 +330,7 @@ export const messages = {
     'Neukládá je. Limity na adresu uchovává jen v\u{A0}paměti, která se nikdy neodkládá na disk, a\u{A0}po restartu je zapomene.',
   'transparency.stores.enforced.title': 'Platnost hlídá i\u{A0}kryptografie',
   'transparency.stores.enforced':
-    'Platnost a\u{A0}počet otevření hlídá server. Nejpozději dvě hodiny po skončení platnosti navíc smaže část klíče, kterou zpráva potřebuje, takže ji pak neotevře ani kopie dat. Kopie pořízená dřív zprávu bez odkazu nepřečte.',
+    'Platnost a\u{A0}počet otevření hlídá server. Nejpozději minutu po skončení platnosti navíc smaže část klíče, kterou zpráva potřebuje, takže ji pak neotevře ani kopie dat. Kopie pořízená dřív zprávu bez odkazu nepřečte.',
   'transparency.logs.title': 'Co server loguje',
   'transparency.logs.written': 'Zapisuje',
   'transparency.logs.written.time': 'Čas zkrácený na minutu',

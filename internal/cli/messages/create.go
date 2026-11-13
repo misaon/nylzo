@@ -382,6 +382,8 @@ func createOnce(
 		return createdMessage{}, err
 	}
 	defer clear(expiryShare[:])
+	policy := input.policy
+	policy.Deadline = uint32(issued.Deadline.Unix()) //nolint:gosec // G115: the client checked it fits 32 bits
 	kdf := core.KDFNone
 	if input.passphrase != "" {
 		kdf = core.KDFScrypt
@@ -396,7 +398,7 @@ func createOnce(
 		share:      &expiryShare,
 		kdf:        kdf,
 		passphrase: input.passphrase,
-		policy:     input.policy,
+		policy:     policy,
 		message:    input.message,
 		compress:   input.options.compress,
 	})
@@ -406,7 +408,7 @@ func createOnce(
 	if int64(len(request.Object)) > input.maxObject {
 		return createdMessage{}, errTooLargeForInstance
 	}
-	request.IDToken, request.Epoch = issued.IDToken, issued.Epoch
+	request.IDToken, request.Epoch, request.Deadline = issued.IDToken, issued.Epoch, issued.Deadline
 	if instance.PoW.Required {
 		if request.PoWToken, err = prove(ctx, environment, server, issued.ID); err != nil {
 			return createdMessage{}, err

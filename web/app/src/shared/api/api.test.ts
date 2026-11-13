@@ -107,6 +107,9 @@ const { publicKey: shareKey } = newShareKey();
 const shareKeys = (): ShareKey => ({ seed: new Uint8Array(32).fill(5), publicKey: shareKey });
 const wrappedShare = encodeBase64url(new Uint8Array(WRAPPED_SHARE_LENGTH).fill(6));
 
+// The last minute before the deadline of instanceBody, as the server issues it (spec 5.6).
+const ISSUED_EPOCH = 29_879_219;
+
 const instanceBody = {
   limits: {
     max_file_bytes: 5_242_880,
@@ -121,7 +124,8 @@ const instanceBody = {
     id: 'AAAAAAAAAAAAAAAAAAAAAA',
     id_token: 'token',
     expires_at: '2026-10-23T10:10:00Z',
-    epoch: 493_000,
+    epoch: ISSUED_EPOCH,
+    deadline: '2026-10-23T11:00:00Z',
     share: wrappedShare,
   },
   versions: { api: 1, envelope: 2, fragment: 2, server: 'dev' },
@@ -148,7 +152,8 @@ describe('api client', () => {
     expect(new URL(request.url).search).toBe('');
     expect(request.headers.get('X-Nylzo-Ttl')).toBe('3600');
     expect(request.headers.get('X-Nylzo-Share-Key')).toBe(formatShareKey(shareKey));
-    expect(instance.create?.epoch).toBe(493_000);
+    expect(instance.create?.epoch).toBe(ISSUED_EPOCH);
+    expect(instance.create?.deadline).toBe(Date.parse('2026-10-23T11:00:00Z') / 1000);
     expect(instance.create?.share).toEqual(new Uint8Array(WRAPPED_SHARE_LENGTH).fill(6));
     await server.api.instance();
     expect(server.last().headers.has('X-Nylzo-Share-Key')).toBe(false);
@@ -349,6 +354,7 @@ describe('api client', () => {
     expect(challenge).toBe(encodeBase64url(new Uint8Array(CHALLENGE_LENGTH).fill(1)));
     expect(verifierPublicKey).toBe(encodeBase64url(verifierKey.publicKey));
     expect(request.headers.get('X-Nylzo-Share-Key')).toBe(formatShareKey(shareKey));
+    expect(request.headers.get('X-Nylzo-Flags')).toBe('2');
   });
 
   it('retries a 404 once with a new challenge and then reports it', async () => {
@@ -448,6 +454,7 @@ describe('api client', () => {
       id: randomId(),
       idToken: 'token',
       epoch: 493_000,
+      deadline: Date.parse('2026-10-24T09:00:00Z') / 1000,
       readKey: new Uint8Array(32).fill(1),
       verifierKey: new Uint8Array(32).fill(2),
       manageKey: new Uint8Array(32).fill(3),
@@ -572,6 +579,7 @@ describe('api client', () => {
       id,
       idToken: 't',
       epoch: 1,
+      deadline: Date.parse('2026-10-24T09:00:00Z') / 1000,
       readKey: readKey.publicKey,
       verifierKey: readKey.publicKey,
       manageKey: readKey.publicKey,
@@ -760,6 +768,66 @@ describe('transparency', () => {
     ]) {
       await expect(serveTransparency(report, manifest)).rejects.toBeInstanceOf(ResponseError);
     }
+  });
+});
+
+function policyWith(changed: object): string {
+  return encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 3, ...changed })));
+}
+
+describe('F13: deadlines', () => {
+  it('reads the deadline of X-Nylzo-Policy exactly when its flags seal one', () => {
+    for (const changed of [
+      { flags: 2 },
+      { flags: 0, deadline: 1_797_000_000 },
+      { flags: 2, deadline: 0 },
+      { flags: 2, deadline: 2 ** 32 },
+    ]) {
+      expect(() => servedPolicy(policyWith(changed))).toThrow(ResponseError);
+    }
+    expect(servedPolicy(policyWith({ flags: 2, deadline: 1_797_000_000 }))).toEqual({
+      opensMax: 1,
+      ttlSeconds: 3600,
+      kdfId: 3,
+      flags: 2,
+      deadline: 1_797_000_000,
+    });
+  });
+
+  it.each([
+    ['no deadline', { deadline: undefined }],
+    ['a deadline before the TTL', { deadline: '2026-10-23T10:59:00Z', epoch: ISSUED_EPOCH - 1 }],
+    ['a deadline more than a minute after the TTL', { deadline: '2026-10-23T11:02:00Z', epoch: ISSUED_EPOCH + 2 }],
+    ['a deadline inside a minute', { deadline: '2026-10-23T11:00:30Z' }],
+    ['an epoch of another minute', { epoch: ISSUED_EPOCH + 1 }],
+  ])('F13: refuses an id with %s', async (_, changed) => {
+    const server = fakeServer(() => json(200, { ...instanceBody, create: { ...instanceBody.create, ...changed } }));
+    await expect(server.api.instance({ ttlSeconds: 3600, shareKey })).rejects.toThrow(ResponseError);
+  });
+
+  it('F13: accepts a deadline rounded up to the next minute', async () => {
+    const changed = { deadline: '2026-10-23T11:01:00Z', epoch: ISSUED_EPOCH + 1 };
+    const server = fakeServer(() => json(200, { ...instanceBody, create: { ...instanceBody.create, ...changed } }));
+    const instance = await server.api.instance({ ttlSeconds: 3600, shareKey });
+    expect(instance.create?.epoch).toBe(ISSUED_EPOCH + 1);
+  });
+
+  it('F13: refuses a created message that expires at another time than its sealed deadline', async () => {
+    const server = fakeServer(() => json(201, { id: 'AAAAAAAAAAAAAAAAAAAAAA', expires_at: '2026-10-24T09:01:00Z' }));
+    const request = {
+      id: randomId(),
+      idToken: 'token',
+      epoch: 1,
+      deadline: Date.parse('2026-10-24T09:00:00Z') / 1000,
+      readKey: new Uint8Array(32).fill(1),
+      verifierKey: new Uint8Array(32).fill(2),
+      manageKey: new Uint8Array(32).fill(3),
+      kdfId: 0 as const,
+      opensMax: 1,
+      ttlSeconds: 3600,
+      object: new Uint8Array(4127),
+    };
+    await expect(server.api.create(request)).rejects.toThrow(ResponseError);
   });
 });
 
