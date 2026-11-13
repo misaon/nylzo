@@ -138,17 +138,18 @@ func (s *Server) parseCreation(header http.Header) (creationRequest, error) {
 	if len(ttlValues) != 1 || len(keyValues) != 1 {
 		return creationRequest{}, errCreationHeaders
 	}
-	seconds, err := strconv.ParseInt(ttlValues[0], 10, 64)
-	if err != nil || seconds < envelope.MinTTLSeconds || seconds > int64(s.settings.Limits.MaxTTL/time.Second) ||
-		strconv.FormatInt(seconds, 10) != ttlValues[0] {
+	parsed, err := strconv.ParseUint(ttlValues[0], 10, 32)
+	seconds := uint32(parsed)
+	if err != nil || seconds < envelope.MinTTLSeconds ||
+		time.Duration(seconds)*time.Second > s.settings.Limits.MaxTTL ||
+		strconv.FormatUint(parsed, 10) != ttlValues[0] {
 		return creationRequest{}, errCreationHeaders
 	}
 	key, err := share.ParseKey(keyValues[0])
 	if err != nil {
 		return creationRequest{}, err
 	}
-	//nolint:gosec // G115: the TTL was checked against the instance maximum of at most seven days
-	return creationRequest{requested: true, ttlSeconds: uint32(seconds), shareKey: key}, nil
+	return creationRequest{requested: true, ttlSeconds: seconds, shareKey: key}, nil
 }
 
 // issueID fixes the deadline of a message made with the new id, the TTL from now rounded up to the minute, and hands
