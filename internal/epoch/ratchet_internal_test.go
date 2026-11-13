@@ -422,6 +422,22 @@ func TestDecodeRefusesADamagedSlot(t *testing.T) {
 	}
 }
 
+// A held generation asked for an epoch past its life is a fault, never a lost share that would end the message.
+func TestAnEpochPastItsGenerationIsAFault(t *testing.T) {
+	t.Parallel()
+	ratchet := openInternal(t, t.TempDir(), internalStart)
+	locator := seal.LocatorOf([]byte("message"))
+	generation, _, err := ratchet.Issue(Minute(internalStart)+1, locator, internalStart)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beyond := (hourOf(Minute(internalStart))+Span)*minutesPerHour + 5
+	if _, err = ratchet.Share(generation, beyond, locator, internalStart); !errors.Is(err, errBeyondGeneration) ||
+		errors.Is(err, ErrShareGone) {
+		t.Fatalf("an epoch past the generation: %v", err)
+	}
+}
+
 // Close erases the seeds; a share asked for afterwards is an error, never a lost share that would end the message.
 func TestAClosedRatchetLosesNoShare(t *testing.T) {
 	t.Parallel()

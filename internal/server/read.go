@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/cipher"
+	"crypto/hpke"
 	"encoding/json"
 	"errors"
 	"io"
@@ -88,10 +89,14 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	defer release()
 	granted, ok := s.authorizedLive(w, r, seal.Read)
 	defer granted.forget()
-	if !ok || !readerOpens(w, r, granted.record.Message) || !s.allowReadBytes(w, r, granted.record.Message.Size) {
+	if !ok {
 		return
 	}
-	wrappedShare, ok := s.wrappedShare(w, r, &granted.record)
+	clientKey, ok := readerKey(w, r, granted.record.Message)
+	if !ok || !s.allowReadBytes(w, r, granted.record.Message.Size) {
+		return
+	}
+	wrappedShare, ok := s.wrappedShare(w, r, &granted.record, clientKey)
 	if !ok {
 		return
 	}
@@ -119,33 +124,32 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	s.serveBlob(w, r, result.Message, servedHeaders{lease: core.Encode(lease[:]), share: wrappedShare}, blob.content)
 }
 
-// readerOpens refuses, before anything is counted or changed, a reader that does not name every envelope flag of the
-// message, so a reader of an earlier release spends no open on an envelope it cannot open (spec section 6.4).
-func readerOpens(w http.ResponseWriter, r *http.Request, message *store.Message) bool {
-	readerFlags, ok := parseReaderFlags(r.Header)
+// readerKey reads the share key and refuses, before anything is counted or changed, a reader of an earlier release:
+// one whose share key has no suite, or that does not name every envelope flag of the message, so it spends no open
+// on a share or an envelope it cannot open (spec sections 5.6 and 6.4).
+func readerKey(w http.ResponseWriter, r *http.Request, message *store.Message) (hpke.PublicKey, bool) {
+	clientKey, keyErr := share.ParseKey(r.Header.Get(api.ShareKeyHeaderName))
+	readerFlags, flagsOK := parseReaderFlags(r.Header)
 	switch {
-	case !ok:
-		writeError(w, http.StatusBadRequest, errBadRequest)
-	case message.Flags&^readerFlags != 0:
+	case errors.Is(keyErr, share.ErrOutdated) || (flagsOK && message.Flags&^readerFlags != 0):
 		writeError(w, http.StatusBadRequest, errClientOutdated)
+	case keyErr != nil || !flagsOK:
+		writeError(w, http.StatusBadRequest, errBadRequest)
 	default:
-		return true
+		return clientKey, true
 	}
-	return false
+	return nil, false
 }
 
 // wrappedShare recomputes E for a message and wraps it to the client's one-time key (spec section 5.6).
-func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *store.Record) (string, bool) {
+func (s *Server) wrappedShare(
+	w http.ResponseWriter,
+	r *http.Request,
+	record *store.Record,
+	clientKey hpke.PublicKey,
+) (string, bool) {
 	message := record.Message
-	clientKey, err := share.ParseKey(r.Header.Get(api.ShareKeyHeaderName))
-	if errors.Is(err, share.ErrOutdated) {
-		writeError(w, http.StatusBadRequest, errClientOutdated)
-		return "", false
-	}
-	if err != nil {
-		writeError(w, http.StatusBadRequest, errBadRequest)
-		return "", false
-	}
+	var err error
 	var expiryShare [core.ShareLen]byte
 	secretmode.Do(func() {
 		expiryShare, err = s.epochs.Share(message.Generation, message.Epoch, record.Row.Locator, time.Now())
@@ -256,10 +260,14 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	defer release()
 	leased, ok := s.activeLease(w, r)
 	defer clear(leased.record.Key[:])
-	if !ok || !readerOpens(w, r, leased.record.Message) || !s.allowReadBytes(w, r, leased.record.Message.Size) {
+	if !ok {
 		return
 	}
-	wrapped, ok := s.wrappedShare(w, r, &leased.record)
+	clientKey, ok := readerKey(w, r, leased.record.Message)
+	if !ok || !s.allowReadBytes(w, r, leased.record.Message.Size) {
+		return
+	}
+	wrapped, ok := s.wrappedShare(w, r, &leased.record, clientKey)
 	if !ok {
 		return
 	}

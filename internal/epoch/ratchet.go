@@ -109,7 +109,8 @@ var (
 	// ErrClockBehind refuses an id while the clock runs behind the ratchet, which never goes back.
 	ErrClockBehind = errors.New("epoch: the clock runs behind the ratchet")
 
-	errNoIssuer = errors.New("epoch: no generation of this hour makes a share for the epoch")
+	errNoIssuer         = errors.New("epoch: no generation of this hour makes a share for the epoch")
+	errBeyondGeneration = errors.New("epoch: the epoch lies past the life of the generation that issued it")
 
 	errClosed  = errors.New("epoch: the ratchet is closed")
 	castagnoli = crc32.MakeTable(crc32.Castagnoli)
@@ -546,12 +547,16 @@ func (r *Ratchet) Share(
 	named, err := r.findLocked(id, now)
 	current := r.state.minute
 	if err != nil || named == nil || !named.makes(current, shareEpoch) {
-		passed := err == nil && named != nil && named.passed(current, shareEpoch)
+		held, passed := err == nil && named != nil, err == nil && named != nil && named.passed(current, shareEpoch)
 		r.mutex.Unlock()
-		if passed {
+		switch {
+		case passed:
 			return [core.ShareLen]byte{}, ErrShareExpired
+		case held:
+			return [core.ShareLen]byte{}, errBeyondGeneration
+		default:
+			return [core.ShareLen]byte{}, cmp.Or(err, ErrShareGone)
 		}
-		return [core.ShareLen]byte{}, cmp.Or(err, ErrShareGone)
 	}
 	found := *named
 	r.mutex.Unlock()

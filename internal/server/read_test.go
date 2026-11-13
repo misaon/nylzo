@@ -1723,6 +1723,13 @@ func TestReadBytesPerHourStopsAClaimBeforeItSpendsAnOpen(t *testing.T) {
 		within := int(settings.Rates.ReadBytesPerHour / int64(len(probe.object)))
 		message := newMessage(t, core.KDFNone, "", uint16(within+1), 3600, "x")
 		harness.mustCreate(message)
+		for range within + 1 {
+			outdated := claimRequestFor(message, "", "")
+			outdated.oldReader = true
+			if response, _ := harness.do(outdated); response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("an outdated reader's claim: %d", response.StatusCode)
+			}
+		}
 		for range within {
 			if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
 				t.Fatalf("a claim within the byte budget: %d", response.StatusCode)
