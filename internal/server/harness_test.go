@@ -9,6 +9,7 @@ import (
 	"crypto/hkdf"
 	"crypto/hpke"
 	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -34,10 +35,12 @@ import (
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/epoch"
+	pepperkeys "github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -110,13 +113,14 @@ type testResponse struct {
 }
 
 type testRequest struct {
-	method    string
-	path      string
-	body      []byte
-	headers   map[string]string
-	address   string
-	token     string
-	verifier  string
+	method  string
+	path    string
+	body    []byte
+	headers map[string]string
+	address string
+	token   string
+	// challenge is the challenge of a handshake, which a claim or burn signs; without it the request takes a new one.
+	challenge *[signing.ChallengeLen]byte
 	rawCreate bool
 	// oldReader leaves out X-Nylzo-Flags, as a reader of a release before Nylzo 0.14.0 does.
 	oldReader bool
@@ -301,7 +305,7 @@ func (h *testHarness) tryDo(request *testRequest) (testResponse, responseBody, e
 		}
 	}
 	if request.token != "" {
-		h.sign(r, request.token, request.verifier, request.body)
+		h.sign(r, request.token, request.challenge, request.body)
 	}
 	h.recordSecretHeaders(r.Header)
 	response, err := h.client.Do(r)
@@ -333,11 +337,21 @@ func (h *testHarness) statusFrom(request *testRequest) int {
 func (h *testHarness) recordSecretHeaders(header http.Header) {
 	h.captureMu.Lock()
 	defer h.captureMu.Unlock()
-	for _, name := range []string{"Authorization", api.CreateHeaderName, api.VerifierHeaderName, api.LeaseHeaderName} {
+	for _, name := range []string{
+		"Authorization", api.CreateHeaderName, api.RegistrationHeaderName, api.KE1HeaderName, api.KE3HeaderName,
+		api.LeaseHeaderName,
+	} {
 		if value := header.Get(name); value != "" {
 			h.sent = append(h.sent, sentHeader{name, value})
 		}
 	}
+}
+
+// recordSecret keeps a value from a response, such as KE2, so the stolen-server test looks for it as well.
+func (h *testHarness) recordSecret(name, value string) {
+	h.captureMu.Lock()
+	defer h.captureMu.Unlock()
+	h.sent = append(h.sent, sentHeader{name, value})
 }
 
 func (h *testHarness) sentSecretHeaders() []sentHeader {
@@ -354,11 +368,36 @@ func (h *testHarness) lastCreateRequest() []byte {
 
 func (h *testHarness) create(message *testMessage) (testResponse, responseBody) {
 	h.t.Helper()
+	h.bindShare(message)
 	response, body := h.do(createRequestFor(message))
 	if response.StatusCode == http.StatusCreated {
 		h.blobReference(message)
 	}
 	return response, body
+}
+
+// bindShare gives a message that no instance request issued the share this server computes for it, and registers and
+// seals it again, so its OPAQUE credential and content key match the server's. A message whose epoch no seed covers
+// keeps its share: the server refuses to create it.
+func (h *testHarness) bindShare(message *testMessage) {
+	h.t.Helper()
+	if message.idToken != "" || message.sharedBy == h.server {
+		return
+	}
+	message.epoch = cmp.Or(message.epoch, shareEpochFor(float64(message.policy.TTLSeconds)))
+	expiryShare, err := h.server.epochs.Share(
+		issuingGeneration(h.server),
+		message.epoch,
+		seal.LocatorOf(message.id[:]),
+		time.Now(),
+	)
+	if err != nil {
+		return
+	}
+	message.share, message.sharedBy = &expiryShare, h.server
+	if sealErr := message.seal(); sealErr != nil {
+		h.t.Fatal(sealErr)
+	}
 }
 
 func (h *testHarness) mustCreate(message *testMessage) {
@@ -380,9 +419,174 @@ func (h *testHarness) metadata(message *testMessage) (testResponse, jsonFields) 
 	return response, decodeJSON(h.t, body)
 }
 
-func (h *testHarness) claim(message *testMessage, verifier, address string) (testResponse, responseBody) {
+// claim runs the handshake with passphrase, which a message without one ignores, and then the claim; a handshake
+// that the server refuses answers in its place, and a wrong passphrase sends a KE3 that does not match.
+func (h *testHarness) claim(message *testMessage, passphrase, address string) (testResponse, responseBody) {
 	h.t.Helper()
-	return h.do(claimRequestFor(message, verifier, address))
+	request, refused, body := h.claimRequestFor(message, passphrase, address)
+	if request == nil {
+		return refused, body
+	}
+	return h.do(request)
+}
+
+// tryBurn is burn for requests sent from other goroutines.
+func (h *testHarness) tryBurn(message *testMessage, passphrase, address string) (testResponse, responseBody, error) {
+	login, refused, body, err := h.tryHandshake(message, passphrase, address)
+	if err != nil || login == nil {
+		return refused, body, err
+	}
+	return h.tryDo(login.request(message, "/burn", address))
+}
+
+// burn runs the handshake with passphrase and then the burn.
+func (h *testHarness) burn(message *testMessage, passphrase, address string) (testResponse, responseBody) {
+	h.t.Helper()
+	login, refused, body := h.handshake(message, passphrase, address)
+	if login == nil {
+		return refused, body
+	}
+	return h.do(login.request(message, "/burn", address))
+}
+
+func (h *testHarness) claimRequestFor(
+	message *testMessage,
+	passphrase, address string,
+) (*testRequest, testResponse, responseBody) {
+	h.t.Helper()
+	request, refused, body, err := h.tryClaimRequestFor(message, passphrase, address)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return request, refused, body
+}
+
+// tryClaimRequestFor reports errors instead of failing the test, for requests sent from other goroutines.
+func (h *testHarness) tryClaimRequestFor(
+	message *testMessage,
+	passphrase, address string,
+) (*testRequest, testResponse, responseBody, error) {
+	login, refused, body, err := h.tryHandshake(message, passphrase, address)
+	if err != nil || login == nil {
+		return nil, refused, body, err
+	}
+	return login.request(message, "/claim", address), testResponse{}, nil, nil
+}
+
+// tryClaim is claim for requests sent from other goroutines.
+func (h *testHarness) tryClaim(message *testMessage, passphrase, address string) (testResponse, responseBody, error) {
+	request, refused, body, err := h.tryClaimRequestFor(message, passphrase, address)
+	if err != nil || request == nil {
+		return refused, body, err
+	}
+	return h.tryDo(request)
+}
+
+// loggedIn runs a handshake and signs the claim or burn that finishes it, as a recording of it would hold it.
+func (h *testHarness) loggedIn(message *testMessage, action, address string) *testRequest {
+	h.t.Helper()
+	login, refused, body := h.handshake(message, message.passphrase, address)
+	if login == nil {
+		h.t.Fatalf("handshake: %d %s", refused.StatusCode, body)
+	}
+	path := "/api/v1/messages/" + message.id.String() + action
+	components := testRequestComponents(path)
+	components.KE3 = login.ke3
+	return &testRequest{
+		method:  http.MethodPost,
+		path:    path,
+		address: cmp.Or(address, message.address),
+		headers: map[string]string{
+			"Authorization": signedHeader(
+				message.readToken, signing.PurposeRead, http.MethodPost, path, login.challenge, nil, components,
+			),
+			api.KE3HeaderName: login.ke3,
+		},
+	}
+}
+
+// testLogin is a handshake that the server answered: the challenge and the KE3 that its claim or burn sends.
+type testLogin struct {
+	challenge [signing.ChallengeLen]byte
+	ke3       string
+	exportKey keys.ExportKey
+	matched   bool
+}
+
+func (l *testLogin) request(message *testMessage, action, address string) *testRequest {
+	return &testRequest{
+		method:    http.MethodPost,
+		path:      "/api/v1/messages/" + message.id.String() + action,
+		address:   cmp.Or(address, message.address),
+		token:     message.readToken,
+		challenge: &l.challenge,
+		headers:   map[string]string{api.KE3HeaderName: l.ke3},
+	}
+}
+
+func (h *testHarness) handshake(
+	message *testMessage,
+	passphrase, address string,
+) (*testLogin, testResponse, responseBody) {
+	h.t.Helper()
+	login, response, body, err := h.tryHandshake(message, passphrase, address)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	return login, response, body
+}
+
+// tryHandshake runs a handshake as a client does; a wrong passphrase leaves the envelope shut, and the KE3 it
+// prepares then is random, so the claim or burn that sends it is refused.
+func (h *testHarness) tryHandshake(
+	message *testMessage,
+	passphrase, address string,
+) (*testLogin, testResponse, responseBody, error) {
+	password, err := keys.Password(message.secret, message.kdf, passphrase)
+	if err != nil {
+		return nil, testResponse{}, nil, err
+	}
+	ke1, state, err := opaque.GenerateKE1(password)
+	if err != nil {
+		return nil, testResponse{}, nil, err
+	}
+	response, body, err := h.tryDo(&testRequest{
+		method:  http.MethodPost,
+		path:    "/api/v1/messages/" + message.id.String() + "/handshake",
+		address: cmp.Or(address, message.address),
+		token:   message.readToken,
+		headers: map[string]string{api.KE1HeaderName: core.Encode(ke1[:])},
+	})
+	if err != nil || response.StatusCode != http.StatusOK {
+		return nil, response, body, err
+	}
+	var answer struct {
+		KE2       string `json:"ke2"`
+		Challenge string `json:"challenge"`
+	}
+	if decodeErr := json.Unmarshal(body, &answer); decodeErr != nil {
+		return nil, response, body, decodeErr
+	}
+	ke2, err := core.DecodeExact(answer.KE2, opaque.KE2Len)
+	if err != nil {
+		return nil, response, body, fmt.Errorf("handshake answer: %w", err)
+	}
+	h.recordSecret("KE2", answer.KE2)
+	challenge, err := core.DecodeExact(answer.Challenge, signing.ChallengeLen)
+	if err != nil {
+		return nil, response, body, fmt.Errorf("handshake challenge: %w", err)
+	}
+	login := &testLogin{challenge: [signing.ChallengeLen]byte(challenge)}
+	result, err := state.GenerateKE3(ke2, &message.config)
+	switch {
+	case err == nil:
+		login.ke3, login.exportKey, login.matched = core.Encode(result.KE3[:]), result.ExportKey, true
+	case errors.Is(err, opaque.ErrEnvelopeRecovery), errors.Is(err, opaque.ErrServerAuthentication):
+		login.ke3 = core.Encode(append(core.NewSecret()[:], core.NewSecret()[:]...))
+	default:
+		return nil, response, body, fmt.Errorf("KE3: %w", err)
+	}
+	return login, response, body, nil
 }
 
 func (h *testHarness) blob(message *testMessage, lease string) (testResponse, responseBody) {
@@ -419,13 +623,22 @@ func (h *testHarness) status(message *testMessage) (testResponse, jsonFields) {
 	return response, decodeJSON(h.t, body)
 }
 
+// post sends a signed POST; a burn with the read key runs its handshake first, and one with another key carries a
+// KE3 that no handshake issued, so it fails at the signature as a wrong key does.
 func (h *testHarness) post(message *testMessage, action, token string) (testResponse, responseBody) {
 	h.t.Helper()
-	return h.do(&testRequest{
+	if action == "burn" && token == message.readToken {
+		return h.burn(message, message.passphrase, "")
+	}
+	request := &testRequest{
 		method: http.MethodPost,
 		path:   "/api/v1/messages/" + message.id.String() + "/" + action,
 		token:  token,
-	})
+	}
+	if action == "burn" || action == "claim" {
+		request.headers = map[string]string{api.KE3HeaderName: core.Encode(make([]byte, opaque.KE3Len))}
+	}
+	return h.do(request)
 }
 
 // blobExists checks the file under the blob reference the message got at creation.
@@ -599,17 +812,17 @@ func (h *testHarness) openObject(message *testMessage, object []byte, policy str
 	return payload, err
 }
 
-func (h *testHarness) sign(r *http.Request, token, verifier string, body []byte) {
+func (h *testHarness) sign(r *http.Request, token string, fixed *[signing.ChallengeLen]byte, body []byte) {
 	path := r.URL.EscapedPath()
 	purpose := signing.PurposeRead
 	if strings.HasSuffix(path, "/status") || strings.HasSuffix(path, "/cancel") {
 		purpose = signing.PurposeManage
 	}
 	challenge := h.challenge()
-	components, _ := requestComponents(r)
-	if verifier != "" {
-		r.Header.Set("X-Nylzo-Verifier", verifierHeader(verifier, r.Method, path, challenge, components))
+	if fixed != nil {
+		challenge = *fixed
 	}
+	components, _ := requestComponents(r)
 	r.Header.Set("Authorization", signedHeader(token, purpose, r.Method, path, challenge, body, components))
 }
 
@@ -684,8 +897,17 @@ func (h *testHarness) abuseReports() ([]byte, error) {
 
 func (h *testHarness) endOnFirstLoad(message *testMessage, state store.State, finished bool) {
 	h.t.Helper()
+	h.endOnLoad(message, state, finished, 0)
+}
+
+// endOnLoad ends the message as a concurrent request would, when the request after the first skip loads it.
+func (h *testHarness) endOnLoad(message *testMessage, state store.State, finished bool, skip int32) {
+	h.t.Helper()
 	inner := h.store
-	h.store = &racingStore{Store: inner, race: func() {
+	racing := &racingStore{Store: inner}
+	racing.skip.Store(skip)
+	h.store = racing
+	racing.race = func() {
 		record := h.recordIn(inner, message)
 		var err error
 		if finished {
@@ -696,7 +918,7 @@ func (h *testHarness) endOnFirstLoad(message *testMessage, state store.State, fi
 		if err != nil {
 			h.t.Error(err)
 		}
-	}}
+	}
 	h.reopen(&h.settings)
 }
 
@@ -712,21 +934,39 @@ type testMessage struct {
 	secret        *[core.SecretLen]byte
 	manage        *[core.SeedLen]byte
 	kdf           core.KDF
-	link          keys.LinkKeys
+	link          testLink
+	config        opaque.Config
+	registration  [opaque.RecordLen]byte
+	exportKey     keys.ExportKey
 	content       keys.ContentKeys
 	share         *[core.ShareLen]byte
-	verifierKey   *[core.SeedLen]byte
+	sharedBy      *Server
 	idToken       string
 	epoch         uint32
 	policy        envelope.Policy
+	payload       envelope.Payload
 	object        []byte
 	text          string
 	readToken     string
 	manageToken   string
-	verifier      string
+	passphrase    string
 	address       string
 	blobReference string
 }
+
+type testLink struct {
+	R [core.SeedLen]byte
+}
+
+// testRing makes the OPAQUE registrations of test messages; every harness starts with pepperA, so the server opens
+// them with the same keys.
+var testRing = func() *pepperkeys.Ring {
+	ring, err := pepperkeys.NewRing(pepperA, nil)
+	if err != nil {
+		panic(err)
+	}
+	return ring
+}()
 
 func newMessage(t *testing.T, kdf core.KDF, passphrase string, opens uint16, ttl uint32, text string) *testMessage {
 	t.Helper()
@@ -737,13 +977,10 @@ func newMessage(t *testing.T, kdf core.KDF, passphrase string, opens uint16, ttl
 	return message
 }
 
-// testPassphraseKey stands in for scrypt: the server never sees the passphrase key, only what derives from it.
-func testPassphraseKey(kdf core.KDF, passphrase string, salt *[32]byte) []byte {
-	if kdf == core.KDFNone {
-		return nil
-	}
-	key := sha256.Sum256(append([]byte(passphrase), salt[:]...))
-	return key[:]
+// testStretch stands in for scrypt: only clients stretch, so the server's work is the same with either.
+func testStretch(message []byte) ([]byte, error) {
+	digest := sha512.Sum512(append([]byte("test stretch"), message...))
+	return digest[:], nil
 }
 
 func buildMessageWithID(
@@ -757,7 +994,7 @@ func buildMessageWithID(
 	return buildMessage(id, core.NewSecret(), kdf, passphrase, opens, ttl, deadlineFor(ttl), text)
 }
 
-// issueMessage creates a message as a client does: the id and its share come from the instance.
+// issueMessage creates a message as a client does: the id, its share and the registration come from the instance.
 func (h *testHarness) issueMessage(
 	kdf core.KDF,
 	passphrase string,
@@ -767,8 +1004,9 @@ func (h *testHarness) issueMessage(
 ) *testMessage {
 	h.t.Helper()
 	response, body := h.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: map[string]string{
-		api.TTLHeaderName:      strconv.FormatUint(uint64(ttl), 10),
-		api.ShareKeyHeaderName: testShareKeyHeader,
+		api.TTLHeaderName:          strconv.FormatUint(uint64(ttl), 10),
+		api.ShareKeyHeaderName:     testShareKeyHeader,
+		api.RegistrationHeaderName: testRegistrationRequest,
 	}})
 	create, ok := decodeJSON(h.t, body)["create"].(map[string]any)
 	if response.StatusCode != http.StatusOK || !ok {
@@ -786,6 +1024,10 @@ func (h *testHarness) issueMessage(
 	if err != nil {
 		h.t.Fatal(err)
 	}
+	if _, err = core.DecodeExact(create["registration"].(string), opaque.RegistrationResponseLen); err != nil {
+		h.t.Fatalf("registration response: %v", err)
+	}
+	h.recordSecret("registration response", create["registration"].(string))
 	deadline, err := time.Parse(time.RFC3339, create["deadline"].(string))
 	if err != nil {
 		h.t.Fatal(err)
@@ -798,6 +1040,16 @@ func (h *testHarness) issueMessage(
 	return message
 }
 
+// testRegistrationRequest is a well-formed registration request for instance requests whose answer a test does not
+// finish; buildMessage registers each message with testRing directly.
+var testRegistrationRequest = func() string {
+	request, _, err := opaque.CreateRegistrationRequest([]byte("test"))
+	if err != nil {
+		panic(err)
+	}
+	return core.Encode(request[:])
+}()
+
 func buildMessage(
 	id core.ID,
 	expiryShare *[core.ShareLen]byte,
@@ -809,44 +1061,77 @@ func buildMessage(
 	text string,
 ) (*testMessage, error) {
 	message := &testMessage{
-		id:     id,
-		secret: core.NewSecret(),
-		manage: core.NewSecret(),
-		share:  expiryShare,
-		kdf:    kdf,
-		text:   text,
+		id:         id,
+		secret:     core.NewSecret(),
+		manage:     core.NewSecret(),
+		share:      expiryShare,
+		kdf:        kdf,
+		text:       text,
+		passphrase: passphrase,
 	}
-	link, err := keys.DeriveLink(id, message.secret)
+	read, err := keys.DeriveRead(id, message.secret)
 	if err != nil {
 		return nil, err
 	}
-	passphraseKey := testPassphraseKey(kdf, passphrase, &link.PassphraseSalt)
-	content, err := keys.DeriveContent(id, message.secret, passphraseKey, message.share)
-	if err != nil {
-		return nil, err
-	}
-	verifier, err := keys.DeriveVerifier(id, message.secret, passphraseKey)
-	if err != nil {
-		return nil, err
-	}
-	message.link, message.content = link, content
+	message.link = testLink{R: read}
 	message.epoch = epoch.Of(deadline)
 	message.policy = envelope.Policy{OpensMax: opens, TTLSeconds: ttl, Deadline: uint32(deadline.Unix())}
-	payload := envelope.Payload{Meta: envelope.Meta{Text: &text}}
-	if message.object, err = envelope.Seal(
-		&content,
-		envelope.NewHeader(kdf),
-		id,
-		message.policy,
-		payload,
-	); err != nil {
-		return nil, err
+	message.payload = envelope.Payload{Meta: envelope.Meta{Text: &text}}
+	if sealErr := message.seal(); sealErr != nil {
+		return nil, sealErr
 	}
-	message.readToken = core.Encode(link.R[:])
+	message.readToken = core.Encode(read[:])
 	message.manageToken = core.Encode(message.manage[:])
-	message.verifier = core.Encode(verifier[:])
-	message.verifierKey = &verifier
 	return message, nil
+}
+
+// seal registers the message and seals its payload under the share it holds.
+func (m *testMessage) seal() error {
+	if err := m.register(); err != nil {
+		return err
+	}
+	content, err := keys.DeriveContent(m.id, m.secret, &m.exportKey, m.share)
+	if err != nil {
+		return err
+	}
+	m.content = content
+	m.object, err = envelope.Seal(&content, envelope.NewHeader(m.kdf), m.id, m.policy, m.payload)
+	return err
+}
+
+// register runs the OPAQUE registration of the message against testRing, as the instance would answer it.
+func (m *testMessage) register() error {
+	opaqueConfig, err := keys.OPAQUEConfig(m.id, m.kdf)
+	if err != nil {
+		return err
+	}
+	if m.kdf == core.KDFScrypt {
+		opaqueConfig.Stretch = testStretch
+	}
+	m.config = opaqueConfig
+	password, err := keys.Password(m.secret, m.kdf, m.passphrase)
+	if err != nil {
+		return err
+	}
+	request, state, err := opaque.CreateRegistrationRequest(password)
+	if err != nil {
+		return err
+	}
+	serverKeys, _, err := testRing.OPAQUEKeys(m.id[:], testRing.CurrentID())
+	if err != nil {
+		return err
+	}
+	response, err := opaque.CreateRegistrationResponse(
+		request[:],
+		&serverKeys,
+		keys.CredentialIdentifier(m.id, m.share),
+	)
+	if err != nil {
+		return err
+	}
+	finished, err := opaque.FinalizeRegistrationRequest(&state, response[:], &m.config)
+	m.registration, m.exportKey = finished.Record, finished.ExportKey
+	return err
 }
 
 func (m *testMessage) linkText() string {
@@ -876,8 +1161,7 @@ func (m *testMessage) createHeader(sizeOverride int64) string {
 	if m.idToken != "" {
 		fields["id_token"] = m.idToken
 	}
-	verifierSeed, _ := core.Decode32(m.verifier)
-	fields["verifier_key"] = publicKey(verifierSeed)
+	fields["registration"] = core.Encode(m.registration[:])
 	data, _ := json.Marshal(fields)
 	return core.Encode(data)
 }
@@ -898,16 +1182,6 @@ func createRequestFor(message *testMessage) *testRequest {
 			"Content-Type":   "application/octet-stream",
 			"X-Nylzo-Create": message.createHeader(0),
 		},
-	}
-}
-
-func claimRequestFor(message *testMessage, verifier, address string) *testRequest {
-	return &testRequest{
-		method:   http.MethodPost,
-		path:     "/api/v1/messages/" + message.id.String() + "/claim",
-		address:  cmp.Or(address, message.address),
-		token:    message.readToken,
-		verifier: verifier,
 	}
 }
 
@@ -1006,31 +1280,6 @@ func signedHeader(
 	}
 	return signing.SignRequest((*[core.SeedLen]byte)(seed), purpose, method, path, challenge, body, components).
 		Authorization()
-}
-
-func verifierHeader(
-	verifier, method, path string,
-	challenge [signing.ChallengeLen]byte,
-	fields ...signing.Components,
-) string {
-	components := testRequestComponents(path)
-	if len(fields) > 0 {
-		components = fields[0]
-	}
-	seed, err := core.DecodeExact(verifier, core.SeedLen)
-	if err != nil {
-		return verifier
-	}
-	signature := signing.SignRequest(
-		(*[core.SeedLen]byte)(seed),
-		signing.PurposeVerifier,
-		method,
-		path,
-		challenge,
-		nil,
-		components,
-	)
-	return signature.VerifierHeader()
 }
 
 func signedRequest(

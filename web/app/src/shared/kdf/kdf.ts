@@ -71,12 +71,12 @@ async function runWorker(requestOnStart: () => KdfRequest, onProgress: Progress)
   });
 }
 
-export async function scryptInWorker(
-  passphrase: string,
-  passphraseSalt: Uint8Array<ArrayBuffer>,
+// The message is the OPRF output: it holds the server's evaluation, so with scrypt alone it gives P (spec 2.1).
+export async function stretchInWorker(
+  message: Uint8Array<ArrayBuffer>,
   onProgress: Progress,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const response = await runWorker(() => ({ kind: 'scrypt', passphrase, passphraseSalt }), onProgress);
+  const response = await runWorker(() => ({ kind: 'stretch', message }), onProgress);
   if (response.kind !== 'key') {
     throw new KdfWorkerError();
   }

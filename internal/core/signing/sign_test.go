@@ -134,19 +134,22 @@ func TestRequestSignatureBindsSecurityHeaders(t *testing.T) {
 	t.Parallel()
 	seed := core.NewSecret()
 	challenge := [signing.ChallengeLen]byte{7}
-	original := signing.Components{ShareKey: "share-key", Lease: "lease-token"}
-	for _, purpose := range []string{signing.PurposeRead, signing.PurposeManage, signing.PurposeVerifier} {
+	original := signing.Components{ShareKey: "share-key", Lease: "lease-token", KE1: "ke1", KE3: "ke3"}
+	for _, purpose := range []string{signing.PurposeRead, signing.PurposeManage} {
 		signature := signing.SignRequest(seed, purpose, "POST", "/claim", challenge, nil, original)
 		if !signature.Verify(purpose, "POST", "/claim", nil, original) {
 			t.Fatal("unchanged components did not verify")
 		}
 		for _, altered := range []signing.Components{
-			{ShareKey: "other", Lease: original.Lease},
-			{ShareKey: original.ShareKey, Lease: "other"},
+			{ShareKey: "other", Lease: original.Lease, KE1: original.KE1, KE3: original.KE3},
+			{ShareKey: original.ShareKey, Lease: "other", KE1: original.KE1, KE3: original.KE3},
+			{ShareKey: original.ShareKey, Lease: original.Lease, KE1: "other", KE3: original.KE3},
+			{ShareKey: original.ShareKey, Lease: original.Lease, KE1: original.KE1, KE3: "other"},
+			{ShareKey: original.ShareKey, Lease: original.Lease, KE1: original.KE3, KE3: original.KE1},
 			{Lease: original.Lease},
 			{ShareKey: original.ShareKey},
 			{},
-			{ShareKey: original.Lease, Lease: original.ShareKey},
+			{ShareKey: original.Lease, Lease: original.ShareKey, KE1: original.KE1, KE3: original.KE3},
 		} {
 			if signature.Verify(purpose, "POST", "/claim", nil, altered) {
 				t.Fatalf("%s accepted altered components %+v", purpose, altered)

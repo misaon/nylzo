@@ -39,8 +39,8 @@ var contracts = []contract{
 	{"RecordedEndingWins", (*fixture).recordedEndingWins},
 	{"ReleaseAfterExpiryRecordsNothing", (*fixture).releaseAfterExpiryRecordsNothing},
 	{"BurnAndCancel", (*fixture).burnAndCancel},
-	{"F05BurnNeedsThePassphrase", (*fixture).burnNeedsThePassphrase},
-	{"F05BurnWithoutAPassphrase", (*fixture).burnWithoutAPassphrase},
+	{"F11TakeBackRestoresOnlyItsOwnWait", (*fixture).takeBackRestoresOnlyItsOwnWait},
+	{"F11EndedMessagesCountNoAttempt", (*fixture).endedMessagesCountNoAttempt},
 	{"TakeDownWithoutTheKey", (*fixture).takeDownWithoutTheKey},
 	{"ReportsPerMessage", (*fixture).reportsPerMessage},
 	{"AK7Expiry", (*fixture).expiry},
@@ -154,27 +154,15 @@ func (f *fixture) claim(created *message, now time.Time, seed int) (store.ClaimR
 	return store.Claim(f.t.Context(), f.store, record, claimParameters(record, now, seed))
 }
 
-func (f *fixture) claimWithVerifier(
-	created *message,
-	now time.Time,
-	seed int,
-	correct bool,
-) (store.ClaimResult, error) {
-	record := f.get(created)
-	parameters := claimParameters(record, now, seed)
-	parameters.Verifier = verifierOf(created, correct)
-	return store.Claim(f.t.Context(), f.store, record, parameters)
+func (f *fixture) attempt(created *message, now time.Time) (store.Attempt, store.PassphraseError, error) {
+	return store.CountAttempt(f.t.Context(), f.store, f.get(created), func() time.Time { return now })
 }
 
-func (f *fixture) burn(created *message, now time.Time, verifier store.Verifier) (store.State, error) {
-	record := f.get(created)
-	return store.Burn(f.t.Context(), f.store, f.blobs, record, verifier, now)
-}
-
-func verifierOf(created *message, correct bool) store.Verifier {
-	return store.Verifier{Sent: true, Check: func(_ byte, stored []byte) bool {
-		return correct && bytes.Equal(stored, created.Message.VerifierMAC)
-	}}
+func (f *fixture) takeBack(created *message, attempt store.Attempt, now time.Time) {
+	f.t.Helper()
+	if err := store.TakeBack(f.t.Context(), f.store, f.get(created), attempt, now); err != nil {
+		f.t.Fatal(err)
+	}
 }
 
 func (f *fixture) download(created *message, lease *store.Lease, now time.Time) error {
@@ -236,10 +224,11 @@ func newMessage(opens uint16, ttlSeconds uint32, passphrase bool) *store.Message
 		Size:           blobSize,
 	}
 	if passphrase {
-		created.KDF = 1
-		created.VerifierMAC = mac(fmt.Sprintf("verifier/%d", time.Now().UnixNano()))
-		created.VerifierPepperID = 7
+		created.KDF = 3
 	}
+	salt := seal.NewEraseSalt()
+	created.Registration = seal.WrapRegistration(&salt, seal.Locator{}, make([]byte, seal.RegistrationLen))
+	created.RegistrationPepperID = 7
 	return created
 }
 

@@ -23,10 +23,13 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -44,7 +47,7 @@ func TestAShareGoneAtTheDeadlineExpiresTheMessage(t *testing.T) {
 		if err := harness.server.advanceRatchet(deadline.Add(10 * time.Second)); err != nil {
 			t.Fatal(err)
 		}
-		if response, body := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusGone ||
+		if response, body := harness.claim(message, message.passphrase, ""); response.StatusCode != http.StatusGone ||
 			decodeJSON(t, body)["state"] != "expired" {
 			t.Fatalf("a claim whose share went with a peer's clock: %d %s", response.StatusCode, body)
 		}
@@ -52,7 +55,7 @@ func TestAShareGoneAtTheDeadlineExpiresTheMessage(t *testing.T) {
 			t.Fatalf("the claim ended the message before its deadline: %v", metadata)
 		}
 		synctest.Sleep(time.Until(deadline))
-		if response, body := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusGone ||
+		if response, body := harness.claim(message, message.passphrase, ""); response.StatusCode != http.StatusGone ||
 			decodeJSON(t, body)["state"] != "expired" {
 			t.Fatalf("a claim at the deadline: %d %s", response.StatusCode, body)
 		}
@@ -71,14 +74,14 @@ func TestAnOldReaderSpendsNoOpenOnADeadlineMessage(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "sealed deadline")
 		harness.mustCreate(message)
-		claim := claimRequestFor(message, message.verifier, "")
+		claim, _, _ := harness.claimRequestFor(message, message.passphrase, "")
 		claim.oldReader = true
 		if response, body := harness.do(claim); response.StatusCode != http.StatusBadRequest ||
 			decodeJSON(t, body)["error"] != api.ErrorClientOutdated {
 			t.Fatalf("an old reader's claim: %d %s", response.StatusCode, body)
 		}
 		for _, malformed := range []string{"", "02", "256", "two"} {
-			claim = claimRequestFor(message, message.verifier, "")
+			claim, _, _ = harness.claimRequestFor(message, message.passphrase, "")
 			claim.headers = map[string]string{api.FlagsHeaderName: malformed}
 			if response, body := harness.do(claim); response.StatusCode != http.StatusBadRequest ||
 				decodeJSON(t, body)["error"] != "bad_request" {
@@ -88,7 +91,7 @@ func TestAnOldReaderSpendsNoOpenOnADeadlineMessage(t *testing.T) {
 		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
 			t.Fatalf("a refused claim spent an open: %v", metadata)
 		}
-		response, _ := harness.claim(message, message.verifier, "")
+		response, _ := harness.claim(message, message.passphrase, "")
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("a current reader's claim: %d", response.StatusCode)
 		}
@@ -106,7 +109,7 @@ func TestAnOldReaderSpendsNoOpenOnADeadlineMessage(t *testing.T) {
 		legacy := harness.issueMessage(core.KDFNone, "", 1, 3600, "an earlier release")
 		harness.mustCreate(legacy)
 		harness.rewrite(legacy, func(stored *store.Message) { stored.Flags = 0 })
-		claim = claimRequestFor(legacy, legacy.verifier, "")
+		claim, _, _ = harness.claimRequestFor(legacy, legacy.passphrase, "")
 		claim.oldReader = true
 		served, _ := harness.do(claim)
 		policy, err := base64.RawURLEncoding.DecodeString(served.Header.Get(api.PolicyHeaderName))
@@ -126,7 +129,7 @@ func TestASpentMessageLosesItsShareLikeALiveOne(t *testing.T) {
 		harness.mustCreate(early)
 		deadline := epoch.Deadline(early.epoch)
 		synctest.Sleep(time.Until(deadline) - 50*time.Second)
-		response, _ := harness.claim(early, early.verifier, "")
+		response, _ := harness.claim(early, early.passphrase, "")
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
@@ -141,7 +144,7 @@ func TestASpentMessageLosesItsShareLikeALiveOne(t *testing.T) {
 		}
 		lost := harness.issueMessage(core.KDFNone, "", 1, 3600, "spent before the loss")
 		harness.mustCreate(lost)
-		response, _ = harness.claim(lost, lost.verifier, "")
+		response, _ = harness.claim(lost, lost.passphrase, "")
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
@@ -169,8 +172,9 @@ func TestAnInstanceBehindTheRatchetIssuesNoID(t *testing.T) {
 			t.Fatal(err)
 		}
 		request := &testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: map[string]string{
-			api.TTLHeaderName:      "3600",
-			api.ShareKeyHeaderName: testShareKeyHeader,
+			api.TTLHeaderName:          "3600",
+			api.ShareKeyHeaderName:     testShareKeyHeader,
+			api.RegistrationHeaderName: testRegistrationRequest,
 		}}
 		if response, body := harness.do(request); response.StatusCode != http.StatusServiceUnavailable ||
 			response.Header.Get("Retry-After") != "60" {
@@ -195,7 +199,7 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		if !strings.Contains(harness.logs.String(), "epoch-seed-created") {
 			t.Fatal("the new ratchet was not logged")
 		}
-		if response, body := harness.claim(lost, lost.verifier, ""); response.StatusCode != http.StatusGone ||
+		if response, body := harness.claim(lost, lost.passphrase, ""); response.StatusCode != http.StatusGone ||
 			decodeJSON(t, body)["state"] != "deleted" {
 			t.Fatalf("a claim whose share is lost: %d %s", response.StatusCode, body)
 		}
@@ -204,7 +208,7 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		}
 		fresh := harness.issueMessage(core.KDFNone, "", 1, 3600, "after the loss")
 		harness.mustCreate(fresh)
-		response, object := harness.claim(fresh, fresh.verifier, "")
+		response, object := harness.claim(fresh, fresh.passphrase, "")
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("a message after the loss: %d", response.StatusCode)
 		}
@@ -349,7 +353,13 @@ func TestAK4ConcurrentClaimsHTTP(t *testing.T) {
 			var wait sync.WaitGroup
 			codes := make([]int, 2)
 			for j := range codes {
-				wait.Go(func() { codes[j] = harness.statusFrom(claimRequestFor(message, "", "")) })
+				wait.Go(func() {
+					response, _, err := harness.tryClaim(message, "", "")
+					if err != nil {
+						t.Error(err)
+					}
+					codes[j] = response.StatusCode
+				})
 			}
 			wait.Wait()
 			if !slices.Equal(slices.Sorted(slices.Values(codes)), []int{200, 410}) {
@@ -394,13 +404,13 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 		}
 		if response, _ := harness.claim(
 			message,
-			message.verifier,
+			message.passphrase,
 			"203.0.113.99",
 		); response.StatusCode != http.StatusForbidden {
 			t.Fatalf("the backoff belongs to the message, so another address waits too: %d", response.StatusCode)
 		}
 		synctest.Sleep(time.Minute)
-		response, _ := harness.claim(message, message.verifier, "203.0.113.99")
+		response, _ := harness.claim(message, message.passphrase, "203.0.113.99")
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("correct passphrase after the wait: %d", response.StatusCode)
 		}
@@ -416,7 +426,7 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 			retryAfter := decodeJSON(t, body)["retry_after"].(float64)
 			synctest.Sleep(time.Duration(retryAfter * float64(time.Second)))
 		}
-		response, body := harness.claim(message, message.verifier, "192.0.2.77")
+		response, body := harness.claim(message, message.passphrase, "192.0.2.77")
 		fields := decodeJSON(t, body)
 		if response.StatusCode != http.StatusForbidden || fields["retry_after"].(float64) <= 0 ||
 			fields["attempts_left"].(float64) != 0 {
@@ -425,7 +435,7 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 		synctest.Sleep(24 * time.Hour)
 		if got, _ := harness.claim(
 			message,
-			message.verifier,
+			message.passphrase,
 			"192.0.2.78",
 		); got.StatusCode != http.StatusForbidden {
 			t.Fatalf("the lock must outlast the UTC day: %d", got.StatusCode)
@@ -440,10 +450,10 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 		fields = decodeJSON(t, body)
 		if response.StatusCode != http.StatusForbidden || fields["attempts_left"].(float64) != 4 ||
 			fields["retry_after"].(float64) != 0 {
-			t.Fatalf("missing verifier: %d %s", response.StatusCode, body)
+			t.Fatalf("an empty passphrase: %d %s", response.StatusCode, body)
 		}
 		if _, statusNow := harness.status(fresh); statusNow["failed_passphrase_attempts"].(float64) != 1 {
-			t.Fatalf("status after missing verifier: %v", statusNow)
+			t.Fatalf("status after an empty passphrase: %v", statusNow)
 		}
 	})
 }
@@ -462,7 +472,7 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 		var mutex sync.Mutex
 		for i := range 3 {
 			wait.Go(func() {
-				response, _, err := harness.tryDo(claimRequestFor(message, "", fmt.Sprintf("198.51.100.%d", 20+i)))
+				response, _, err := harness.tryClaim(message, "", fmt.Sprintf("198.51.100.%d", 20+i))
 				if err != nil {
 					t.Error(err)
 					return
@@ -648,7 +658,12 @@ func TestClaimBodyVariants(t *testing.T) {
 		path := "/api/v1/messages/" + message.id.String() + "/claim"
 		for name, request := range map[string]*testRequest{
 			"malformed-json": {method: http.MethodPost, path: path, body: []byte(`{"verifier":`), token: message.readToken},
-			"short-verifier": {method: http.MethodPost, path: path, token: message.readToken, verifier: message.verifier[:42]},
+			"short-ke3": {
+				method:  http.MethodPost,
+				path:    path,
+				token:   message.readToken,
+				headers: map[string]string{api.KE3HeaderName: core.Encode(make([]byte, 63))},
+			},
 		} {
 			response, _ := harness.do(request)
 			if response.StatusCode != http.StatusBadRequest {
@@ -844,7 +859,7 @@ var lifecycleKinds = []lifecycleKind{
 	}},
 	{name: "spent during the lease", opens: 1, ttl: 3600, expect: [11]string{
 		"204 - tomb:deleted", "204 - tomb:cancelled", "200 opened tomb:opened", "- - tomb:opened", "- - live:",
-		"200 opened live:", "- - live:", "410 opened live:", "200 - live:", "410 opened live:", "204 - tomb:opened",
+		"200 opened live:", "- - live:", "410 opened live:", "200 - live:", "500 - live:", "204 - tomb:opened",
 	}},
 	{
 		name:   "spent after the lease",
@@ -1390,16 +1405,18 @@ func TestHeadOnBlobSpendsNoDownload(t *testing.T) {
 }
 
 // burnAfterClaim burns the message right after the first write, which is the claim transaction.
+// burnAfterClaim burns the message after the update that spends the open, the third of a handshake and its claim.
 type burnAfterClaim struct {
 	store.Store
 
-	once sync.Once
-	burn func()
+	once    sync.Once
+	updates atomic.Int32
+	burn    func()
 }
 
 func (s *burnAfterClaim) Update(ctx context.Context, locator seal.Locator, change func(*store.Row) error) error {
 	err := s.Store.Update(ctx, locator, change)
-	if err == nil {
+	if err == nil && s.updates.Add(1) == 3 {
 		s.once.Do(s.burn)
 	}
 	return err
@@ -1596,6 +1613,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 		faulty := harness.withFaultyBlobs()
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 		harness.mustCreate(message)
+		login, _, _ := harness.handshake(message, "", "")
 		faulty.FailStream(errInjected)
 		request, err := http.NewRequest(
 			http.MethodPost,
@@ -1606,8 +1624,9 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 			t.Fatal(err)
 		}
 		request.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
+		request.Header.Set(api.KE3HeaderName, login.ke3)
 		request.Header.Set(api.FlagsHeaderName, strconv.Itoa(envelope.FlagDeadline))
-		harness.sign(request, message.readToken, "", nil)
+		harness.sign(request, message.readToken, &login.challenge, nil)
 		request.Header.Set("X-Forwarded-For", message.address)
 		claimed, err := harness.client.Do(request)
 		if err != nil {
@@ -1894,11 +1913,11 @@ func TestRefusedReaderDoesNotSpendItsRange(t *testing.T) {
 	})
 }
 
-func TestReadRateLimitCountsMetadataClaimAndBlob(t *testing.T) {
+func TestReadRateLimitCountsMetadataHandshakeClaimAndBlob(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
-		settings.Rates.ReadPerHour = 3
+		settings.Rates.ReadPerHour = 4
 		harness := newHarness(t, settings)
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "n")
 		message.address = "203.0.113.5"
@@ -1911,7 +1930,7 @@ func TestReadRateLimitCountsMetadataClaimAndBlob(t *testing.T) {
 		claimed, _ := harness.claim(message, "", "")
 		lease := claimed.Header.Get("X-Nylzo-Lease")
 		if claimed.StatusCode != http.StatusOK || lease == "" {
-			t.Fatalf("the third read, a claim: %d", claimed.StatusCode)
+			t.Fatalf("the third and fourth reads, a handshake and its claim: %d", claimed.StatusCode)
 		}
 		if response, _ := harness.blob(message, lease); response.StatusCode != http.StatusTooManyRequests {
 			t.Fatalf("a download over the read limit: %d", response.StatusCode)
@@ -1940,7 +1959,7 @@ func TestReadBytesPerHourStopsAClaimBeforeItSpendsAnOpen(t *testing.T) {
 		message := newMessage(t, core.KDFNone, "", uint16(within+1), 3600, "x")
 		harness.mustCreate(message)
 		for range within + 1 {
-			outdated := claimRequestFor(message, "", "")
+			outdated, _, _ := harness.claimRequestFor(message, "", "")
 			outdated.oldReader = true
 			if response, _ := harness.do(outdated); response.StatusCode != http.StatusBadRequest {
 				t.Fatalf("an outdated reader's claim: %d", response.StatusCode)
@@ -1983,6 +2002,210 @@ func TestASignedRequestWithAnEmptyChunkedBodyIsServed(t *testing.T) {
 		response.Body.Close()
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("a proxy's empty chunked body on a signed request: %d", response.StatusCode)
+		}
+	})
+}
+
+// A message whose registration pepper the instance does not hold answers 503 and counts nothing, and opens again once
+// that pepper is configured as the previous one (spec section 6.4).
+func TestAMessageWhoseRegistrationPepperIsMissingWaitsForIt(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "registered under pepper A")
+		harness.mustCreate(message)
+		harness.reopen(baseSettings(pepperB, pepperA))
+		harness.reopen(baseSettings(pepperC, pepperB))
+		_, response, body := harness.handshake(message, "", "")
+		if response.StatusCode != http.StatusServiceUnavailable {
+			t.Fatalf("a handshake under a pepper that is missing: %d %s", response.StatusCode, body)
+		}
+		if failures := harness.mustRecord(message).Message.FailCountTotal; failures != 0 {
+			t.Fatalf("the handshake counted %d attempts", failures)
+		}
+		harness.reopen(baseSettings(pepperC, pepperA))
+		if claimed, _ := harness.claim(message, "", ""); claimed.StatusCode != http.StatusOK {
+			t.Fatalf("a claim once the pepper is back: %d", claimed.StatusCode)
+		}
+	})
+}
+
+// A handshake refused for a malformed KE1 or a lease that is not active counts no attempt (spec section 6.4).
+func TestARefusedHandshakeCountsNoAttempt(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "refused handshake")
+		harness.mustCreate(message)
+		valid, _, err := opaque.GenerateKE1([]byte("any password"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		identity := valid
+		clear(identity[:opaque.ElementLen])
+		for name, test := range map[string]struct {
+			headers map[string]string
+			status  int
+		}{
+			"no KE1":                      {map[string]string{}, http.StatusBadRequest},
+			"a short KE1":                 {map[string]string{api.KE1HeaderName: core.Encode(valid[:opaque.KE1Len-1])}, http.StatusBadRequest},
+			"an identity blinded element": {map[string]string{api.KE1HeaderName: core.Encode(identity[:])}, http.StatusBadRequest},
+			"a lease that is not active": {
+				map[string]string{api.KE1HeaderName: core.Encode(valid[:]), api.LeaseHeaderName: core.Encode(core.NewSecret()[:])},
+				http.StatusGone,
+			},
+		} {
+			response, body := harness.do(&testRequest{
+				method:  http.MethodPost,
+				path:    "/api/v1/messages/" + message.id.String() + api.HandshakeAction,
+				token:   message.readToken,
+				headers: test.headers,
+			})
+			if failures := harness.mustRecord(message).Message.FailCountTotal; response.StatusCode != test.status ||
+				failures != 0 {
+				t.Fatalf("%s: %d %s, %d failures", name, response.StatusCode, body, failures)
+			}
+		}
+	})
+}
+
+// A claim or burn refused for load before its KE3 is checked still takes back the attempt of its handshake, so a busy
+// server never charges a reader whose passphrase is right (spec section 6.4).
+func TestARequestRefusedForLoadTakesItsHandshakeBack(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		action  string
+		refuse  func(settings *config.Server)
+		refusal func(server *Server)
+	}{
+		"a claim over the read budget": {
+			action: api.ClaimAction,
+			refuse: func(settings *config.Server) { settings.Rates.ReadPerHour = 1 },
+		},
+		"a burn over the read budget": {
+			action: api.BurnAction,
+			refuse: func(settings *config.Server) { settings.Rates.ReadPerHour = 1 },
+		},
+		"a claim the instance bucket throttles": {
+			action:  api.ClaimAction,
+			refusal: func(server *Server) { server.instance = ratelimit.NewFair(1, 0) },
+		},
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			settings := baseSettings(pepperA, nil)
+			if test.refuse != nil {
+				test.refuse(settings)
+			}
+			harness := newHarness(t, settings)
+			message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "refused for load")
+			harness.mustCreate(message)
+			login, _, _ := harness.handshake(message, message.passphrase, "")
+			if test.refusal != nil {
+				test.refusal(harness.server)
+			}
+			response, _ := harness.do(login.request(message, test.action, ""))
+			failures := harness.mustRecord(message).Message.FailCountTotal
+			if response.StatusCode != http.StatusTooManyRequests || failures != 0 || !harness.blobExists(message) {
+				t.Fatalf("%s: %d, %d failures", name, response.StatusCode, failures)
+			}
+		})
+	}
+}
+
+// A download refused for load before its KE3 is checked takes the attempt of its handshake back (spec section 6.4).
+func TestADownloadRefusedForLoadTakesItsHandshakeBack(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "refused download")
+		harness.mustCreate(message)
+		claimed, _ := harness.claim(message, message.passphrase, "")
+		login, _, _ := harness.handshake(message, message.passphrase, "")
+		harness.server.streams = ratelimit.NewStreams(0)
+		response, _ := harness.do(&testRequest{
+			method:    http.MethodGet,
+			path:      "/api/v1/messages/" + message.id.String() + api.BlobAction,
+			token:     message.readToken,
+			challenge: &login.challenge,
+			headers: map[string]string{
+				api.LeaseHeaderName: claimed.Header.Get(api.LeaseHeaderName),
+				api.KE3HeaderName:   login.ke3,
+			},
+		})
+		failures := harness.mustRecord(message).Message.FailCountTotal
+		if response.StatusCode != http.StatusServiceUnavailable || failures != 0 {
+			t.Fatalf("a download refused for load: %d, %d failures", response.StatusCode, failures)
+		}
+	})
+}
+
+// A handshake that names an active lease runs, and counts, on a message whose last open is spent (spec section 6.5).
+func TestAHandshakeNamingAnActiveLeaseCounts(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "resumed")
+		harness.mustCreate(message)
+		claimed, _ := harness.claim(message, message.passphrase, "")
+		ke1, _, err := opaque.GenerateKE1([]byte("any password"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, body := harness.do(&testRequest{
+			method: http.MethodPost,
+			path:   "/api/v1/messages/" + message.id.String() + api.HandshakeAction,
+			token:  message.readToken,
+			headers: map[string]string{
+				api.KE1HeaderName:   core.Encode(ke1[:]),
+				api.LeaseHeaderName: claimed.Header.Get(api.LeaseHeaderName),
+			},
+		})
+		failures := harness.mustRecord(message).Message.FailCountTotal
+		if response.StatusCode != http.StatusOK || failures != 1 {
+			t.Fatalf("a handshake naming an active lease: %d %s, %d failures", response.StatusCode, body, failures)
+		}
+	})
+}
+
+// TestAResumedDownloadTakesItsHandshakeBack covers spec section 6.5: a reader that resumes from its lease runs a
+// handshake for P, and its download carries KE3, which takes the attempt back only when it matches.
+func TestAResumedDownloadTakesItsHandshakeBack(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "resumed")
+		harness.mustCreate(message)
+		claimed, _ := harness.claim(message, message.passphrase, "")
+		lease := claimed.Header.Get(api.LeaseHeaderName)
+		if claimed.StatusCode != http.StatusOK || lease == "" {
+			t.Fatalf("claim: %d", claimed.StatusCode)
+		}
+		blobPath := "/api/v1/messages/" + message.id.String() + "/blob"
+		resume := func(challenge [signing.ChallengeLen]byte, ke3 string) testResponse {
+			response, _ := harness.do(&testRequest{
+				method:    http.MethodGet,
+				path:      blobPath,
+				token:     message.readToken,
+				challenge: &challenge,
+				headers:   map[string]string{api.LeaseHeaderName: lease, api.KE3HeaderName: ke3},
+			})
+			return response
+		}
+		failures := func() float64 {
+			_, status := harness.status(message)
+			return status["failed_passphrase_attempts"].(float64)
+		}
+		wrong, _, _ := harness.handshake(message, "a wrong passphrase", "")
+		if got := resume(wrong.challenge, wrong.ke3); got.StatusCode != http.StatusForbidden || failures() != 1 {
+			t.Fatalf("a download with a KE3 that does not match: %d, %v failures", got.StatusCode, failures())
+		}
+		right, _, _ := harness.handshake(message, message.passphrase, "")
+		if got := resume(harness.challenge(), right.ke3); got.StatusCode != http.StatusNotFound || failures() != 2 {
+			t.Fatalf("a KE3 over a challenge no handshake issued: %d, %v failures", got.StatusCode, failures())
+		}
+		again, _, _ := harness.handshake(message, message.passphrase, "")
+		if got := resume(again.challenge, again.ke3); got.StatusCode != http.StatusOK || failures() != 2 {
+			t.Fatalf("a matching KE3 on the resumed download: %d, %v failures", got.StatusCode, failures())
 		}
 	})
 }

@@ -7,7 +7,7 @@ import {
   solvePow,
   TooLargeError,
 } from '@nylzo/core';
-import { scryptPassphraseKey } from '@nylzo/core/scrypt';
+import { stretchScrypt } from '@nylzo/core/scrypt';
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '../../shared/api/api-errors.ts';
@@ -17,10 +17,9 @@ import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
 import { CreateError, createMessage, passphraseIsWeak, POW_BUDGET_MS, validateCreate } from './create-message.ts';
 import type { CreateDependencies, CreateInput } from './create-message.ts';
 
-type Scrypt = CreateDependencies['scrypt'];
+type Stretch = CreateDependencies['stretch'];
 
-const scrypt: Scrypt = (passphrase, passphraseSalt, onProgress) =>
-  Promise.resolve(scryptPassphraseKey(passphrase, passphraseSalt, onProgress));
+const stretch: Stretch = (message, onProgress) => Promise.resolve(stretchScrypt(message, onProgress));
 
 class ImpostorError extends Error {
   override readonly name = 'KdfWorkerError';
@@ -37,7 +36,7 @@ function createDependencies(api: FakeApi, solve?: (call: PowCall, id: Uint8Array
   const dependencies: CreateDependencies = {
     api,
     origin: 'https://nylzo.test',
-    scrypt,
+    stretch,
     solvePow: async (challenge, id, difficulty, budgetMs) => {
       const call = { challenge, difficulty, budgetMs };
       powCalls.push(call);
@@ -66,16 +65,16 @@ describe('creating a message', () => {
     const api = fakeApi();
     const file = { name: 'a\uD800.txt', mime: 'text/plain', bytes: new Uint8Array([1]) };
     const created = await createMessage(input({ text: 'x\uDC00', file }), createDependencies(api));
-    expect(created.link).toMatch(/\/r#2\./u);
+    expect(created.link).toMatch(/\/r#3\./u);
   });
 
-  it('F1, F7: pins the object in the link and sends a verifier also without a passphrase', async () => {
+  it('F1, F7: pins the object in the link and registers with OPAQUE also without a passphrase', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const [message] = api.stored.values();
     const link = parseLink(created.link);
     expect(link.objectHash).toEqual(await objectHash(message?.request.object ?? new Uint8Array()));
-    expect(message?.request.verifierKey).toHaveLength(32);
+    expect(message?.request.registration).toHaveLength(192);
     expect(message?.request.object).toHaveLength(65_536);
   });
 
@@ -83,7 +82,7 @@ describe('creating a message', () => {
     const api = fakeApi({ failCreate: [new ApiError(403, 'id_token'), new ApiError(409, 'share_lost')] });
     const created = await createMessage(input(), createDependencies(api));
     expect(api.calls).toEqual(['instance+id', 'create', 'instance+id', 'create', 'instance+id', 'create']);
-    expect(created.link).toContain(`/r#2.0.${encodeBase64url(api.issuedIds[2] ?? new Uint8Array(16))}.`);
+    expect(created.link).toContain(`/r#3.0.${encodeBase64url(api.issuedIds[2] ?? new Uint8Array(16))}.`);
   });
 
   it('solves a challenge fetched after the key derivation and stops near the window', async () => {
@@ -157,15 +156,22 @@ describe('creating a message', () => {
       ],
     });
     expect(api.calls).toEqual(['instance+id']);
+    const words = Array.from({ length: 16_000 }, (_, index) => `w${index.toString(36)}`).join(' ');
+    const tooLong = createMessage(input({ passphrase: words }), createDependencies(api));
+    await expect(tooLong).rejects.toHaveProperty('failure', {
+      kind: 'invalid',
+      problems: [{ field: 'passphrase', code: 'too_long' }],
+    });
+    expect(api.calls).toEqual(['instance+id']);
   });
 
   it('tells a failed key derivation worker and a too large message apart from other failures', async () => {
     const api = fakeApi();
-    const failing = { ...createDependencies(api), scrypt: () => Promise.reject(new KdfWorkerError()) };
+    const failing = { ...createDependencies(api), stretch: () => Promise.reject(new KdfWorkerError()) };
     await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), failing)).rejects.toMatchObject({
       failure: { kind: 'kdf' },
     });
-    const renamed = { ...createDependencies(api), scrypt: () => Promise.reject(new ImpostorError('worker')) };
+    const renamed = { ...createDependencies(api), stretch: () => Promise.reject(new ImpostorError('worker')) };
     await expect(createMessage(input({ passphrase: 'correct horse battery staple' }), renamed)).rejects.toMatchObject({
       failure: { kind: 'failed' },
     });

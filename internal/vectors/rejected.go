@@ -36,7 +36,7 @@ type Rejected struct {
 	ObjectHash string   `json:"h"`
 	E          string   `json:"e_hex"`
 	KDFID      int      `json:"kdf_id"`
-	Passphrase *string  `json:"passphrase,omitempty"`
+	P          *string  `json:"p_hex,omitempty"`
 	Error      string   `json:"error"`
 }
 
@@ -59,10 +59,11 @@ const (
 )
 
 type rejection struct {
-	vector Rejected
-	object []byte
-	hash   *[core.ObjectHashLen]byte
-	share  *[core.ShareLen]byte
+	vector    Rejected
+	object    []byte
+	hash      *[core.ObjectHashLen]byte
+	share     *[core.ShareLen]byte
+	exportKey *keys.ExportKey
 }
 
 func (f *File) rejected() error {
@@ -82,6 +83,7 @@ func (f *File) rejected() error {
 	twoKey, err := twoKeyObject(
 		base.id,
 		base.secret,
+		base.exportKey,
 		[2]*[core.ShareLen]byte{base.share, secondShare},
 		base.header,
 		base.policy,
@@ -125,15 +127,8 @@ func rejectedCases(
 			},
 		},
 		{vector: Rejected{Name: "flags-set", FlipByte: new(2), Error: errorFlags}},
-		{vector: Rejected{Name: "version-other-than-2", FlipByte: new(0), Error: errorVersion}},
-		{
-			vector: Rejected{
-				Name:       "kdf-other-than-link",
-				KDFID:      int(core.KDFScrypt),
-				Passphrase: new("a passphrase the link asks for"),
-				Error:      errorKDFMismatch,
-			},
-		},
+		{vector: Rejected{Name: "version-other-than-3", FlipByte: new(0), Error: errorVersion}},
+		{vector: Rejected{Name: "kdf-other-than-link", KDFID: int(core.KDFScrypt), Error: errorKDFMismatch}},
 		{
 			vector: Rejected{
 				Name:     "wrong-id",
@@ -157,12 +152,12 @@ func rejectedCases(
 		},
 		{
 			vector: Rejected{
-				Name:       "wrong-passphrase",
-				Base:       scryptBase,
-				KDFID:      int(core.KDFScrypt),
-				Passphrase: new("a wrong passphrase for this link"),
-				Error:      errorIntegrity,
+				Name:  "wrong-export-key",
+				Base:  scryptBase,
+				KDFID: int(core.KDFScrypt),
+				Error: errorIntegrity,
 			},
+			exportKey: deterministicExportKey("rejected/wrong-export-key"),
 		},
 		{vector: Rejected{Name: "envelope-kdf-1", SetByte: &SetByte{Offset: 1, Value: 1}, Error: errorKDF}},
 		{vector: Rejected{Name: "envelope-kdf-2", SetByte: &SetByte{Offset: 1, Value: 2}, Error: errorKDF}},
@@ -244,12 +239,18 @@ func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected
 	if err != nil {
 		return Rejected{}, err
 	}
-	derived, err := keys.DeriveAll(id, base.secret, kdf, valueOr(vector.Passphrase), share)
+	exportKey := rejected.exportKey
+	if exportKey == nil {
+		exportKey = base.exportKey
+	} else {
+		vector.P = new(hex.EncodeToString(exportKey[:]))
+	}
+	content, err := keys.DeriveContent(id, base.secret, exportKey, share)
 	if err != nil {
 		return Rejected{}, err
 	}
 	expected := envelope.Expected{ID: id, Policy: policy, KDF: kdf, ObjectHash: hash}
-	_, _, openErr := envelope.Open(&derived.Content, &expected, object)
+	_, _, openErr := envelope.Open(&content, &expected, object)
 	if got := errorName(openErr); got != vector.Error {
 		return Rejected{}, fmt.Errorf(
 			"%w %q fails with %q, want %q",

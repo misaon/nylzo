@@ -61,6 +61,7 @@ func TestOpenRefusesAnotherSchemaVersion(t *testing.T) {
 	}{
 		"a newer version":                    {`PRAGMA user_version = 9;`, sqlite.ErrNewerSchema},
 		"a released version":                 {preRelease + `PRAGMA user_version = 5;`, sqlite.ErrReleasedSchema},
+		"a version of protocol v2":           {preRelease + `PRAGMA user_version = 7;`, sqlite.ErrReleasedSchema},
 		"a pre-release version":              {preRelease + `PRAGMA user_version = 4;`, sqlite.ErrOlderSchema},
 		"pre-release tables without version": {preRelease, sqlite.ErrOlderSchema},
 	} {

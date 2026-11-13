@@ -384,8 +384,8 @@ describe('message composer interactions', () => {
     form.protect = true;
     form.passphrase = 'correct horse battery staple';
     let derivation: Promise<Uint8Array<ArrayBuffer>> | undefined;
-    vi.mocked(createMessage).mockImplementationOnce(async (input, dependencies) => {
-      derivation = dependencies.scrypt(input.passphrase ?? '', new Uint8Array(16), vi.fn<(fraction: number) => void>());
+    vi.mocked(createMessage).mockImplementationOnce(async (_input, dependencies) => {
+      derivation = dependencies.stretch(new Uint8Array(64), vi.fn<(fraction: number) => void>());
       return derivation.then(() => created);
     });
     const sending = submit(form);

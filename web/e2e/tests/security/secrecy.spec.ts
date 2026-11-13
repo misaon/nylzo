@@ -1,5 +1,4 @@
-import { deriveLink, deriveVerifier, encodeBase64url, parseLink, requestKey } from '@nylzo/core';
-import { scryptPassphraseKey } from '@nylzo/core/scrypt';
+import { deriveLink, encodeBase64url, KDF_SCRYPT, opaquePassword, parseLink, requestKey } from '@nylzo/core';
 import type { Locator } from '@playwright/test';
 
 import { expect, test } from '../support/fixtures.ts';
@@ -30,7 +29,7 @@ test(
     };
     const link = await createMessageInPage(sender, { text, file, passphrase: PASSPHRASE });
     expect(link.startsWith(`${BASE_URL}/r#`)).toBe(true);
-    expect(new URL(link).hash).toMatch(/^#2\.3\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/u);
+    expect(new URL(link).hash).toMatch(/^#3\.3\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/u);
 
     await showMessage(recipient, link, WRONG_PASSPHRASE);
     await expect(recipient.getByText(/Wrong passphrase/u)).toBeVisible({ timeout: 30_000 });
@@ -53,16 +52,14 @@ test(
 
     const { id, secret } = parseLink(link);
     const { readSeed, passphraseSalt } = await deriveLink(id, secret);
-    const passphraseKey = scryptPassphraseKey(PASSPHRASE, passphraseSalt);
-    const verifierSeed = await deriveVerifier(id, secret, passphraseKey);
+    const password = opaquePassword(passphraseSalt, KDF_SCRYPT, PASSPHRASE);
     const readKey = await requestKey(readSeed);
-    const verifierKey = await requestKey(verifierSeed);
     const requests = [...(await senderRequests()), ...(await recipientRequests())];
     const creation = requests.find((request) => request.headers['x-nylzo-create'] !== undefined);
     const announced = Buffer.from(creation?.headers['x-nylzo-create'] ?? '', 'base64url').toString('utf8');
     expect(JSON.parse(announced)).toMatchObject({
       read_key: encodeBase64url(readKey.publicKey),
-      verifier_key: encodeBase64url(verifierKey.publicKey),
+      registration: expect.stringMatching(/^[\w-]{256}$/u),
     });
     expect(requests.length).toBeGreaterThan(6);
     expectNoSecretSent(requests, [
@@ -72,7 +69,7 @@ test(
       ...textForms(text),
       ...textForms(file.name),
       ...textForms(file.buffer.toString('utf8')),
-      ...[secret, readSeed, passphraseSalt, passphraseKey, verifierSeed].flatMap((value) => encodedForms(value)),
+      ...[secret, readSeed, passphraseSalt, password].flatMap((value) => encodedForms(value)),
     ]);
   },
 );

@@ -93,17 +93,18 @@ func ghash(hashKey fieldElement, aad, ciphertext []byte) fieldElement {
 func twoKeyObject(
 	id core.ID,
 	secret *[core.SecretLen]byte,
+	exportKey *keys.ExportKey,
 	shares [2]*[core.ShareLen]byte,
 	header envelope.Header,
 	policy envelope.Policy,
 ) ([]byte, error) {
 	var contents [2]keys.ContentKeys
 	for i, share := range shares {
-		derived, err := keys.DeriveAll(id, secret, core.KDFNone, "", share)
+		content, err := keys.DeriveContent(id, secret, exportKey, share)
 		if err != nil {
 			return nil, err
 		}
-		contents[i] = derived.Content
+		contents[i] = content
 	}
 	commitment := envelope.Commitment(&contents[0].Commitment, header, id, policy)
 	aad := envelope.AAD(header, commitment[:], id, policy)

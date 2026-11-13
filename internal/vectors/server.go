@@ -46,12 +46,12 @@ type MACCase struct {
 
 var purposes = []pepper.Purpose{
 	pepper.Read,
-	pepper.Verifier,
 	pepper.Manage,
 	pepper.Lease,
 	pepper.PoW,
 	pepper.IDToken,
 	pepper.Challenge,
+	pepper.OPAQUEServer,
 }
 
 func (f *File) server() error {

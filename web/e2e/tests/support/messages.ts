@@ -1,7 +1,12 @@
 import {
+  createRegistrationRequest,
+  deriveContent,
   deriveLink,
+  derivePassphraseSalt,
   encodeBase64url,
+  finalizeRegistrationRequest,
   formatLink,
+  identityStretch,
   idToString,
   KDF_NONE,
   KDF_SCRYPT,
@@ -10,12 +15,13 @@ import {
   newSecret,
   newShareKey,
   objectHash,
+  opaquePassword,
   requestKey,
   seal,
   unwrapShare,
 } from '@nylzo/core';
 import type { ContentKeys, Header, Meta, Policy } from '@nylzo/core';
-import { deriveAll } from '@nylzo/core/scrypt';
+import { stretchScrypt } from '@nylzo/core/scrypt';
 
 import { createApi } from '../../../app/src/shared/api/api.ts';
 import type { Status } from '../../../app/src/shared/api/api.ts';
@@ -36,7 +42,6 @@ export interface MessageOptions {
   readonly file?: MessageFile;
   readonly passphrase?: string;
   readonly opensMax?: number;
-  readonly readKeyStartsWithZero?: boolean;
   readonly plaintext?: Uint8Array<ArrayBuffer>;
 }
 
@@ -54,31 +59,33 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
   const ttlSeconds = 3600;
   const api = createApi({ base });
   const shareKey = newShareKey();
-  const { create } = await api.instance({ ttlSeconds, shareKey: shareKey.publicKey });
+  const secret = newSecret();
+  const password = opaquePassword(await derivePassphraseSalt(secret), kdfId, passphrase);
+  const { request, state } = createRegistrationRequest(password);
+  const { create } = await api.instance({ ttlSeconds, shareKey: shareKey.publicKey, registrationRequest: request });
   if (create === undefined) {
     throw new Error('the instance issued no id');
   }
   const policy = { opensMax: options.opensMax ?? 1, ttlSeconds, deadline: create.deadline };
-  let secret = newSecret();
-  while (options.readKeyStartsWithZero === true && !(await readKeyStartsWithZero(create.id, secret))) {
-    secret = newSecret();
-  }
+  const stretch =
+    kdfId === KDF_NONE ? identityStretch : (message: Uint8Array) => Promise.resolve(stretchScrypt(message));
+  const registration = await finalizeRegistrationRequest(state, create.registration, stretch);
   const share = await unwrapShare(shareKey, create.share);
-  const { link, verifierSeed, content } = await deriveAll(create.id, secret, kdfId, passphrase, share);
+  const content = await deriveContent(create.id, secret, registration.exportKey, share);
+  const link = await deriveLink(create.id, secret);
   const header = newHeader(kdfId);
   const object =
     options.plaintext === undefined
       ? await seal(content, header, create.id, policy, { meta: metaOf(options), file: options.file?.buffer })
       : await sealPlaintext(content, header, create.id, policy, options.plaintext);
   const readKey = await requestKey(link.readSeed);
-  const verifier = await requestKey(verifierSeed);
   const manageKey = await newRequestKey();
   await api.create({
     id: create.id,
     idToken: create.idToken,
     epoch: create.epoch,
     readKey: readKey.publicKey,
-    verifierKey: verifier.publicKey,
+    registration: registration.record,
     manageKey: manageKey.publicKey,
     kdfId,
     ...policy,
@@ -106,11 +113,6 @@ async function sealPlaintext(
     plaintext,
   );
   return concatenate(headerBytes(header), committed, new Uint8Array(ciphertext));
-}
-
-async function readKeyStartsWithZero(id: Uint8Array, secret: Uint8Array): Promise<boolean> {
-  const { readSeed } = await deriveLink(id, secret);
-  return readSeed[0] === 0;
 }
 
 function metaOf({ text, file }: MessageOptions): Meta {

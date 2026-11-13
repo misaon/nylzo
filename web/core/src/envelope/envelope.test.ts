@@ -28,7 +28,6 @@ import {
 } from '../limits.ts';
 import { decodeBase64url, encodeBase64url } from '../primitives/base64url.ts';
 import { newSecret, parseId } from '../primitives/identifiers.ts';
-import { deriveAll } from '../scrypt.ts';
 import { objectHash, open, seal } from './envelope.ts';
 import type { Expected, Payload } from './envelope.ts';
 import { aad, newHeader } from './header.ts';
@@ -51,7 +50,7 @@ function policyOf(opensMax: number, ttlSeconds: number, deadline: number): Polic
   return deadline === 0 ? { opensMax, ttlSeconds } : { opensMax, ttlSeconds, deadline };
 }
 const textPayload: Payload = { meta: { text: 'integrity' } };
-const passphraseKey = new Uint8Array(32).fill(1);
+const exportKey = new Uint8Array(64).fill(1);
 const prefix = PREFIX_LENGTH;
 
 async function keysOf(id: Uint8Array, secret: Uint8Array, key: Uint8Array, share: Uint8Array): Promise<ContentKeys> {
@@ -62,7 +61,7 @@ async function sealed(kdfId: KdfId, payload = textPayload): Promise<Sealed> {
   const id = randomId();
   const secret = newSecret();
   const share = newSecret();
-  const keys = await keysOf(id, secret, kdfId === KDF_NONE ? new Uint8Array(0) : passphraseKey, share);
+  const keys = await keysOf(id, secret, exportKey, share);
   const object = await seal(keys, newHeader(kdfId), id, policy, payload);
   return { id, secret, share, keys, object };
 }
@@ -98,8 +97,8 @@ async function sealVector(vector: EnvelopeVector): Promise<{
   const id = parseId(vector.id);
   const kdfId = kdfIdOf(vector.kdf_id);
   const share = hexToBytes(vector.e_hex);
-  const { content } = await deriveAll(id, hexToBytes(vector.s), kdfId, vector.passphrase ?? '', share);
-  const header: Header = { version: 2, kdfId, flags: vector.flags, iv: hexToBytes(vector.iv_hex) };
+  const content = await deriveContent(id, hexToBytes(vector.s), hexToBytes(vector.p_hex), share);
+  const header: Header = { version: 3, kdfId, flags: vector.flags, iv: hexToBytes(vector.iv_hex) };
   const file = vector.file && fileBytes(vector.file);
   const fileMeta = vector.file && { name: vector.file.name, mime: vector.file.mime, size: vector.file.size };
   const meta: Meta = { text: vector.text, file: fileMeta };
@@ -176,11 +175,10 @@ describe('AK9, F1, F3, F4: a reader refuses every object its link does not open'
     }
     const id = parseId(vector.reader_id ?? base.id);
     const kdfId = kdfIdOf(vector.kdf_id);
-    const { content } = await deriveAll(
+    const content = await deriveContent(
       id,
       hexToBytes(base.s),
-      kdfId,
-      vector.passphrase ?? '',
+      hexToBytes(vector.p_hex ?? base.p_hex),
       hexToBytes(vector.e_hex),
     );
     const expected: Expected = {
@@ -223,16 +221,16 @@ describe('AK8: a changed envelope, policy or key fails integrity', () => {
     ['another id', () => reopen(message.object, { id: randomId() })],
     [
       'another secret',
-      async () => reopen(message.object, {}, await keysOf(message.id, newSecret(), passphraseKey, message.share)),
+      async () => reopen(message.object, {}, await keysOf(message.id, newSecret(), exportKey, message.share)),
     ],
     [
-      'a wrong passphrase',
+      'another export key',
       async () =>
-        reopen(message.object, {}, await keysOf(message.id, message.secret, new Uint8Array(32), message.share)),
+        reopen(message.object, {}, await keysOf(message.id, message.secret, new Uint8Array(64), message.share)),
     ],
     [
       'F3: another share',
-      async () => reopen(message.object, {}, await keysOf(message.id, message.secret, passphraseKey, newSecret())),
+      async () => reopen(message.object, {}, await keysOf(message.id, message.secret, exportKey, newSecret())),
     ],
     [
       'F1: an object other than the link pins',
@@ -264,8 +262,8 @@ describe('open rejects a malformed header before decrypting (spec 3)', () => {
   });
 
   it.each<[string, (object: Uint8Array) => Uint8Array, KdfId, new () => Error]>([
-    ['version 3', (object) => flipped(object, 0, 1), KDF_NONE, VersionError],
-    ['version 1', (object) => flipped(object, 0, 3), KDF_NONE, VersionError],
+    ['version 2', (object) => flipped(object, 0, 1), KDF_NONE, VersionError],
+    ['version 0', (object) => flipped(object, 0, 3), KDF_NONE, VersionError],
     ['flags 3', (object) => flipped(object, 2), KDF_NONE, FlagsError],
     ['F13: a cleared deadline flag', (object) => flipped(object, 2, 2), KDF_NONE, IntegrityError],
     ['the retired profile 2', (object) => flipped(object, 1, KDF_RETIRED), KDF_RETIRED as KdfId, KdfError],
@@ -286,7 +284,7 @@ describe('seal rejects what the spec forbids (spec 3 and 3.1)', () => {
   const oversizedFile = new Uint8Array(MAX_FILE_BYTES + 1);
   let keys: ContentKeys;
   beforeAll(async () => {
-    keys = await keysOf(randomId(), newSecret(), new Uint8Array(0), newSecret());
+    keys = await keysOf(randomId(), newSecret(), exportKey, newSecret());
   });
 
   it.each<[string, Header, Policy, Payload, new () => Error]>([

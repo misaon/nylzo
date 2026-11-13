@@ -41,18 +41,31 @@ func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
+		registration := testRegistrationRequest
+		creation := func(ttl, shareKey, registration string) map[string]string {
+			return map[string]string{
+				api.TTLHeaderName:          ttl,
+				api.ShareKeyHeaderName:     shareKey,
+				api.RegistrationHeaderName: registration,
+			}
+		}
 		for _, headers := range []map[string]string{
 			{api.TTLHeaderName: "3600"},
 			{api.ShareKeyHeaderName: testShareKeyHeader},
-			{api.TTLHeaderName: "59", api.ShareKeyHeaderName: testShareKeyHeader},
-			{api.TTLHeaderName: "0600", api.ShareKeyHeaderName: testShareKeyHeader},
-			{api.TTLHeaderName: "604801", api.ShareKeyHeaderName: testShareKeyHeader},
-			{api.TTLHeaderName: "3600", api.ShareKeyHeaderName: testShareKeyHeader + "A"},
-			{api.TTLHeaderName: "3600", api.ShareKeyHeaderName: core.Encode(make([]byte, 32)) + ", " + testShareKeyHeader},
+			{api.TTLHeaderName: "3600", api.RegistrationHeaderName: registration},
+			creation("59", testShareKeyHeader, registration),
+			creation("0600", testShareKeyHeader, registration),
+			creation("604801", testShareKeyHeader, registration),
+			creation("3600", testShareKeyHeader+"A", registration),
+			creation("3600", core.Encode(make([]byte, 32))+", "+testShareKeyHeader, registration),
+			creation("3600", testShareKeyHeader, core.Encode(make([]byte, 32))),
+			creation("3600", testShareKeyHeader, registration[:len(registration)-1]),
+			creation("3600", testShareKeyHeader, registration+", "+registration),
 		} {
-			if response, body := harness.do(
+			response, body := harness.do(
 				&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: headers},
-			); response.StatusCode != http.StatusBadRequest {
+			)
+			if response.StatusCode != http.StatusBadRequest || decodeJSON(t, body)["error"] != "bad_request" {
 				t.Fatalf("instance %v: %d %s", headers, response.StatusCode, body)
 			}
 		}
@@ -72,7 +85,7 @@ func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
 		}
 		previous := ""
 		for range 2 {
-			response, object := harness.claim(message, message.verifier, "")
+			response, object := harness.claim(message, message.passphrase, "")
 			if response.StatusCode != http.StatusOK {
 				t.Fatalf("claim: %d", response.StatusCode)
 			}
@@ -95,6 +108,7 @@ func TestCreateTellsAnOldClientToUpdateAndRefusesAnotherDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		released := newMessage(t, core.KDFNone, "", 1, 3600, "v1")
+		harness.bindShare(released)
 		released.object[0] = 1
 		if response, body := harness.create(released); response.StatusCode != http.StatusBadRequest ||
 			!strings.Contains(string(body), `"client_outdated"`) {
@@ -112,6 +126,7 @@ func TestCreateTellsAnOldClientToUpdateAndRefusesAnotherDeadline(t *testing.T) {
 			t.Fatalf("a create header of protocol version 1: %d %s", response.StatusCode, body)
 		}
 		withoutDeadline := newMessage(t, core.KDFNone, "", 1, 3600, "no deadline")
+		harness.bindShare(withoutDeadline)
 		withoutDeadline.object[2] = 0
 		if response, body := harness.create(withoutDeadline); response.StatusCode != http.StatusBadRequest ||
 			!strings.Contains(string(body), `"client_outdated"`) {
@@ -170,14 +185,15 @@ func FuzzCreateHeader(f *testing.F) {
 			}
 		}
 		var harness struct {
-			KDFID       int     `json:"kdf_id"`
-			VerifierKey *string `json:"verifier_key"`
-			OpensMax    int     `json:"opens_max"`
-			TTL         int64   `json:"ttl_s"`
+			KDFID        int     `json:"kdf_id"`
+			Registration *string `json:"registration"`
+			VerifierKey  *string `json:"verifier_key"`
+			OpensMax     int     `json:"opens_max"`
+			TTL          int64   `json:"ttl_s"`
 		}
 		json.Unmarshal(data, &harness)
-		if harness.VerifierKey == nil || (harness.KDFID != 0 && harness.KDFID != 3) {
-			t.Fatal("accepted a header without a verifier key or with a profile v2 does not know")
+		if harness.Registration == nil || harness.VerifierKey != nil || (harness.KDFID != 0 && harness.KDFID != 3) {
+			t.Fatal("accepted a header without a registration, with a verifier or with a profile v3 does not know")
 		}
 		if harness.OpensMax < 1 || harness.OpensMax > settings.Limits.MaxOpens ||
 			harness.TTL < envelope.MinTTLSeconds ||
@@ -192,7 +208,7 @@ var createHeaderMembers = map[string]bool{
 	"id_token":     true,
 	"epoch":        true,
 	"read_key":     true,
-	"verifier_key": true,
+	"registration": true,
 	"manage_key":   true,
 	"kdf_id":       true,
 	"opens_max":    true,
@@ -207,6 +223,8 @@ func TestCreateHeaderKeysMatchStruct(t *testing.T) {
 		tag, _, _ := strings.Cut(field.Tag.Get("json"), ",")
 		tags[tag] = true
 	}
+	// verifier_key is protocol v2, which the server reads only to answer client_outdated.
+	delete(tags, "verifier_key")
 	if !reflect.DeepEqual(tags, createHeaderMembers) {
 		t.Fatalf(
 			"the create header members of spec §6.2 %v differ from the CreateHeader tags %v",
@@ -243,16 +261,26 @@ func TestCreateHeaderRules(t *testing.T) {
 			none,
 			func(fields map[string]any) { fields["ID"] = fields["id"]; delete(fields, "id") },
 		),
-		"no-verifier-with-kdf0": mutateHeader(
+		"no-registration-with-kdf0": mutateHeader(
 			t,
 			none,
-			func(fields map[string]any) { delete(fields, "verifier_key") },
+			func(fields map[string]any) { delete(fields, "registration") },
 		),
-		"no-verifier-with-kdf3": mutateHeader(
+		"no-registration-with-kdf3": mutateHeader(
 			t,
 			withPassphrase,
-			func(fields map[string]any) { delete(fields, "verifier_key") },
+			func(fields map[string]any) { delete(fields, "registration") },
 		),
+		"verifier-of-protocol-v2": mutateHeader(t, none, func(fields map[string]any) {
+			delete(fields, "registration")
+			fields["verifier_key"] = publicKey(core.NewSecret())
+		}),
+		"registration-and-verifier": mutateHeader(t, none, func(fields map[string]any) {
+			fields["verifier_key"] = publicKey(core.NewSecret())
+		}),
+		"short-registration": mutateHeader(t, none, func(fields map[string]any) {
+			fields["registration"] = fields["registration"].(string)[:255]
+		}),
 		"no-epoch":        mutateHeader(t, none, func(fields map[string]any) { delete(fields, "epoch") }),
 		"negative-epoch":  mutateHeader(t, none, func(fields map[string]any) { fields["epoch"] = -1 }),
 		"kdf-1-v1-only":   mutateHeader(t, withPassphrase, func(fields map[string]any) { fields["kdf_id"] = 1 }),
@@ -286,9 +314,8 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 		secrets := map[string][]byte{
 			"S": message.secret[:],
 			"K": message.content.K[:],
-			"P": testPassphraseKey(message.kdf, "tajná fráze", &message.link.PassphraseSalt),
+			"P": message.exportKey[:],
 			"R": message.link.R[:],
-			"V": message.verifierKey[:],
 			"M": message.manage[:],
 		}
 		for name, secret := range secrets {
@@ -297,7 +324,7 @@ func TestAK1CreateCarriesNoSecrets(t *testing.T) {
 					t.Fatalf("create request carries %s", name)
 				}
 			}
-			if name != "R" && name != "V" && name != "M" && bytes.Contains(captured, secret) {
+			if name != "R" && name != "M" && bytes.Contains(captured, secret) {
 				t.Fatalf("create request carries raw %s", name)
 			}
 		}
@@ -410,8 +437,9 @@ func TestDefaultObjectLimitMatchesSpec(t *testing.T) {
 func issuedID(t *testing.T, harness *testHarness) (core.ID, string, time.Time) {
 	t.Helper()
 	_, body := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: map[string]string{
-		api.TTLHeaderName:      "3600",
-		api.ShareKeyHeaderName: testShareKeyHeader,
+		api.TTLHeaderName:          "3600",
+		api.ShareKeyHeaderName:     testShareKeyHeader,
+		api.RegistrationHeaderName: testRegistrationRequest,
 	}})
 	create, ok := decodeJSON(t, body)["create"].(map[string]any)
 	if !ok {
@@ -558,10 +586,7 @@ func TestGlobalCounterCountsOnlyAdmittedCreates(t *testing.T) {
 		headerKDF1 := mutateHeader(
 			t,
 			wrongKDF,
-			func(fields map[string]any) {
-				fields["kdf_id"] = 3
-				fields["verifier_key"] = publicKey(core.NewSecret())
-			},
+			func(fields map[string]any) { fields["kdf_id"] = 3 },
 		)
 		if response, _ := harness.do(
 			&testRequest{
@@ -1148,10 +1173,7 @@ func TestPoWTokenIsSingleUse(t *testing.T) {
 		badHeader := mutateHeader(
 			t,
 			message,
-			func(fields map[string]any) {
-				fields["kdf_id"] = 3
-				fields["verifier_key"] = publicKey(core.NewSecret())
-			},
+			func(fields map[string]any) { fields["kdf_id"] = 3 },
 		)
 		send := func(header, pow string) int {
 			response, _ := harness.do(
@@ -1238,13 +1260,13 @@ func TestDegenerateKeysAreRejectedAtCreate(t *testing.T) {
 			"identity read key":      mutateHeader(t, none, func(fields map[string]any) { fields["read_key"] = identity }),
 			"small-order manage key": mutateHeader(t, none, func(fields map[string]any) { fields["manage_key"] = order4 }),
 			"non-canonical read key": mutateHeader(t, none, func(fields map[string]any) { fields["read_key"] = nonCanonical }),
-			"identity verifier key":  mutateHeader(t, withPassphrase, func(fields map[string]any) { fields["verifier_key"] = identity }),
+			"identity registration key": mutateHeader(t, withPassphrase, func(fields map[string]any) {
+				fields["registration"] = core.Encode(append(make([]byte, 32), withPassphrase.registration[32:]...))
+			}),
 			"manage key equals read": mutateHeader(t, none, func(fields map[string]any) { fields["manage_key"] = fields["read_key"] }),
-			"verifier equals read":   mutateHeader(t, withPassphrase, func(fields map[string]any) { fields["verifier_key"] = fields["read_key"] }),
-			"verifier equals manage": mutateHeader(t, withPassphrase, func(fields map[string]any) { fields["verifier_key"] = fields["manage_key"] }),
 		} {
 			message := none
-			if strings.Contains(name, "verifier") {
+			if strings.Contains(name, "registration") {
 				message = withPassphrase
 			}
 			response, _ := harness.do(
@@ -1277,6 +1299,7 @@ func TestConcurrentCreateWithSameID(t *testing.T) {
 			message.address = fmt.Sprintf("198.51.100.%d", i+1)
 			var wait sync.WaitGroup
 			codes := make([]int, 2)
+			harness.bindShare(message)
 			for j := range codes {
 				wait.Go(func() { codes[j] = harness.statusFrom(createRequestFor(message)) })
 			}
@@ -1549,7 +1572,7 @@ func TestAnIDIssuedBeforeTheHourEndsIsCreatedAfterIt(t *testing.T) {
 		synctest.Sleep(2 * time.Minute)
 		harness.mustCreate(harness.issueMessage(core.KDFNone, "", 1, 3600, "issued in the next hour"))
 		harness.mustCreate(late)
-		response, object := harness.claim(late, late.verifier, "")
+		response, object := harness.claim(late, late.passphrase, "")
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
@@ -1579,7 +1602,7 @@ func TestCreateRefusesAnIDWhoseShareCameFromAnEarlierSeed(t *testing.T) {
 		}
 		fresh := harness.issueMessage(core.KDFNone, "", 1, 3600, "issued after the new seed")
 		harness.mustCreate(fresh)
-		response, object := harness.claim(fresh, fresh.verifier, "")
+		response, object := harness.claim(fresh, fresh.passphrase, "")
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("a message of the new seed: %d", response.StatusCode)
 		}
@@ -1601,9 +1624,13 @@ func TestRefusedShareKeysSpendNothing(t *testing.T) {
 		}
 		for _, vector := range refused {
 			response, body := harness.do(&testRequest{
-				method:  http.MethodGet,
-				path:    "/api/v1/instance",
-				headers: map[string]string{api.TTLHeaderName: "3600", api.ShareKeyHeaderName: vector.Key},
+				method: http.MethodGet,
+				path:   "/api/v1/instance",
+				headers: map[string]string{
+					api.TTLHeaderName:          "3600",
+					api.ShareKeyHeaderName:     vector.Key,
+					api.RegistrationHeaderName: testRegistrationRequest,
+				},
 			})
 			requireRefusedShareKey(t, "instance", &vector, response, body)
 		}
@@ -1613,7 +1640,7 @@ func TestRefusedShareKeysSpendNothing(t *testing.T) {
 			response, body := harness.claimWithShareKey(message, vector.Key)
 			requireRefusedShareKey(t, "claim", &vector, response, body)
 		}
-		if response, _ := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusOK {
+		if response, _ := harness.claim(message, message.passphrase, ""); response.StatusCode != http.StatusOK {
 			t.Fatalf("the refused claims spent the open: %d", response.StatusCode)
 		}
 		harness.server.flushCounts(t.Context())
@@ -1643,8 +1670,11 @@ func requireRefusedShareKey(
 
 func (h *testHarness) claimWithShareKey(message *testMessage, key string) (testResponse, responseBody) {
 	h.t.Helper()
-	request := claimRequestFor(message, message.verifier, "")
-	request.headers = map[string]string{api.ShareKeyHeaderName: key}
+	request, refused, body := h.claimRequestFor(message, message.passphrase, "")
+	if request == nil {
+		return refused, body
+	}
+	request.headers[api.ShareKeyHeaderName] = key
 	return h.do(request)
 }
 

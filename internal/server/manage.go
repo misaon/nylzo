@@ -31,33 +31,22 @@ type abuseRequest struct {
 	GoodFaith bool   `json:"good_faith"`
 }
 
-// handleBurn deletes a message with a passphrase only with its verifier, checked and counted as for a claim (F05).
+// handleBurn deletes a message only after a handshake whose KE3 matches, checked and counted as for a claim (F05).
 func (s *Server) handleBurn(w http.ResponseWriter, r *http.Request) {
 	if !validPathID(w, r) || !s.allowRead(w, r) {
 		return
 	}
-	verifier, verifierSent, ok := parseVerifier(w, r)
+	ke3, ok := parseKE3(w, r)
 	if !ok {
 		return
 	}
 	granted, ok := s.authorizedLive(w, r, seal.Read)
 	defer granted.forget()
-	if !ok {
+	if !ok || !s.finishHandshake(w, r, &granted.record, ke3) {
 		return
 	}
-	record := &granted.record
-	if record.Message.PassphraseRequired() && !verifierSent {
-		writeError(w, http.StatusBadRequest, errClientOutdated)
-		return
-	}
-	var salt seal.EraseSalt
-	defer clear(salt[:])
-	if record.Message.PassphraseRequired() && !s.readEraseSalt(w, r, record, &salt) {
-		return
-	}
-	proof := s.verifierProof(r, &verifier, verifierSent, granted.signature.Challenge, &salt)
-	final, err := store.Burn(r.Context(), s.store, s.blobs, record, proof, time.Now())
-	s.answerEnding(w, r, record, store.StateDeleted, final, err)
+	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, store.StateDeleted, time.Now())
+	s.answerEnding(w, r, &granted.record, store.StateDeleted, final, err)
 }
 
 func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
@@ -81,10 +70,6 @@ func (s *Server) answerEnding(
 	requested, final store.State,
 	err error,
 ) {
-	if refusal, refused := errors.AsType[*store.PassphraseError](err); refused {
-		writePassphraseRefusal(w, refusal)
-		return
-	}
 	s.leaseTimers.Cancel(record.Row.Locator)
 	switch {
 	case errors.Is(err, store.ErrNotFound):

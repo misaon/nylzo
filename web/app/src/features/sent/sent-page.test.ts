@@ -1,4 +1,12 @@
-import { idToString, KDF_NONE, newRequestKey, newShareKey, parseId } from '@nylzo/core';
+import {
+  createRegistrationRequest,
+  idToString,
+  KDF_NONE,
+  newRequestKey,
+  newShareKey,
+  parseId,
+  utf8,
+} from '@nylzo/core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../shared/api/api-errors.ts';
@@ -14,7 +22,11 @@ import type { SentPage, SentView } from './sent-page.ts';
 const NOW = Date.parse('2026-10-23T12:00:00Z');
 
 async function remembered(api: FakeApi, createdAt: number, opensMax = 1): Promise<SentRecord> {
-  const { create } = await api.instance({ ttlSeconds: 3600, shareKey: newShareKey().publicKey });
+  const { create } = await api.instance({
+    ttlSeconds: 3600,
+    shareKey: newShareKey().publicKey,
+    registrationRequest: createRegistrationRequest(utf8('sent page')).request,
+  });
   if (create === undefined) {
     throw new Error('the fake server issued no id');
   }
@@ -25,7 +37,7 @@ async function remembered(api: FakeApi, createdAt: number, opensMax = 1): Promis
     epoch: create.epoch,
     deadline: create.deadline,
     readKey: new Uint8Array(32),
-    verifierKey: new Uint8Array(32).fill(1),
+    registration: new Uint8Array(192),
     manageKey: manageKey.publicKey,
     kdfId: KDF_NONE,
     opensMax,

@@ -2,7 +2,7 @@ import { PowTimeoutError } from '@nylzo/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KdfWorkerError } from './kdf-protocol.ts';
-import { scryptInWorker, solvePowInWorker, stopRunningWorkers } from './kdf.ts';
+import { solvePowInWorker, stopRunningWorkers, stretchInWorker } from './kdf.ts';
 import { startWorker } from './worker-source.ts';
 
 vi.mock('./worker-source.ts', () => ({ startWorker: vi.fn<typeof import('./worker-source.ts').startWorker>() }));
@@ -19,7 +19,7 @@ describe('worker lifecycle', () => {
   let worker: EventTarget & { postMessage: ReturnType<typeof vi.fn> };
   const stop = vi.fn<(...arguments_: unknown[]) => void>();
   const progress = vi.fn<(...arguments_: unknown[]) => void>();
-  const salt = new Uint8Array(16).fill(1);
+  const oprfOutput = new Uint8Array(64).fill(1);
 
   function reply(data: unknown): void {
     worker.dispatchEvent(new MessageEvent('message', { data }));
@@ -33,18 +33,11 @@ describe('worker lifecycle', () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it('forwards the passphrase and salt and stops the worker after receiving the key', async () => {
-    const key = new Uint8Array(32).fill(7);
-    const result = scryptInWorker('synthetic passphrase', salt, progress);
+  it('forwards the OPRF output and stops the worker after receiving the key', async () => {
+    const key = new Uint8Array(64).fill(7);
+    const result = stretchInWorker(oprfOutput, progress);
     await Promise.resolve();
-    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith(
-      {
-        kind: 'scrypt',
-        passphrase: 'synthetic passphrase',
-        passphraseSalt: salt,
-      },
-      [],
-    );
+    expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith({ kind: 'stretch', message: oprfOutput }, []);
     reply({ kind: 'progress', fraction: 0.5 });
     expect(progress).toHaveBeenCalledExactlyOnceWith(0.5);
     reply({ kind: 'key', key });
@@ -53,8 +46,8 @@ describe('worker lifecycle', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('stops a running worker when the page is left, so no passphrase stays behind', async () => {
-    const result = scryptInWorker('synthetic passphrase', salt, progress);
+  it('stops a running worker when the page is left, so no OPRF output stays behind', async () => {
+    const result = stretchInWorker(oprfOutput, progress);
     await Promise.resolve();
     stopRunningWorkers();
     await expect(result).rejects.toBeInstanceOf(KdfWorkerError);
@@ -62,7 +55,7 @@ describe('worker lifecycle', () => {
     reply({ kind: 'progress', fraction: 0.9 });
     expect(progress).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
-    const late = scryptInWorker('synthetic passphrase', salt, progress);
+    const late = stretchInWorker(oprfOutput, progress);
     stopRunningWorkers();
     await expect(late).rejects.toBeInstanceOf(KdfWorkerError);
     expect(worker.postMessage).toHaveBeenCalledOnce();
@@ -101,7 +94,7 @@ describe('worker lifecycle', () => {
   });
 
   it.each(['error', 'messageerror'])('cleans up on a worker %s event', async (type) => {
-    const result = scryptInWorker('phrase', salt, progress);
+    const result = stretchInWorker(oprfOutput, progress);
     const failed = settled(result);
     await Promise.resolve();
     worker.dispatchEvent(new Event(type));
@@ -113,13 +106,13 @@ describe('worker lifecycle', () => {
   it.each([
     { kind: 'progress', fraction: Number.NaN },
     { kind: 'progress', fraction: 2 },
-    { kind: 'key', key: new Uint8Array(31) },
+    { kind: 'key', key: new Uint8Array(32) },
     { kind: 'key', key: 'not bytes' },
     { kind: 'error' },
     { kind: 'unknown' },
     null,
   ])('fails closed on the malformed worker message %j', async (message) => {
-    const result = scryptInWorker('phrase', salt, progress);
+    const result = stretchInWorker(oprfOutput, progress);
     const failed = settled(result);
     await Promise.resolve();
     reply(message);
@@ -146,7 +139,7 @@ describe('worker lifecycle', () => {
   });
 
   it('renews the silence timeout on progress, then stops a stalled worker', async () => {
-    const result = scryptInWorker('phrase', salt, progress);
+    const result = stretchInWorker(oprfOutput, progress);
     const failed = settled(result);
     await Promise.resolve();
     vi.advanceTimersByTime(29_000);
@@ -160,7 +153,7 @@ describe('worker lifecycle', () => {
   });
 
   it('rejects mismatched response types instead of treating them as keys or tokens', async () => {
-    const key = scryptInWorker('phrase', salt, progress);
+    const key = stretchInWorker(oprfOutput, progress);
     const rejectedKey = settled(key);
     await Promise.resolve();
     reply({ kind: 'token', token: 'wrong-kind' });
@@ -170,14 +163,14 @@ describe('worker lifecycle', () => {
     const token = solvePowInWorker('challenge', new Uint8Array(16), 1, 1, progress);
     const rejectedToken = settled(token);
     await Promise.resolve();
-    reply({ kind: 'key', key: new Uint8Array(32) });
+    reply({ kind: 'key', key: new Uint8Array(64) });
     expect(await rejectedToken).toBeInstanceOf(KdfWorkerError);
     expect(stop).toHaveBeenCalledTimes(2);
   });
 
   it('propagates startup failure without leaving a silence timer behind', async () => {
     vi.mocked(startWorker).mockRejectedValue(new Error('integrity refused'));
-    await expect(scryptInWorker('phrase', salt, progress)).rejects.toThrow('integrity refused');
+    await expect(stretchInWorker(oprfOutput, progress)).rejects.toThrow('integrity refused');
     expect(stop).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });

@@ -448,7 +448,7 @@ describe('read page interactions', () => {
     const worker = Object.assign(new EventTarget(), { postMessage: vi.fn<(...arguments_: unknown[]) => void>() });
     vi.mocked(startWorker).mockResolvedValue({ worker: worker as unknown as Worker, stop });
     const page = new ReadPage(new Translator('en'));
-    const derivation = dependencies.scrypt('secret', new Uint8Array(16), vi.fn<(fraction: number) => void>());
+    const derivation = dependencies.stretch(new Uint8Array(64), vi.fn<(fraction: number) => void>());
     await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledOnce());
     ready();
     notify({ view: 'busy', step: 'claiming' });

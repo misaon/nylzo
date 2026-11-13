@@ -1,28 +1,28 @@
 import {
   assertProfile,
-  assertWellFormedPassphrase,
   deriveContent,
   deriveLink,
-  deriveVerifier,
   idToString,
+  IntegrityError,
   isReadPath,
-  KDF_NONE,
   KdfMismatchError,
   LinkReleasedError,
   LinkRetiredKdfError,
   LinkVersionError,
-  MalformedPassphraseError,
   newShareKey,
+  OpaqueMessageError,
+  opaquePassword,
   open,
   parseFragment,
   requestKey,
+  ServerAuthenticationError,
   unwrapShare,
   wipeRequestKey,
 } from '@nylzo/core';
 import type { ContentKeys, KdfId, Link, LinkKeys, RequestKey } from '@nylzo/core';
 
 import { endedStateOf, isApiError, shouldRetryLater, StoppedError } from '../../shared/api/api-errors.ts';
-import type { ApiError, EndedState, MessageState } from '../../shared/api/api-errors.ts';
+import type { EndedState, MessageState } from '../../shared/api/api-errors.ts';
 import type { Api, Envelope, Metadata } from '../../shared/api/api.ts';
 import type { DownloadProgress } from '../../shared/api/object-body.ts';
 import { flagsAndDeadlineMatch } from '../../shared/api/responses.ts';
@@ -31,6 +31,18 @@ import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
 import type { Progress } from '../../shared/kdf/kdf.ts';
 import { HANDOFF_PATH } from '../../shared/local-client/handoff.ts';
+import {
+  accessFor,
+  attemptsOf,
+  discardExportKey,
+  KDF_MARK,
+  kdfMark,
+  passphraseRejection,
+  rememberStretch,
+  stretchFor,
+  unlockWith,
+} from './reader-login.ts';
+import type { Attempts, ContentAccess, LoginTarget, PassphraseRejection, WrongPassphrase } from './reader-login.ts';
 import { leaseTag } from './reader-session.ts';
 
 export type BusyStep = 'claiming' | 'decrypting' | 'deriving' | 'downloading';
@@ -40,12 +52,6 @@ export interface RevealedFile {
   readonly mime: string;
   readonly bytes: Uint8Array<ArrayBuffer>;
 }
-
-type PassphraseRejection =
-  | { readonly reason: 'malformed' }
-  | { readonly reason: 'wrong_or_changed' }
-  | { readonly reason: 'wrong'; readonly attemptsLeft: number; readonly retryAfter: number; readonly locked: boolean };
-type WrongPassphrase = Extract<PassphraseRejection, { readonly reason: 'wrong' }>;
 
 export type ReadView =
   | { readonly view: 'busy'; readonly step: BusyStep; readonly fraction?: number | undefined }
@@ -108,11 +114,7 @@ export interface ReaderDependencies {
   readonly page: { readonly visible: () => boolean; readonly prerendering: () => boolean };
   readonly prepared?: () => Promise<void>;
   readonly shown?: () => Promise<void>;
-  readonly scrypt: (
-    passphrase: string,
-    passphraseSalt: Uint8Array<ArrayBuffer>,
-    onProgress: Progress,
-  ) => Promise<Uint8Array<ArrayBuffer>>;
+  readonly stretch: (message: Uint8Array<ArrayBuffer>, onProgress: Progress) => Promise<Uint8Array<ArrayBuffer>>;
   readonly now: () => number;
 }
 
@@ -134,6 +136,7 @@ interface Secrets {
 
 interface HeldKey {
   readonly id: Uint8Array<ArrayBuffer>;
+  readonly kdfId: KdfId;
   readonly readKey: RequestKey;
 }
 
@@ -143,20 +146,11 @@ interface Fetched {
   readonly fromLease: boolean;
 }
 
-// The passphrase key waits as bytes until the claim brings the share that the content key also needs.
-interface ContentAccess {
-  readonly passphraseKey: Uint8Array<ArrayBuffer>;
-  readonly verifierKey: RequestKey;
-}
-
 // The fragment guard sets the same dropped keys: `r` for /r and the id for /m/{id}.
 const LINK_PAGE_PATH = '/r';
 const LINK_PAGE_KEY = 'r';
 const RELEASED_PAGE_PREFIX = '/m/';
 const LEASE_KEY = `nylzo:lease:${LINK_PAGE_KEY}`;
-// Marks a scrypt run, so a tab that crashed during one explains it when that message opens again; it holds the lease
-// tag, never the message id.
-const KDF_MARK = 'nylzo:kdf';
 
 function isTerminal(state: MessageState): state is Exclude<EndedState, 'opened'> {
   return state === 'expired' || state === 'cancelled' || state === 'deleted';
@@ -274,9 +268,8 @@ function linkProblemView(error: unknown, pathname: string): ReadView {
   return pathIsValid && error instanceof LinkRetiredKdfError ? { view: 'retired' } : { view: 'invalid' };
 }
 
-function rejectionOf(error: ApiError, expiresAt: string | undefined, now: number): WrongPassphrase {
-  const retryAfter = error.retryAfter ?? 0;
-  const attemptsLeft = error.attemptsLeft ?? 0;
+function rejectionOf(attempts: Attempts, expiresAt: string | undefined, now: number): WrongPassphrase {
+  const { retryAfter, attemptsLeft } = attempts;
   const expires = expiresAt ? Date.parse(expiresAt) : Number.NaN;
   const locked = attemptsLeft === 0 && Number.isFinite(expires) && now + retryAfter * 1000 >= expires;
   return { reason: 'wrong', attemptsLeft, retryAfter, locked };
@@ -296,7 +289,8 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let acknowledging = false;
   let acknowledged: Promise<unknown> = Promise.resolve();
   let readKey: RequestKey | undefined;
-  let keptVerifier: RequestKey | undefined;
+  let keptPassword: Uint8Array<ArrayBuffer> | undefined;
+  const remembered = rememberStretch();
   let lease: string | undefined;
   let revealable = false;
   let closedAs: ClosedView | undefined;
@@ -332,14 +326,16 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     secrets = undefined;
   }
 
-  // A shown message keeps its verifier while its remaining opens can be deleted, since a burn needs it (spec 6.6).
+  // A shown message keeps its OPAQUE password while its remaining opens can be deleted, since a burn runs a
+  // handshake of its own (spec 6.6).
   function wipeUnusedKeys(): void {
     if (busy) {
       return;
     }
     if (revealedView?.burnable !== true) {
-      wipeRequestKey(keptVerifier);
-      keptVerifier = undefined;
+      keptPassword?.fill(0);
+      keptPassword = undefined;
+      remembered.forget();
     }
     if (!heldKey && !acknowledging) {
       wipeRequestKey(readKey);
@@ -433,7 +429,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       wipeRequestKey(readKey);
     }
     readKey = linked.readKey;
-    heldKey = { id: linked.id, readKey: linked.readKey };
+    heldKey = { id: linked.id, kdfId: linked.kdfId, readKey: linked.readKey };
     await dependencies.prepared?.();
     try {
       metadata = await api.metadata(linked.id, linked.readKey);
@@ -444,37 +440,51 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     show(metadataView(metadata, link.kdfId));
   }
 
-  async function derivePassphraseKey(
-    current: Secrets,
-    passphrase: string,
-    onProgress?: Progress,
-  ): Promise<Uint8Array<ArrayBuffer>> {
-    if (current.kdfId === KDF_NONE) {
-      return new Uint8Array(0);
-    }
-    onProgress?.(0);
-    safely(() => session.setItem(KDF_MARK, leaseOwner), undefined);
-    try {
-      return await dependencies.scrypt(passphrase, current.passphraseSalt, (fraction) => onProgress?.(fraction));
-    } finally {
-      safely(() => session.removeItem(KDF_MARK), undefined);
-    }
+  // The mark explains a tab that crashed during the stretching.
+  function loginTarget(held: HeldKey, onProgress?: Progress): LoginTarget {
+    const mark = kdfMark(session, () => leaseOwner);
+    const stretch = remembered.around(stretchFor(held.kdfId, mark, dependencies.stretch, onProgress));
+    return { api, id: held.id, kdfId: held.kdfId, readKey: held.readKey, stretch };
   }
 
-  function rejection(error: ApiError): WrongPassphrase {
-    return rejectionOf(error, metadata?.expiresAt, dependencies.now());
+  function rejection(attempts: Attempts): WrongPassphrase {
+    return rejectionOf(attempts, metadata?.expiresAt, dependencies.now());
   }
 
+  function passphraseFailureView(error: unknown): ReadView | undefined {
+    const attempts = attemptsOf(error);
+    if (attempts) {
+      return readyView(rejection(attempts));
+    }
+    if (error instanceof ServerAuthenticationError || error instanceof OpaqueMessageError) {
+      return { view: 'tampered' };
+    }
+    if (error instanceof KdfWorkerError) {
+      deviceFailed = true;
+      return readyView();
+    }
+    return undefined;
+  }
+
+  // A lease download needs P too: its handshake names the lease, and its KE3 takes the attempt back (spec 6.4, 6.5).
   async function fetchFromLease(
     current: Secrets,
+    access: ContentAccess,
     previous: string,
     onProgress: DownloadProgress,
+    onDerive: Progress,
   ): Promise<Fetched | ReadView> {
+    const target = { ...loginTarget(current, onDerive), lease: previous };
+    const unlock = unlockWith(target, access.password, access.keepExportKey);
     try {
-      const envelope = await api.blob(current.id, current.readKey, previous, newShareKey, onProgress);
+      const envelope = await api.blob(current.id, current.readKey, previous, newShareKey, { onProgress, unlock });
       lease = previous;
       return { envelope, lease: previous, fromLease: true };
     } catch (error) {
+      const passphraseView = passphraseFailureView(error);
+      if (passphraseView) {
+        return passphraseView;
+      }
       if (!isApiError(error, 'gone')) {
         return failureView(error);
       }
@@ -487,11 +497,17 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     current: Secrets,
     access: ContentAccess,
     onProgress: DownloadProgress,
+    onDerive: Progress,
   ): Promise<Fetched | ReadView> {
     show({ view: 'busy', step: 'claiming' });
+    const unlock = unlockWith(loginTarget(current, onDerive), access.password, access.keepExportKey);
     try {
       const claimed = await api.claim(current.id, current.readKey, {
-        verifierKey: access.verifierKey,
+        unlock: async () => {
+          const login = await unlock();
+          show({ view: 'busy', step: 'claiming' });
+          return login;
+        },
         shareKeys: newShareKey,
         onLease: keepLease,
         onProgress,
@@ -502,10 +518,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       if (error instanceof StoppedError) {
         return { view: 'cleared' };
       }
-      if (isApiError(error, 'passphrase')) {
-        return readyView(rejection(error));
-      }
-      return failureView(error);
+      return passphraseFailureView(error) ?? failureView(error);
     }
   }
 
@@ -513,38 +526,25 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     show({ view: 'busy', step: 'downloading', fraction: total ? received / total : undefined });
   }
 
-  async function fetchEnvelope(current: Secrets, access: ContentAccess): Promise<Fetched | ReadView> {
+  async function fetchEnvelope(
+    current: Secrets,
+    access: ContentAccess,
+    onDerive: Progress,
+  ): Promise<Fetched | ReadView> {
     const onProgress = showDownload;
     const previous = storedLease();
-    return previous === null ? claim(current, access, onProgress) : fetchFromLease(current, previous, onProgress);
+    return previous === null
+      ? claim(current, access, onProgress, onDerive)
+      : fetchFromLease(current, access, previous, onProgress, onDerive);
   }
 
-  // Every claim carries a verifier, also without a passphrase, so its headers do not tell (spec 2).
-  async function contentAccess(
-    current: Secrets,
-    passphrase: string,
-    onProgress?: Progress,
-  ): Promise<ContentAccess | ReadView> {
-    let passphraseKey: Uint8Array<ArrayBuffer> | undefined;
-    let verifierSeed: Uint8Array | undefined;
+  // Every claim follows a handshake, also without a passphrase, so its requests do not tell (spec 2).
+  function contentAccess(current: Secrets, passphrase: string): ContentAccess | ReadView {
     try {
-      assertWellFormedPassphrase(current.kdfId, passphrase);
-      passphraseKey = await derivePassphraseKey(current, passphrase, onProgress);
-      verifierSeed = await deriveVerifier(current.id, current.secret, passphraseKey);
-      const verifierKey = await requestKey(verifierSeed);
-      return { passphraseKey, verifierKey };
+      return accessFor(opaquePassword(current.passphraseSalt, current.kdfId, passphrase));
     } catch (error) {
-      passphraseKey?.fill(0);
-      if (error instanceof MalformedPassphraseError) {
-        return readyView({ reason: 'malformed' });
-      }
-      if (error instanceof KdfWorkerError) {
-        deviceFailed = true;
-        return readyView();
-      }
-      return { view: 'failed' };
-    } finally {
-      verifierSeed?.fill(0);
+      const rejected = passphraseRejection(error);
+      return rejected === undefined ? { view: 'failed' } : readyView(rejected);
     }
   }
 
@@ -552,7 +552,11 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   async function contentKeys(current: Secrets, access: ContentAccess, fetched: Fetched): Promise<ContentKeys> {
     const share = await unwrapShare(fetched.envelope.shareKey, fetched.envelope.share);
     try {
-      return await deriveContent(current.id, current.secret, access.passphraseKey, share);
+      const exportKey = access.exportKey();
+      if (exportKey === undefined) {
+        throw new IntegrityError('the handshake gave no P');
+      }
+      return await deriveContent(current.id, current.secret, exportKey, share);
     } finally {
       share.fill(0);
     }
@@ -570,18 +574,16 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   }
 
   async function revealOnce(current: Secrets, passphrase: string): Promise<ReadView | undefined> {
-    const access = await contentAccess(current, passphrase, (fraction) => {
-      show({ view: 'busy', step: 'deriving', fraction });
-    });
+    const access = contentAccess(current, passphrase);
     if ('view' in access) {
       return access;
     }
     try {
       return await revealWith(current, access);
     } finally {
-      access.passphraseKey.fill(0);
-      if (access.verifierKey !== keptVerifier) {
-        wipeRequestKey(access.verifierKey);
+      access.exportKey()?.fill(0);
+      if (access.password !== keptPassword) {
+        access.password.fill(0);
       }
     }
   }
@@ -590,7 +592,9 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     if (pageLeft()) {
       return { view: 'cleared' };
     }
-    const fetched = await fetchEnvelope(current, access);
+    const fetched = await fetchEnvelope(current, access, (fraction) => {
+      show({ view: 'busy', step: 'deriving', fraction });
+    });
     if ('view' in fetched) {
       return fetched;
     }
@@ -615,9 +619,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
         fetched.envelope.object,
       );
     } catch {
-      return fetched.fromLease && current.kdfId !== KDF_NONE
-        ? readyView({ reason: 'wrong_or_changed' })
-        : { view: 'tampered' };
+      return { view: 'tampered' };
     }
     if (pageLeft()) {
       opened.payload.file?.fill(0);
@@ -626,8 +628,8 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     const { text, file } = opened.payload.meta;
     const remaining = (metadata?.opensRemaining ?? 0) - (fetched.fromLease ? 0 : 1);
     if (remaining > 0) {
-      wipeRequestKey(keptVerifier);
-      keptVerifier = access.verifierKey;
+      keptPassword?.fill(0);
+      keptPassword = access.password;
     }
     show({
       view: 'revealed',
@@ -699,16 +701,18 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     }
   }
 
-  async function sendBurn(current: HeldKey, verifierKey: RequestKey): Promise<BurnOutcome> {
+  async function sendBurn(current: HeldKey, password: Uint8Array): Promise<BurnOutcome> {
     try {
-      await api.burn(current.id, current.readKey, verifierKey);
+      await api.burn(current.id, current.readKey, unlockWith(loginTarget(current), password, discardExportKey));
       return { outcome: 'deleted' };
     } catch (error) {
-      if (!isApiError(error, 'passphrase')) {
+      const attempts = attemptsOf(error);
+      if (!attempts) {
         return burnOutcomeOf(error);
       }
-      const refusal = rejection(error);
-      // A shown message sent the right verifier, so its refusal is only the backoff of others' wrong attempts.
+      const refusal = rejection(attempts);
+      // A shown message runs its handshake with the passphrase that opened it, so its refusal is only the backoff of
+      // others' wrong attempts.
       if (!revealable) {
         return { outcome: 'waiting', retryAfter: refusal.retryAfter, locked: refusal.locked };
       }
@@ -718,7 +722,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   }
 
   async function burnUnopened(current: HeldKey, unopened: Secrets, passphrase: string): Promise<BurnOutcome> {
-    const access = await contentAccess(unopened, passphrase);
+    const access = contentAccess(unopened, passphrase);
     if ('view' in access) {
       if (access.view !== 'ready') {
         return { outcome: 'failed' };
@@ -726,11 +730,10 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       show(access);
       return { outcome: 'rejected' };
     }
-    access.passphraseKey.fill(0);
     try {
-      return pageLeft() ? { outcome: 'ignored' } : await sendBurn(current, access.verifierKey);
+      return pageLeft() ? { outcome: 'ignored' } : await sendBurn(current, access.password);
     } finally {
-      wipeRequestKey(access.verifierKey);
+      access.password.fill(0);
     }
   }
 
@@ -748,7 +751,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       if (unopened) {
         outcome = await burnUnopened(current, unopened, passphrase);
       } else {
-        outcome = keptVerifier ? await sendBurn(current, keptVerifier) : { outcome: 'failed' };
+        outcome = keptPassword ? await sendBurn(current, keptPassword) : { outcome: 'failed' };
       }
     } finally {
       busy = false;

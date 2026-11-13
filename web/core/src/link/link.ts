@@ -11,7 +11,8 @@ const RELEASED_PATH_PREFIX = '/m/';
 const VERSION_LABEL = /^[1-9]\d{0,8}$/u;
 const TEXT_BEFORE_FRAGMENT = /^https?:\/\/[\d.:[\]a-z-]+(\/[^?#]*)(?:\?[^#]*)?$/iu;
 const LABEL = String(FRAGMENT_VERSION);
-const RELEASED_PROFILES: ReadonlySet<string> = new Set(['0', '1', '2']);
+const V1_PROFILES: ReadonlySet<string> = new Set(['0', '1', '2']);
+const V2_PROFILES: ReadonlySet<string> = new Set(['0', '3']);
 
 export interface Link {
   readonly kdfId: KdfId;
@@ -34,7 +35,7 @@ export function formatLink(
   return `${origin}${LINK_PATH}#${fields.join('.')}`;
 }
 
-// The read page of a link of protocol version 1 still loads, only to say that the upgrade erased its message.
+// The read page of a link of protocol version 1 still loads, only to say that an upgrade erased its message.
 export function isReadPath(path: string): boolean {
   if (path === LINK_PATH) {
     return true;
@@ -88,24 +89,26 @@ function assertKnownVersion(body: string): void {
   }
 }
 
+// A link of protocol version 1 or 2 is recognised only to say that the upgrade erased its message.
 function releasedLink(path: string, body: string): boolean {
   const parts = body.split('.');
-  const [label, kdfText = '', secretText = ''] = parts;
-  if (
-    label !== '1' ||
-    parts.length !== 3 ||
-    !path.startsWith(RELEASED_PATH_PREFIX) ||
-    !RELEASED_PROFILES.has(kdfText)
-  ) {
-    return false;
-  }
+  const [label, kdfText = '', ...fields] = parts;
   try {
-    parseId(path.slice(RELEASED_PATH_PREFIX.length));
-    decodeBase64urlExact(secretText, SECRET_LENGTH).fill(0);
-    return true;
+    if (label === '1' && parts.length === 3 && path.startsWith(RELEASED_PATH_PREFIX) && V1_PROFILES.has(kdfText)) {
+      parseId(path.slice(RELEASED_PATH_PREFIX.length));
+      decodeBase64urlExact(fields[0] ?? '', SECRET_LENGTH).fill(0);
+      return true;
+    }
+    if (label === '2' && parts.length === 5 && path === LINK_PATH && V2_PROFILES.has(kdfText)) {
+      parseId(fields[0] ?? '');
+      decodeBase64urlExact(fields[1] ?? '', SECRET_LENGTH).fill(0);
+      decodeBase64urlExact(fields[2] ?? '', OBJECT_HASH_LENGTH);
+      return true;
+    }
   } catch {
     return false;
   }
+  return false;
 }
 
 function parseCurrentFragment(body: string): Link {

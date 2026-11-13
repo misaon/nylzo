@@ -2,17 +2,42 @@ export { type Expected, objectHash, open, seal, sealWithCompression } from './en
 export { type Header, newHeader, type Policy } from './envelope/header.ts';
 export type { Meta } from './envelope/meta.ts';
 export {
+  EnvelopeRecoveryError,
   IntegrityError,
   KdfMismatchError,
   LinkReleasedError,
   LinkRetiredKdfError,
   LinkVersionError,
+  LongPassphraseError,
   MalformedPassphraseError,
+  OpaqueMessageError,
   PowTimeoutError,
+  ServerAuthenticationError,
   TooLargeError,
 } from './errors.ts';
-export { type ContentKeys, deriveContent, deriveLink, deriveVerifier, type LinkKeys } from './keys/derive.ts';
-export { assertWellFormedPassphrase, KDF_NONE, KDF_SCRYPT, type KdfId } from './keys/kdf.ts';
+export { type ContentKeys, deriveContent, deriveLink, derivePassphraseSalt, type LinkKeys } from './keys/derive.ts';
+export {
+  assertWellFormedPassphrase,
+  KDF_NONE,
+  KDF_SCRYPT,
+  type KdfId,
+  opaqueContext,
+  opaquePassword,
+} from './keys/kdf.ts';
+export {
+  type ClientLogin,
+  createRegistrationRequest,
+  finalizeRegistrationRequest,
+  generateKE1,
+  generateKE3,
+  identityStretch,
+  KE2_LENGTH,
+  type OpaqueConfig,
+  REGISTRATION_RESPONSE_LENGTH,
+  type RegistrationState,
+  type Stretch,
+  wipeLogin,
+} from './keys/opaque.ts';
 export {
   ASSIGNED_UNICODE_VERSION,
   generatePassphrase,
@@ -52,12 +77,10 @@ export {
   type Purpose,
   PURPOSE_MANAGE,
   PURPOSE_READ,
-  PURPOSE_VERIFIER,
   type RequestComponents,
   type RequestKey,
   requestKey,
   requestMessage,
   signRequest,
-  verifierHeader,
   wipeRequestKey,
 } from './request/signature.ts';

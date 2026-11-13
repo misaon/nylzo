@@ -27,7 +27,10 @@ const (
 	BlobTagLen    = sha256.Size
 	// BlobWrapLen is the length of a blob wrap that holds the tags of its blob; one of an earlier release is WrapLen.
 	BlobWrapLen = nonceLen + KeyLen + 2*BlobTagLen + tagLen
-	RecordBlock = 512
+	RecordBlock = 1024
+	// RegistrationLen is an OPAQUE registration record (spec section 2.1); SealedRegistrationLen is its wrap.
+	RegistrationLen       = 192
+	SealedRegistrationLen = nonceLen + RegistrationLen + tagLen
 
 	labelLocator = "nylzo/v1/locator"
 	infoRecord   = "nylzo/v1/record/"
@@ -37,6 +40,7 @@ const (
 	infoFields   = "nylzo/v2/record/fields"
 	infoBlobWrap = "nylzo/v2/record/blob"
 	infoPepper   = "nylzo/v2/record/pepper"
+	infoRegister = "nylzo/v3/record/registration"
 )
 
 type (
@@ -52,9 +56,10 @@ const (
 	Read   Purpose = "read"
 	Manage Purpose = "manage"
 
-	labelRecord label = "record"
-	labelBlob   label = "blob"
-	labelPepper label = "pepper-"
+	labelRecord       label = "record"
+	labelBlob         label = "blob"
+	labelPepper       label = "pepper-"
+	labelRegistration label = "registration"
 )
 
 var (
@@ -197,6 +202,25 @@ func UnwrapBlobKey(recordKey Key, wrapped []byte, locator Locator) (BlobKey, err
 	default:
 		return BlobKey{}, ErrOpen
 	}
+}
+
+// WrapRegistration seals an OPAQUE registration under a key from the erase salt, so once the blob is erased no copy
+// of the record tests a passphrase (spec section 5.2).
+func WrapRegistration(salt *EraseSalt, locator Locator, registration []byte) []byte {
+	key := subkey(Key(*salt), locator, infoRegister)
+	defer clear(key[:])
+	return seal(key, registration, locator, labelRegistration)
+}
+
+func UnwrapRegistration(salt *EraseSalt, locator Locator, wrapped []byte) ([]byte, error) {
+	key := subkey(Key(*salt), locator, infoRegister)
+	defer clear(key[:])
+	opened, err := open(key, wrapped, locator, labelRegistration)
+	if err != nil || len(opened) != RegistrationLen {
+		clear(opened)
+		return nil, ErrOpen
+	}
+	return opened, nil
 }
 
 // Record pads the fields so that every sealed record is a multiple of RecordBlock bytes long.

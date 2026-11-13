@@ -246,8 +246,8 @@ func inspectEpoch(directory string) (epoch.State, error) {
 	return state, err
 }
 
-// upgradingOpen erases a data directory of nylzo 0.1 or 0.2 before it opens it, because protocol version 2 reads
-// none of its messages; an interrupted upgrade finishes on the next start.
+// upgradingOpen erases a data directory of an earlier protocol version before it opens it, because protocol version 3
+// reads none of its messages; an interrupted upgrade finishes on the next start.
 func upgradingOpen(dataDirectory string, logger *slog.Logger) func(context.Context, string) (*sqlite.Store, error) {
 	return func(ctx context.Context, path string) (*sqlite.Store, error) {
 		upgraded, err := sqlite.UpgradeFromReleased(ctx, path, func() error { return disk.EraseAll(dataDirectory) })
@@ -258,7 +258,7 @@ func upgradingOpen(dataDirectory string, logger *slog.Logger) func(context.Conte
 			logger.WarnContext(
 				ctx,
 				"store-upgraded",
-				"notice", "protocol version 2: every message stored before this upgrade was erased",
+				"notice", "protocol version 3: every message stored before this upgrade was erased",
 			)
 		}
 		return sqlite.Open(ctx, path)

@@ -6,23 +6,23 @@ import (
 	"errors"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/opaque"
 )
 
 const (
-	labelHSalt      = "nylzo/v2/hkdf-salt"
-	labelRead       = "nylzo/v2/read"
-	labelKDFSalt    = "nylzo/v2/pw-salt"
-	labelContent    = "nylzo/v2/content"
-	labelVerifier   = "nylzo/v2/verifier"
-	labelCommitment = "nylzo/v2/commitment"
+	labelHSalt      = "nylzo/v3/hkdf-salt"
+	labelRead       = "nylzo/v3/read"
+	labelKDFSalt    = "nylzo/v3/pw-salt"
+	labelContent    = "nylzo/v3/content"
+	labelCommitment = "nylzo/v3/commitment"
 )
+
+const PassphraseSaltLen = 32
 
 var ErrShare = errors.New("core: the content key needs the expiry share")
 
-type LinkKeys struct {
-	R              [core.SeedLen]byte
-	PassphraseSalt [32]byte
-}
+// ExportKey is P, the export_key of the OPAQUE registration or handshake (spec section 2.1).
+type ExportKey = [opaque.ExportKeyLen]byte
 
 // ContentKeys holds K and the commitment key K_c.
 type ContentKeys struct {
@@ -39,34 +39,41 @@ func HSalt(id core.ID) [32]byte {
 	return sha256.Sum256(append([]byte(labelHSalt), id[:]...))
 }
 
-func DeriveLink(id core.ID, secret *[core.SecretLen]byte) (LinkKeys, error) {
-	var keys LinkKeys
-	err := expandAll(id, secret[:], []expansion{
-		{labelRead, keys.R[:]},
-		{labelKDFSalt, keys.PassphraseSalt[:]},
-	})
-	return keys, err
+// DeriveRead derives R, the seed of the read key.
+func DeriveRead(id core.ID, secret *[core.SecretLen]byte) ([core.SeedLen]byte, error) {
+	var read [core.SeedLen]byte
+	err := expandAll(id, secret[:], []expansion{{labelRead, read[:]}})
+	return read, err
 }
 
-// DeriveVerifier needs no share, because a reader signs its claim with V before the server sends the share.
-func DeriveVerifier(id core.ID, secret *[core.SecretLen]byte, passphraseKey []byte) ([core.SeedLen]byte, error) {
-	keyMaterial := concatenate(secret[:], passphraseKey)
-	defer clear(keyMaterial)
-	var verifier [core.SeedLen]byte
-	err := expandAll(id, keyMaterial, []expansion{{labelVerifier, verifier[:]}})
-	return verifier, err
+// PassphraseSalt derives salt_pw from S alone: a sender needs it before the server has issued the id.
+func PassphraseSalt(secret *[core.SecretLen]byte) ([PassphraseSaltLen]byte, error) {
+	var salt [PassphraseSaltLen]byte
+	derived, err := hkdf.Key(sha256.New, secret[:], nil, labelKDFSalt, len(salt))
+	if err != nil {
+		return salt, err
+	}
+	copy(salt[:], derived)
+	clear(derived)
+	return salt, nil
+}
+
+// CredentialIdentifier is the credential_identifier of OPAQUE for a message: its id and its expiry share, so the OPRF
+// key that tests a passphrase stops existing with the share (spec section 5.1).
+func CredentialIdentifier(id core.ID, share *[core.ShareLen]byte) []byte {
+	return concatenate(id[:], share[:])
 }
 
 func DeriveContent(
 	id core.ID,
 	secret *[core.SecretLen]byte,
-	passphraseKey []byte,
+	exportKey *ExportKey,
 	share *[core.ShareLen]byte,
 ) (ContentKeys, error) {
 	if share == nil {
 		return ContentKeys{}, ErrShare
 	}
-	keyMaterial := concatenate(secret[:], passphraseKey, share[:])
+	keyMaterial := concatenate(secret[:], exportKey[:], share[:])
 	defer clear(keyMaterial)
 	var keys ContentKeys
 	err := expandAll(id, keyMaterial, []expansion{
@@ -74,51 +81,6 @@ func DeriveContent(
 		{labelCommitment, keys.Commitment[:]},
 	})
 	return keys, err
-}
-
-// Derived is everything a reader or a sender derives from a link, a passphrase and a share.
-type Derived struct {
-	Link     LinkKeys
-	Verifier [core.SeedLen]byte
-	Content  ContentKeys
-}
-
-func (d *Derived) Wipe() {
-	clear(d.Link.R[:])
-	clear(d.Link.PassphraseSalt[:])
-	clear(d.Verifier[:])
-	d.Content.Wipe()
-}
-
-func DeriveAll(
-	id core.ID,
-	secret *[core.SecretLen]byte,
-	kdf core.KDF,
-	passphrase string,
-	share *[core.ShareLen]byte,
-) (Derived, error) {
-	var derived Derived
-	if err := checkPassphrase(kdf, passphrase); err != nil {
-		return derived, err
-	}
-	link, err := DeriveLink(id, secret)
-	if err != nil {
-		return derived, err
-	}
-	derived.Link = link
-	passphraseKey, err := DerivePassphraseKey(kdf, passphrase, &link.PassphraseSalt)
-	defer clear(passphraseKey)
-	if err == nil {
-		derived.Verifier, err = DeriveVerifier(id, secret, passphraseKey)
-	}
-	if err == nil {
-		derived.Content, err = DeriveContent(id, secret, passphraseKey, share)
-	}
-	if err != nil {
-		derived.Wipe()
-		return Derived{}, err
-	}
-	return derived, nil
 }
 
 type expansion struct {

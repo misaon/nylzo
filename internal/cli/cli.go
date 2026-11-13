@@ -239,7 +239,7 @@ func protect(environment *command.Environment, level harden.Level) (int, bool) {
 	if setting := debugenv.HTTP2HeaderDump(environment.Getenv); setting != "" {
 		return command.Failf(
 			environment,
-			"%s makes Go write request headers, which carry keys and passphrase verifiers, to the log; unset it",
+			"%s makes Go write request headers, which carry signatures and leases, to the log; unset it",
 			setting,
 		), false
 	}

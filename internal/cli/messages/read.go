@@ -28,6 +28,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/privatefile"
 	"github.com/misaon/nylzo/internal/quarantine"
@@ -104,13 +105,16 @@ type openLink struct {
 	kdf        core.KDF
 	secret     [core.SecretLen]byte
 	objectHash [core.ObjectHashLen]byte
-	keys       keys.LinkKeys
+	keys       linkKeys
+}
+
+type linkKeys struct {
+	R [core.SeedLen]byte
 }
 
 func (l *openLink) wipe() {
 	clear(l.secret[:])
 	clear(l.keys.R[:])
-	clear(l.keys.PassphraseSalt[:])
 }
 
 func parseOpenLink(raw string) (openLink, error) {
@@ -139,7 +143,7 @@ func parseOpenLink(raw string) (openLink, error) {
 		objectHash: parsed.ObjectHash,
 	}
 	parsed.Wipe()
-	if link.keys, err = keys.DeriveLink(link.id, &link.secret); err != nil {
+	if link.keys.R, err = keys.DeriveRead(link.id, &link.secret); err != nil {
 		link.wipe()
 		return openLink{}, err
 	}
@@ -372,16 +376,14 @@ type openedMessage struct {
 	lease   string
 }
 
-// unlockedClaim holds what the claim and the decryption need; getting it spends nothing.
+// unlockedClaim holds what the handshake and the claim need; getting it spends nothing.
 type unlockedClaim struct {
-	metadata      api.Metadata
-	passphraseKey []byte
-	verifier      [core.SeedLen]byte
+	metadata api.Metadata
+	password []byte
 }
 
 func (u *unlockedClaim) wipe() {
-	clear(u.passphraseKey)
-	clear(u.verifier[:])
+	clear(u.password)
 }
 
 func unlockClaim(
@@ -399,11 +401,7 @@ func unlockClaim(
 		return nil, checkErr
 	}
 	unlocked := &unlockedClaim{metadata: metadata}
-	if unlocked.passphraseKey, err = passphraseKey(environment, link, source); err != nil {
-		return nil, err
-	}
-	if unlocked.verifier, err = keys.DeriveVerifier(link.id, &link.secret, unlocked.passphraseKey); err != nil {
-		unlocked.wipe()
+	if unlocked.password, err = readPassword(environment, link, source); err != nil {
 		return nil, err
 	}
 	return unlocked, nil
@@ -417,11 +415,19 @@ func claimMessage(
 	guard *claimGuard,
 ) (openedMessage, context.Context, error) {
 	defer unlocked.wipe()
+	if ctx.Err() != nil {
+		return openedMessage{}, nil, context.Cause(ctx)
+	}
+	login, err := handshake(ctx, server, link, unlocked.password)
+	if err != nil {
+		return openedMessage{}, nil, err
+	}
+	defer login.Wipe()
 	claimCtx, err := guard.hold(ctx, client.TransferTime(unlocked.metadata.Size))
 	if err != nil {
 		return openedMessage{}, nil, err
 	}
-	fetched, lease, err := fetchEnvelope(claimCtx, server, link, &unlocked.verifier, unlocked.metadata.Size)
+	fetched, lease, err := fetchEnvelope(claimCtx, server, link, &login, unlocked.metadata.Size)
 	if err != nil && errors.Is(context.Cause(claimCtx), errStopTimedOut) {
 		return openedMessage{}, nil, errStopTimedOut
 	}
@@ -432,7 +438,7 @@ func claimMessage(
 	if !headerMatches(&fetched, link, &unlocked.metadata) {
 		return openedMessage{}, nil, errPolicyChanged
 	}
-	contentKeys, err := contentKeysOf(link, unlocked.passphraseKey, fetched.ShareKey, fetched.Share)
+	contentKeys, err := contentKeysOf(link, &login.ExportKey, fetched.ShareKey, fetched.Share)
 	if err != nil {
 		return openedMessage{}, nil, errTampered
 	}
@@ -646,7 +652,7 @@ func deadlineMatches(policy envelope.Policy, expiresAt string) bool {
 // contentKeysOf unwraps the share, which the server sends only with the object.
 func contentKeysOf(
 	link *openLink,
-	passphraseKey []byte,
+	exportKey *keys.ExportKey,
 	shareKey hpke.PrivateKey,
 	wrapped *[share.WrappedLen]byte,
 ) (keys.ContentKeys, error) {
@@ -658,27 +664,53 @@ func contentKeysOf(
 		return keys.ContentKeys{}, err
 	}
 	defer clear(expiryShare[:])
-	return keys.DeriveContent(link.id, &link.secret, passphraseKey, &expiryShare)
+	return keys.DeriveContent(link.id, &link.secret, exportKey, &expiryShare)
 }
 
-// passphraseKey reads the passphrase and runs scrypt in secret mode, so neither the passphrase nor the scrypt memory
-// outlives its use where the build erases memory.
-func passphraseKey(environment *command.Environment, link *openLink, source passphraseSource) ([]byte, error) {
-	var (
-		key []byte
-		err error
-	)
-	secretmode.Do(func() { key, err = readAndDerivePassphraseKey(environment, link, source) })
-	return key, err
-}
-
-func readAndDerivePassphraseKey(
+// logIn reads the passphrase and runs the handshake. A message without a passphrase runs it with the empty one.
+func logIn(
+	ctx context.Context,
 	environment *command.Environment,
+	server *client.Client,
 	link *openLink,
 	source passphraseSource,
-) ([]byte, error) {
+) (client.Login, error) {
+	password, err := readPassword(environment, link, source)
+	if err != nil {
+		return client.Login{}, err
+	}
+	defer clear(password)
+	return handshake(ctx, server, link, password)
+}
+
+// readPassword reads the passphrase in secret mode, so it does not outlive its use where the build erases memory.
+func readPassword(environment *command.Environment, link *openLink, source passphraseSource) ([]byte, error) {
+	var (
+		password []byte
+		err      error
+	)
+	secretmode.Do(func() { password, err = opaquePassword(environment, link, source) })
+	return password, err
+}
+
+// handshake runs OPAQUE in secret mode, so the scrypt memory does not outlive its use where the build erases memory.
+func handshake(ctx context.Context, server *client.Client, link *openLink, password []byte) (client.Login, error) {
+	var (
+		login client.Login
+		err   error
+	)
+	secretmode.Do(func() {
+		var config opaque.Config
+		if config, err = keys.OPAQUEConfig(link.id, link.kdf); err == nil {
+			login, err = server.LogIn(ctx, link.id, &link.keys.R, link.kdf, password, &config)
+		}
+	})
+	return login, err
+}
+
+func opaquePassword(environment *command.Environment, link *openLink, source passphraseSource) ([]byte, error) {
 	if link.kdf == core.KDFNone {
-		return nil, nil
+		return keys.Password(&link.secret, link.kdf, "")
 	}
 	if !source.given(environment) {
 		source.ask = true
@@ -690,7 +722,7 @@ func readAndDerivePassphraseKey(
 	if err != nil {
 		return nil, err
 	}
-	return keys.DerivePassphraseKey(link.kdf, passphrase, &link.keys.PassphraseSalt)
+	return keys.Password(&link.secret, link.kdf, passphrase)
 }
 
 // fetchEnvelope resumes a broken claim through the lease it already received, so it never spends a second open.
@@ -698,10 +730,10 @@ func fetchEnvelope(
 	ctx context.Context,
 	server *client.Client,
 	link *openLink,
-	verifier *[core.SeedLen]byte,
+	login *client.Login,
 	size int64,
 ) (client.Envelope, string, error) {
-	claimed, err := server.Claim(ctx, link.id, &link.keys.R, verifier, size, nil)
+	claimed, err := server.Claim(ctx, link.id, &link.keys.R, login, size, nil)
 	if err == nil {
 		return claimed.Envelope, claimed.Lease, nil
 	}

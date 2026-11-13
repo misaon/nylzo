@@ -30,6 +30,13 @@ export class MalformedPassphraseError extends Error {
   }
 }
 
+export class LongPassphraseError extends Error {
+  override readonly name = 'LongPassphraseError';
+  constructor(message = 'passphrase is longer than 65503 bytes after NFC') {
+    super(message);
+  }
+}
+
 export class HeaderError extends Error {
   override readonly name = 'HeaderError';
   constructor(message = 'invalid envelope header') {
@@ -103,7 +110,7 @@ export class LinkRetiredKdfError extends LinkError {
 export class LinkReleasedError extends LinkError {
   override readonly name = 'LinkReleasedError';
   constructor() {
-    super('invalid link: a link from before protocol version 2, whose message the upgrade erased');
+    super('invalid link: a link from before protocol version 3, whose message the upgrade erased');
   }
 }
 
@@ -138,6 +145,27 @@ export class PowError extends Error {
 export class PowTimeoutError extends Error {
   override readonly name = 'PowTimeoutError';
   constructor(message = 'proof of work not found before the challenge window ends') {
+    super(message);
+  }
+}
+
+export class EnvelopeRecoveryError extends Error {
+  override readonly name = 'EnvelopeRecoveryError';
+  constructor(message = 'the passphrase does not open the registration') {
+    super(message);
+  }
+}
+
+export class ServerAuthenticationError extends Error {
+  override readonly name = 'ServerAuthenticationError';
+  constructor(message = 'the handshake answer did not come from the server of the registration') {
+    super(message);
+  }
+}
+
+export class OpaqueMessageError extends Error {
+  override readonly name = 'OpaqueMessageError';
+  constructor(message = 'malformed OPAQUE message') {
     super(message);
   }
 }

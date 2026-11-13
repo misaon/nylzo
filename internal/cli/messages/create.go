@@ -21,6 +21,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
@@ -368,11 +369,24 @@ func createOnce(
 	server *client.Client,
 	input *createInput,
 ) (createdMessage, error) {
+	kdf := core.KDFNone
+	if input.passphrase != "" {
+		kdf = core.KDFScrypt
+	}
+	secret, manage := core.NewSecret(), core.NewSecret()
+	defer clear(secret[:])
+	defer clear(manage[:])
+	registration, err := startRegistration(secret, kdf, input.passphrase)
+	defer registration.wipe()
+	if err != nil {
+		return createdMessage{}, err
+	}
 	shareKey := share.NewKey()
-	instance, err := server.Instance(
-		ctx,
-		&client.Creation{TTLSeconds: input.policy.TTLSeconds, ShareKey: shareKey.PublicKey()},
-	)
+	instance, err := server.Instance(ctx, &client.Creation{
+		TTLSeconds:   input.policy.TTLSeconds,
+		ShareKey:     shareKey.PublicKey(),
+		Registration: registration.request,
+	})
 	if err != nil {
 		return createdMessage{}, err
 	}
@@ -384,23 +398,17 @@ func createOnce(
 	defer clear(expiryShare[:])
 	policy := input.policy
 	policy.Deadline = uint32(issued.Deadline.Unix()) //nolint:gosec // G115: the client checked it fits 32 bits
-	kdf := core.KDFNone
-	if input.passphrase != "" {
-		kdf = core.KDFScrypt
-	}
-	secret, manage := core.NewSecret(), core.NewSecret()
-	defer clear(secret[:])
-	defer clear(manage[:])
 	request, err := sealMessage(&sealInput{
-		id:         issued.ID,
-		secret:     secret,
-		manage:     manage,
-		share:      &expiryShare,
-		kdf:        kdf,
-		passphrase: input.passphrase,
-		policy:     policy,
-		message:    input.message,
-		compress:   input.options.compress,
+		id:           issued.ID,
+		secret:       secret,
+		manage:       manage,
+		share:        &expiryShare,
+		kdf:          kdf,
+		registration: registration,
+		response:     &issued.Registration,
+		policy:       policy,
+		message:      input.message,
+		compress:     input.options.compress,
 	})
 	if err != nil {
 		return createdMessage{}, err
@@ -427,20 +435,46 @@ func createOnce(
 	}, nil
 }
 
-type sealInput struct {
-	id         core.ID
-	secret     *[core.SecretLen]byte
-	manage     *[core.SecretLen]byte
-	share      *[core.ShareLen]byte
-	kdf        core.KDF
-	passphrase string
-	policy     envelope.Policy
-	message    *content
-	compress   bool
+// registration is a sender's OPAQUE registration from its request until the response comes with the id.
+type registration struct {
+	request [opaque.RegistrationRequestLen]byte
+	state   opaque.RegistrationState
 }
 
-// sealMessage derives the keys and seals the object in secret mode, which erases the scrypt memory, the normalized
-// passphrase and the derived keys once they are unreachable.
+func (r *registration) wipe() {
+	r.state.Wipe()
+}
+
+// startRegistration needs no id: the OPRF input comes from S and the passphrase alone (spec section 2.1).
+func startRegistration(secret *[core.SecretLen]byte, kdf core.KDF, passphrase string) (*registration, error) {
+	started := &registration{}
+	var err error
+	secretmode.Do(func() {
+		var password []byte
+		if password, err = keys.Password(secret, kdf, passphrase); err != nil {
+			return
+		}
+		defer clear(password)
+		started.request, started.state, err = opaque.CreateRegistrationRequest(password)
+	})
+	return started, err
+}
+
+type sealInput struct {
+	id           core.ID
+	secret       *[core.SecretLen]byte
+	manage       *[core.SecretLen]byte
+	share        *[core.ShareLen]byte
+	kdf          core.KDF
+	registration *registration
+	response     *[opaque.RegistrationResponseLen]byte
+	policy       envelope.Policy
+	message      *content
+	compress     bool
+}
+
+// sealMessage finishes the registration, derives the keys and seals the object in secret mode, which erases the scrypt
+// memory, the normalized passphrase and the derived keys once they are unreachable.
 func sealMessage(input *sealInput) (client.CreateRequest, error) {
 	var (
 		request client.CreateRequest
@@ -451,29 +485,43 @@ func sealMessage(input *sealInput) (client.CreateRequest, error) {
 }
 
 func sealWithDerivedKeys(input *sealInput) (client.CreateRequest, error) {
-	derived, err := keys.DeriveAll(input.id, input.secret, input.kdf, input.passphrase, input.share)
+	config, err := keys.OPAQUEConfig(input.id, input.kdf)
 	if err != nil {
 		return client.CreateRequest{}, err
 	}
-	defer derived.Wipe()
+	finished, err := opaque.FinalizeRegistrationRequest(&input.registration.state, input.response[:], &config)
+	defer finished.Wipe()
+	if err != nil {
+		return client.CreateRequest{}, err
+	}
+	read, err := keys.DeriveRead(input.id, input.secret)
+	defer clear(read[:])
+	if err != nil {
+		return client.CreateRequest{}, err
+	}
+	content, err := keys.DeriveContent(input.id, input.secret, &finished.ExportKey, input.share)
+	defer content.Wipe()
+	if err != nil {
+		return client.CreateRequest{}, err
+	}
 	payload := envelope.Payload{Meta: input.message.meta, File: input.message.file}
 	encode := envelope.Seal
 	if input.compress {
 		encode = envelope.SealWithCompression
 	}
-	object, err := encode(&derived.Content, envelope.NewHeader(input.kdf), input.id, input.policy, payload)
+	object, err := encode(&content, envelope.NewHeader(input.kdf), input.id, input.policy, payload)
 	if err != nil {
 		return client.CreateRequest{}, err
 	}
 	return client.CreateRequest{
-		ID:         input.id,
-		ReadKey:    signing.PublicKey(&derived.Link.R),
-		Verifier:   signing.PublicKey(&derived.Verifier),
-		ManageKey:  signing.PublicKey(input.manage),
-		KDF:        input.kdf,
-		OpensMax:   input.policy.OpensMax,
-		TTLSeconds: input.policy.TTLSeconds,
-		Object:     object,
+		ID:           input.id,
+		ReadKey:      signing.PublicKey(&read),
+		Registration: finished.Record,
+		ManageKey:    signing.PublicKey(input.manage),
+		KDF:          input.kdf,
+		OpensMax:     input.policy.OpensMax,
+		TTLSeconds:   input.policy.TTLSeconds,
+		Object:       object,
 	}, nil
 }
 

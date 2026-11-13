@@ -43,7 +43,7 @@ func (f *File) link() error {
 	id := deterministicID("link")
 	secret := deterministic32("link/s")
 	hash := deterministic32("link/h")
-	cases := append(linkCasesV2(id, secret, hash), releasedLinkCases(id, secret)...)
+	cases := append(linkCasesV3(id, secret, hash), releasedLinkCases(id, secret, hash)...)
 	for _, vector := range cases {
 		link := Link{
 			Name:       vector.name,
@@ -69,11 +69,11 @@ func (f *File) link() error {
 	return nil
 }
 
-func linkCasesV2(id core.ID, secret, hash *[32]byte) []linkCase {
+func linkCasesV3(id core.ID, secret, hash *[32]byte) []linkCase {
 	encodedID, encodedSecret, encodedHash := id.String(), core.Encode(secret[:]), core.Encode(hash[:])
 	page := base + "/r"
 	fields := func(kdf string) string {
-		return "#2." + kdf + "." + encodedID + "." + encodedSecret + "." + encodedHash
+		return "#3." + kdf + "." + encodedID + "." + encodedSecret + "." + encodedHash
 	}
 	fragment := fields("3")
 	return []linkCase{
@@ -86,33 +86,33 @@ func linkCasesV2(id core.ID, secret, hash *[32]byte) []linkCase {
 		{invalidLink, "retired-kdf2-path-m", base + "/m/" + encodedID + fields("2")},
 		{invalidLink, "kdf4-reserved", page + fields("4")},
 		{invalidLink, "kdf-leading-zero", page + fields("03")},
-		{newerLink, "fragment-version-3", page + "#3.3." + encodedID},
-		{newerLink, "fragment-version-3-bare", page + "#3"},
+		{newerLink, "fragment-version-4", page + "#4.3." + encodedID},
+		{newerLink, "fragment-version-4-bare", page + "#4"},
 		{newerLink, "fragment-version-10-new-path-and-shape", base + "/q/x#10.x.y.z"},
 		{newerLink, "fragment-version-9-digits", page + "#999999999.3"},
 		{invalidLink, "fragment-version-0", page + "#0" + fragment[2:]},
-		{invalidLink, "fragment-version-leading-zero", page + "#02" + fragment[2:]},
+		{invalidLink, "fragment-version-leading-zero", page + "#03" + fragment[2:]},
 		{invalidLink, "fragment-version-10-digits", page + "#1000000000" + fragment[2:]},
-		{invalidLink, "fragment-version-letter", page + "#v2" + fragment[2:]},
-		{invalidLink, "fragment-version-3-relative-reference", "/r#3.3"},
-		{invalidLink, "fragment-version-3-userinfo", "https://user@nylzo.example/r#3.3"},
-		{invalidLink, "fragment-version-3-no-path", base + "#3.3"},
-		{invalidLink, "fragment-version-plus-3", page + "#+3.3"},
-		{invalidLink, "fragment-version-fullwidth-3", page + "#３.3"},
+		{invalidLink, "fragment-version-letter", page + "#v3" + fragment[2:]},
+		{invalidLink, "fragment-version-4-relative-reference", "/r#4.3"},
+		{invalidLink, "fragment-version-4-userinfo", "https://user@nylzo.example/r#4.3"},
+		{invalidLink, "fragment-version-4-no-path", base + "#4.3"},
+		{invalidLink, "fragment-version-plus-4", page + "#+4.3"},
+		{invalidLink, "fragment-version-fullwidth-4", page + "#４.3"},
 		{invalidLink, "fragment-missing", page},
-		{invalidLink, "fragment-four-fields", page + "#2.3." + encodedID + "." + encodedSecret},
+		{invalidLink, "fragment-four-fields", page + "#3.3." + encodedID + "." + encodedSecret},
 		{invalidLink, "fragment-six-fields", page + fragment + ".A"},
-		{invalidLink, "id-21-chars", page + "#2.3." + encodedID[:21] + "." + encodedSecret + "." + encodedHash},
+		{invalidLink, "id-21-chars", page + "#3.3." + encodedID[:21] + "." + encodedSecret + "." + encodedHash},
 		{
 			invalidLink,
 			"id-non-canonical-last-char",
-			page + "#2.3." + nonCanonicalID(encodedID) + "." + encodedSecret + "." + encodedHash,
+			page + "#3.3." + nonCanonicalID(encodedID) + "." + encodedSecret + "." + encodedHash,
 		},
-		{invalidLink, "secret-42-chars", page + "#2.3." + encodedID + "." + encodedSecret[:42] + "." + encodedHash},
+		{invalidLink, "secret-42-chars", page + "#3.3." + encodedID + "." + encodedSecret[:42] + "." + encodedHash},
 		{
 			invalidLink,
 			"secret-non-canonical-last-char",
-			page + "#2.3." + encodedID + "." + nonCanonicalSecret(encodedSecret) + "." + encodedHash,
+			page + "#3.3." + encodedID + "." + nonCanonicalSecret(encodedSecret) + "." + encodedHash,
 		},
 		{invalidLink, "hash-44-chars", page + fragment + "A"},
 		{invalidLink, "hash-padding", page + fragment + "="},
@@ -120,12 +120,12 @@ func linkCasesV2(id core.ID, secret, hash *[32]byte) []linkCase {
 		{
 			invalidLink,
 			"hash-std-base64-alphabet",
-			page + "#2.3." + encodedID + "." + encodedSecret + "." + standardAlphabet(encodedHash[:42]) + "+",
+			page + "#3.3." + encodedID + "." + encodedSecret + "." + standardAlphabet(encodedHash[:42]) + "+",
 		},
 		{
 			invalidLink,
 			"hash-percent-encoded",
-			page + "#2.3." + encodedID + "." + encodedSecret + "." + percentEncodeFirst(encodedHash),
+			page + "#3.3." + encodedID + "." + encodedSecret + "." + percentEncodeFirst(encodedHash),
 		},
 		{invalidLink, "path-with-id", base + "/r/" + encodedID + fragment},
 		{invalidLink, "path-m-with-id", base + "/m/" + encodedID + fragment},
@@ -151,12 +151,23 @@ func linkCasesV2(id core.ID, secret, hash *[32]byte) []linkCase {
 	}
 }
 
-// releasedLinkCases are links of protocol version 1, whose messages the upgrade to version 2 erased.
-func releasedLinkCases(id core.ID, secret *[32]byte) []linkCase {
-	encodedID, encodedSecret := id.String(), core.Encode(secret[:])
+// releasedLinkCases are links of protocol versions 1 and 2, whose messages the upgrades erased.
+func releasedLinkCases(id core.ID, secret, hash *[32]byte) []linkCase {
+	encodedID, encodedSecret, encodedHash := id.String(), core.Encode(secret[:]), core.Encode(hash[:])
 	message := base + "/m/" + encodedID
 	fragment := "1.1." + encodedSecret
+	versionTwo := func(kdf string) string {
+		return "#2." + kdf + "." + encodedID + "." + encodedSecret + "." + encodedHash
+	}
 	return []linkCase{
+		{releasedLink, "v2-kdf0", base + "/r" + versionTwo("0")},
+		{releasedLink, "v2-kdf3", base + "/r" + versionTwo("3")},
+		{releasedLink, "v2-query-ignored", base + "/r?utm=x" + versionTwo("3")},
+		{invalidLink, "v2-kdf1", base + "/r" + versionTwo("1")},
+		{invalidLink, "v2-kdf2", base + "/r" + versionTwo("2")},
+		{invalidLink, "v2-damaged-hash", base + "/r" + versionTwo("3")[:len(versionTwo("3"))-1] + "B"},
+		{invalidLink, "v2-path-m", base + "/m/" + encodedID + versionTwo("3")},
+		{invalidLink, "v2-four-fields", base + "/r#2.3." + encodedID + "." + encodedSecret},
 		{releasedLink, "v1-kdf0", message + "#1.0." + encodedSecret},
 		{releasedLink, "v1-kdf1", message + "#" + fragment},
 		{releasedLink, "v1-kdf2", message + "#1.2." + encodedSecret},

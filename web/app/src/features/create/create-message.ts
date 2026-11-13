@@ -1,11 +1,16 @@
 import {
+  createRegistrationRequest,
   deriveContent,
   deriveLink,
-  deriveVerifier,
+  derivePassphraseSalt,
+  finalizeRegistrationRequest,
   formatLink,
+  identityStretch,
   idToString,
   KDF_NONE,
   KDF_SCRYPT,
+  LongPassphraseError,
+  MalformedPassphraseError,
   MAX_MIME_BYTES,
   MAX_TEXT_BYTES,
   MIN_TTL_SECONDS,
@@ -14,6 +19,7 @@ import {
   newSecret,
   newShareKey,
   objectHash,
+  opaquePassword,
   passphraseProblem,
   PowTimeoutError,
   requestKey,
@@ -21,9 +27,10 @@ import {
   TooLargeError,
   unwrapShare,
   utf8,
+  wipeLogin,
   wipeRequestKey,
 } from '@nylzo/core';
-import type { KdfId, LinkKeys, Meta, RequestKey } from '@nylzo/core';
+import type { KdfId, LinkKeys, Meta, RegistrationState, RequestKey, Stretch } from '@nylzo/core';
 
 import { ApiError, isApiError, shouldRetryLater } from '../../shared/api/api-errors.ts';
 import type { Api, Issued } from '../../shared/api/api.ts';
@@ -53,7 +60,15 @@ export type CreateProblem =
   | { readonly field: 'opens' | 'ttl'; readonly code: 'out_of_range' }
   | {
       readonly field: 'passphrase';
-      readonly code: 'common' | 'context' | 'malformed' | 'repetitive' | 'sequential' | 'too_short' | 'unassigned';
+      readonly code:
+        | 'common'
+        | 'context'
+        | 'malformed'
+        | 'repetitive'
+        | 'sequential'
+        | 'too_long'
+        | 'too_short'
+        | 'unassigned';
     };
 
 export type CreateField = CreateProblem['field'];
@@ -90,11 +105,7 @@ export interface Created {
 export interface CreateDependencies {
   readonly api: Api;
   readonly origin: string;
-  readonly scrypt: (
-    passphrase: string,
-    passphraseSalt: Uint8Array<ArrayBuffer>,
-    onProgress: Progress,
-  ) => Promise<Uint8Array<ArrayBuffer>>;
+  readonly stretch: (message: Uint8Array<ArrayBuffer>, onProgress: Progress) => Promise<Uint8Array<ArrayBuffer>>;
   readonly solvePow: (
     challenge: string,
     id: Uint8Array<ArrayBuffer>,
@@ -110,7 +121,6 @@ interface SealedMessage {
   readonly object: Uint8Array<ArrayBuffer>;
   readonly readPublicKey: Uint8Array<ArrayBuffer>;
   readonly manageKey: RequestKey;
-  readonly verifierKey: Uint8Array<ArrayBuffer>;
 }
 
 const MAX_ATTEMPTS = 3;
@@ -171,20 +181,40 @@ function metaOf(input: CreateInput): Meta {
   return { ...(input.text !== '' && { text: input.text.toWellFormed() }), ...(file && { file }) };
 }
 
-async function derivePassphraseKey(
-  input: CreateInput,
-  kdfId: KdfId,
-  passphraseSalt: Uint8Array<ArrayBuffer>,
-  dependencies: CreateDependencies,
-  onProgress: ReportProgress,
-): Promise<Uint8Array> {
+// Profile 3 stretches the OPRF output in a worker (spec 2.1).
+function stretchOf(kdfId: KdfId, dependencies: CreateDependencies, onProgress: ReportProgress): Stretch {
   if (kdfId === KDF_NONE) {
-    return new Uint8Array(0);
+    return identityStretch;
   }
-  onProgress({ step: 'deriving', fraction: 0 });
-  return dependencies.scrypt(input.passphrase, passphraseSalt, (fraction) =>
-    onProgress({ step: 'deriving', fraction }),
-  );
+  return (message) => {
+    onProgress({ step: 'deriving', fraction: 0 });
+    return dependencies.stretch(message, (fraction) => onProgress({ step: 'deriving', fraction }));
+  };
+}
+
+function passphraseErrorCode(error: unknown): 'malformed' | 'too_long' | undefined {
+  if (error instanceof MalformedPassphraseError) {
+    return 'malformed';
+  }
+  return error instanceof LongPassphraseError ? 'too_long' : undefined;
+}
+
+// The registration request travels with the instance request, before the server issues the id (spec 2.1, 6.6).
+function startRegistration(
+  salt: Uint8Array,
+  kdfId: KdfId,
+  passphrase: string,
+): { readonly request: Uint8Array<ArrayBuffer>; readonly state: RegistrationState } {
+  let password: Uint8Array | undefined;
+  try {
+    password = opaquePassword(salt, kdfId, passphrase);
+    return createRegistrationRequest(password);
+  } catch (error) {
+    const code = passphraseErrorCode(error);
+    throw code === undefined ? error : new CreateError({ kind: 'invalid', problems: [{ field: 'passphrase', code }] });
+  } finally {
+    password?.fill(0);
+  }
 }
 
 async function prove(
@@ -228,26 +258,18 @@ interface SealInput {
   readonly issued: Issued;
   readonly kdfId: KdfId;
   readonly secret: Uint8Array<ArrayBuffer>;
+  readonly exportKey: Uint8Array<ArrayBuffer>;
   readonly share: Uint8Array<ArrayBuffer>;
   readonly maxObjectBytes: number;
 }
 
-async function sealMessage(
-  sealing: SealInput,
-  dependencies: CreateDependencies,
-  onProgress: ReportProgress,
-): Promise<SealedMessage> {
+async function sealMessage(sealing: SealInput, onProgress: ReportProgress): Promise<SealedMessage> {
   const { input, kdfId, secret, share } = sealing;
   const { id } = sealing.issued;
   let linkKeys: LinkKeys | undefined;
-  let passphraseKey: Uint8Array | undefined;
-  let verifierSeed: Uint8Array | undefined;
   try {
     linkKeys = await deriveLink(id, secret);
-    passphraseKey = await derivePassphraseKey(input, kdfId, linkKeys.passphraseSalt, dependencies, onProgress);
-    verifierSeed = await deriveVerifier(id, secret, passphraseKey);
-    const contentKeys = await deriveContent(id, secret, passphraseKey, share);
-    passphraseKey.fill(0);
+    const contentKeys = await deriveContent(id, secret, sealing.exportKey, share);
     const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds, deadline: sealing.issued.deadline };
     onProgress({ step: 'encrypting' });
     const object = await seal(contentKeys, newHeader(kdfId), id, policy, {
@@ -259,22 +281,22 @@ async function sealMessage(
     }
     const readKey = await requestKey(linkKeys.readSeed);
     wipeRequestKey(readKey);
-    const verifierKey = await requestKey(verifierSeed);
-    wipeRequestKey(verifierKey);
     const manageKey = await newRequestKey();
-    return { object, readPublicKey: readKey.publicKey, manageKey, verifierKey: verifierKey.publicKey };
+    return { object, readPublicKey: readKey.publicKey, manageKey };
   } finally {
     linkKeys?.readSeed.fill(0);
     linkKeys?.passphraseSalt.fill(0);
-    passphraseKey?.fill(0);
-    verifierSeed?.fill(0);
   }
 }
 
-async function issue(input: CreateInput, dependencies: CreateDependencies) {
+async function issue(input: CreateInput, dependencies: CreateDependencies, registrationRequest: Uint8Array) {
   const shareKey = newShareKey();
   try {
-    const instance = await dependencies.api.instance({ ttlSeconds: input.ttlSeconds, shareKey: shareKey.publicKey });
+    const instance = await dependencies.api.instance({
+      ttlSeconds: input.ttlSeconds,
+      shareKey: shareKey.publicKey,
+      registrationRequest,
+    });
     const problems = validateCreate(input, instance.limits);
     if (problems.length > 0) {
       throw new CreateError({ kind: 'invalid', problems });
@@ -295,13 +317,33 @@ async function createOnce(
   onProgress: ReportProgress,
 ): Promise<Created> {
   onProgress({ step: 'preparing' });
-  const { instance, issued, share } = await issue(input, dependencies);
-  const { id, idToken, epoch, deadline } = issued;
   const kdfId: KdfId = input.passphrase === '' ? KDF_NONE : KDF_SCRYPT;
   const secret = newSecret();
+  let state: RegistrationState | undefined;
+  let share: Uint8Array<ArrayBuffer> | undefined;
+  let exportKey: Uint8Array<ArrayBuffer> | undefined;
   try {
-    const sealing = { input, issued, kdfId, secret, share, maxObjectBytes: instance.limits.maxObjectBytes };
-    const sealed = await sealMessage(sealing, dependencies, onProgress);
+    const salt = await derivePassphraseSalt(secret);
+    const registration = startRegistration(salt, kdfId, input.passphrase);
+    salt.fill(0);
+    state = registration.state;
+    const issuance = await issue(input, dependencies, registration.request);
+    const { instance, issued } = issuance;
+    share = issuance.share;
+    const { id, idToken, epoch, deadline } = issued;
+    const stretch = stretchOf(kdfId, dependencies, onProgress);
+    const record = await finalizeRegistrationRequest(state, issued.registration, stretch);
+    exportKey = record.exportKey;
+    const sealing = {
+      input,
+      issued,
+      kdfId,
+      secret,
+      exportKey,
+      share,
+      maxObjectBytes: instance.limits.maxObjectBytes,
+    };
+    const sealed = await sealMessage(sealing, onProgress);
     const powToken = instance.pow.required ? await prove(id, dependencies, onProgress) : undefined;
     const hash = await objectHash(sealed.object);
     onProgress({ step: 'uploading' });
@@ -311,7 +353,7 @@ async function createOnce(
       epoch,
       deadline,
       readKey: sealed.readPublicKey,
-      verifierKey: sealed.verifierKey,
+      registration: record.record,
       manageKey: sealed.manageKey.publicKey,
       kdfId,
       opensMax: input.opensMax,
@@ -323,7 +365,9 @@ async function createOnce(
     return { link, expiresAt, id: idToString(id), manageKey: sealed.manageKey };
   } finally {
     secret.fill(0);
-    share.fill(0);
+    share?.fill(0);
+    exportKey?.fill(0);
+    wipeLogin(state);
   }
 }
 

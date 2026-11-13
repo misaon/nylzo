@@ -10,8 +10,8 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig"
 )
 
-// TestTheAdapterRefusesRequestRecording covers F11: an operator's edit that would log X-Nylzo-Create or
-// X-Nylzo-Verifier fails at load, where the CI test of the shipped Caddyfiles cannot see it.
+// TestTheAdapterRefusesRequestRecording covers F11: an operator's edit that would log the X-Nylzo-* headers fails at
+// load, where the CI test of the shipped Caddyfiles cannot see it.
 func TestTheAdapterRefusesRequestRecording(t *testing.T) {
 	hetzner := adaptHetzner(t)
 	compose, err := os.ReadFile(profileCaddyfiles["Compose"])

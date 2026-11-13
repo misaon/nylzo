@@ -79,7 +79,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if !s.admitStream(w, r) {
 		return
 	}
-	verifier, verifierSent, ok := parseVerifier(w, r)
+	ke3, ok := parseKE3(w, r)
 	if !ok {
 		return
 	}
@@ -94,7 +94,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientKey, ok := readerKey(w, r, granted.record.Message)
-	if !ok || !s.allowReadBytes(w, r, granted.record.Message.Size) {
+	if !ok || !s.finishHandshake(w, r, &granted.record, ke3) || !s.allowReadBytes(w, r, granted.record.Message.Size) {
 		return
 	}
 	wrappedShare, ok := s.wrappedShare(w, r, &granted.record, clientKey)
@@ -115,7 +115,6 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	leaseTag := s.ring.MAC(pepper.Lease, lease[:])
 	result, err := store.Claim(r.Context(), s.store, &granted.record, store.ClaimParameters{
 		Clock:         time.Now,
-		Verifier:      s.verifierProof(r, &verifier, verifierSent, granted.signature.Challenge, &blob.salt),
 		LeaseMAC:      leaseTag.MAC[:],
 		LeasePepperID: leaseTag.PepperID,
 	})
@@ -153,21 +152,9 @@ func (s *Server) wrappedShare(
 	record *store.Record,
 	clientKey hpke.PublicKey,
 ) (string, bool) {
-	message := record.Message
-	var err error
-	var expiryShare [core.ShareLen]byte
-	secretmode.Do(func() {
-		expiryShare, err = s.epochs.Share(message.Generation, message.Epoch, record.Row.Locator, time.Now())
-	})
+	expiryShare, ok := s.shareOf(w, r, record)
 	defer clear(expiryShare[:])
-	if errors.Is(err, epoch.ErrShareGone) {
-		expired := errors.Is(err, epoch.ErrShareExpired) ||
-			(message.Flags&envelope.FlagDeadline != 0 && s.epochs.Passed(message.Epoch))
-		s.shareGone(w, r, record, expired)
-		return "", false
-	}
-	if err != nil {
-		s.writeInternal(w, r, err)
+	if !ok {
 		return "", false
 	}
 	wrapped, err := share.Wrap(&expiryShare, clientKey)
@@ -202,6 +189,29 @@ func parseReaderFlags(header http.Header) (uint8, bool) {
 	default:
 		return 0, false
 	}
+}
+
+// shareOf computes the expiry share of a message; a share that is gone answers as shareGone does.
+func (s *Server) shareOf(w http.ResponseWriter, r *http.Request, record *store.Record) ([core.ShareLen]byte, bool) {
+	message := record.Message
+	var (
+		expiryShare [core.ShareLen]byte
+		err         error
+	)
+	secretmode.Do(func() {
+		expiryShare, err = s.epochs.Share(message.Generation, message.Epoch, record.Row.Locator, time.Now())
+	})
+	if errors.Is(err, epoch.ErrShareGone) {
+		expired := errors.Is(err, epoch.ErrShareExpired) ||
+			(message.Flags&envelope.FlagDeadline != 0 && s.epochs.Passed(message.Epoch))
+		s.shareGone(w, r, record, expired)
+		return expiryShare, false
+	}
+	if err != nil {
+		s.writeInternal(w, r, err)
+		return expiryShare, false
+	}
+	return expiryShare, true
 }
 
 // endLostShare ends a message nobody can open any more, because the seed that made its share is gone.
@@ -254,8 +264,14 @@ func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time)
 	})
 }
 
+// handleBlob serves a download through a lease. A reader that resumes from the lease after a reload ran a handshake
+// for P again, and its download may carry that KE3, which takes the handshake's attempt back (spec section 6.5).
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	if !s.admitStream(w, r) {
+		return
+	}
+	ke3, ok := parseOptionalKE3(w, r)
+	if !ok {
 		return
 	}
 	release, ok := s.takeStream(w, r)
@@ -269,7 +285,8 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clientKey, ok := readerKey(w, r, leased.record.Message)
-	if !ok || !s.allowReadBytes(w, r, leased.record.Message.Size) {
+	if !ok || (ke3 != nil && !s.finishHandshake(w, r, &leased.record, ke3)) ||
+		!s.allowReadBytes(w, r, leased.record.Message.Size) {
 		return
 	}
 	wrapped, ok := s.wrappedShare(w, r, &leased.record, clientKey)

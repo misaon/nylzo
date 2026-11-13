@@ -253,7 +253,7 @@ func TestCreateAndReadText(t *testing.T) {
 		"--opens",
 		"2",
 	)
-	if !strings.HasPrefix(link, instance.url+"/r#2.0.") || strings.Count(created.stdout, "\n") != 1 {
+	if !strings.HasPrefix(link, instance.url+"/r#3.0.") || strings.Count(created.stdout, "\n") != 1 {
 		t.Fatalf("create printed %q", created.stdout)
 	}
 	if strings.Contains(created.stderr, "#") {
@@ -328,7 +328,7 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	linkKeys, err := keys.DeriveLink(parsed.ID, &parsed.Secret)
+	read, err := keys.DeriveRead(parsed.ID, &parsed.Secret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -342,7 +342,7 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	readKey := signing.PublicKey(&linkKeys.R)
+	readKey := signing.PublicKey(&read)
 	ring, err := pepper.NewRing(testPepper, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -378,8 +378,8 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 func TestALinkFromANewerVersionAsksForANewerNylzo(t *testing.T) {
 	t.Parallel()
 	secret := core.Encode(make([]byte, core.SecretLen))
-	newer := "https://nylzo.example/r#3.3." + core.NewID().String() + "." + secret + "." + secret
-	damaged := "https://nylzo.example/r#2.9." + core.NewID().String() + "." + secret + "." + secret
+	newer := "https://nylzo.example/r#4.3." + core.NewID().String() + "." + secret + "." + secret
+	damaged := "https://nylzo.example/r#3.9." + core.NewID().String() + "." + secret + "." + secret
 	for _, name := range []string{"read", "burn", "report"} {
 		result := runWith(t, newer, nil, nil, withDestination(name)...)
 		if result.code != command.ExitError ||
@@ -402,8 +402,10 @@ func TestRetiredAndReleasedLinksAskForANewLink(t *testing.T) {
 	secret := core.Encode(make([]byte, core.SecretLen))
 	id := core.NewID().String()
 	for link, want := range map[string]string{
-		"https://nylzo.example/r#2.2." + id + "." + secret + "." + secret: "the link uses a passphrase profile " +
+		"https://nylzo.example/r#3.2." + id + "." + secret + "." + secret: "the link uses a passphrase profile " +
 			"that nylzo no longer supports; ask the sender for a new link",
+		"https://nylzo.example/r#2.3." + id + "." + secret + "." + secret: "the link is from before this " +
+			"instance's security upgrade, which deleted every message it held; ask the sender for a new link",
 		"https://nylzo.example/m/" + id + "#1.0." + secret: "the link is from before this instance's security " +
 			"upgrade, which deleted every message it held; ask the sender for a new link",
 	} {
@@ -431,7 +433,7 @@ func TestPassphraseFromFilesAndWrongAttempts(t *testing.T) {
 	right := writeSecretFile(t, "correct horse battery staple\n")
 	wrong := writeSecretFile(t, "wrong horse battery staple")
 	link, _ := createText(t, instance, "behind a passphrase", "--passphrase-file", right)
-	if !strings.Contains(link, "#2.3.") {
+	if !strings.Contains(link, "#3.3.") {
 		t.Fatalf("link %s", link)
 	}
 	result := runWith(t, link, nil, nil, "read", "--passphrase-file", wrong, "--out", t.TempDir())
@@ -908,7 +910,7 @@ func TestAServerCannotSwitchOffThePassphrase(t *testing.T) {
 		"--passphrase-file",
 		writeSecretFile(t, "correct horse battery staple"),
 	)
-	if result.code != command.ExitOK || !strings.Contains(result.stdout, "#2.3.") {
+	if result.code != command.ExitOK || !strings.Contains(result.stdout, "#3.3.") {
 		t.Fatalf("a passphrase was dropped on the server's word: %d %q %q", result.code, result.stdout, result.stderr)
 	}
 }
@@ -1027,7 +1029,8 @@ func TestCreateRetriesWithANewIDAndSignedRequestsRetryA404(t *testing.T) {
 	}
 }
 
-// F7, F05: the headers of a create, a claim and a burn have one length whether or not the message has a passphrase.
+// F7, F05, F11: the headers of the requests that create, read and burn a message have one length whether or not the
+// message has a passphrase.
 func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)
@@ -1038,6 +1041,10 @@ func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/messages":
 			route = "create"
+		case r.URL.Path == "/api/v1/instance" && r.Header.Get("X-Nylzo-Ttl") != "":
+			route = "instance"
+		case strings.HasSuffix(r.URL.Path, "/handshake"):
+			route = "handshake"
 		case strings.HasSuffix(r.URL.Path, "/claim"):
 			route = "claim"
 		case strings.HasSuffix(r.URL.Path, "/burn"):
@@ -1045,11 +1052,19 @@ func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 		default:
 			return false
 		}
-		if route == "claim" && (r.Header.Get("X-Nylzo-Verifier") == "" || r.Header.Get("X-Nylzo-Share-Key") == "") {
-			t.Errorf("a %s without a verifier or a share key", route)
+		required := map[string][]string{
+			"instance":  {"X-Nylzo-Registration"},
+			"handshake": {"X-Nylzo-Ke1"},
+			"claim":     {"X-Nylzo-Ke3", "X-Nylzo-Share-Key"},
+			"burn":      {"X-Nylzo-Ke3"},
 		}
-		if route == "burn" && r.Header.Get("X-Nylzo-Verifier") == "" {
-			t.Error("a burn without a verifier")
+		for _, name := range required[route] {
+			if r.Header.Get(name) == "" {
+				t.Errorf("a %s without %s", route, name)
+			}
+		}
+		if r.Header.Get("X-Nylzo-Verifier") != "" {
+			t.Errorf("a %s with the verifier of protocol v2", route)
 		}
 		size := 0
 		for name, values := range r.Header {
@@ -1090,7 +1105,7 @@ func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 			t.Fatalf("burn: %d %q", burned.code, burned.stderr)
 		}
 	}
-	for route, want := range map[string]int{"create": 4, "claim": 2, "burn": 2} {
+	for route, want := range map[string]int{"instance": 4, "create": 4, "handshake": 4, "claim": 2, "burn": 2} {
 		sizes := lengths[route]
 		if len(sizes) != want || slices.Min(sizes) != slices.Max(sizes) {
 			t.Errorf("%s headers of %v bytes; a passphrase must not change them", route, sizes)
@@ -1432,8 +1447,8 @@ func TestOpenRefusesALinkItCannotHandOver(t *testing.T) {
 		want   string
 	}{
 		"another instance": {link, "https://nylzo.example", "belongs to another instance"},
-		"damaged link":     {strings.Replace(link, "#2.", "#2.9", 1), instance.url, "incomplete or damaged"},
-		"newer link":       {strings.Replace(link, "#2.", "#7.", 1), instance.url, "newer version"},
+		"damaged link":     {strings.Replace(link, "#3.", "#3.9", 1), instance.url, "incomplete or damaged"},
+		"newer link":       {strings.Replace(link, "#3.", "#7.", 1), instance.url, "newer version"},
 		"no link":          {"", instance.url, "empty"},
 	} {
 		result := runWith(t, testCase.stdin, nil, nil, "open", "--no-browser", "--server", testCase.server)

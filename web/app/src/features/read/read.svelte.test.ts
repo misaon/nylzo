@@ -103,7 +103,7 @@ describe('read interface', () => {
 
   it.each([
     { reason: 'malformed' },
-    { reason: 'wrong_or_changed' },
+    { reason: 'long' },
     { reason: 'wrong', attemptsLeft: 2, retryAfter: 0, locked: false },
     { reason: 'wrong', attemptsLeft: 2, retryAfter: 30, locked: false },
   ] as const)('renders passphrase rejection $reason and removes it when typing again', (rejected) => {
@@ -118,6 +118,15 @@ describe('read interface', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     flushSync();
     expect(input.getAttribute('aria-invalid')).toBe('false');
+  });
+
+  it('tells the reader of a message without a passphrase how long its opening is paused', () => {
+    show();
+    ready({ metadata, rejected: { reason: 'wrong', attemptsLeft: 0, retryAfter: 120, locked: false } });
+    const [before = ''] = translator.translate('read.wait', { time: '|' }).split('|');
+    expect(target.querySelector('input[type="password"]')).toBeNull();
+    expect(before).not.toBe('');
+    expect(target.querySelector('[role="alert"]')?.textContent).toContain(before);
   });
 
   it('validates an empty passphrase, toggles its visibility and sends it once', async () => {

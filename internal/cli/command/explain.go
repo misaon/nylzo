@@ -77,6 +77,8 @@ func explainLocal(err error) string {
 		return weakPassphraseText(err)
 	case errors.Is(err, keys.ErrMalformedPassphrase):
 		return "the passphrase is not valid UTF-8"
+	case errors.Is(err, keys.ErrLongPassphrase):
+		return fmt.Sprintf("the passphrase is longer than %d bytes", keys.MaxPassphraseBytes)
 	case errors.Is(err, console.ErrNoTerminal):
 		return "there is no terminal to ask on; use a file instead"
 	default:

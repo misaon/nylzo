@@ -1,9 +1,10 @@
-import { encodeBase64url, FLAG_DEADLINE, idToString, wrapShare } from '@nylzo/core';
+import { encodeBase64url, FLAG_DEADLINE, idToString, opaqueContext, wrapShare } from '@nylzo/core';
 import type { RequestKey, ShareKey } from '@nylzo/core';
+import { createRegistrationResponse, generateKE2, newServerKeys } from '@nylzo/core/testing';
 
 import { ApiError, StoppedError } from './api-errors.ts';
 import type { MessageState } from './api-errors.ts';
-import type { Api, CreateRequest, Instance, Metadata, Status } from './api.ts';
+import type { Api, CreateRequest, Instance, Login, Metadata, Status } from './api.ts';
 
 interface Stored {
   readonly request: CreateRequest;
@@ -15,6 +16,7 @@ interface Stored {
 }
 
 export interface FakeOptions {
+  readonly otherServerKeys?: boolean;
   pow?: { required: boolean; difficulty: number };
   withholdShare?: boolean;
   failCreate?: ApiError[];
@@ -37,6 +39,7 @@ export interface FakeOptions {
 
 export interface FakeApi extends Api {
   readonly calls: string[];
+  readonly handshakes: string[];
   readonly challenges: string[];
   readonly stored: Map<string, Stored>;
   readonly issuedIds: Uint8Array<ArrayBuffer>[];
@@ -46,6 +49,11 @@ function sameBytes(first: Uint8Array | undefined, second: Uint8Array | undefined
   return (
     first !== undefined && second?.length === first.length && first.every((value, index) => value === second[index])
   );
+}
+
+// The OPAQUE credential identifier of spec section 5.1: the id and the expiry share.
+function credentialOf(id: Uint8Array, share: Uint8Array): Uint8Array {
+  return new Uint8Array([...id, ...share]);
 }
 
 export function fakeApi(options: FakeOptions = {}): FakeApi {
@@ -58,6 +66,9 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
   const failCancel = [...(options.failCancel ?? [])];
   const failBurn = [...(options.failBurn ?? [])];
   const shares = new Map<string, Uint8Array<ArrayBuffer>>();
+  const serverKeys = newServerKeys();
+  const handshakes: string[] = [];
+  const expectedMacs = new Map<string, { readonly id: string; readonly mac: Uint8Array }>();
 
   // The deadline the server fixes when it issues an id: the TTL from now, rounded up to the minute (spec 5.6).
   function deadlineAfter(ttlSeconds: number): number {
@@ -84,16 +95,22 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     return message;
   }
 
-  function checkVerifier(message: Stored, verifierKey: RequestKey): void {
-    if (message.request.kdfId === 0 || sameBytes(message.request.verifierKey, verifierKey.publicKey)) {
-      return;
-    }
-    message.failures++;
+  function attemptsOf(message: Stored) {
     const locked = message.failures >= (options.lockAfter ?? 100);
-    throw new ApiError(403, 'passphrase', {
-      retryAfter: locked ? 3600 : 0,
-      attemptsLeft: locked ? 0 : Math.max(0, 5 - message.failures),
-    });
+    return { retryAfter: locked ? 3600 : 0, attemptsLeft: locked ? 0 : Math.max(0, 5 - message.failures) };
+  }
+
+  // Every handshake counts an attempt that only a matching KE3 takes back (spec 6.4).
+  function checkLogin(message: Stored, { challenge, ke3 }: Login): void {
+    const expected = expectedMacs.get(encodeBase64url(challenge));
+    expectedMacs.delete(encodeBase64url(challenge));
+    if (expected?.id !== idToString(message.request.id)) {
+      throw new ApiError(404, 'not_found');
+    }
+    if (!sameBytes(expected.mac, ke3)) {
+      throw new ApiError(403, 'passphrase', attemptsOf(message));
+    }
+    message.failures--;
   }
 
   function live(message: Stored): boolean {
@@ -149,6 +166,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
           epoch: deadline / 60 - 1,
           deadline,
           share: await wrapShare(share, creation.shareKey),
+          registration: createRegistrationResponse(creation.registrationRequest, serverKeys, credentialOf(id, share)),
         };
       }
       return {
@@ -211,16 +229,42 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         expiresAt: expiresAt(message),
       };
     },
+    // With a lease the handshake also runs on an opened message whose last open that lease holds (spec 6.4).
+    async handshake(id, readKey, ke1, lease) {
+      calls.push(lease === undefined ? 'handshake' : 'handshake+lease');
+      const message = find(id, readKey);
+      const open = lease === undefined ? message.state === 'available' : message.leases.has(lease);
+      if (!open) {
+        throw new ApiError(410, 'gone', { state: message.state });
+      }
+      if (message.failures >= (options.lockAfter ?? 100)) {
+        throw new ApiError(403, 'passphrase', attemptsOf(message));
+      }
+      message.failures++;
+      const share = shares.get(idToString(message.request.id)) ?? new Uint8Array(32);
+      const { ke2, expectedClientMac } = generateKE2(
+        options.otherServerKeys === true ? newServerKeys() : serverKeys,
+        message.request.registration,
+        credentialOf(message.request.id, share),
+        ke1,
+        opaqueContext(message.request.id, message.request.kdfId),
+      );
+      const challenge = new Uint8Array(36).fill(handshakes.length + 1);
+      handshakes.push(encodeBase64url(challenge));
+      expectedMacs.set(encodeBase64url(challenge), { id: idToString(message.request.id), mac: expectedClientMac });
+      return { ke2, challenge, ...attemptsOf(message) };
+    },
     async claim(id, readKey, claimOptions) {
+      const message = find(id, readKey);
+      const login = await claimOptions.unlock();
       if (claimOptions.proceed?.() === false) {
         throw new StoppedError();
       }
+      checkLogin(message, login);
       calls.push('claim');
-      const message = find(id, readKey);
       if (message.state !== 'available') {
         throw new ApiError(410, 'gone', { state: message.state });
       }
-      checkVerifier(message, claimOptions.verifierKey);
       message.opensRemaining--;
       if (message.opensRemaining === 0) {
         message.state = 'opened';
@@ -232,9 +276,12 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       claimOptions.onProgress?.(served.object.length, served.object.length);
       return { lease, ...served };
     },
-    async blob(id, readKey, lease, shareKeys) {
-      calls.push('blob');
+    async blob(id, readKey, lease, shareKeys, blobOptions) {
       const message = find(id, readKey);
+      if (blobOptions?.unlock) {
+        checkLogin(message, await blobOptions.unlock());
+      }
+      calls.push('blob');
       if (!message.leases.has(lease)) {
         throw new ApiError(410, 'gone', { state: message.state });
       }
@@ -248,16 +295,17 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       calls.push('ack');
       find(id, readKey).leases.delete(lease);
     },
-    async burn(id, readKey, verifierKey) {
-      calls.push('burn');
+    async burn(id, readKey, unlock) {
       const failure = failBurn.shift();
       if (failure) {
+        calls.push('burn');
         throw failure;
       }
       const message = find(id, readKey);
       if (live(message)) {
-        checkVerifier(message, verifierKey);
+        checkLogin(message, await unlock());
       }
+      calls.push('burn');
       end(message, 'deleted');
     },
     async cancel(id, manageKey) {
@@ -295,5 +343,5 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     },
   };
   /* oxlint-enable typescript/require-await -- only the fake methods above */
-  return Object.assign(api, { calls, challenges, stored, issuedIds });
+  return Object.assign(api, { calls, challenges, handshakes, stored, issuedIds });
 }

@@ -25,8 +25,7 @@ type Request struct {
 	Body          string             `json:"body_hex"`
 	Message       string             `json:"message_hex"`
 	Signature     string             `json:"signature"`
-	Authorization string             `json:"authorization,omitempty"`
-	Verifier      string             `json:"verifier_header,omitempty"`
+	Authorization string             `json:"authorization"`
 }
 
 type requestCase struct {
@@ -44,15 +43,17 @@ func (f *File) request() error {
 	}
 	shareKey := share.FormatKey(key.PublicKey())
 	lease := core.Encode(deterministic("request-lease", 32))
+	ke1 := core.Encode(deterministic("request-ke1", 96))
+	ke3 := core.Encode(deterministic("request-ke3", 64))
 	cases := []requestCase{
 		{"metadata read", signing.PurposeRead, http.MethodGet, messagePath, nil, signing.Components{}},
 		{
-			"claim verifier",
-			signing.PurposeVerifier,
+			"handshake read",
+			signing.PurposeRead,
 			http.MethodPost,
-			messagePath + "/claim",
+			messagePath + "/handshake",
 			nil,
-			signing.Components{ShareKey: shareKey},
+			signing.Components{KE1: ke1},
 		},
 		{"status manage", signing.PurposeManage, http.MethodGet, messagePath + "/status", nil, signing.Components{}},
 		{
@@ -69,7 +70,15 @@ func (f *File) request() error {
 			http.MethodPost,
 			messagePath + "/claim",
 			nil,
-			signing.Components{ShareKey: shareKey},
+			signing.Components{ShareKey: shareKey, KE3: ke3},
+		},
+		{
+			"burn read",
+			signing.PurposeRead,
+			http.MethodPost,
+			messagePath + "/burn",
+			nil,
+			signing.Components{KE3: ke3},
 		},
 		{
 			"blob read",
@@ -114,23 +123,18 @@ func requestVector(vector *requestCase) (Request, error) {
 		vector.body,
 		vector.components,
 	)
-	request := Request{
-		Components: vector.components,
-		Name:       vector.name,
-		Seed:       hex.EncodeToString(seed[:]),
-		PublicKey:  core.Encode(signature.PublicKey[:]),
-		Purpose:    vector.purpose,
-		Method:     vector.method,
-		Path:       vector.path,
-		Challenge:  core.Encode(challenge[:]),
-		Body:       hex.EncodeToString(vector.body),
-		Message:    hex.EncodeToString(message),
-		Signature:  core.Encode(signature.Value[:]),
-	}
-	if vector.purpose == signing.PurposeVerifier {
-		request.Verifier = signature.VerifierHeader()
-	} else {
-		request.Authorization = signature.Authorization()
-	}
-	return request, nil
+	return Request{
+		Components:    vector.components,
+		Name:          vector.name,
+		Seed:          hex.EncodeToString(seed[:]),
+		PublicKey:     core.Encode(signature.PublicKey[:]),
+		Purpose:       vector.purpose,
+		Method:        vector.method,
+		Path:          vector.path,
+		Challenge:     core.Encode(challenge[:]),
+		Body:          hex.EncodeToString(vector.body),
+		Message:       hex.EncodeToString(message),
+		Signature:     core.Encode(signature.Value[:]),
+		Authorization: signature.Authorization(),
+	}, nil
 }
