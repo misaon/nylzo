@@ -20,6 +20,7 @@ const (
 	StateExpired   State = api.StateExpired
 	StateCancelled State = api.StateCancelled
 	StateDeleted   State = api.StateDeleted
+	StateLost      State = api.StateLost
 )
 
 const (

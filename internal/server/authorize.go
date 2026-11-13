@@ -226,6 +226,22 @@ func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose 
 	return granted, true
 }
 
+// authorizedOpenable is authorizedLive for a message the server can still open: one whose generation it lost ends as
+// lost at this request and answers 410.
+func (s *Server) authorizedOpenable(w http.ResponseWriter, r *http.Request, purpose seal.Purpose) (access, bool) {
+	granted, ok := s.authorizedLive(w, r, purpose)
+	if !ok {
+		return granted, false
+	}
+	now := time.Now()
+	s.endLostMessage(r.Context(), &granted.record, now)
+	if granted.record.Ended(now) {
+		writeGone(w, string(granted.record.State(now)))
+		return granted, false
+	}
+	return granted, true
+}
+
 // emptyBodyWait bounds the read of a body of unknown length, which a proxy sends for a request without one, such as
 // Caddy for an HTTP/3 request without Content-Length, and which ends at once unless the client holds it open.
 const emptyBodyWait = time.Second

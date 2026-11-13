@@ -217,6 +217,39 @@ func TestServerStringsAreValidated(t *testing.T) {
 	}
 }
 
+// The client takes the state lost, which a server answers for a message whose key it lost (F21), from metadata, status
+// and a gone answer alike.
+func TestTheLostStateIsAccepted(t *testing.T) {
+	t.Parallel()
+	challenge := `{"challenge":"` + core.Encode(
+		make([]byte, signing.ChallengeLen),
+	) + `","expires_at":"2026-10-24T00:00:00Z"}`
+	answer := func(status int, body string) *Client {
+		return serve(t, func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/v1/challenge" {
+				w.Write([]byte(challenge))
+				return
+			}
+			w.WriteHeader(status)
+			w.Write([]byte(body))
+		})
+	}
+	live := answer(http.StatusOK, `{"state":"lost","kdf_id":0}`)
+	if metadata, err := live.Metadata(t.Context(), core.NewID(), core.NewSecret()); err != nil ||
+		metadata.State != api.StateLost {
+		t.Fatalf("metadata: %+v %v", metadata, err)
+	}
+	if status, err := live.Status(t.Context(), core.NewID(), core.NewSecret()); err != nil ||
+		status.State != api.StateLost {
+		t.Fatalf("status: %+v %v", status, err)
+	}
+	gone := answer(http.StatusGone, `{"error":"gone","state":"lost"}`)
+	apiErr, ok := errors.AsType[*APIError](gone.Cancel(t.Context(), core.NewID(), core.NewSecret()))
+	if !ok || apiErr.State != api.StateLost {
+		t.Fatalf("gone: %+v", apiErr)
+	}
+}
+
 func TestMetadataRefusesASizeTheProtocolDoesNotAllow(t *testing.T) {
 	t.Parallel()
 	challenge := `{"challenge":"` + core.Encode(

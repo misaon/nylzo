@@ -195,20 +195,46 @@ if [[ ! -e "$directory/rebooted" ]]; then
   "$directory/nylzo" read --stdout --passphrase-file "$directory/passphrase" < "$directory/rotation-link" > "$directory/received"
   cmp "$directory/message" "$directory/received"
   echo 'NYLZO_VM_PEPPER_ROTATION_VERIFIED'
-  "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/live-link"
+  "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h --manage-token-file "$directory/live-manage" < "$directory/message" > "$directory/live-link"
   "$directory/nylzo" create --server http://127.0.0.1 --ttl 1h < "$directory/message" > "$directory/burned-link"
   "$directory/nylzo" burn < "$directory/burned-link"
   sha256sum /var/lib/nylzo-secrets/pepper > "$directory/pepper.sha256"
+  [[ "$(findmnt --noheadings --output FSTYPE --target /run/nylzo-epoch)" = tmpfs ]]
+  [[ "$(stat --format '%u %a' /run/nylzo-epoch /run/nylzo-epoch/seed)" = $'165532 700\n165532 600' ]]
+  seed_copies=$(find /var/lib/nylzo /var/lib/nylzo-secrets -name seed -print)
+  if [[ -n "$seed_copies" ]]; then
+    echo 'An epoch seed is on persistent storage.' >&2
+    exit 1
+  fi
+  echo 'NYLZO_VM_EPOCH_SEED_VOLATILE'
   touch "$directory/rebooted"
   sync
   echo 'NYLZO_VM_REBOOT_READY'
   systemctl reboot
 else
   sha256sum --check "$directory/pepper.sha256"
-  if "$directory/nylzo" read --stdout < "$directory/live-link" > /dev/null 2>&1; then
+  verify_client
+  release=$(/opt/nylzo/bin/jq -er .tag /var/lib/nylzo-deploy/current.json)
+  earliest=$(printf '%s\n' v0.14.0 "$release" | sort --version-sort | sed -n 1p)
+  # Releases before 0.14.0 end such a message as deleted at its first open, later ones as lost at any request (F21).
+  ending='the message was deleted'
+  if [[ "$earliest" = v0.14.0 ]]; then
+    ending='the server lost the key to the message'
+    "$directory/nylzo" status --json --manage-token-file "$directory/live-manage" > "$directory/live-status"
+    /opt/nylzo/bin/jq --exit-status '.state == "lost" and .ended_at != null' "$directory/live-status" > /dev/null
+  fi
+  if "$directory/nylzo" read --stdout < "$directory/live-link" > /dev/null 2> "$directory/live-error"; then
     echo 'A message survived destruction of the volatile epoch seed during reboot.' >&2
     exit 1
   fi
+  if ! grep --fixed-strings --quiet "$ending" "$directory/live-error"; then
+    cat "$directory/live-error" >&2
+    echo "A message whose seed the reboot destroyed did not end with: $ending" >&2
+    exit 1
+  fi
+  journalctl --boot --unit nylzo.service --output cat > "$directory/journal"
+  grep --fixed-strings --quiet epoch-seed-created "$directory/journal"
+  [[ "$(findmnt --noheadings --output FSTYPE --target /run/nylzo-epoch)" = tmpfs ]]
   if "$directory/nylzo" read --stdout < "$directory/burned-link" > /dev/null 2>&1; then
     echo 'Burned message was resurrected.' >&2
     exit 1

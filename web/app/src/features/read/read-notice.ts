@@ -14,6 +14,7 @@ export type Notice =
   | 'invalid'
   | 'loading'
   | 'locked'
+  | 'lost'
   | 'newer'
   | 'opened'
   | 'released'
@@ -37,6 +38,7 @@ export const NOTICE_ICONS: Readonly<Record<Notice, IconName>> = {
   deleted: 'trash',
   burned: 'trash',
   locked: 'lock',
+  lost: 'refresh',
   unknown: 'search',
   invalid: 'broken',
   newer: 'update',
@@ -59,6 +61,7 @@ const ENDED: ReadonlySet<Notice> = new Set([
   'expired',
   'invalid',
   'locked',
+  'lost',
   'newer',
   'opened',
   'released',

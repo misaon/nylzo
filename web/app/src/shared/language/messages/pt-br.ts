@@ -200,6 +200,7 @@ export const messages: Catalog = {
   'sent.state.expired': 'Expirada',
   'sent.state.cancelled': 'Cancelada',
   'sent.state.deleted': 'Apagada',
+  'sent.state.lost': 'Perdida',
   'sent.label.time': 'Validade',
   'sent.label.opens': 'Aberturas',
   'sent.label.attempts': 'Tentativas malsucedidas',
@@ -233,6 +234,8 @@ export const messages: Catalog = {
   'sent.ended.expired': 'Expirou em {time}. Foi apagada do servidor; o item some quando você sair desta página.',
   'sent.ended.cancelled': 'Cancelada em {time}. Foi apagada do servidor; o item some quando você sair desta página.',
   'sent.ended.deleted': 'O destinatário a apagou ou o operador a removeu. O item some quando você sair desta página.',
+  'sent.ended.lost':
+    'O servidor perdeu a chave dela, geralmente ao reiniciar, e ninguém mais pode abri-la. Envie de novo se ainda precisar. O item some quando você sair desta página.',
   'sent.cancel.title': 'Cancelar a mensagem “{label}”?',
   'sent.cancel.title.untitled': 'Cancelar a mensagem?',
   'sent.forget.label': 'Remover da lista',
@@ -247,6 +250,7 @@ export const messages: Catalog = {
   'read.ended.expired': 'A mensagem expirou.',
   'read.ended.cancelled': 'O remetente cancelou a mensagem.',
   'read.ended.deleted': 'A mensagem foi apagada.',
+  'read.ended.lost': 'O servidor não consegue mais abrir a mensagem.',
   'read.passphrase': 'Senha',
   'read.reveal': 'Mostrar mensagem',
   'read.resumable':
@@ -582,6 +586,9 @@ export const messages: Catalog = {
     'Ninguém mais poderá abri-la. Se você ainda precisar dela, peça ao remetente um novo link.',
   'open.notice.deleted': 'A mensagem foi apagada',
   'open.notice.deleted.text': 'O destinatário a apagou ou o operador a removeu.',
+  'open.notice.lost': 'O servidor não consegue mais abrir esta mensagem',
+  'open.notice.lost.text':
+    'O servidor perdeu a chave dela, geralmente ao reiniciar. Ninguém mais poderá abrir esta mensagem. Peça ao remetente que a envie de novo.',
   'open.notice.unknown': 'Não encontramos a mensagem',
   'open.notice.unknown.text':
     'Talvez o link esteja incompleto, ou a validade da mensagem tenha terminado há muito tempo. Peça ao remetente um novo.',

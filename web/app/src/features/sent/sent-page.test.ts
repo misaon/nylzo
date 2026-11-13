@@ -282,6 +282,7 @@ describe('the sent page', () => {
       { ...status, state: 'expired' as const },
       { ...status, state: 'cancelled' as const },
       { ...status, state: 'deleted' as const },
+      { ...status, state: 'lost' as const },
     ];
     expect(endedStatuses.map((ended) => assess({ kind: 'loaded', status: ended }, later, NOW))).toEqual(
       endedStatuses.map(() => ({ ended: true, cancellable: false })),

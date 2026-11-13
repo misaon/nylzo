@@ -26,7 +26,7 @@ const (
 // BlobReferenceLen is the number of random bytes in a blob reference.
 const BlobReferenceLen = 16
 
-var endings = []State{"", StateDeleted, StateCancelled}
+var endings = []State{"", StateDeleted, StateCancelled, StateLost}
 
 // DummyLocator keys the row that a lookup of an unknown id reads; finding an id that hashes to it is a preimage.
 var DummyLocator seal.Locator = sha256.Sum256([]byte("nylzo/v1/dummy-row"))

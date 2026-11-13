@@ -122,7 +122,7 @@ func TestAnOldReaderSpendsNoOpenOnADeadlineMessage(t *testing.T) {
 }
 
 // A message whose open is spent goes like an unspent one: a download whose share went with a peer's clock answers the
-// state at the deadline and changes nothing, and one whose seed is lost ends the message as deleted.
+// state at the deadline and changes nothing, and one whose seed is lost ends the message as lost.
 func TestASpentMessageLosesItsShareLikeALiveOne(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -158,9 +158,86 @@ func TestASpentMessageLosesItsShareLikeALiveOne(t *testing.T) {
 			lost,
 			response.Header.Get(api.LeaseHeaderName),
 		); got.StatusCode != http.StatusGone ||
-			decodeJSON(t, body)["state"] != "deleted" ||
+			decodeJSON(t, body)["state"] != "lost" ||
 			harness.blobExists(lost) {
 			t.Fatalf("a download whose seed is lost: %d %s", got.StatusCode, body)
+		}
+	})
+}
+
+// A lost generation whose epoch another process has moved the shared seed file past went with the deadline: metadata
+// and status, which read that file before they decide, end nothing, and a claim answers the state at the deadline, as
+// for a generation still held.
+func TestALostShareThatWentWithItsDeadlineIsNotLost(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := harness.issueMessage(core.KDFNone, "", 1, 600, "passed before the loss shows")
+		harness.mustCreate(message)
+		directory := harness.settings.EpochDirectory()
+		if err := os.Remove(filepath.Join(directory, epoch.FileName)); err != nil {
+			t.Fatal(err)
+		}
+		harness.reopen(&harness.settings)
+		peer, _, err := epoch.Open(directory, epoch.Deadline(message.epoch).Add(10*time.Second), epoch.Options{})
+		if err != nil || peer == nil {
+			t.Fatalf("open the shared seed file as another process: %v", err)
+		}
+		peer.Close()
+		if response, metadata := harness.metadata(message); response.StatusCode != http.StatusOK ||
+			metadata["state"] != "available" || !harness.blobExists(message) {
+			t.Fatalf("metadata of a share that went with its deadline: %d %v", response.StatusCode, metadata)
+		}
+		if response, status := harness.status(message); response.StatusCode != http.StatusOK ||
+			status["state"] != "available" || !harness.blobExists(message) {
+			t.Fatalf("status of a share that went with its deadline: %d %v", response.StatusCode, status)
+		}
+		if response, body := harness.claim(message, message.passphrase, ""); response.StatusCode != http.StatusGone ||
+			decodeJSON(t, body)["state"] != "expired" || !harness.blobExists(message) {
+			t.Fatalf("a claim of a share that went with its deadline: %d %s", response.StatusCode, body)
+		}
+	})
+}
+
+// A seed file damaged while the server runs ends nothing as lost: metadata and status cannot tell a lost generation
+// from an unreadable file, so they report the stored state; a cancel and a report, which need no share, go ahead as
+// before, and a burn, whose handshake needs the share, answers 500 and keeps the message.
+func TestAnUnreadableSeedEndsNoMessage(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "damaged while serving")
+		harness.mustCreate(message)
+		cancelled := harness.issueMessage(core.KDFNone, "", 1, 3600, "cancelled while damaged")
+		harness.mustCreate(cancelled)
+		burned := harness.issueMessage(core.KDFNone, "", 1, 3600, "deleted while damaged")
+		harness.mustCreate(burned)
+		reported := harness.issueMessage(core.KDFNone, "", 1, 3600, "reported while damaged")
+		harness.mustCreate(reported)
+		seedPath := filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)
+		if err := os.WriteFile(seedPath, []byte("damaged"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Sleep(time.Minute)
+		if response, metadata := harness.metadata(message); response.StatusCode != http.StatusOK ||
+			metadata["state"] != "available" || !harness.blobExists(message) {
+			t.Fatalf("metadata with an unreadable seed: %d %v", response.StatusCode, metadata)
+		}
+		if response, status := harness.status(message); response.StatusCode != http.StatusOK ||
+			status["state"] != "available" || !harness.blobExists(message) {
+			t.Fatalf("status with an unreadable seed: %d %v", response.StatusCode, status)
+		}
+		if response, _ := harness.post(cancelled, "cancel", cancelled.manageToken); response.StatusCode !=
+			http.StatusNoContent || harness.blobExists(cancelled) {
+			t.Fatalf("a cancel with an unreadable seed: %d", response.StatusCode)
+		}
+		if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode !=
+			http.StatusInternalServerError || !harness.blobExists(burned) {
+			t.Fatalf("a burn with an unreadable seed: %d", response.StatusCode)
+		}
+		abuseReport(t, harness, reported, "203.0.113.70")
+		if lines := abuseLines(t, harness, reported.id); lines != 1 {
+			t.Fatalf("a report with an unreadable seed was stored %d times", lines)
 		}
 	})
 }
@@ -185,14 +262,25 @@ func TestAnInstanceBehindTheRatchetIssuesNoID(t *testing.T) {
 	})
 }
 
-// L3: a lost seed ends the live messages and the server goes on with a new one; a damaged seed or a missing
-// directory, which may be a volume that failed to mount, stops it.
+// L3: a lost seed ends the live messages as lost at the first request that finds them, metadata and status included,
+// and the server goes on with a new seed; a damaged seed or a missing directory, which may be a volume that failed to
+// mount, stops it (F21).
 func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		lost := harness.issueMessage(core.KDFNone, "", 2, 3600, "before the loss")
 		harness.mustCreate(lost)
+		tracked := harness.issueMessage(core.KDFNone, "", 1, 3600, "tracked by its sender")
+		harness.mustCreate(tracked)
+		cancelled := harness.issueMessage(core.KDFNone, "", 1, 3600, "cancelled by its sender")
+		harness.mustCreate(cancelled)
+		burned := harness.issueMessage(core.KDFNone, "", 1, 3600, "deleted by its reader")
+		harness.mustCreate(burned)
+		claimed := harness.issueMessage(core.KDFNone, "", 1, 3600, "claimed first")
+		harness.mustCreate(claimed)
+		reported := harness.issueMessage(core.KDFNone, "", 1, 3600, "reported after the loss")
+		harness.mustCreate(reported)
 		seedPath := filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)
 		if err := os.Remove(seedPath); err != nil {
 			t.Fatal(err)
@@ -201,12 +289,38 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		if !strings.Contains(harness.logs.String(), "epoch-seed-created") {
 			t.Fatal("the new ratchet was not logged")
 		}
+		if _, metadata := harness.metadata(lost); metadata["state"] != "lost" || metadata["ended_at"] == nil ||
+			harness.blobExists(lost) {
+			t.Fatalf("metadata must end the message whose share is lost: %v", metadata)
+		}
 		if response, body := harness.claim(lost, lost.passphrase, ""); response.StatusCode != http.StatusGone ||
-			decodeJSON(t, body)["state"] != "deleted" {
+			decodeJSON(t, body)["state"] != "lost" {
 			t.Fatalf("a claim whose share is lost: %d %s", response.StatusCode, body)
 		}
-		if _, metadata := harness.metadata(lost); metadata["state"] != "deleted" || harness.blobExists(lost) {
-			t.Fatalf("the message whose share is lost must end: %v", metadata)
+		if _, status := harness.status(tracked); status["state"] != "lost" || status["ended_at"] == nil ||
+			harness.blobExists(tracked) {
+			t.Fatalf("status must end the message whose share is lost: %v", status)
+		}
+		for _, ending := range []struct {
+			message       *testMessage
+			action, token string
+		}{{cancelled, "cancel", cancelled.manageToken}, {burned, "burn", burned.readToken}} {
+			if response, body := harness.post(ending.message, ending.action, ending.token); response.StatusCode !=
+				http.StatusGone || decodeJSON(t, body)["state"] != "lost" || harness.blobExists(ending.message) {
+				t.Fatalf("a %s of a message whose share is lost: %d %s", ending.action, response.StatusCode, body)
+			}
+		}
+		if response, body := harness.claim(claimed, claimed.passphrase, ""); response.StatusCode != http.StatusGone ||
+			decodeJSON(t, body)["state"] != "lost" || harness.blobExists(claimed) {
+			t.Fatalf("a first claim whose share is lost: %d %s", response.StatusCode, body)
+		}
+		abuseReport(t, harness, reported, "203.0.113.70")
+		if lines := abuseLines(t, harness, reported.id); lines != 0 || harness.blobExists(reported) {
+			t.Fatalf("a report about a message whose share is lost was stored %d times", lines)
+		}
+		synctest.Sleep(time.Until(epoch.Deadline(tracked.epoch)) + time.Minute)
+		if _, status := harness.status(tracked); status["state"] != "lost" {
+			t.Fatalf("a lost message must stay lost after its deadline: %v", status)
 		}
 		fresh := harness.issueMessage(core.KDFNone, "", 1, 3600, "after the loss")
 		harness.mustCreate(fresh)

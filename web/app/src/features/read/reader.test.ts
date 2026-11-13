@@ -710,7 +710,7 @@ describe('reading through the lease and claim edge cases', () => {
     expect(api.calls.filter((call) => call === 'blob' || call.startsWith('claim'))).toEqual(['claim', 'blob']);
   });
 
-  it.each<MessageState>(['cancelled', 'deleted', 'expired', 'opened'])(
+  it.each<MessageState>(['cancelled', 'deleted', 'expired', 'lost', 'opened'])(
     'shows the end state %s when the message ended after the page loaded',
     async (state) => {
       const api = fakeApi();
@@ -722,6 +722,24 @@ describe('reading through the lease and claim edge cases', () => {
       await reader.reveal();
       expect(reader.last()).toMatchObject({ view: 'ended', state });
       expect(reader.session.map.has(LEASE_KEY)).toBe(false);
+    },
+  );
+
+  it.each([
+    ['ended', true],
+    ['ended while its blob is still being deleted', false],
+  ])(
+    'shows a message whose key the server lost and %s as ended before asking to reveal it (F21)',
+    async (_, tombstone) => {
+      const options: FakeOptions = {};
+      const api = fakeApi(options);
+      const created = await createMessage(input(), createDependencies(api));
+      storedOf(api, created.link).state = 'lost';
+      options.tombstone = tombstone;
+      const reader = openReader(api, created.link);
+      await reader.load();
+      expect(reader.last()).toMatchObject({ view: 'ended', state: 'lost' });
+      expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
     },
   );
 
