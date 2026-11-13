@@ -94,6 +94,7 @@ func TestExplainAPIFailuresAndRetryAdvice(t *testing.T) {
 		{"id_token", "", 0, 0, "the server refused the new message id; try again"},
 		{"conflict", "", 0, 0, "the server refused the new message id; try again"},
 		{"internal", "", 0, 0, "the server failed; try again later"},
+		{"client_outdated", "", 0, 0, "this nylzo is older than the server; update it"},
 		{"untrusted error", "", 0, 0, "the server answered with status 599"},
 	} {
 		t.Run(test.kind+test.state, func(t *testing.T) {

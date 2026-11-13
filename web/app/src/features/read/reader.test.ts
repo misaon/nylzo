@@ -34,7 +34,6 @@ type Scrypt = ReaderDependencies['scrypt'];
 
 const scrypt: Scrypt = (passphrase, passphraseSalt, onProgress) =>
   Promise.resolve(scryptPassphraseKey(passphrase, passphraseSalt, onProgress));
-const shareKey = new Uint8Array(32).fill(5);
 
 class ImpostorError extends Error {
   override readonly name = 'KdfWorkerError';
@@ -157,7 +156,7 @@ async function storeRaw(
   meta: { text?: string; file?: { name: string; mime: string; size: number } },
   file?: Uint8Array,
 ): Promise<string> {
-  const issuing = await newShareKey();
+  const issuing = newShareKey();
   const { create } = await api.instance({ ttlSeconds: 3600, shareKey: issuing.publicKey });
   if (create === undefined) {
     throw new Error('the fake server issued no id');
@@ -289,7 +288,7 @@ describe('reading a message', () => {
       { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
       {
         verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
-        shareKeys: () => Promise.resolve({ publicKey: shareKey, privateKey: {} as CryptoKey }),
+        shareKeys: newShareKey,
         onLease: (lease) => session.setItem(LEASE_KEY, `${id} ${lease}`),
       },
     );
@@ -488,7 +487,7 @@ describe('reading a message', () => {
       { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
       {
         verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
-        shareKeys: () => Promise.resolve({ publicKey: shareKey, privateKey: {} as CryptoKey }),
+        shareKeys: newShareKey,
         onLease: (lease) => session.setItem(LEASE_KEY, `${owner} ${lease}`),
       },
     );
@@ -524,7 +523,7 @@ describe('reading a message', () => {
       { publicKey: new Uint8Array(stored?.request.readKey ?? []), privateKey: {} as CryptoKey },
       {
         verifierKey: { publicKey: new Uint8Array(stored?.request.verifierKey ?? []), privateKey: {} as CryptoKey },
-        shareKeys: () => Promise.resolve({ publicKey: shareKey, privateKey: {} as CryptoKey }),
+        shareKeys: newShareKey,
         onLease: (lease) => session.setItem(LEASE_KEY, `${owner} ${lease}`),
       },
     );

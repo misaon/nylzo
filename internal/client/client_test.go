@@ -284,7 +284,7 @@ func TestRetriedClaimDrawsANewShareKeyAndReportsTheOneAnswered(t *testing.T) {
 	if len(sent) != 2 || sent[0] == sent[1] || sent[0] == "" {
 		t.Fatalf("share keys sent: %q", sent)
 	}
-	if claimed.ShareKey == nil || core.Encode(claimed.ShareKey.PublicKey().Bytes()) != sent[1] {
+	if claimed.ShareKey == nil || share.FormatKey(claimed.ShareKey.PublicKey()) != sent[1] {
 		t.Fatal("the claim did not report the share key of the answered attempt")
 	}
 }

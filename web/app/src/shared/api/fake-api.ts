@@ -1,4 +1,4 @@
-import { encodeBase64url, idToString, utf8 } from '@nylzo/core';
+import { encodeBase64url, idToString, wrapShare } from '@nylzo/core';
 import type { RequestKey, ShareKey } from '@nylzo/core';
 
 import { ApiError, StoppedError } from './api-errors.ts';
@@ -39,24 +39,6 @@ export interface FakeApi extends Api {
   readonly challenges: string[];
   readonly stored: Map<string, Stored>;
   readonly issuedIds: Uint8Array<ArrayBuffer>[];
-}
-
-// Wraps a share as the server does (spec 5.6), so the flow tests exercise the client's unwrapping.
-async function wrapShare(share: Uint8Array<ArrayBuffer>, clientKey: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
-  const server = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']);
-  const client = await crypto.subtle.importKey('raw', new Uint8Array(clientKey), { name: 'X25519' }, true, []);
-  const secret = await crypto.subtle.deriveBits({ name: 'X25519', public: client }, server.privateKey, 256);
-  const serverPublic = new Uint8Array(await crypto.subtle.exportKey('raw', server.publicKey));
-  const keyMaterial = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits']);
-  const salt = new Uint8Array([...clientKey, ...serverPublic]);
-  const mask = new Uint8Array(
-    await crypto.subtle.deriveBits(
-      { name: 'HKDF', hash: 'SHA-256', salt, info: utf8('nylzo/v2/share') },
-      keyMaterial,
-      256,
-    ),
-  );
-  return new Uint8Array([...serverPublic, ...share.map((byte, index) => byte ^ (mask[index] ?? 0))]);
 }
 
 function sameBytes(first: Uint8Array | undefined, second: Uint8Array | undefined): boolean {
@@ -228,7 +210,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       const lease = `lease-${message.leases.size + 1}`;
       message.leases.add(lease);
       claimOptions.onLease?.(lease);
-      const served = await envelope(message, await claimOptions.shareKeys());
+      const served = await envelope(message, claimOptions.shareKeys());
       claimOptions.onProgress?.(served.object.length, served.object.length);
       return { lease, ...served };
     },
@@ -238,7 +220,7 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       if (!message.leases.has(lease)) {
         throw new ApiError(410, 'gone', { state: message.state });
       }
-      return envelope(message, await shareKeys());
+      return envelope(message, shareKeys());
     },
     async challenge() {
       calls.push('challenge');

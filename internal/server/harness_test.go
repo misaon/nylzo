@@ -859,7 +859,7 @@ func claimRequestFor(message *testMessage, verifier, address string) *testReques
 
 var (
 	testShareKey       = share.NewKey()
-	testShareKeyHeader = core.Encode(testShareKey.PublicKey().Bytes())
+	testShareKeyHeader = share.FormatKey(testShareKey.PublicKey())
 )
 
 // unwrapShare reads the share a claim or download carried, as a client does.

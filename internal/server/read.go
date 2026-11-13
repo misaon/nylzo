@@ -122,6 +122,10 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *store.Record) (string, bool) {
 	message := record.Message
 	clientKey, err := share.ParseKey(r.Header.Get(api.ShareKeyHeaderName))
+	if errors.Is(err, share.ErrOutdated) {
+		writeError(w, http.StatusBadRequest, errClientOutdated)
+		return "", false
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, errBadRequest)
 		return "", false

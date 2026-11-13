@@ -31,7 +31,7 @@ What no rule here can reach: an observer that sees requests without logging them
 | OPAQUE (RFC 9807) | nothing to test; every guess needs a counted evaluation | nothing to test | offline test, inevitable for any single-server aPAKE (RFC 9807 §10.11) | protocol v3 and the largest change, listed below |
 | CPace (balanced PAKE) | a recorded claim or burn: nothing to test; a recorded creation carries the password equivalent, which is an offline test and passes the check without the passphrase | nothing to test | offline test, and the record holds that password equivalent | still an Internet-Draft (draft-irtf-cfrg-cpace-21) |
 
-An active attacker at the TLS proxy during creation defeats every option, because the sender registers through that channel; RFC 9807 §3.2 requires a server-authenticated channel for registration. The same attacker can already replace a reader's share key ([§13](../reference/Protocol.md#13-what-a-stolen-server-reveals)), and the website takes its code from the instance anyway.
+An active attacker at the TLS proxy during creation defeats every option, because the sender registers through that channel; RFC 9807 §3.2 requires a server-authenticated channel for registration. The same attacker can already replace the sender's share key on the unsigned instance request ([§13](../reference/Protocol.md#13-what-a-stolen-server-reveals)), and the website takes its code from the instance anyway.
 
 ## Recommendation
 

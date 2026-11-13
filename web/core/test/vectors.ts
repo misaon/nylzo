@@ -93,8 +93,8 @@ interface CompressedLengthVector {
 
 interface ShareVector {
   readonly name: string;
-  readonly client_private_hex: string;
-  readonly client_public: string;
+  readonly client_seed_hex: string;
+  readonly client_key: string;
   readonly e_hex?: string;
   readonly wrapped: string;
   readonly valid: boolean;

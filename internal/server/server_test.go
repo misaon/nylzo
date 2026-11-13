@@ -948,12 +948,36 @@ func TestABodyThatNeverArrivesIsAnsweredAtOnce(t *testing.T) {
 	}
 }
 
-// TestHeadersOver8KiBGet431WithTheSecurityHeaders covers A4-9 and F10: net/http answers before any handler runs.
-func TestHeadersOver8KiBGet431WithTheSecurityHeaders(t *testing.T) {
+// F15: a 1624-character share key plus what a browser and a proxy add stays below the h2c header list limit.
+func TestH2CAcceptsAShareKeyWithBrowserHeaders(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	address := harness.listen()
-	for padding, want := range map[int]int{7 << 10: http.StatusOK, 9 << 10: http.StatusRequestHeaderFieldsTooLarge} {
+	var protocols http.Protocols
+	protocols.SetUnencryptedHTTP2(true)
+	client := &http.Client{Transport: &http.Transport{Protocols: &protocols}, Timeout: 5 * time.Second}
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+address+"/healthz", http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
+	request.Header.Set("X-Padding", strings.Repeat("a", 5<<10))
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || response.ProtoMajor != 2 {
+		t.Fatalf("a request with a share key over h2c: %d HTTP/%d", response.StatusCode, response.ProtoMajor)
+	}
+}
+
+// TestHeadersOver12KiBGet431WithTheSecurityHeaders covers A4-9 and F10: net/http answers before any handler runs.
+func TestHeadersOver12KiBGet431WithTheSecurityHeaders(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	address := harness.listen()
+	for padding, want := range map[int]int{11 << 10: http.StatusOK, 13 << 10: http.StatusRequestHeaderFieldsTooLarge} {
 		connection, err := new(net.Dialer).DialContext(t.Context(), "tcp", address)
 		if err != nil {
 			t.Fatal(err)

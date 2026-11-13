@@ -3,7 +3,6 @@ package core_test
 import (
 	"bytes"
 	"context"
-	"crypto/ecdh"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -454,11 +453,12 @@ func rejectionName(err error) string {
 	}
 }
 
-func TestShareKeysOfSmallOrderAreRefused(t *testing.T) {
+func TestRefusedShareKeys(t *testing.T) {
 	t.Parallel()
 	for _, vector := range loadVectors(t).ShareKeyRejected {
-		if _, err := share.ParseKey(vector.Key); err == nil {
-			t.Fatalf("%s: a share key of small order is accepted", vector.Name)
+		_, err := share.ParseKey(vector.Key)
+		if err == nil || errors.Is(err, share.ErrOutdated) != vector.Outdated {
+			t.Fatalf("%s: %v, want a refusal with outdated %t", vector.Name, err, vector.Outdated)
 		}
 	}
 }
@@ -466,9 +466,12 @@ func TestShareKeysOfSmallOrderAreRefused(t *testing.T) {
 func TestShareVectors(t *testing.T) {
 	t.Parallel()
 	for _, vector := range loadVectors(t).Share {
-		client, err := ecdh.X25519().NewPrivateKey(decodeHex(t, vector.ClientPrivate))
-		if err != nil || core.Encode(client.PublicKey().Bytes()) != vector.ClientPublic {
+		client, err := share.NewKeyFromSeed(decodeHex(t, vector.ClientSeed))
+		if err != nil || share.FormatKey(client.PublicKey()) != vector.ClientKey {
 			t.Fatalf("%s: client key: %v", vector.Name, err)
+		}
+		if _, err = share.ParseKey(vector.ClientKey); err != nil {
+			t.Fatalf("%s: the client key is refused: %v", vector.Name, err)
 		}
 		wrapped, err := core.DecodeExact(vector.Wrapped, share.WrappedLen)
 		if err != nil {
@@ -483,14 +486,6 @@ func TestShareVectors(t *testing.T) {
 		}
 		if err != nil || hex.EncodeToString(unwrapped[:]) != *vector.E {
 			t.Fatalf("%s: unwrap: %v", vector.Name, err)
-		}
-		server, err := ecdh.X25519().NewPrivateKey(decodeHex(t, *vector.ServerPrivate))
-		if err != nil {
-			t.Fatal(err)
-		}
-		again, err := share.WrapWith(server, &unwrapped, client.PublicKey())
-		if err != nil || core.Encode(again[:]) != vector.Wrapped {
-			t.Fatalf("%s: wrap: %v", vector.Name, err)
 		}
 	}
 }

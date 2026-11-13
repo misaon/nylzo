@@ -1,8 +1,10 @@
 import {
   CHALLENGE_LENGTH,
   encodeBase64url,
+  formatShareKey,
   idToString,
   MAX_OBJECT_BYTES,
+  newShareKey,
   requestKey,
   requestMessage,
   transferSeconds,
@@ -100,9 +102,10 @@ async function expectSignedRequest(request: Request): Promise<void> {
 }
 
 const policy = encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 3, flags: 0 })));
-const shareKey = new Uint8Array(32).fill(5);
-const shareKeys = (): Promise<ShareKey> => Promise.resolve({ publicKey: shareKey, privateKey: {} as CryptoKey });
-const wrappedShare = encodeBase64url(new Uint8Array(64).fill(6));
+const WRAPPED_SHARE_LENGTH = 1168;
+const { publicKey: shareKey } = newShareKey();
+const shareKeys = (): ShareKey => ({ seed: new Uint8Array(32).fill(5), publicKey: shareKey });
+const wrappedShare = encodeBase64url(new Uint8Array(WRAPPED_SHARE_LENGTH).fill(6));
 
 const instanceBody = {
   limits: {
@@ -144,9 +147,9 @@ describe('api client', () => {
     const request = server.last();
     expect(new URL(request.url).search).toBe('');
     expect(request.headers.get('X-Nylzo-Ttl')).toBe('3600');
-    expect(request.headers.get('X-Nylzo-Share-Key')).toBe(encodeBase64url(shareKey));
+    expect(request.headers.get('X-Nylzo-Share-Key')).toBe(formatShareKey(shareKey));
     expect(instance.create?.epoch).toBe(493_000);
-    expect(instance.create?.share).toEqual(new Uint8Array(64).fill(6));
+    expect(instance.create?.share).toEqual(new Uint8Array(WRAPPED_SHARE_LENGTH).fill(6));
     await server.api.instance();
     expect(server.last().headers.has('X-Nylzo-Share-Key')).toBe(false);
   });
@@ -277,9 +280,11 @@ describe('api client', () => {
           headers: { ...headers, 'X-Nylzo-Policy': policy, 'X-Nylzo-Share': wrappedShare },
         }),
     );
-    await expect(server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys })).rejects.toBeInstanceOf(
-      ResponseError,
-    );
+    const sent = shareKeys();
+    await expect(
+      server.api.claim(randomId(), readKey, { verifierKey: readKey, shareKeys: () => sent }),
+    ).rejects.toBeInstanceOf(ResponseError);
+    expect(sent.seed.every((byte) => byte === 0)).toBe(true);
   });
 
   it('reads JSON only as application/json and Retry-After only as plain seconds', async () => {
@@ -331,7 +336,7 @@ describe('api client', () => {
     expect(leases).toEqual([LEASE]);
     expect(claimed.lease).toBe(LEASE);
     expect(claimed.policy).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 3, flags: 0 });
-    expect(claimed.share).toEqual(new Uint8Array(64).fill(6));
+    expect(claimed.share).toEqual(new Uint8Array(WRAPPED_SHARE_LENGTH).fill(6));
     expect(claimed.object).toEqual(object);
     expect(progress.at(-1)).toEqual([object.length, object.length]);
     const request = server.last();
@@ -343,7 +348,7 @@ describe('api client', () => {
     expect(rest).toEqual([]);
     expect(challenge).toBe(encodeBase64url(new Uint8Array(CHALLENGE_LENGTH).fill(1)));
     expect(verifierPublicKey).toBe(encodeBase64url(verifierKey.publicKey));
-    expect(request.headers.get('X-Nylzo-Share-Key')).toBe(encodeBase64url(shareKey));
+    expect(request.headers.get('X-Nylzo-Share-Key')).toBe(formatShareKey(shareKey));
   });
 
   it('retries a 404 once with a new challenge and then reports it', async () => {
@@ -359,7 +364,7 @@ describe('api client', () => {
     expect(gone.issued()).toBe(2);
   });
 
-  it('draws a new share key for the retry after a 404 and reports the one the answer is wrapped to', async () => {
+  it('draws a new share key for the retry after a 404, erases the first and reports the one answered', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(3));
     let attempt = 0;
     const drawn: ShareKey[] = [];
@@ -376,14 +381,15 @@ describe('api client', () => {
     const claimed = await flaky.api.claim(randomId(), readKey, {
       verifierKey: readKey,
       shareKeys: () => {
-        const key = { publicKey: new Uint8Array(32).fill(drawn.length + 1), privateKey: {} as CryptoKey };
+        const key = newShareKey();
         drawn.push(key);
-        return Promise.resolve(key);
+        return key;
       },
     });
-    expect(sent).toEqual(drawn.map((key) => encodeBase64url(key.publicKey)));
+    expect(sent).toEqual(drawn.map((key) => formatShareKey(key.publicKey)));
     expect(new Set(sent).size).toBe(2);
     expect(claimed.shareKey).toBe(drawn[1]);
+    expect(drawn.map((key) => key.seed.every((byte) => byte === 0))).toEqual([true, false]);
   });
 
   it('sends the ack as one keepalive request when its challenge was fetched before the message showed', async () => {
@@ -699,6 +705,22 @@ function serveTransparency(report: unknown, manifest: unknown) {
     json(200, new URL(request.url).pathname === '/.well-known/nylzo/client.json' ? manifest : report),
   ).api.transparency();
 }
+
+describe('share keys of refused downloads', () => {
+  it('erases the share key seed when a download answer is refused', async () => {
+    const readKey = await requestKey(new Uint8Array(32).fill(1));
+    const server = fakeServer(
+      () =>
+        new Response(new Uint8Array(16), {
+          status: 200,
+          headers: { ...OBJECT_HEADERS, 'X-Nylzo-Policy': policy, 'X-Nylzo-Share': 'malformed' },
+        }),
+    );
+    const sent = shareKeys();
+    await expect(server.api.blob(randomId(), readKey, LEASE, () => sent)).rejects.toBeInstanceOf(ResponseError);
+    expect(sent.seed.every((byte) => byte === 0)).toBe(true);
+  });
+});
 
 describe('transparency', () => {
   it('reads the report and the client manifest', async () => {

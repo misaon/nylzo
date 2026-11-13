@@ -271,23 +271,31 @@ async function sealMessage(
   }
 }
 
+async function issue(input: CreateInput, dependencies: CreateDependencies) {
+  const shareKey = newShareKey();
+  try {
+    const instance = await dependencies.api.instance({ ttlSeconds: input.ttlSeconds, shareKey: shareKey.publicKey });
+    const problems = validateCreate(input, instance.limits);
+    if (problems.length > 0) {
+      throw new CreateError({ kind: 'invalid', problems });
+    }
+    const issued = instance.create;
+    if (issued === undefined) {
+      throw new CreateError({ kind: 'failed' });
+    }
+    return { instance, issued, share: await unwrapShare(shareKey, issued.share) };
+  } finally {
+    shareKey.seed.fill(0);
+  }
+}
+
 async function createOnce(
   input: CreateInput,
   dependencies: CreateDependencies,
   onProgress: ReportProgress,
 ): Promise<Created> {
   onProgress({ step: 'preparing' });
-  const shareKey = await newShareKey();
-  const instance = await dependencies.api.instance({ ttlSeconds: input.ttlSeconds, shareKey: shareKey.publicKey });
-  const problems = validateCreate(input, instance.limits);
-  if (problems.length > 0) {
-    throw new CreateError({ kind: 'invalid', problems });
-  }
-  const issued = instance.create;
-  if (issued === undefined) {
-    throw new CreateError({ kind: 'failed' });
-  }
-  const share = await unwrapShare(shareKey, issued.share);
+  const { instance, issued, share } = await issue(input, dependencies);
   const { id, idToken, epoch } = issued;
   const kdfId: KdfId = input.passphrase === '' ? KDF_NONE : KDF_SCRYPT;
   const secret = newSecret();

@@ -34,7 +34,14 @@ export { decodeBase64url, encodeBase64url, encodedLength } from './primitives/ba
 export { utf8 } from './primitives/bytes.ts';
 export { idToString, newSecret, parseId } from './primitives/identifiers.ts';
 export { MAX_POW_DIFFICULTY, solvePow } from './request/proof-of-work.ts';
-export { newShareKey, parseWrappedShare, type ShareKey, unwrapShare } from './request/share.ts';
+export {
+  formatShareKey,
+  newShareKey,
+  parseWrappedShare,
+  type ShareKey,
+  unwrapShare,
+  wrapShare,
+} from './request/share.ts';
 export {
   authorizationHeader,
   CHALLENGE_LENGTH,

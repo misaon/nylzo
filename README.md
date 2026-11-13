@@ -96,7 +96,7 @@ The [security model](https://github.com/misaon/nylzo/wiki/Security-model) descri
 
 | Layer | Technology |
 | --- | --- |
-| Encryption | AES-256-GCM, scrypt, HKDF-SHA-256, Ed25519, TLS 1.3 with X25519MLKEM768 |
+| Encryption | AES-256-GCM, scrypt, HKDF-SHA-256, Ed25519, HPKE with MLKEM768-X25519, TLS 1.3 with X25519MLKEM768 |
 | Server | Go and its standard library with six direct dependencies, SQLite, Caddy |
 | Web | Svelte 5, TypeScript, Bun, Web Crypto, Subresource Integrity, Trusted Types, a strict CSP |
 | Hosting | Hetzner Cloud in Finland, Flatcar Container Linux, OpenTofu, Let's Encrypt |

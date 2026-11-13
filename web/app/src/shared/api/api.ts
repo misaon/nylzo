@@ -2,6 +2,7 @@ import {
   authorizationHeader,
   decodeBase64url,
   encodeBase64url,
+  formatShareKey,
   idToString,
   MAX_OBJECT_BYTES,
   MAX_POW_DIFFICULTY,
@@ -116,7 +117,7 @@ export interface Envelope {
 }
 
 // Each attempt draws its own share key, so no key ever serves two requests (Protocol §5.6).
-type ShareKeys = () => Promise<ShareKey>;
+type ShareKeys = () => ShareKey;
 
 interface Claimed extends Envelope {
   readonly lease: string;
@@ -162,7 +163,7 @@ interface SignedRequest {
   readonly key: RequestKey;
   readonly verifier?: RequestKey | undefined;
   readonly headers?: Readonly<Record<string, string>>;
-  readonly attemptHeaders?: () => Promise<Readonly<Record<string, string>>>;
+  readonly attemptHeaders?: () => Readonly<Record<string, string>>;
   readonly json?: Json;
   readonly proceed?: (() => boolean) | undefined;
   readonly keepalive?: boolean;
@@ -234,18 +235,28 @@ function leaseOf(response: Response): string {
   return lease;
 }
 
+// Only the answered attempt's key can open a share, so the key of every other attempt is erased.
 function sentShareKey(shareKeys: ShareKeys) {
   let current: ShareKey | undefined;
   return {
-    headers: async () => {
-      current = await shareKeys();
-      return { 'X-Nylzo-Share-Key': encodeBase64url(current.publicKey) };
+    headers: () => {
+      current?.seed.fill(0);
+      current = shareKeys();
+      return { 'X-Nylzo-Share-Key': formatShareKey(current.publicKey) };
     },
     last: (): ShareKey => {
       if (!current) {
         throw new ResponseError('no share key was sent');
       }
       return current;
+    },
+    completed: async <T>(request: () => Promise<T>): Promise<T> => {
+      try {
+        return await request();
+      } catch (error) {
+        current?.seed.fill(0);
+        throw error;
+      }
     },
   };
 }
@@ -278,7 +289,7 @@ export function createApi(options: ApiOptions = {}): Api {
 
   async function signedOnce(request: SignedRequest, timeoutMs: number): Promise<Response> {
     const fresh = request.challenge ?? (await challenge());
-    const headers: Record<string, string> = { ...request.headers, ...(await request.attemptHeaders?.()) };
+    const headers: Record<string, string> = { ...request.headers, ...request.attemptHeaders?.() };
     const body = request.json === undefined ? undefined : utf8(JSON.stringify(request.json));
     if (body !== undefined) {
       headers['Content-Type'] = 'application/json';
@@ -334,7 +345,7 @@ export function createApi(options: ApiOptions = {}): Api {
       const headers =
         creation === undefined
           ? undefined
-          : { 'X-Nylzo-Ttl': String(creation.ttlSeconds), 'X-Nylzo-Share-Key': encodeBase64url(creation.shareKey) };
+          : { 'X-Nylzo-Ttl': String(creation.ttlSeconds), 'X-Nylzo-Share-Key': formatShareKey(creation.shareKey) };
       const { limits, pow, create } = await fetchJson('/api/v1/instance', headers);
       if (!isObject(limits) || !isObject(pow) || typeof pow['required'] !== 'boolean') {
         throw new ResponseError();
@@ -422,42 +433,46 @@ export function createApi(options: ApiOptions = {}): Api {
 
     async claim(id, readKey, claimOptions) {
       const sent = sentShareKey(claimOptions.shareKeys);
-      const response = await signed(
-        {
-          method: 'POST',
-          path: `${messagePath(id)}/claim`,
-          purpose: PURPOSE_READ,
-          key: readKey,
-          verifier: claimOptions.verifierKey,
-          attemptHeaders: sent.headers,
-          proceed: claimOptions.proceed,
-        },
-        TRANSFER_TIMEOUT_MS,
-      );
-      const lease = leaseOf(response);
-      claimOptions.onLease?.(lease);
-      const policy = servedPolicy(response.headers.get('X-Nylzo-Policy'));
-      const share = shareOf(response);
-      const object = await readObject(response, claimOptions.onProgress);
-      return { lease, policy, share, shareKey: sent.last(), object };
+      return sent.completed(async () => {
+        const response = await signed(
+          {
+            method: 'POST',
+            path: `${messagePath(id)}/claim`,
+            purpose: PURPOSE_READ,
+            key: readKey,
+            verifier: claimOptions.verifierKey,
+            attemptHeaders: sent.headers,
+            proceed: claimOptions.proceed,
+          },
+          TRANSFER_TIMEOUT_MS,
+        );
+        const lease = leaseOf(response);
+        claimOptions.onLease?.(lease);
+        const policy = servedPolicy(response.headers.get('X-Nylzo-Policy'));
+        const share = shareOf(response);
+        const object = await readObject(response, claimOptions.onProgress);
+        return { lease, policy, share, shareKey: sent.last(), object };
+      });
     },
 
     async blob(id, readKey, lease, shareKeys, onProgress) {
       const sent = sentShareKey(shareKeys);
-      const response = await signed(
-        {
-          method: 'GET',
-          path: `${messagePath(id)}/blob`,
-          purpose: PURPOSE_READ,
-          key: readKey,
-          headers: { 'X-Nylzo-Lease': lease },
-          attemptHeaders: sent.headers,
-        },
-        TRANSFER_TIMEOUT_MS,
-      );
-      const policy = servedPolicy(response.headers.get('X-Nylzo-Policy'));
-      const share = shareOf(response);
-      return { policy, share, shareKey: sent.last(), object: await readObject(response, onProgress) };
+      return sent.completed(async () => {
+        const response = await signed(
+          {
+            method: 'GET',
+            path: `${messagePath(id)}/blob`,
+            purpose: PURPOSE_READ,
+            key: readKey,
+            headers: { 'X-Nylzo-Lease': lease },
+            attemptHeaders: sent.headers,
+          },
+          TRANSFER_TIMEOUT_MS,
+        );
+        const policy = servedPolicy(response.headers.get('X-Nylzo-Policy'));
+        const share = shareOf(response);
+        return { policy, share, shareKey: sent.last(), object: await readObject(response, onProgress) };
+      });
     },
 
     challenge,

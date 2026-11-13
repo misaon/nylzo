@@ -5,7 +5,6 @@ import {
   deriveLink,
   deriveVerifier,
   idToString,
-  IntegrityError,
   isReadPath,
   KDF_NONE,
   KdfMismatchError,
@@ -550,9 +549,6 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
 
   // The content key needs the share, which only the server's answer brings.
   async function contentKeys(current: Secrets, access: ContentAccess, fetched: Fetched): Promise<ContentKeys> {
-    if (fetched.envelope.share === undefined) {
-      throw new IntegrityError('the server sent no share');
-    }
     const share = await unwrapShare(fetched.envelope.shareKey, fetched.envelope.share);
     try {
       return await deriveContent(current.id, current.secret, access.passphraseKey, share);
@@ -598,6 +594,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       return fetched;
     }
     if (!policyMatches(fetched.envelope, current, metadata)) {
+      fetched.envelope.shareKey.seed.fill(0);
       return { view: 'tampered' };
     }
     const ackChallenge = attempt(api.challenge());

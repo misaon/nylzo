@@ -2,7 +2,7 @@ package client
 
 import (
 	"context"
-	"crypto/ecdh"
+	"crypto/hpke"
 	"encoding/json"
 	"maps"
 	"net/http"
@@ -35,7 +35,7 @@ type Instance struct {
 // Creation asks the instance for an id, for a message of this TTL, with its share wrapped to ShareKey.
 type Creation struct {
 	TTLSeconds uint32
-	ShareKey   *ecdh.PublicKey
+	ShareKey   hpke.PublicKey
 }
 
 type CreateRequest struct {
@@ -76,7 +76,7 @@ func (c *Client) Instance(ctx context.Context, creation *Creation) (Instance, er
 	if creation != nil {
 		headers = map[string]string{
 			api.TTLHeaderName:      strconv.FormatUint(uint64(creation.TTLSeconds), 10),
-			api.ShareKeyHeaderName: core.Encode(creation.ShareKey.Bytes()),
+			api.ShareKeyHeaderName: share.FormatKey(creation.ShareKey),
 		}
 	}
 	response, err := c.do(ctx, http.MethodGet, api.InstancePath, headers, nil, shortTimeout)
