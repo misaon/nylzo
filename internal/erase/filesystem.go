@@ -21,12 +21,16 @@ type FileSystemError struct {
 }
 
 func (e *FileSystemError) Error() string {
+	advice := "use ext4 (data=ordered or data=writeback), XFS, or tmpfs without swap on Linux"
+	if e.FileSystem == tmpfsName {
+		advice = "turn swap off, or mount this tmpfs with noswap (Linux 6.4 or later)"
+	}
 	return fmt.Sprintf(
-		"%s is on %s, which %s, so a deleted message could be read again from the disk; "+
-			"use ext4 (data=ordered or data=writeback), XFS, or tmpfs without swap on Linux",
+		"%s is on %s, which %s, so a deleted message could be read again from the disk; %s",
 		e.Directory,
 		e.FileSystem,
 		e.Reason,
+		advice,
 	)
 }
 
@@ -40,6 +44,7 @@ type mount struct {
 	dataOptions   []string
 	journaledData bool
 	swapActive    bool
+	noSwap        bool
 }
 
 // checkInPlace accepts only file systems that write an overwrite to the blocks the file already has.
@@ -57,7 +62,7 @@ func checkInPlace(path string, found mount) error {
 		}
 		return nil
 	case tmpfsName:
-		if found.swapActive {
+		if found.swapActive && !found.noSwap {
 			return refuse("can write its pages to swap, which keeps them after an overwrite")
 		}
 		return nil

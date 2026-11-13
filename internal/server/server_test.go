@@ -20,6 +20,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -37,6 +38,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/epoch"
+	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -579,6 +581,49 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 			t.Fatalf("a sweep cut short by shutdown logged an error: %s", logs.String())
 		}
 	})
+}
+
+// F18: swap turned on after the start reaches the log at every sweep as its own event, and the sweep still runs.
+func TestEpochStorageThatStopsBeingErasableIsLogged(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.SweepInterval = time.Minute
+	settings.Development.AllowSwap = false
+	if runtime.GOOS == "linux" {
+		settings.EpochDirectoryOverride = swappableTmpfs(t)
+		settings.Development.AllowUnerasableStorage = true
+	}
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, settings)
+		harness.server.settings.Development.AllowUnerasableStorage = false
+		due := newMessage(t, core.KDFNone, "", 1, 60, "due")
+		harness.mustCreate(due)
+		synctest.Sleep(store.BlobPurgeStep + time.Minute)
+		ctx, cancel := context.WithCancel(t.Context())
+		go harness.server.RunSweeper(ctx)
+		synctest.Wait()
+		cancel()
+		synctest.Wait()
+		if !strings.Contains(harness.logs.String(), `"msg":"epoch-storage-not-erasable"`) || harness.blobExists(due) {
+			t.Fatalf("the sweep must log the epoch storage and still erase: %s", harness.logs.String())
+		}
+	})
+}
+
+// swappableTmpfs is a directory on a tmpfs that swap can reach, the storage serve refuses at start.
+func swappableTmpfs(t *testing.T) string {
+	t.Helper()
+	swaps, err := os.ReadFile("/proc/swaps")
+	onTmpfs, tmpfsErr := erase.OnTmpfs("/dev/shm")
+	if err != nil || tmpfsErr != nil || len(strings.Split(strings.TrimSpace(string(swaps)), "\n")) < 2 || !onTmpfs {
+		t.Skip("needs active swap and /dev/shm on a tmpfs")
+	}
+	directory, err := os.MkdirTemp("/dev/shm", "nylzo-epoch-") //nolint:usetesting // must lie on /dev/shm
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	return directory
 }
 
 func TestConfigErrorsAreCaughtByNew(t *testing.T) {

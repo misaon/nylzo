@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -338,6 +340,71 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		harness.settings.EpochDirectoryOverride = filepath.Join(t.TempDir(), "unmounted")
 		if _, err := New(&harness.settings, harness.store, harness.blobs); !errors.Is(err, epoch.ErrNoDirectory) {
 			t.Fatalf("a missing epoch directory must stop the server: %v", err)
+		}
+	})
+}
+
+// F18: once NYLZO_EPOCH_DIR names another directory, the epoch directory of the data directory stops the server for as
+// long as it exists, because every backup of the data directory keeps whatever seed it holds, under any name.
+func TestAnEpochDirectoryLeftInTheDataDirectoryStopsTheServer(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		quiet := WithLogger(slog.New(slog.DiscardHandler))
+		moved := harness.settings
+		moved.EpochDirectoryOverride = t.TempDir()
+		movedSeed := filepath.Join(moved.EpochDirectoryOverride, epoch.FileName)
+		refused := func(situation string, offersCopy bool) {
+			t.Helper()
+			_, err := New(&moved, harness.store, harness.blobs, quiet)
+			advice := strings.Contains(fmt.Sprint(err), "copy its seed")
+			if !errors.Is(err, ErrEpochInDataDirectory) || advice != offersCopy {
+				t.Fatalf("%s: %v", situation, err)
+			}
+		}
+		refused("a seed left in the data directory", true)
+		if _, err := os.Lstat(movedSeed); !errors.Is(err, fs.ErrNotExist) {
+			t.Fatalf("the refused start wrote a seed: %v", err)
+		}
+		named := harness.settings
+		named.EpochDirectoryOverride = named.DataEpochDirectory()
+		server, err := New(&named, harness.store, harness.blobs, quiet)
+		if err != nil {
+			t.Fatalf("the epoch directory of the data directory, named: %v", err)
+		}
+		server.Close()
+		if err = os.WriteFile(movedSeed, []byte("the seed in use"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		refused("a seed in both directories, which a copy would overwrite", false)
+		if err = os.Remove(movedSeed); err != nil {
+			t.Fatal(err)
+		}
+		left := harness.settings.DataEpochDirectory()
+		if err = os.Rename(filepath.Join(left, epoch.FileName), filepath.Join(left, "seed.old")); err != nil {
+			t.Fatal(err)
+		}
+		refused("a seed under another name", false)
+		if err = os.RemoveAll(left); err != nil {
+			t.Fatal(err)
+		}
+		if server, err = New(&moved, harness.store, harness.blobs, quiet); err != nil {
+			t.Fatalf("a data directory without its epoch directory: %v", err)
+		}
+		server.Close()
+	})
+}
+
+func TestASeedOffTmpfsIsLoggedAtStart(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		onTmpfs, err := erase.OnTmpfs(harness.settings.EpochDirectory())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if logged := strings.Contains(harness.logs.String(), "epoch-seed-on-disk"); logged == onTmpfs {
+			t.Fatalf("seed on a tmpfs: %v, epoch-seed-on-disk logged: %v", onTmpfs, logged)
 		}
 	})
 }

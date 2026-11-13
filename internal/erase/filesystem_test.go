@@ -18,6 +18,7 @@ func TestOnlyFileSystemsThatOverwriteInPlaceAreAccepted(t *testing.T) {
 		{mount{fileSystem: "xfs"}, true},
 		{mount{fileSystem: "tmpfs"}, true},
 		{mount{fileSystem: "tmpfs", swapActive: true}, false},
+		{mount{fileSystem: "tmpfs", swapActive: true, noSwap: true}, true},
 		{mount{fileSystem: "ext4", dataOptions: options("rw,data=journal")}, false},
 		{mount{fileSystem: "ext4", dataOptions: options("rw,data=ordered"), journaledData: true}, false},
 		{mount{fileSystem: "btrfs"}, false},

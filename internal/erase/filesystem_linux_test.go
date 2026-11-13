@@ -19,6 +19,28 @@ func TestMountInfoNamesTheSourceAndOptionsOfTheDevice(t *testing.T) {
 	if _, ok = parseMountInfo(line, "8:1"); ok {
 		t.Fatal("a mount of another device matched")
 	}
+	tmpfs := "41 30 0:45 / /run/nylzo-epoch rw,nosuid,nodev - tmpfs tmpfs rw,size=1024k,mode=700,uid=65532,noswap"
+	found, ok = parseMountInfo(tmpfs, "0:45")
+	if !ok || !hasOption(strings.Split(found.superOptions, ","), "noswap") {
+		t.Fatalf("the noswap option of a tmpfs was not found: %+v %v", found, ok)
+	}
+}
+
+func TestATmpfsThatSwapCanReachIsRefused(t *testing.T) {
+	t.Parallel()
+	active, swapErr := swapActive()
+	onTmpfs, tmpfsErr := OnTmpfs("/dev/shm")
+	if swapErr != nil || tmpfsErr != nil || !active || !onTmpfs {
+		t.Skip("needs active swap and /dev/shm on a tmpfs")
+	}
+	directory, err := os.MkdirTemp("/dev/shm", "nylzo-erase-") //nolint:usetesting // must lie on /dev/shm
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	if err = RequireInPlace(directory); !errors.Is(err, ErrNotInPlace) {
+		t.Fatalf("a tmpfs without noswap was accepted while swap is active: %v", err)
+	}
 }
 
 // TestRequireInPlaceOnRealExt4 covers the final review's M2 on loop images; it needs root, losetup, mkfs.ext4,

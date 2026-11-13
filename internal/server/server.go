@@ -3,10 +3,12 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"time"
 
@@ -42,6 +44,9 @@ const (
 	h2cConnectionBuffer = 1 << 20
 	h2cMaxFrame         = 16 << 10
 )
+
+// ErrEpochInDataDirectory stops a server whose data directory still holds the epoch directory NYLZO_EPOCH_DIR replaced.
+var ErrEpochInDataDirectory = errors.New("server: the data directory still holds an epoch directory")
 
 type Option func(*Server)
 
@@ -142,6 +147,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		abuse.FilesBytes(settings.Rates.GlobalDailyCreates, store.ReportsPerMessage),
 	)
 	if prepareErr := abuse.Prepare(settings.DataDirectory, time.Now()); prepareErr != nil {
+		server.epochs.Close()
 		return nil, prepareErr
 	}
 	server.disk = server.newDiskReserver(diskspace.Free)
@@ -216,6 +222,7 @@ func (s *Server) RunSweeper(ctx context.Context) {
 	ticker := time.NewTicker(s.settings.SweepInterval)
 	defer ticker.Stop()
 	for {
+		s.recheckEpochStorage(ctx)
 		_, err := s.sweepOnce(ctx)
 		switch {
 		case ctx.Err() != nil:
@@ -341,6 +348,17 @@ func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
 	return report, errors.Join(err, s.advanceRatchet(now))
 }
 
+// recheckEpochStorage repeats the start check of the epoch directory, so swap turned on later reaches the log; the
+// pinned seed stays out of swap meanwhile, but not once serve stops.
+func (s *Server) recheckEpochStorage(ctx context.Context) {
+	if s.settings.Development.AllowUnerasableStorage {
+		return
+	}
+	if err := erase.RequireInPlace(epoch.ErasablePaths(s.settings.EpochDirectory())...); err != nil {
+		s.logger.ErrorContext(ctx, "epoch-storage-not-erasable", "err", logging.ErrorText(err))
+	}
+}
+
 func (s *Server) setUpLimits() {
 	rates := s.settings.Rates
 	s.instance = ratelimit.NewFair(rates.BucketPerSecond, rates.BucketBurst)
@@ -377,7 +395,33 @@ func (s *Server) openRatchet() error {
 			"a new seed: messages created under an earlier one can no longer be opened and end at the next request about them",
 		)
 	}
+	if err = errors.Join(s.pinSeed(ratchet), s.warnIfSeedOnDisk()); err != nil {
+		ratchet.Close()
+		return err
+	}
 	s.epochs = ratchet
+	return nil
+}
+
+// pinSeed keeps the seed file out of swap turned on after the start; NYLZO_ALLOW_SWAP locks no memory at all.
+func (s *Server) pinSeed(ratchet *epoch.Ratchet) error {
+	if s.settings.Development.AllowSwap {
+		return nil
+	}
+	return ratchet.Pin()
+}
+
+func (s *Server) warnIfSeedOnDisk() error {
+	onTmpfs, err := erase.OnTmpfs(s.settings.EpochDirectory())
+	if err != nil || onTmpfs {
+		return err
+	}
+	s.logger.Warn(
+		"epoch-seed-on-disk",
+		"notice",
+		"every disk image and backup of the epoch directory holds the seed and opens the messages live when it "+
+			"was taken; keep NYLZO_EPOCH_DIR on a tmpfs",
+	)
 	return nil
 }
 
@@ -385,9 +429,51 @@ func (s *Server) openRatchet() error {
 // operator names must exist already, so a volume that failed to mount stops the server instead of a new seed.
 func PrepareEpochDirectory(settings *config.Server) error {
 	if settings.EpochDirectoryOverride != "" {
-		return nil
+		return RefuseEpochInDataDirectory(settings)
 	}
 	return os.MkdirAll(settings.EpochDirectory(), 0o700)
+}
+
+// RefuseEpochInDataDirectory refuses the epoch directory of the data directory while NYLZO_EPOCH_DIR names another
+// directory that exists. Nothing moves a seed there forward any more, under any file name, so it keeps the shares of
+// the messages that were live when it was last written, and every backup of the data directory copies them.
+func RefuseEpochInDataDirectory(settings *config.Server) error {
+	if settings.EpochDirectoryOverride == "" {
+		return nil
+	}
+	inData := settings.DataEpochDirectory()
+	found, err := os.Stat(inData)
+	if err != nil {
+		return leftoverCheckError(err)
+	}
+	named, err := os.Stat(settings.EpochDirectoryOverride)
+	if err != nil || os.SameFile(found, named) {
+		return leftoverCheckError(err)
+	}
+	advice := leftoverAdvice(inData, settings.EpochDirectoryOverride)
+	return fmt.Errorf("%w: %s; %s", ErrEpochInDataDirectory, inData, advice)
+}
+
+// leftoverAdvice offers the copy only while NYLZO_EPOCH_DIR holds no seed, which the copy would overwrite.
+func leftoverAdvice(inData, named string) string {
+	const eraseAll = "erase every file in it in place (shred --zero --iterations=0 --remove=unlink) and remove it"
+	if exists(filepath.Join(inData, epoch.FileName)) && !exists(filepath.Join(named, epoch.FileName)) {
+		return "copy its seed into " + named + " first to keep the live messages, then " + eraseAll
+	}
+	return eraseAll
+}
+
+func exists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
+}
+
+// leftoverCheckError leaves a missing NYLZO_EPOCH_DIR to epoch.Open, which refuses it.
+func leftoverCheckError(err error) error {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return fmt.Errorf("server: check for an epoch directory left in the data directory: %w", err)
 }
 
 func (s *Server) requireErasableEpochDirectory(directory string) error {

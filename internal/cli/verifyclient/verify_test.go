@@ -123,6 +123,7 @@ func newPublicWebTestServer(
 	}
 	settings.ReportKey = reportKey.PublicKey()
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
+	settings.Development.AllowSwap = true
 	settings.Version = version
 	settings.PublicURL = publicURL
 	settings.Operator.Contact = "security@example.org"
