@@ -35,9 +35,11 @@ var (
 	ErrServerURL      = errors.New(
 		"client: the server address must be scheme://host[:port] without a path, query or fragment",
 	)
-	ErrResponse    = errors.New("client: the server sent a malformed response")
-	ErrRedirect    = errors.New("client: the server answered with a redirect, which nylzo never follows")
-	ErrReportLimit = errors.New(
+	ErrResponse = errors.New("client: the server sent a malformed response")
+	// ErrServerOutdated is an instance of a release before Nylzo 0.14.0, which issues no deadline with an id.
+	ErrServerOutdated = errors.New("client: the server runs a release before Nylzo 0.14.0; ask its operator to update")
+	ErrRedirect       = errors.New("client: the server answered with a redirect, which nylzo never follows")
+	ErrReportLimit    = errors.New(
 		"client: the message already has its reports for the day, so the server did not store this one",
 	)
 )

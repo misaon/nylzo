@@ -338,7 +338,7 @@ export const messages: Catalog = {
     'Neukladá ich. Limity na adresu uchováva len v\u{A0}pamäti, ktorá sa nikdy neodkladá na disk, a\u{A0}po reštarte ich zabudne.',
   'transparency.stores.enforced.title': 'Platnosť stráži aj kryptografia',
   'transparency.stores.enforced':
-    'Platnosť a\u{A0}počet otvorení stráži server. Najneskôr dve hodiny po skončení platnosti navyše vymaže časť kľúča, ktorú správa potrebuje, takže ju potom neotvorí ani kópia dát. Kópia vytvorená skôr správu bez odkazu neprečíta.',
+    'Platnosť a\u{A0}počet otvorení stráži server. Najneskôr minútu po skončení platnosti navyše vymaže časť kľúča, ktorú správa potrebuje, takže ju potom neotvorí ani kópia dát. Kópia vytvorená skôr správu bez odkazu neprečíta.',
   'transparency.logs.title': 'Čo server loguje',
   'transparency.logs.written': 'Zapisuje',
   'transparency.logs.written.time': 'Čas skrátený na minútu',

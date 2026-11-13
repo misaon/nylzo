@@ -24,7 +24,7 @@ func TestBlobReadKeepsAccessTime(t *testing.T) {
 		"ref",
 		bytes.NewReader(make([]byte, 4127)),
 		4127,
-		time.Hour,
+		time.Now().Add(time.Hour),
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestRestampHidesWhenEachBlobWasUploaded(t *testing.T) {
 			reference,
 			bytes.NewReader([]byte(reference)),
 			int64(len(reference)),
-			time.Hour,
+			time.Now().Add(time.Hour),
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +79,13 @@ func TestABlobIsBornBeforeItsUpload(t *testing.T) {
 	blobs := newBlobs(t, directory)
 	time.Sleep(100 * time.Millisecond)
 	started := time.Now()
-	if _, err := blobs.PutExpiring(t.Context(), "ref", strings.NewReader("x"), 1, time.Hour); err != nil {
+	if _, err := blobs.PutExpiring(
+		t.Context(),
+		"ref",
+		strings.NewReader("x"),
+		1,
+		time.Now().Add(time.Hour),
+	); err != nil {
 		t.Fatal(err)
 	}
 	var status unix.Statx_t

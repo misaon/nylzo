@@ -344,7 +344,7 @@ export const messages: Catalog = {
     'Não os armazena. Mantém os limites por endereço apenas em uma memória que nunca é gravada no disco, e os esquece ao reiniciar.',
   'transparency.stores.enforced.title': 'A criptografia também controla a validade',
   'transparency.stores.enforced':
-    'O servidor controla a validade e o número de aberturas. Além disso, no máximo duas horas depois que a mensagem expira, ele apaga a parte da chave de que ela precisa, então nem uma cópia dos dados consegue mais abri-la. Uma cópia feita antes não lê a mensagem sem o link.',
+    'O servidor controla a validade e o número de aberturas. Além disso, no máximo um minuto depois que a mensagem expira, ele apaga a parte da chave de que ela precisa, então nem uma cópia dos dados consegue mais abri-la. Uma cópia feita antes não lê a mensagem sem o link.',
   'transparency.logs.title': 'O que o servidor registra nos logs',
   'transparency.logs.written': 'Registra',
   'transparency.logs.written.time': 'Horário com precisão de minuto',

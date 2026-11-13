@@ -89,7 +89,7 @@ func newRecord(opens uint16, passphrase bool) *store.Record {
 		core.NewSecret()[:],
 		core.NewSecret()[:],
 		reference.String(),
-		seal.NewKey(),
+		new(seal.NewBlobKey()),
 	)
 	return &record
 }
@@ -259,7 +259,7 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 		record.Row.BlobReference,
 		bytes.NewReader(make([]byte, 64)),
 		64,
-		time.Hour,
+		time.Now().Add(time.Hour),
 	); err != nil {
 		t.Fatal(err)
 	}

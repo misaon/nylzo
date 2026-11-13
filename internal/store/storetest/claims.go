@@ -73,9 +73,9 @@ func (f *fixture) onlyThePresentedKeyOpens() {
 		}
 	}
 	if len(row.Record)%seal.RecordBlock != 0 || len(row.ReadWrap) != seal.SealedWrapLen ||
-		len(row.ManageWrap) != seal.SealedWrapLen {
-		t.Fatalf("a sealed row must have fixed lengths: record %d, wraps %d and %d",
-			len(row.Record), len(row.ReadWrap), len(row.ManageWrap))
+		len(row.ManageWrap) != seal.SealedWrapLen || len(row.BlobWrap) != seal.BlobWrapLen {
+		t.Fatalf("a sealed row must have fixed lengths: record %d, wraps %d, %d and %d",
+			len(row.Record), len(row.ReadWrap), len(row.ManageWrap), len(row.BlobWrap))
 	}
 }
 

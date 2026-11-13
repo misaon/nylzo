@@ -358,7 +358,7 @@ export const messages: Catalog = {
     'Il ne les stocke pas. Il conserve les limites par adresse uniquement dans une mémoire qui n’est jamais transférée sur le disque, et les oublie au redémarrage.',
   'transparency.stores.enforced.title': 'La cryptographie veille aussi à la validité',
   'transparency.stores.enforced':
-    'Le serveur contrôle la validité et le nombre d’ouvertures. Au plus tard deux heures après l’expiration, il efface en outre la partie de la clé dont le message a besoin\u{A0}; même une copie des données ne permet alors plus de l’ouvrir. Une copie faite plus tôt ne permet pas de lire le message sans le lien.',
+    'Le serveur contrôle la validité et le nombre d’ouvertures. Au plus tard une minute après l’expiration, il efface en outre la partie de la clé dont le message a besoin\u{A0}; même une copie des données ne permet alors plus de l’ouvrir. Une copie faite plus tôt ne permet pas de lire le message sans le lien.',
   'transparency.logs.title': 'Ce que le serveur journalise',
   'transparency.logs.written': 'Enregistre',
   'transparency.logs.written.time': 'Heure tronquée à la minute',

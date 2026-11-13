@@ -108,7 +108,7 @@ func (f *fixture) create(opens uint16, ttlSeconds uint32, passphrase bool) *mess
 		created.reference(),
 		bytes.NewReader(bytes.Repeat([]byte{0xAB}, blobSize)),
 		blobSize,
-		time.Duration(ttlSeconds)*time.Second,
+		created.Message.ExpiresAt,
 	); err != nil {
 		f.t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func (f *fixture) createRow(opens uint16, ttlSeconds uint32, passphrase bool) *m
 		readKey,
 		manageKey,
 		core.Encode(blobReference[:]),
-		seal.NewKey(),
+		new(seal.NewBlobKey()),
 	)
 	if err := f.store.Create(f.t.Context(), &record.Row); err != nil {
 		f.t.Fatal(err)

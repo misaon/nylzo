@@ -68,7 +68,7 @@ func TestUploadsWriteIntoFilesThePoolCreatedBefore(t *testing.T) {
 			reference,
 			strings.NewReader(reference),
 			int64(len(reference)),
-			time.Hour,
+			time.Now().Add(time.Hour),
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -88,7 +88,13 @@ func TestAFailedUploadGivesItsFileBackToThePool(t *testing.T) {
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
 	before := poolFiles(t, directory)
-	if _, err := blobs.PutExpiring(t.Context(), "short", strings.NewReader("abc"), 10, time.Hour); err == nil {
+	if _, err := blobs.PutExpiring(
+		t.Context(),
+		"short",
+		strings.NewReader("abc"),
+		10,
+		time.Now().Add(time.Hour),
+	); err == nil {
 		t.Fatal("an upload shorter than its size must fail")
 	}
 	after := poolFiles(t, directory)
@@ -111,11 +117,23 @@ func TestAnEmptyPoolRefusesTheUploadAndRefills(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, reference := range []string{"first", "second"} {
-		if _, err = blobs.PutExpiring(t.Context(), reference, strings.NewReader("x"), 1, time.Hour); err != nil {
+		if _, err = blobs.PutExpiring(
+			t.Context(),
+			reference,
+			strings.NewReader("x"),
+			1,
+			time.Now().Add(time.Hour),
+		); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err = blobs.PutExpiring(t.Context(), "third", strings.NewReader("x"), 1, time.Hour); !errors.Is(
+	if _, err = blobs.PutExpiring(
+		t.Context(),
+		"third",
+		strings.NewReader("x"),
+		1,
+		time.Now().Add(time.Hour),
+	); !errors.Is(
 		err,
 		store.ErrPoolEmpty,
 	) {
@@ -132,7 +150,13 @@ func TestAnEmptyPoolRefusesTheUploadAndRefills(t *testing.T) {
 	if len(refilled) != 2 {
 		t.Fatalf("the refusal must start a refill of the whole pool: %d files", len(refilled))
 	}
-	if _, err = blobs.PutExpiring(t.Context(), "third", strings.NewReader("x"), 1, time.Hour); err != nil ||
+	if _, err = blobs.PutExpiring(
+		t.Context(),
+		"third",
+		strings.NewReader("x"),
+		1,
+		time.Now().Add(time.Hour),
+	); err != nil ||
 		!among(blobFile(t, directory, "third"), refilled) {
 		t.Fatalf("the retry must take a refilled file: %v", err)
 	}
@@ -150,7 +174,13 @@ func TestEverySweepCreatesTheSameNumberOfPoolFiles(t *testing.T) {
 	for round, uploads := range []int{5, 0, 4} {
 		for i := range uploads {
 			reference := fmt.Sprintf("round-%d-%d", round, i)
-			if _, err = blobs.PutExpiring(t.Context(), reference, strings.NewReader("x"), 1, time.Hour); err != nil {
+			if _, err = blobs.PutExpiring(
+				t.Context(),
+				reference,
+				strings.NewReader("x"),
+				1,
+				time.Now().Add(time.Hour),
+			); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -199,7 +229,7 @@ func TestASweepDuringAnUploadLeavesItsFileAlone(t *testing.T) {
 	reader := &gatedReader{entered: entered, release: release, content: bytes.NewReader(content)}
 	uploaded := make(chan error, 1)
 	go func() {
-		_, err := blobs.PutExpiring(t.Context(), "uploading", reader, int64(len(content)), time.Hour)
+		_, err := blobs.PutExpiring(t.Context(), "uploading", reader, int64(len(content)), time.Now().Add(time.Hour))
 		uploaded <- err
 	}()
 	<-entered
@@ -242,7 +272,7 @@ func TestPutWaitsForAFreeFileSlotNoLongerThanItsRequest(t *testing.T) {
 	defer cancel()
 	put := make(chan error, 1)
 	go func() {
-		_, err := blobs.PutExpiring(waiting, "waiting", strings.NewReader("x"), 1, time.Hour)
+		_, err := blobs.PutExpiring(waiting, "waiting", strings.NewReader("x"), 1, time.Now().Add(time.Hour))
 		put <- err
 	}()
 	var err error
@@ -283,7 +313,7 @@ func TestABlobWhoseDirectorySyncFailsIsShredded(t *testing.T) {
 	blobs := newBlobs(t, directory)
 	final := filepath.Join(directory, disk.Directory, hexName("unsynced"))
 	ctx := cancelAfterLink{Context: t.Context(), final: final}
-	if _, err := blobs.PutExpiring(ctx, "unsynced", strings.NewReader("x"), 1, time.Hour); !errors.Is(
+	if _, err := blobs.PutExpiring(ctx, "unsynced", strings.NewReader("x"), 1, time.Now().Add(time.Hour)); !errors.Is(
 		err,
 		context.Canceled,
 	) {

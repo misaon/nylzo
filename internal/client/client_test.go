@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
@@ -121,29 +122,55 @@ func TestRedirectIsAnError(t *testing.T) {
 	}
 }
 
-// A-04: a difficulty above the spec maximum fails before any key is derived, not after minutes of solving.
+// A-04: a difficulty above the spec maximum fails before any key is derived, not after minutes of solving. F13: a
+// deadline that does not end the TTL counted from the issue of the id, or another epoch than its own, is refused before
+// anything is sealed.
 func TestInstanceRefusesWhatTheSpecForbids(t *testing.T) {
 	t.Parallel()
 	creation := &Creation{TTLSeconds: 3600, ShareKey: share.NewKey().PublicKey()}
 	wrapped := core.Encode(make([]byte, share.WrappedLen))
-	issued := `"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t","epoch":1,"share":"` + wrapped + `"}`
+	epochOf := func(deadline string) string {
+		parsed, err := time.Parse(time.RFC3339, deadline)
+		if err != nil {
+			return "1"
+		}
+		return strconv.FormatInt(parsed.Unix()/60-1, 10)
+	}
+	issued := func(deadline string) string {
+		return `{"limits":{},"pow":{},"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t",` +
+			`"expires_at":"2026-11-12T10:10:00Z","epoch":` + epochOf(deadline) + `,"deadline":"` + deadline +
+			`","share":"` + wrapped + `"}}`
+	}
+	valid := issued("2026-11-12T11:00:00Z")
 	for name, test := range map[string]struct {
 		body     string
 		creation *Creation
 		valid    bool
 	}{
-		"limits only":            {`{"limits":{},"pow":{"difficulty":8}}`, nil, true},
-		"an issued id":           {`{"limits":{},"pow":{},` + issued + `}`, creation, true},
-		"difficulty above 8":     {`{"limits":{},"pow":{"difficulty":9}}`, nil, false},
-		"difficulty below 0":     {`{"limits":{},"pow":{"difficulty":-1}}`, nil, false},
-		"no id when asked":       {`{"limits":{},"pow":{}}`, creation, false},
-		"an id without an epoch": {`{"limits":{},"pow":{},"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t","share":"` + wrapped + `"}}`, creation, false},
-		"a short share":          {`{"limits":{},"pow":{},"create":{"id":"AAAAAAAAAAAAAAAAAAAAAA","id_token":"t","epoch":1,"share":"AAAA"}}`, creation, false},
+		"limits only":                {`{"limits":{},"pow":{"difficulty":8}}`, nil, true},
+		"an issued id":               {valid, creation, true},
+		"a deadline rounded up":      {issued("2026-11-12T11:01:00Z"), creation, true},
+		"difficulty above 8":         {`{"limits":{},"pow":{"difficulty":9}}`, nil, false},
+		"difficulty below 0":         {`{"limits":{},"pow":{"difficulty":-1}}`, nil, false},
+		"no id when asked":           {`{"limits":{},"pow":{}}`, creation, false},
+		"a deadline before the TTL":  {issued("2026-11-12T10:59:00Z"), creation, false},
+		"a deadline after the TTL":   {issued("2026-11-12T11:02:00Z"), creation, false},
+		"a deadline inside a minute": {issued("2026-11-12T11:00:30Z"), creation, false},
+		"an epoch of another minute": {strings.Replace(valid, `"epoch":`, `"epoch":1`, 1), creation, false},
+		"an id without an epoch":     {strings.Replace(valid, `"epoch":`, `"skipped":`, 1), creation, false},
+		"a short share":              {strings.Replace(valid, wrapped, "AAAA", 1), creation, false},
+		"a server without deadlines": {strings.Replace(valid, `"deadline":`, `"skipped":`, 1), creation, false},
 	} {
 		server := serve(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(test.body)) })
 		if _, err := server.Instance(t.Context(), test.creation); (err == nil) != test.valid {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+	outdated := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Write([]byte(strings.Replace(valid, `"deadline":`, `"skipped":`, 1)))
+	})
+	if _, err := outdated.Instance(t.Context(), creation); !errors.Is(err, ErrServerOutdated) {
+		t.Fatalf("an instance that issues no deadline: %v", err)
 	}
 }
 
@@ -248,10 +275,50 @@ func TestEnvelopesAreBoundedByTheProtocol(t *testing.T) {
 		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":257,"flags":0}`)),
 		core.Encode([]byte(`{"opens_max":0,"ttl_s":60,"kdf_id":0,"flags":0}`)),
 		core.Encode([]byte(`{"ttl_s":60,"kdf_id":0,"flags":0}`)),
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":2}`)),
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":0,"deadline":1797000000}`)),
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":2,"deadline":0}`)),
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":2,"deadline":4294967296}`)),
 	} {
 		if _, err := decodePolicy(header); !errors.Is(err, ErrResponse) {
 			t.Fatalf("policy %q accepted", header)
 		}
+	}
+	sealed, err := decodePolicy(
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":2,"deadline":1797000000}`)),
+	)
+	if err != nil || sealed.Policy.Deadline != 1_797_000_000 || sealed.Flags != envelope.FlagDeadline {
+		t.Fatalf("a policy that seals its deadline: %+v %v", sealed, err)
+	}
+}
+
+// F13: the message must expire at the deadline the client sealed, and a reader names the flags it opens.
+func TestCreateRefusesAnotherExpiryAndReadersNameTheirFlags(t *testing.T) {
+	t.Parallel()
+	creator := serve(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id":"AAAAAAAAAAAAAAAAAAAAAA","expires_at":"2026-11-12T11:01:00Z"}`))
+	})
+	request := &CreateRequest{Deadline: time.Date(2026, 11, 12, 11, 0, 0, 0, time.UTC)}
+	if _, err := creator.Create(t.Context(), request); !errors.Is(err, ErrResponse) {
+		t.Fatalf("an expiry other than the sealed deadline: %v", err)
+	}
+	challenge := `{"challenge":"` + core.Encode(make([]byte, signing.ChallengeLen)) + `"}`
+	var flags []string
+	reader := serve(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == api.ChallengePath {
+			w.Write([]byte(challenge))
+			return
+		}
+		flags = append(flags, r.Header.Get(api.FlagsHeaderName))
+		w.WriteHeader(http.StatusGone)
+		w.Write([]byte(`{"error":"gone","state":"expired"}`))
+	})
+	id := core.NewID()
+	reader.Claim(t.Context(), id, core.NewSecret(), core.NewSecret(), 0, nil)
+	reader.Blob(t.Context(), id, core.NewSecret(), "lease", 0)
+	if len(flags) != 2 || flags[0] != "2" || flags[1] != "2" {
+		t.Fatalf("readers sent X-Nylzo-Flags %q", flags)
 	}
 }
 

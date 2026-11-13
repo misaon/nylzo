@@ -8,6 +8,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"hash"
 	"io"
 	"math"
 	"net/http"
@@ -47,6 +48,7 @@ type createRequest struct {
 	bodyBy      time.Time
 	outdated    bool
 	generation  epoch.GenerationID
+	deadline    time.Time
 }
 
 // The create checks run in the order of spec §6.2, each before the body is read.
@@ -89,9 +91,11 @@ func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequ
 		request.generation, tokenOK = s.idTokens.Valid(
 			request.id,
 			*request.header.Epoch,
+			request.ttlSeconds,
 			request.header.IDToken,
 			time.Now(),
 		)
+		request.deadline = epoch.Deadline(*request.header.Epoch)
 	}
 	held, heldErr := false, error(nil)
 	if tokenOK {
@@ -305,24 +309,37 @@ func (t *trackingReader) Read(buffer []byte) (int, error) {
 
 type storedBlob struct {
 	reference string
-	key       seal.Key
+	key       seal.BlobKey
 	salt      seal.EraseSalt
+	mac       hash.Hash
 }
 
 func newStoredBlob() storedBlob {
 	reference := core.NewID()
-	return storedBlob{reference: core.Encode(reference[:]), key: seal.NewKey(), salt: seal.NewEraseSalt()}
+	blob := storedBlob{
+		reference: core.Encode(reference[:]),
+		key:       seal.NewBlobKey(),
+		salt:      seal.NewEraseSalt(),
+	}
+	blob.mac = seal.BlobMAC(blob.key.Key, blob.salt)
+	blob.key.SaltTag = seal.SaltTagOf(blob.key.Key, blob.salt)
+	return blob
 }
 
 // sealed puts the erase block first and pads the object with Padmé, so the stored length shows only a size class.
 func (b *storedBlob) sealed(object io.Reader, size int64) io.Reader {
 	plain := io.MultiReader(object, io.LimitReader(zeros{}, seal.PaddedSize(size)-size))
-	encrypted := cipher.StreamReader{S: seal.BlobStream(b.key, b.salt), R: plain}
-	return io.MultiReader(bytes.NewReader(seal.EraseBlock(b.salt)), encrypted)
+	encrypted := cipher.StreamReader{S: seal.BlobStream(b.key.Key, b.salt), R: plain}
+	return io.MultiReader(bytes.NewReader(seal.EraseBlock(b.salt)), io.TeeReader(encrypted, b.mac))
+}
+
+// finishTag runs once the blob is stored, so the wrap holds the tag of exactly the stored bytes.
+func (b *storedBlob) finishTag() {
+	b.key.Tag = seal.BlobTag(b.mac.Sum(nil))
 }
 
 func (b *storedBlob) clear() {
-	clear(b.key[:])
+	b.key.Clear()
 	clear(b.salt[:])
 }
 
@@ -349,7 +366,7 @@ func (s *Server) receiveBlob(
 		return envelope.Header{}, time.Time{}, false
 	}
 	envelopeHeader, err := envelope.ParseHeader(raw[:])
-	if raw[0] < envelope.Version {
+	if raw[0] < envelope.Version || (err == nil && envelopeHeader.Flags&envelope.FlagDeadline == 0) {
 		writeError(w, http.StatusBadRequest, errClientOutdated)
 		return envelope.Header{}, time.Time{}, false
 	}
@@ -362,10 +379,11 @@ func (s *Server) receiveBlob(
 		blob.reference,
 		blob.sealed(io.MultiReader(bytes.NewReader(raw[:]), body), size),
 		seal.StoredBlobSize(size),
-		request.ttl(),
+		request.deadline,
 	)
 	s.setWriteDeadline(w, time.Now().Add(writeTimeout))
 	if err == nil {
+		blob.finishTag()
 		return envelopeHeader, uploaded, true
 	}
 	switch {
@@ -398,7 +416,7 @@ func (s *Server) storeMessage(
 	uploaded, now time.Time,
 ) bool {
 	message := s.newMessage(request, envelopeHeader, uploaded, blob.salt)
-	err := s.persistMessage(r.Context(), request, message, blob, now)
+	err := s.persistMessage(r.Context(), request, message, blob, uploaded, now)
 	if err == nil {
 		writeJSON(
 			w,
@@ -413,7 +431,7 @@ func (s *Server) storeMessage(
 	switch {
 	case errors.Is(err, store.ErrConflict):
 		rejectCreate(w, r, http.StatusConflict, errConflict)
-	case errors.Is(err, errShareEpoch):
+	case errors.Is(err, errDeadlinePassed):
 		rejectCreate(w, r, http.StatusForbidden, errIDToken)
 	case errors.Is(err, errGenerationGone):
 		rejectCreate(w, r, http.StatusConflict, errShareLost)
@@ -428,7 +446,7 @@ func (s *Server) persistMessage(
 	request *createRequest,
 	message *store.Message,
 	blob *storedBlob,
-	now time.Time,
+	uploaded, now time.Time,
 ) error {
 	held, err := s.holdsGeneration(request.generation, now)
 	switch {
@@ -436,8 +454,8 @@ func (s *Server) persistMessage(
 		return err
 	case !held:
 		return errGenerationGone
-	case !shareOutlives(message.Epoch, message.ExpiresAt):
-		return errShareEpoch
+	case !uploaded.Before(message.ExpiresAt):
+		return errDeadlinePassed
 	case !s.epochs.Covers(request.generation, message.Epoch):
 		return errGenerationGone
 	}
@@ -451,7 +469,7 @@ func (s *Server) persistMessage(
 			request.readKey,
 			request.manageKey,
 			blob.reference,
-			blob.key,
+			&blob.key,
 		)
 	})
 	defer clear(record.Key[:])
@@ -459,17 +477,11 @@ func (s *Server) persistMessage(
 }
 
 var (
-	errShareEpoch     = errors.New("server: the share epoch does not cover the expiry")
+	errDeadlinePassed = errors.New("server: the deadline of the id passed before its upload was stored")
 	errGenerationGone = errors.New("server: the share of the id came from a seed that is gone")
 )
 
-// shareOutlives keeps every message inside the life of its share, and every share at most an hour past its message.
-func shareOutlives(shareEpoch uint32, expiresAt time.Time) bool {
-	expiryEpoch := epoch.Hour(expiresAt)
-	return expiryEpoch <= shareEpoch && shareEpoch <= expiryEpoch+1
-}
-
-// newMessage starts the TTL when the upload has been stored, so a slow upload does not use it up.
+// newMessage expires the message at the deadline of its share, which the id token authenticates (spec section 5.6).
 func (s *Server) newMessage(
 	request *createRequest,
 	envelopeHeader envelope.Header,
@@ -481,7 +493,7 @@ func (s *Server) newMessage(
 		KDF:            uint8(envelopeHeader.KDF),
 		Flags:          envelopeHeader.Flags,
 		CreatedAt:      uploaded.UTC().Truncate(time.Minute),
-		ExpiresAt:      store.ExpiresAt(uploaded, request.ttl()),
+		ExpiresAt:      request.deadline,
 		TTLSeconds:     request.ttlSeconds,
 		OpensMax:       request.opensMax,
 		OpensRemaining: request.opensMax,
@@ -495,10 +507,6 @@ func (s *Server) newMessage(
 		message.VerifierPepperID = verifier.PepperID
 	}
 	return message
-}
-
-func (c *createRequest) ttl() time.Duration {
-	return time.Duration(c.ttlSeconds) * time.Second
 }
 
 func rejectCreate(w http.ResponseWriter, r *http.Request, status int, body any) {

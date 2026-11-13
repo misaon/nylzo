@@ -54,6 +54,7 @@ interface EnvelopeVector {
   readonly iv_hex: string;
   readonly opens_max: number;
   readonly ttl_s: number;
+  readonly deadline: number;
   readonly text?: string;
   readonly file?: FileVector;
   readonly meta_json: string;
@@ -78,6 +79,7 @@ interface RejectedVector {
   readonly reader_id?: string;
   readonly opens_max?: number;
   readonly ttl_s?: number;
+  readonly deadline?: number;
   readonly h: string;
   readonly e_hex: string;
   readonly kdf_id: number;

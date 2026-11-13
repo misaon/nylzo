@@ -24,6 +24,7 @@ const (
 		blob_purge_at = ? WHERE locator = ?`
 	updateRowAndPurge = `UPDATE messages SET read_wrap = ?, manage_wrap = ?, record = ?, blob_ref = ?, blob_wrap = ?,
 		blob_purge_at = ?, purge_at = ? WHERE locator = ?`
+	resizeDummyBlobWrap = `UPDATE messages SET blob_wrap = ? WHERE locator = ? AND length(blob_wrap) != ?`
 )
 
 // rowQuery fills each NULL with a value of the length a live row holds there.
@@ -33,7 +34,7 @@ var rowQuery = fmt.Sprintf(`SELECT locator, read_wrap, manage_wrap, record,
 		ifnull(blob_purge_at, 0), blob_purge_at IS NULL, purge_at
 		FROM messages WHERE locator = ?`,
 	strings.Repeat("0", base64.RawURLEncoding.EncodedLen(store.BlobReferenceLen)),
-	seal.WrapLen,
+	seal.BlobWrapLen,
 )
 
 // absentLocator is never stored: finding an id that hashes to it is a preimage.
@@ -82,9 +83,13 @@ func (s *Store) Lookup(ctx context.Context, locator seal.Locator) (store.Row, bo
 }
 
 // ensureDummyRow stores the row that Lookup reads for an unknown locator; random keys seal it, so nothing opens it.
+// A dummy row that a release before Nylzo 0.14.0 stored gets a blob wrap of the length a live row has now.
 func ensureDummyRow(ctx context.Context, database *sql.DB) error {
 	row := store.NewDummyRow()
-	_, err := database.ExecContext(ctx, insertRow, rowValues(&row)...)
+	if _, err := database.ExecContext(ctx, insertRow, rowValues(&row)...); err != nil {
+		return err
+	}
+	_, err := database.ExecContext(ctx, resizeDummyBlobWrap, row.BlobWrap, store.DummyLocator[:], len(row.BlobWrap))
 	return err
 }
 

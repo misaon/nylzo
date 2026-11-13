@@ -351,7 +351,7 @@ export const messages: Catalog = {
     'No las guarda. Mantiene los límites por dirección solo en una memoria que nunca se vuelca al disco, y los olvida al reiniciarse.',
   'transparency.stores.enforced.title': 'La criptografía también controla la validez',
   'transparency.stores.enforced':
-    'El servidor controla la validez y el número de aperturas. Además, a más tardar dos horas después de que caduque el mensaje, borra la parte de la clave que este necesita, así que ni siquiera una copia de los datos podrá abrirlo. Una copia obtenida antes no puede leer el mensaje sin el enlace.',
+    'El servidor controla la validez y el número de aperturas. Además, a más tardar un minuto después de que caduque el mensaje, borra la parte de la clave que este necesita, así que ni siquiera una copia de los datos podrá abrirlo. Una copia obtenida antes no puede leer el mensaje sin el enlace.',
   'transparency.logs.title': 'Qué registra el servidor en el log',
   'transparency.logs.written': 'Registra',
   'transparency.logs.written.time': 'Hora truncada al minuto',

@@ -23,6 +23,7 @@ async function remembered(api: FakeApi, createdAt: number, opensMax = 1): Promis
     id: create.id,
     idToken: create.idToken,
     epoch: create.epoch,
+    deadline: create.deadline,
     readKey: new Uint8Array(32),
     verifierKey: new Uint8Array(32).fill(1),
     manageKey: manageKey.publicKey,

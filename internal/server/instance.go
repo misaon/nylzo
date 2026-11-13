@@ -17,16 +17,15 @@ import (
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
-	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
-	// storeSlack covers rounding expires_at up to the minute and writing the arrived upload (spec section 5.6).
-	storeSlack = 2 * time.Minute
 	// challengesFullRetry waits for the minute purge, which frees the challenges that expired.
 	challengesFullRetry = time.Minute
+	// clockBehindRetry waits for a clock that stepped back behind the epoch ratchet, which never goes back.
+	clockBehindRetry = time.Minute
 )
 
 type instanceResponse struct {
@@ -97,6 +96,12 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	}
 	if creation.requested {
 		created, err := s.issueID(&creation, now)
+		if errors.Is(err, epoch.ErrClockBehind) {
+			s.events.WarnContext(r.Context(), "epoch-clock-behind")
+			setRetryAfter(w, clockBehindRetry)
+			writeError(w, http.StatusServiceUnavailable, errUnavailable)
+			return
+		}
 		if err != nil {
 			s.writeInternal(w, r, err)
 			return
@@ -117,9 +122,9 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 }
 
 type creationRequest struct {
-	requested bool
-	ttl       time.Duration
-	shareKey  hpke.PublicKey
+	requested  bool
+	ttlSeconds uint32
+	shareKey   hpke.PublicKey
 }
 
 var errCreationHeaders = errors.New("server: the TTL and share key headers do not ask for an id")
@@ -133,23 +138,26 @@ func (s *Server) parseCreation(header http.Header) (creationRequest, error) {
 	if len(ttlValues) != 1 || len(keyValues) != 1 {
 		return creationRequest{}, errCreationHeaders
 	}
-	seconds, err := strconv.ParseInt(ttlValues[0], 10, 64)
-	if err != nil || seconds < envelope.MinTTLSeconds || seconds > int64(s.settings.Limits.MaxTTL/time.Second) ||
-		strconv.FormatInt(seconds, 10) != ttlValues[0] {
+	parsed, err := strconv.ParseUint(ttlValues[0], 10, 32)
+	seconds := uint32(parsed)
+	if err != nil || seconds < envelope.MinTTLSeconds ||
+		time.Duration(seconds)*time.Second > s.settings.Limits.MaxTTL ||
+		strconv.FormatUint(parsed, 10) != ttlValues[0] {
 		return creationRequest{}, errCreationHeaders
 	}
 	key, err := share.ParseKey(keyValues[0])
 	if err != nil {
 		return creationRequest{}, err
 	}
-	return creationRequest{requested: true, ttl: time.Duration(seconds) * time.Second, shareKey: key}, nil
+	return creationRequest{requested: true, ttlSeconds: seconds, shareKey: key}, nil
 }
 
-// issueID hands out an id with the share of the hour in which a message made with it can expire at the latest, made
-// by the generation of the current hour.
+// issueID fixes the deadline of a message made with the new id, the TTL from now rounded up to the minute, and hands
+// out the share of the epoch that the deadline ends, made by the generation of the current hour (spec section 5.6).
 func (s *Server) issueID(creation *creationRequest, now time.Time) (api.InstanceCreate, error) {
 	id := core.NewID()
-	shareEpoch := epoch.Hour(latestExpiry(now, creation.ttl, s.settings.Limits.MaxObjectBytes))
+	deadline := store.ExpiresAt(now, time.Duration(creation.ttlSeconds)*time.Second)
+	shareEpoch := epoch.Of(deadline)
 	var (
 		generation  epoch.GenerationID
 		expiryShare [core.ShareLen]byte
@@ -162,7 +170,7 @@ func (s *Server) issueID(creation *creationRequest, now time.Time) (api.Instance
 	if err != nil {
 		return api.InstanceCreate{}, err
 	}
-	token, expires := s.idTokens.Issue(id, shareEpoch, generation, now)
+	token, expires := s.idTokens.Issue(id, shareEpoch, creation.ttlSeconds, generation, now)
 	wrapped, err := share.Wrap(&expiryShare, creation.shareKey)
 	if err != nil {
 		return api.InstanceCreate{}, err
@@ -172,15 +180,9 @@ func (s *Server) issueID(creation *creationRequest, now time.Time) (api.Instance
 		IDToken:   token,
 		ExpiresAt: formatTime(expires),
 		Epoch:     &shareEpoch,
+		Deadline:  formatTime(deadline),
 		Share:     core.Encode(wrapped[:]),
 	}, nil
-}
-
-// latestExpiry is the latest expiry of a message whose id is issued now: the client may start its upload until the id
-// token expires, and the upload of the largest object may take its whole transfer time.
-func latestExpiry(now time.Time, ttl time.Duration, maxObjectBytes int64) time.Time {
-	upload := max(createBodyTimeout, store.TransferTime(maxObjectBytes))
-	return now.Add(proof.IDTokenTTL() + upload + storeSlack + ttl)
 }
 
 func (s *Server) handleChallenge(w http.ResponseWriter, _ *http.Request) {

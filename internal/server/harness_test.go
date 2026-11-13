@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hkdf"
 	"crypto/hpke"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -114,6 +118,8 @@ type testRequest struct {
 	token     string
 	verifier  string
 	rawCreate bool
+	// oldReader leaves out X-Nylzo-Flags, as a reader of a release before Nylzo 0.14.0 does.
+	oldReader bool
 }
 
 func baseSettings(pepper, previous []byte) *config.Server {
@@ -235,8 +241,8 @@ func (h *testHarness) challengeAt(now time.Time) [signing.ChallengeLen]byte {
 	return challenge
 }
 
-func (h *testHarness) idToken(id core.ID, shareEpoch uint32) string {
-	token, _ := h.server.idTokens.Issue(id, shareEpoch, issuingGeneration(h.server), time.Now())
+func (h *testHarness) idToken(id core.ID, shareEpoch, ttlSeconds uint32) string {
+	token, _ := h.server.idTokens.Issue(id, shareEpoch, ttlSeconds, issuingGeneration(h.server), time.Now())
 	return token
 }
 
@@ -245,9 +251,13 @@ func issuingGeneration(server *Server) epoch.GenerationID {
 	return generations[len(generations)-1]
 }
 
-// shareEpochFor is the epoch a client gets for a TTL from the instance; a test upload takes far less than its slack.
+// shareEpochFor is the epoch a client gets for a TTL from the instance now.
 func shareEpochFor(ttlSeconds float64) uint32 {
-	return epoch.Hour(time.Now().Add(time.Duration(ttlSeconds)*time.Second + 2*time.Minute))
+	return epoch.Of(deadlineFor(uint32(ttlSeconds)))
+}
+
+func deadlineFor(ttlSeconds uint32) time.Time {
+	return store.ExpiresAt(time.Now(), time.Duration(ttlSeconds)*time.Second)
 }
 
 func (h *testHarness) setFreeSpace(free diskspace.FreeFunc) {
@@ -278,6 +288,9 @@ func (h *testHarness) tryDo(request *testRequest) (testResponse, responseBody, e
 	streams := strings.HasSuffix(request.path, "/claim") || strings.HasSuffix(request.path, "/blob")
 	if _, set := request.headers[api.ShareKeyHeaderName]; streams && !set {
 		r.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
+	}
+	if _, set := request.headers[api.FlagsHeaderName]; streams && !set && !request.oldReader {
+		r.Header.Set(api.FlagsHeaderName, strconv.Itoa(envelope.FlagDeadline))
 	}
 	if request.address != "" {
 		r.Header.Set("X-Forwarded-For", request.address)
@@ -430,6 +443,41 @@ func (h *testHarness) blobExists(message *testMessage) bool {
 	return true
 }
 
+func (h *testHarness) blobFile(message *testMessage) string {
+	return filepath.Join(h.directory, disk.Directory, hex.EncodeToString([]byte(h.blobReference(message))))
+}
+
+// dropBlobTag stores the blob wrap as Nylzo 0.13 did, with the key alone, built from spec section 5.2 of that release.
+func (h *testHarness) dropBlobTag(message *testMessage) {
+	h.t.Helper()
+	record := h.mustRecord(message)
+	blobKey, err := record.BlobKey()
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	locator := record.Row.Locator
+	wrapKey, err := hkdf.Key(sha256.New, record.Key[:], locator[:], "nylzo/v2/record/blob", seal.KeyLen)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	block, err := aes.NewCipher(wrapKey)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	aead, err := cipher.NewGCMWithRandomNonce(block)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	earlier := aead.Seal(nil, nil, blobKey.Key[:], append(locator[:len(locator):len(locator)], "blob"...))
+	err = h.store.Update(h.t.Context(), locator, func(row *store.Row) error {
+		row.BlobWrap = earlier
+		return nil
+	})
+	if err != nil {
+		h.t.Fatal(err)
+	}
+}
+
 func (h *testHarness) storedBlobs() int {
 	h.t.Helper()
 	objects, err := h.blobs.List(h.t.Context())
@@ -497,7 +545,7 @@ func (h *testHarness) rewrite(message *testMessage, change func(*store.Message))
 		readKey[:],
 		manageKey[:],
 		record.Row.BlobReference,
-		blobKey,
+		&blobKey,
 	)
 	rebuilt.Row.BlobPurgeAt, rebuilt.Row.PurgeAt = record.Row.BlobPurgeAt, record.Row.PurgeAt
 	err = h.store.Update(h.t.Context(), record.Row.Locator, func(row *store.Row) error {
@@ -594,7 +642,7 @@ func (h *testHarness) withIDToken(header string) string {
 	} else {
 		fields["epoch"], _ = json.Marshal(shareEpoch)
 	}
-	fields["id_token"], _ = json.Marshal(h.idToken(id, shareEpoch))
+	fields["id_token"], _ = json.Marshal(h.idToken(id, shareEpoch, uint32(ttl)))
 	encoded, err := json.Marshal(fields)
 	if err != nil {
 		return header
@@ -706,7 +754,7 @@ func buildMessageWithID(
 	ttl uint32,
 	text string,
 ) (*testMessage, error) {
-	return buildMessage(id, core.NewSecret(), kdf, passphrase, opens, ttl, text)
+	return buildMessage(id, core.NewSecret(), kdf, passphrase, opens, ttl, deadlineFor(ttl), text)
 }
 
 // issueMessage creates a message as a client does: the id and its share come from the instance.
@@ -738,7 +786,11 @@ func (h *testHarness) issueMessage(
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	message, err := buildMessage(id, &expiryShare, kdf, passphrase, opens, ttl, text)
+	deadline, err := time.Parse(time.RFC3339, create["deadline"].(string))
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	message, err := buildMessage(id, &expiryShare, kdf, passphrase, opens, ttl, deadline, text)
 	if err != nil {
 		h.t.Fatal(err)
 	}
@@ -753,6 +805,7 @@ func buildMessage(
 	passphrase string,
 	opens uint16,
 	ttl uint32,
+	deadline time.Time,
 	text string,
 ) (*testMessage, error) {
 	message := &testMessage{
@@ -777,7 +830,8 @@ func buildMessage(
 		return nil, err
 	}
 	message.link, message.content = link, content
-	message.policy = envelope.Policy{OpensMax: opens, TTLSeconds: ttl}
+	message.epoch = epoch.Of(deadline)
+	message.policy = envelope.Policy{OpensMax: opens, TTLSeconds: ttl, Deadline: uint32(deadline.Unix())}
 	payload := envelope.Payload{Meta: envelope.Meta{Text: &text}}
 	if message.object, err = envelope.Seal(
 		&content,
@@ -908,8 +962,9 @@ func decodeJSON(t *testing.T, body []byte) jsonFields {
 
 func decodePolicy(header string) (envelope.Policy, error) {
 	var policy struct {
-		OpensMax   int `json:"opens_max"`
-		TTLSeconds int `json:"ttl_s"`
+		OpensMax   int    `json:"opens_max"`
+		TTLSeconds int    `json:"ttl_s"`
+		Deadline   uint32 `json:"deadline"`
 	}
 	data, err := base64.RawURLEncoding.Strict().DecodeString(header)
 	if err != nil {
@@ -921,7 +976,11 @@ func decodePolicy(header string) (envelope.Policy, error) {
 	if policy.OpensMax == 0 {
 		return envelope.Policy{}, errors.New("policy header without opens_max")
 	}
-	return envelope.Policy{OpensMax: uint16(policy.OpensMax), TTLSeconds: uint32(policy.TTLSeconds)}, nil
+	return envelope.Policy{
+		OpensMax:   uint16(policy.OpensMax),
+		TTLSeconds: uint32(policy.TTLSeconds),
+		Deadline:   policy.Deadline,
+	}, nil
 }
 
 func testRequestComponents(path string) signing.Components {
