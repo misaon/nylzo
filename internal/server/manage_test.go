@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -426,6 +427,30 @@ func TestF05BurnNeedsThePassphrase(t *testing.T) {
 		if _, status := harness.status(message); status["state"] != "available" ||
 			status["failed_passphrase_attempts"].(float64) != 2 {
 			t.Fatalf("claims and burns share the counters: %v", status)
+		}
+		path := harness.blobFile(message)
+		original, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		changedSalt := bytes.Clone(original)
+		changedSalt[0] ^= 1
+		if err = os.WriteFile(path, changedSalt, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		response, _ = burn(message.verifier)
+		if err = os.WriteFile(path, original, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, status := harness.status(message); response.StatusCode != http.StatusInternalServerError ||
+			status["failed_passphrase_attempts"].(float64) != 2 {
+			t.Fatalf("F14: a changed salt must be refused before it costs a passphrase attempt: %d %v",
+				response.StatusCode, status)
+		}
+		changedBody := bytes.Clone(original)
+		changedBody[len(changedBody)-1] ^= 1
+		if err = os.WriteFile(path, changedBody, 0o600); err != nil {
+			t.Fatal(err)
 		}
 		if response, body = burn(message.verifier); response.StatusCode != http.StatusNoContent ||
 			harness.blobExists(message) {

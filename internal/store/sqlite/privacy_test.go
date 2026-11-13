@@ -562,7 +562,7 @@ func (tr *traces) row() store.Row {
 		ManageWrap:    tr.value("MWR:", seal.SealedWrapLen),
 		Record:        tr.value("REC:", seal.RecordBlock),
 		BlobReference: string(tr.value("REF-", 22)),
-		BlobWrap:      tr.value("BWR:", seal.WrapLen),
+		BlobWrap:      tr.value("BWR:", seal.BlobWrapLen),
 		BlobPurgeAt:   testNow.Add(1000 * time.Hour),
 		PurgeAt:       testNow.Add(1000 * time.Hour),
 	}

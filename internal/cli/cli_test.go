@@ -371,7 +371,7 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	}
 	encrypted := stored[erase.BlockLen:]
 	object := make([]byte, record.Message.Size)
-	seal.BlobStream(blobKey, salt).XORKeyStream(object, encrypted[:record.Message.Size])
+	seal.BlobStream(blobKey.Key, salt).XORKeyStream(object, encrypted[:record.Message.Size])
 	return object
 }
 

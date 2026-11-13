@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"encoding/json"
 	"errors"
+	"hash"
 	"io"
 	"net/http"
 	"strconv"
@@ -92,6 +93,10 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	}
 	wrappedShare, ok := s.wrappedShare(w, r, &granted.record)
 	if !ok {
+		return
+	}
+	if err := store.RefuseClaim(&granted.record, time.Now()); err != nil {
+		s.writeClaimFailure(w, r, err)
 		return
 	}
 	blob, ok := s.openBlob(w, r, &granted.record)
@@ -220,9 +225,8 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	err := store.RecordDownload(r.Context(), s.store, &leased.record, leased.lease.MAC, leased.now)
-	if err != nil {
-		s.writeLeaseFailure(w, r, &leased, err)
+	if leased.lease.Downloads >= store.MaxLeaseDownload {
+		s.writeLeaseFailure(w, r, &leased, store.ErrLeaseLimit)
 		return
 	}
 	blob, ok := s.openBlob(w, r, &leased.record)
@@ -231,6 +235,12 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	}
 	defer blob.content.Close()
 	clear(blob.salt[:])
+	leased.now = time.Now()
+	err := store.RecordDownload(r.Context(), s.store, &leased.record, leased.lease.MAC, leased.now)
+	if err != nil {
+		s.writeLeaseFailure(w, r, &leased, err)
+		return
+	}
 	s.serveBlob(w, r, leased.record.Message, servedHeaders{share: wrapped}, blob.content)
 }
 
@@ -322,24 +332,60 @@ type openedBlob struct {
 
 // openBlob decrypts the stored blob and drops its padding, so the reader gets exactly the object.
 func (s *Server) openBlob(w http.ResponseWriter, r *http.Request, record *store.Record) (openedBlob, bool) {
-	var key seal.Key
-	defer clear(key[:])
-	if !s.readBlobKey(w, r, record, &key) {
-		return openedBlob{}, false
-	}
-	file, salt, ok := s.openOrFinishBlob(w, r, record)
+	var key seal.BlobKey
+	defer key.Clear()
+	file, salt, ok := s.openCheckedBlob(w, r, record, &key)
 	if !ok {
+		clear(salt[:])
 		return openedBlob{}, false
 	}
 	var stream cipher.Stream
-	secretmode.Do(func() { stream = seal.BlobStream(key, salt) })
+	secretmode.Do(func() { stream = seal.BlobStream(key.Key, salt) })
 	plain := cipher.StreamReader{S: stream, R: file}
 	content := decryptedBlob{Reader: io.LimitReader(plain, record.Message.Size), Closer: file}
 	return openedBlob{content: content, salt: salt}, true
 }
 
+// openCheckedBlob checks the stored blob against the tag in its wrap before a claim or a download spends anything, and
+// fills the caller's key.
+func (s *Server) openCheckedBlob(
+	w http.ResponseWriter,
+	r *http.Request,
+	record *store.Record,
+	key *seal.BlobKey,
+) (io.ReadSeekCloser, seal.EraseSalt, bool) {
+	if !s.readBlobKey(w, r, record, key) {
+		return nil, seal.EraseSalt{}, false
+	}
+	file, salt, ok := s.openOrFinishBlob(w, r, record)
+	if !ok {
+		return nil, salt, false
+	}
+	if err := checkBlob(file, key, salt, seal.PaddedSize(record.Message.Size)); err != nil {
+		file.Close()
+		if state, finishErr := s.finishMissingBlob(r.Context(), record); finishErr == nil {
+			writeGone(w, string(state))
+			return nil, salt, false
+		}
+		s.writeBlobFailure(w, r, err)
+		return nil, salt, false
+	}
+	return file, salt, true
+}
+
+// writeBlobFailure counts every change to a live message's stored blob as blob-changed, which serve itself never
+// causes, so no other storage error hides it.
+func (s *Server) writeBlobFailure(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, seal.ErrBlobChanged) || errors.Is(err, errBlobSize) || errors.Is(err, store.ErrBlobMissing) {
+		s.events.ErrorContext(r.Context(), "blob-changed")
+		writeError(w, http.StatusInternalServerError, errInternal)
+		return
+	}
+	s.writeInternal(w, r, err)
+}
+
 // readBlobKey fills the caller's key, so the only copy is the one the caller clears.
-func (s *Server) readBlobKey(w http.ResponseWriter, r *http.Request, record *store.Record, key *seal.Key) bool {
+func (s *Server) readBlobKey(w http.ResponseWriter, r *http.Request, record *store.Record, key *seal.BlobKey) bool {
 	var err error
 	secretmode.Do(func() { *key, err = record.BlobKey() })
 	switch {
@@ -359,24 +405,27 @@ func (s *Server) openOrFinishBlob(
 	w http.ResponseWriter,
 	r *http.Request,
 	record *store.Record,
-) (io.ReadCloser, seal.EraseSalt, bool) {
+) (io.ReadSeekCloser, seal.EraseSalt, bool) {
 	file, salt, err := s.openStoredBlob(r.Context(), record)
 	if errors.Is(err, store.ErrBlobMissing) {
-		var state store.State
-		if state, err = s.finishMissingBlob(r.Context(), record); err == nil {
+		state, finishErr := s.finishMissingBlob(r.Context(), record)
+		if finishErr == nil {
 			writeGone(w, string(state))
 			return nil, salt, false
 		}
+		if !errors.Is(finishErr, store.ErrBlobMissing) {
+			err = finishErr
+		}
 	}
 	if err != nil {
-		s.writeInternal(w, r, err)
+		s.writeBlobFailure(w, r, err)
 		return nil, salt, false
 	}
 	return file, salt, true
 }
 
 // openStoredBlob reads the erase block; a block that a concurrent deletion has overwritten counts as a missing blob.
-func (s *Server) openStoredBlob(ctx context.Context, record *store.Record) (io.ReadCloser, seal.EraseSalt, error) {
+func (s *Server) openStoredBlob(ctx context.Context, record *store.Record) (io.ReadSeekCloser, seal.EraseSalt, error) {
 	file, size, err := s.blobs.Open(ctx, record.Row.BlobReference)
 	if err != nil {
 		return nil, seal.EraseSalt{}, err
@@ -389,13 +438,37 @@ func (s *Server) openStoredBlob(ctx context.Context, record *store.Record) (io.R
 	switch {
 	case errors.Is(err, seal.ErrErased):
 		file.Close()
-		return nil, salt, store.ErrBlobMissing
+		return nil, salt, errors.Join(store.ErrBlobMissing, err)
 	case err != nil:
 		file.Close()
 		return nil, salt, err
 	default:
 		return file, salt, nil
 	}
+}
+
+// checkBlob tags the encrypted bytes after the erase block and seeks back, so the response streams from the same open
+// file.
+func checkBlob(file io.ReadSeeker, key *seal.BlobKey, salt seal.EraseSalt, encryptedLen int64) error {
+	if !key.Tagged {
+		return nil
+	}
+	start, err := file.Seek(0, io.SeekCurrent)
+	if err != nil {
+		return err
+	}
+	var mac hash.Hash
+	secretmode.Do(func() { mac = seal.BlobMAC(key.Key, salt) })
+	buffer := borrowStreamBuffer()
+	_, err = io.CopyBuffer(mac, io.LimitReader(file, encryptedLen), buffer[:])
+	giveBackStreamBuffer(buffer)
+	if err == nil {
+		err = seal.CheckBlobTag(mac, &key.Tag)
+	}
+	if err == nil {
+		_, err = file.Seek(start, io.SeekStart)
+	}
+	return err
 }
 
 type servedHeaders struct {
@@ -426,11 +499,8 @@ func (s *Server) serveBlob(
 	header.Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
 	paced := s.pace.Writer(w, http.NewResponseController(w), overall)
-	buffer, _ := streamBuffers.Get().(*[streamBufferLength]byte)
-	defer func() {
-		clear(buffer[:])
-		streamBuffers.Put(buffer)
-	}()
+	buffer := borrowStreamBuffer()
+	defer giveBackStreamBuffer(buffer)
 	if copied, err := io.CopyBuffer(
 		paced,
 		blob,
@@ -443,9 +513,19 @@ func (s *Server) serveBlob(
 
 const streamBufferLength = 32 << 10
 
-// streamBuffers spares each download a buffer of its own, since neither the decrypting reader nor the paced writer
-// lets io.Copy skip one.
+// streamBuffers spares each check and download a buffer of its own, since neither the blob file, the decrypting
+// reader nor the paced writer lets io.Copy skip one.
 var streamBuffers = sync.Pool{New: func() any { return new([streamBufferLength]byte) }}
+
+func borrowStreamBuffer() *[streamBufferLength]byte {
+	buffer, _ := streamBuffers.Get().(*[streamBufferLength]byte)
+	return buffer
+}
+
+func giveBackStreamBuffer(buffer *[streamBufferLength]byte) {
+	clear(buffer[:])
+	streamBuffers.Put(buffer)
+}
 
 func encodePolicy(message *store.Message) string {
 	data, _ := json.Marshal(api.PolicyHeader{

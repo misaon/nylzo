@@ -24,6 +24,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/epoch"
+	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -693,7 +694,7 @@ var lifecycleKinds = []lifecycleKind{
 	}},
 	{name: "spent during the lease", opens: 1, ttl: 3600, expect: [11]string{
 		"204 - tomb:deleted", "204 - tomb:cancelled", "200 opened tomb:opened", "- - tomb:opened", "- - live:",
-		"200 opened live:", "- - live:", "410 opened live:", "200 - live:", "500 - live:", "204 - tomb:opened",
+		"200 opened live:", "- - live:", "410 opened live:", "200 - live:", "410 opened live:", "204 - tomb:opened",
 	}},
 	{
 		name:   "spent after the lease",
@@ -995,6 +996,221 @@ func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
 	})
 }
 
+// F14: the server checks the tag of the stored blob before a claim or a download spends anything.
+func TestChangedBlobSpendsNoOpenOrDownload(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		faulty := harness.withFaultyBlobs()
+		message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
+		harness.mustCreate(message)
+		path := harness.blobFile(message)
+		original, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeBlob := func(content []byte) {
+			if writeErr := os.WriteFile(path, content, 0o600); writeErr != nil {
+				t.Fatal(writeErr)
+			}
+		}
+		changeByte := func(offset int) func() {
+			return func() {
+				changed := bytes.Clone(original)
+				changed[offset] ^= 1
+				writeBlob(changed)
+			}
+		}
+		restore := func() {
+			faulty.FailRead(nil)
+			writeBlob(original)
+		}
+		for name, change := range map[string]func(){
+			"a bit of the object": changeByte(erase.BlockLen + len(message.object)/2),
+			"a bit of the salt":   changeByte(0),
+			"a zeroed salt":       func() { writeBlob(append(make([]byte, seal.EraseSaltLen), original[seal.EraseSaltLen:]...)) },
+			"a byte more":         func() { writeBlob(append(bytes.Clone(original), 0)) },
+			"a read fault":        func() { faulty.FailRead(errInjected) },
+		} {
+			change()
+			response, _ := harness.claim(message, "", "")
+			restore()
+			if response.StatusCode != http.StatusInternalServerError || response.Header.Get("X-Nylzo-Lease") != "" {
+				t.Fatalf("%s: a claim must answer 500 before it spends an open: %d", name, response.StatusCode)
+			}
+			if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(2) {
+				t.Fatalf("%s spent an open: %v", name, metadata)
+			}
+		}
+		harness.server.flushCounts(t.Context())
+		if !strings.Contains(harness.logs.String(), `"msg":"blob-changed","count":4`) {
+			t.Fatalf("each changed blob must be logged as blob-changed: %s", harness.logs.String())
+		}
+		claimed, _ := harness.claim(message, "", "")
+		lease := claimed.Header.Get("X-Nylzo-Lease")
+		if claimed.StatusCode != http.StatusOK || lease == "" {
+			t.Fatalf("claim of the restored blob: %d", claimed.StatusCode)
+		}
+		changeByte(len(original) - 1)()
+		refused, _ := harness.blob(message, lease)
+		restore()
+		if refused.StatusCode != http.StatusInternalServerError {
+			t.Fatalf("a download of a changed blob: %d", refused.StatusCode)
+		}
+		for i := range store.MaxLeaseDownload {
+			if response, object := harness.blob(message, lease); response.StatusCode != http.StatusOK ||
+				!bytes.Equal(object, message.object) {
+				t.Fatalf("download %d after a refused one: %d", i+1, response.StatusCode)
+			}
+		}
+		faulty.FailRead(errInjected)
+		limited, _ := harness.blob(message, lease)
+		faulty.FailRead(nil)
+		if limited.StatusCode != http.StatusTooManyRequests {
+			t.Fatalf("a lease with no download left must answer 429 before it reads the blob: %d", limited.StatusCode)
+		}
+	})
+}
+
+// F14: a download is judged at the time after the blob check, so a lease that ends during the check counts nothing.
+func TestALeaseThatEndsDuringTheCheckDownloadsNothing(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		faulty := harness.withFaultyBlobs()
+		message := newMessage(t, core.KDFNone, "", 2, 3600, "x")
+		harness.mustCreate(message)
+		claimed, _ := harness.claim(message, "", "")
+		lease := claimed.Header.Get("X-Nylzo-Lease")
+		leaseEnd := harness.mustRecord(message).Message.Leases[0].ExpiresAt
+		faulty.OnOpen(func(string) { time.Sleep(time.Until(leaseEnd) + time.Second) })
+		response, body := harness.blob(message, lease)
+		faulty.OnOpen(nil)
+		if response.StatusCode != http.StatusGone {
+			t.Fatalf("a lease that ended during the check must answer 410: %d", response.StatusCode)
+		}
+		if state := decodeJSON(t, body)["state"]; state != "available" {
+			t.Fatalf("a lease that ended during the check answered state %v", state)
+		}
+		if downloads := harness.mustRecord(message).Message.Leases[0].Downloads; downloads != 0 {
+			t.Fatalf("a lease that ended during the check counted %d downloads", downloads)
+		}
+	})
+}
+
+// F14: a download whose check outlasts the message is refused, although its lease is still active.
+func TestADownloadThatWaitsPastExpiryIsRefused(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		faulty := harness.withFaultyBlobs()
+		message := newMessage(t, core.KDFNone, "", 2, 60, "x")
+		harness.mustCreate(message)
+		claimed, _ := harness.claim(message, "", "")
+		lease := claimed.Header.Get("X-Nylzo-Lease")
+		record := harness.mustRecord(message)
+		expiry := record.Message.ExpiresAt
+		if !record.Message.Leases[0].ExpiresAt.After(expiry.Add(time.Second)) {
+			t.Fatal("the lease must outlive the message for this test")
+		}
+		faulty.OnOpen(func(string) { time.Sleep(time.Until(expiry) + time.Second) })
+		response, body := harness.blob(message, lease)
+		faulty.OnOpen(nil)
+		if response.StatusCode != http.StatusGone {
+			t.Fatalf("a download that reached the store after expires_at must be refused: %d", response.StatusCode)
+		}
+		if state := decodeJSON(t, body)["state"]; state != "expired" {
+			t.Fatalf("a download past expiry answered state %v", state)
+		}
+	})
+}
+
+// F14: a check that fails because an ending changed the blob meanwhile answers the ending, not blob-changed.
+func TestACheckRacingAnEndingAnswersTheEnding(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		harness.mustCreate(message)
+		path := harness.blobFile(message)
+		inner := harness.store
+		harness.store = &racingStore{Store: inner, race: func() {
+			record := harness.recordIn(inner, message)
+			if _, err := store.MarkEnding(t.Context(), inner, &record, store.StateDeleted, time.Now()); err != nil {
+				t.Error(err)
+			}
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			content[len(content)-1] ^= 1
+			if err = os.WriteFile(path, content, 0o600); err != nil {
+				t.Error(err)
+			}
+		}}
+		harness.reopen(&harness.settings)
+		response, body := harness.claim(message, "", "")
+		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "deleted" {
+			t.Fatalf("a check that raced an ending must answer the ending: %d %s", response.StatusCode, body)
+		}
+		harness.server.flushCounts(t.Context())
+		if strings.Contains(harness.logs.String(), `"msg":"blob-changed"`) {
+			t.Fatalf("an ending was counted as a changed blob: %s", harness.logs.String())
+		}
+	})
+}
+
+// F14: a claim that the passphrase backoff refuses anyway reads no blob.
+func TestALockedOutClaimReadsNoBlob(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		faulty := harness.withFaultyBlobs()
+		message := newMessage(t, core.KDFScrypt, "correct", 1, 3600, "x")
+		harness.mustCreate(message)
+		wrong := core.Encode(make([]byte, core.SeedLen))
+		for range store.FreeAttempts + 1 {
+			if response, _ := harness.claim(message, wrong, ""); response.StatusCode != http.StatusForbidden {
+				t.Fatalf("a wrong passphrase: %d", response.StatusCode)
+			}
+		}
+		faulty.FailOpen(errInjected)
+		response, body := harness.claim(message, wrong, "")
+		faulty.FailOpen(nil)
+		if response.StatusCode != http.StatusForbidden || decodeJSON(t, body)["retry_after"].(float64) <= 0 {
+			t.Fatalf("a claim in the backoff must be refused before it opens the blob: %d %s",
+				response.StatusCode, body)
+		}
+		_, status := harness.status(message)
+		if status["failed_passphrase_attempts"].(float64) != store.FreeAttempts+1 {
+			t.Fatalf("a claim refused in the backoff counted an attempt: %v", status)
+		}
+	})
+}
+
+// F14: a blob wrap that a release before Nylzo 0.14.0 stored has no tag, and its message keeps opening until it ends.
+func TestABlobWithoutTagStillOpens(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "stored by 0.13")
+		harness.mustCreate(message)
+		if record := harness.mustRecord(message); len(record.Row.BlobWrap) != seal.BlobWrapLen {
+			t.Fatalf("a new blob wrap has %d bytes", len(record.Row.BlobWrap))
+		}
+		harness.dropBlobTag(message)
+		response, object := harness.claim(message, "", "")
+		if response.StatusCode != http.StatusOK || !bytes.Equal(object, message.object) {
+			t.Fatalf("a message of an earlier release must still open: %d", response.StatusCode)
+		}
+		if downloaded, again := harness.blob(message, response.Header.Get("X-Nylzo-Lease")); downloaded.StatusCode !=
+			http.StatusOK || !bytes.Equal(again, message.object) {
+			t.Fatalf("its lease must still download it: %d", downloaded.StatusCode)
+		}
+	})
+}
+
 func TestHeadOnBlobSpendsNoDownload(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -1230,7 +1446,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 		faulty := harness.withFaultyBlobs()
 		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 		harness.mustCreate(message)
-		faulty.FailRead(errInjected)
+		faulty.FailStream(errInjected)
 		request, err := http.NewRequest(
 			http.MethodPost,
 			harness.httpServer.URL+"/api/v1/messages/"+message.id.String()+"/claim",
@@ -1274,7 +1490,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 				t.Fatalf("the stream warning carries more than its name and count: %s", line)
 			}
 		}
-		faulty.FailRead(nil)
+		faulty.FailStream(nil)
 		response, object := harness.blob(message, lease)
 		if response.StatusCode != http.StatusOK || !bytes.Equal(object, message.object) {
 			t.Fatalf("retry through the lease: %d", response.StatusCode)

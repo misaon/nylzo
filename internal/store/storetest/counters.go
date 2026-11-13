@@ -102,7 +102,7 @@ func (f *fixture) createRowWith(hit store.RateHit) {
 	f.t.Helper()
 	fresh := core.NewID()
 	record := store.NewRecord(recordsKey, seal.LocatorOf(fresh[:]), newMessage(1, oneHour, false),
-		core.NewSecret()[:], core.NewSecret()[:], fresh.String(), seal.NewKey())
+		core.NewSecret()[:], core.NewSecret()[:], fresh.String(), new(seal.NewBlobKey()))
 	if err := f.store.Create(f.t.Context(), &record.Row, hit); err != nil {
 		f.t.Fatal(err)
 	}

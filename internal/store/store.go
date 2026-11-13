@@ -240,7 +240,8 @@ type Blobs interface {
 		size int64,
 		ttl time.Duration,
 	) (time.Time, error)
-	Open(ctx context.Context, reference string) (io.ReadCloser, int64, error)
+	// Open gives a reader that can seek, so the server can check a blob and then stream it from the same file.
+	Open(ctx context.Context, reference string) (io.ReadSeekCloser, int64, error)
 	Delete(ctx context.Context, reference string) error
 	DeleteBatch(ctx context.Context, references []string) []error
 	List(ctx context.Context) ([]BlobInfo, error)

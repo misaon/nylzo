@@ -192,7 +192,7 @@ func TestARowThatNoPepperOpensStaysAsItIs(t *testing.T) {
 			core.NewSecret()[:],
 			core.NewSecret()[:],
 			"",
-			seal.NewKey(),
+			new(seal.NewBlobKey()),
 		)
 		if err := harness.store.Create(t.Context(), &foreign.Row); err != nil {
 			t.Fatal(err)

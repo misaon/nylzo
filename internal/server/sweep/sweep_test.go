@@ -67,7 +67,7 @@ func (f fixture) createExpiring(t *testing.T, now time.Time) string {
 		core.NewSecret()[:],
 		core.NewSecret()[:],
 		reference,
-		seal.NewKey(),
+		new(seal.NewBlobKey()),
 	)
 	if err := f.store.Create(t.Context(), &record.Row); err != nil {
 		t.Fatal(err)
