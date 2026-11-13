@@ -1,6 +1,12 @@
 package api
 
-import "slices"
+import (
+	"slices"
+	"time"
+)
+
+// IDTokenLifetime is how long an id token stays valid after the instance response that issued it (spec section 5.4).
+const IDTokenLifetime = 10 * time.Minute
 
 const (
 	Prefix           = "/api/"
@@ -31,6 +37,8 @@ const (
 	LeaseHeaderName    = "X-Nylzo-Lease"
 	PolicyHeaderName   = "X-Nylzo-Policy"
 	VerifierHeaderName = "X-Nylzo-Verifier"
+	// FlagsHeaderName names the envelope flags a reader opens, on every claim and download (spec 6.4).
+	FlagsHeaderName = "X-Nylzo-Flags"
 )
 
 const (

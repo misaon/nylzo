@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/cipher"
+	"crypto/hpke"
 	"encoding/json"
 	"errors"
 	"io"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
+	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/pepper"
@@ -87,10 +89,14 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	defer release()
 	granted, ok := s.authorizedLive(w, r, seal.Read)
 	defer granted.forget()
+	if !ok {
+		return
+	}
+	clientKey, ok := readerKey(w, r, granted.record.Message)
 	if !ok || !s.allowReadBytes(w, r, granted.record.Message.Size) {
 		return
 	}
-	wrappedShare, ok := s.wrappedShare(w, r, &granted.record)
+	wrappedShare, ok := s.wrappedShare(w, r, &granted.record, clientKey)
 	if !ok {
 		return
 	}
@@ -118,26 +124,41 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	s.serveBlob(w, r, result.Message, servedHeaders{lease: core.Encode(lease[:]), share: wrappedShare}, blob.content)
 }
 
-// wrappedShare recomputes E for a message and wraps it to the client's one-time key (spec section 5.6).
-func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *store.Record) (string, bool) {
-	message := record.Message
-	clientKey, err := share.ParseKey(r.Header.Get(api.ShareKeyHeaderName))
-	if errors.Is(err, share.ErrOutdated) {
+// readerKey reads the share key and refuses, before anything is counted or changed, a reader of an earlier release:
+// one whose share key has no suite, or that does not name every envelope flag of the message, so it spends no open
+// on a share or an envelope it cannot open (spec sections 5.6 and 6.4).
+func readerKey(w http.ResponseWriter, r *http.Request, message *store.Message) (hpke.PublicKey, bool) {
+	clientKey, keyErr := share.ParseKey(r.Header.Get(api.ShareKeyHeaderName))
+	readerFlags, flagsOK := parseReaderFlags(r.Header)
+	switch {
+	case errors.Is(keyErr, share.ErrOutdated) || (flagsOK && message.Flags&^readerFlags != 0):
 		writeError(w, http.StatusBadRequest, errClientOutdated)
-		return "", false
-	}
-	if err != nil {
+	case keyErr != nil || !flagsOK:
 		writeError(w, http.StatusBadRequest, errBadRequest)
-		return "", false
+	default:
+		return clientKey, true
 	}
-	now := time.Now()
+	return nil, false
+}
+
+// wrappedShare recomputes E for a message and wraps it to the client's one-time key (spec section 5.6).
+func (s *Server) wrappedShare(
+	w http.ResponseWriter,
+	r *http.Request,
+	record *store.Record,
+	clientKey hpke.PublicKey,
+) (string, bool) {
+	message := record.Message
+	var err error
 	var expiryShare [core.ShareLen]byte
 	secretmode.Do(func() {
-		expiryShare, err = s.epochs.Share(message.Generation, message.Epoch, record.Row.Locator, now)
+		expiryShare, err = s.epochs.Share(message.Generation, message.Epoch, record.Row.Locator, time.Now())
 	})
 	defer clear(expiryShare[:])
 	if errors.Is(err, epoch.ErrShareGone) {
-		s.endLostShare(w, r, record, now)
+		expired := errors.Is(err, epoch.ErrShareExpired) ||
+			(message.Flags&envelope.FlagDeadline != 0 && s.epochs.Passed(message.Epoch))
+		s.shareGone(w, r, record, expired)
 		return "", false
 	}
 	if err != nil {
@@ -150,6 +171,32 @@ func (s *Server) wrappedShare(w http.ResponseWriter, r *http.Request, record *st
 		return "", false
 	}
 	return core.Encode(wrapped[:]), true
+}
+
+// shareGone answers a request whose share is gone. A share that went with its deadline, which another process or a
+// clock step may have reached before this clock, ends the message as it stands at the deadline, and this request
+// changes nothing while its own clock is still before it; a lost seed ends the message as deleted.
+func (s *Server) shareGone(w http.ResponseWriter, r *http.Request, record *store.Record, expired bool) {
+	now, deadline := time.Now(), record.Message.ExpiresAt
+	if expired && now.Before(deadline) {
+		writeGone(w, string(record.State(deadline)))
+		return
+	}
+	s.endLostShare(w, r, record, now)
+}
+
+// parseReaderFlags reads the envelope flags a reader opens, which X-Nylzo-Flags names once in canonical decimal.
+func parseReaderFlags(header http.Header) (uint8, bool) {
+	values := header.Values(api.FlagsHeaderName)
+	switch len(values) {
+	case 0:
+		return 0, true
+	case 1:
+		flags, err := strconv.ParseUint(values[0], 10, 8)
+		return uint8(flags), err == nil && strconv.FormatUint(flags, 10) == values[0]
+	default:
+		return 0, false
+	}
 }
 
 // endLostShare ends a message nobody can open any more, because the seed that made its share is gone.
@@ -213,10 +260,14 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	defer release()
 	leased, ok := s.activeLease(w, r)
 	defer clear(leased.record.Key[:])
+	if !ok {
+		return
+	}
+	clientKey, ok := readerKey(w, r, leased.record.Message)
 	if !ok || !s.allowReadBytes(w, r, leased.record.Message.Size) {
 		return
 	}
-	wrapped, ok := s.wrappedShare(w, r, &leased.record)
+	wrapped, ok := s.wrappedShare(w, r, &leased.record, clientKey)
 	if !ok {
 		return
 	}
@@ -447,13 +498,18 @@ const streamBufferLength = 32 << 10
 // lets io.Copy skip one.
 var streamBuffers = sync.Pool{New: func() any { return new([streamBufferLength]byte) }}
 
+// encodePolicy reports the deadline of a message whose envelope seals it in, so the reader checks it (spec section 3).
 func encodePolicy(message *store.Message) string {
-	data, _ := json.Marshal(api.PolicyHeader{
+	policy := api.PolicyHeader{
 		OpensMax:   new(int(message.OpensMax)),
 		TTLSeconds: new(int(message.TTLSeconds)),
 		KDFID:      new(int(message.KDF)),
 		Flags:      new(int(message.Flags)),
-	})
+	}
+	if message.Flags&envelope.FlagDeadline != 0 {
+		policy.Deadline = new(message.ExpiresAt.Unix())
+	}
+	data, _ := json.Marshal(policy)
 	return core.Encode(data)
 }
 

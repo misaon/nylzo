@@ -165,7 +165,8 @@ async function storeRaw(
   const keys = await deriveLink(create.id, secret);
   const share = await unwrapShare(issuing, create.share);
   const content = await deriveContent(create.id, secret, new Uint8Array(0), share);
-  const object = await seal(content, newHeader(KDF_NONE), create.id, { opensMax: 1, ttlSeconds: 3600 }, { meta, file });
+  const policy = { opensMax: 1, ttlSeconds: 3600, deadline: create.deadline };
+  const object = await seal(content, newHeader(KDF_NONE), create.id, policy, { meta, file });
   const readKey = await requestKey(keys.readSeed);
   const verifierKey = await requestKey(await deriveVerifier(create.id, secret, new Uint8Array(0)));
   const manageKey = await requestKey(newSecret());
@@ -173,6 +174,7 @@ async function storeRaw(
     id: create.id,
     idToken: create.idToken,
     epoch: create.epoch,
+    deadline: create.deadline,
     readKey: readKey.publicKey,
     verifierKey: verifierKey.publicKey,
     manageKey: manageKey.publicKey,
@@ -446,7 +448,8 @@ describe('reading a message', () => {
 
   it.each<[string, FakeOptions]>([
     ['another profile in X-Nylzo-Policy', { servedKdfId: KDF_SCRYPT }],
-    ['non-zero flags in X-Nylzo-Policy (TEST-S7)', { servedFlags: 1 }],
+    ['unknown flags in X-Nylzo-Policy (TEST-S7)', { servedFlags: 3 }],
+    ['F13: a deadline in X-Nylzo-Policy that the metadata does not report', { servedDeadline: 1_797_000_000 }],
     ['opens_max in X-Nylzo-Policy that the object does not carry', { servedOpensMax: 2 }],
     ['ttl_s in X-Nylzo-Policy that the object does not carry', { servedTtlSeconds: 7200 }],
     ['metadata whose opens_max differs from X-Nylzo-Policy (SEC-9)', { metadataOpensMax: 2 }],

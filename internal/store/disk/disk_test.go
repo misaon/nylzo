@@ -60,17 +60,16 @@ func TestBlobFilesAreLowerHexAndCarryTheirPurgeTime(t *testing.T) {
 	ctx := t.Context()
 	purgeAt := map[string]time.Time{}
 	for i, reference := range []string{"AbCdEfGhIjKlMnOpQrStUw", "abcdefghijklmnopqrstuw", "../escape"} {
-		ttl := time.Duration(i+1) * 61 * time.Minute
-		stored, err := blobs.PutExpiring(ctx, reference, strings.NewReader("x"), 1, ttl)
-		if err != nil {
+		expiresAt := time.Now().Add(time.Duration(i+1) * 61 * time.Minute)
+		if _, err := blobs.PutExpiring(ctx, reference, strings.NewReader("x"), 1, expiresAt); err != nil {
 			t.Fatal(err)
 		}
-		purgeAt[hex.EncodeToString([]byte(reference))] = store.BlobPurgeAt(store.ExpiresAt(stored, ttl))
+		purgeAt[hex.EncodeToString([]byte(reference))] = store.BlobPurgeAt(expiresAt)
 	}
-	if _, err := blobs.PutExpiring(ctx, "../escape", strings.NewReader("y"), 1, time.Hour); err == nil {
+	if _, err := blobs.PutExpiring(ctx, "../escape", strings.NewReader("y"), 1, time.Now().Add(time.Hour)); err == nil {
 		t.Fatal("a conflicting Put was accepted")
 	}
-	if _, err := blobs.PutExpiring(ctx, "short", strings.NewReader("sh"), 5, time.Hour); err == nil {
+	if _, err := blobs.PutExpiring(ctx, "short", strings.NewReader("sh"), 5, time.Now().Add(time.Hour)); err == nil {
 		t.Fatal("a short Put was accepted")
 	}
 	temporary, err := os.ReadDir(filepath.Join(directory, disk.Directory, "tmp"))
@@ -152,7 +151,7 @@ func TestDeleteBatchFailsEveryRefWhenTheSyncFails(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	blobs := newBlobs(t, directory)
-	if _, err := blobs.PutExpiring(t.Context(), "a", strings.NewReader("x"), 1, time.Hour); err != nil {
+	if _, err := blobs.PutExpiring(t.Context(), "a", strings.NewReader("x"), 1, time.Now().Add(time.Hour)); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.RemoveAll(filepath.Join(directory, disk.Directory)); err != nil {
@@ -177,7 +176,7 @@ func TestEveryDeletionOverwritesTheEraseBlockWhereItLies(t *testing.T) {
 			reference,
 			bytes.NewReader(content),
 			int64(len(content)),
-			time.Hour,
+			time.Now().Add(time.Hour),
 		); err != nil {
 			t.Fatal(err)
 		}

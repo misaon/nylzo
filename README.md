@@ -40,7 +40,7 @@
 
 1. Your browser or the CLI generates a random secret and encrypts the message with AES-256-GCM.
 2. Only the ciphertext goes to the server. The secret travels in the link after `#`, the part of a URL that browsers do not send to servers.
-3. The server counts opens and enforces the expiry. When the hour in which a link expires ends, the server erases the key it needs to produce the link's decryption share, so a copy of the stored data stops opening too.
+3. The server counts opens and enforces the expiry. When a link expires, the server erases the key it needs to produce the link's decryption share, so a copy of the stored data stops opening too.
 4. The recipient's browser or CLI decrypts the message locally.
 
 The [protocol](https://github.com/misaon/nylzo/wiki/Protocol) defines the cryptography. The [security model](https://github.com/misaon/nylzo/wiki/Security-model) describes each layer of protection and the threat model behind it.

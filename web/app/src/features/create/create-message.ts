@@ -248,7 +248,7 @@ async function sealMessage(
     verifierSeed = await deriveVerifier(id, secret, passphraseKey);
     const contentKeys = await deriveContent(id, secret, passphraseKey, share);
     passphraseKey.fill(0);
-    const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds };
+    const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds, deadline: sealing.issued.deadline };
     onProgress({ step: 'encrypting' });
     const object = await seal(contentKeys, newHeader(kdfId), id, policy, {
       meta: metaOf(input),
@@ -296,7 +296,7 @@ async function createOnce(
 ): Promise<Created> {
   onProgress({ step: 'preparing' });
   const { instance, issued, share } = await issue(input, dependencies);
-  const { id, idToken, epoch } = issued;
+  const { id, idToken, epoch, deadline } = issued;
   const kdfId: KdfId = input.passphrase === '' ? KDF_NONE : KDF_SCRYPT;
   const secret = newSecret();
   try {
@@ -309,6 +309,7 @@ async function createOnce(
       id,
       idToken,
       epoch,
+      deadline,
       readKey: sealed.readPublicKey,
       verifierKey: sealed.verifierKey,
       manageKey: sealed.manageKey.publicKey,

@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,6 +28,155 @@ import (
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
+
+// F13: a share goes at the deadline of its message. When another process whose clock runs a little ahead has moved
+// the ratchet past it first, a claim answers the state the message has at its deadline and ends nothing early; at the
+// deadline the message is expired, not deleted.
+func TestAShareGoneAtTheDeadlineExpiresTheMessage(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := harness.issueMessage(core.KDFNone, "", 2, 600, "until the deadline")
+		harness.mustCreate(message)
+		deadline := epoch.Deadline(message.epoch)
+		synctest.Sleep(time.Until(deadline) - 20*time.Second)
+		if err := harness.server.advanceRatchet(deadline.Add(10 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if response, body := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusGone ||
+			decodeJSON(t, body)["state"] != "expired" {
+			t.Fatalf("a claim whose share went with a peer's clock: %d %s", response.StatusCode, body)
+		}
+		if _, metadata := harness.metadata(message); metadata["state"] != "available" || !harness.blobExists(message) {
+			t.Fatalf("the claim ended the message before its deadline: %v", metadata)
+		}
+		synctest.Sleep(time.Until(deadline))
+		if response, body := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusGone ||
+			decodeJSON(t, body)["state"] != "expired" {
+			t.Fatalf("a claim at the deadline: %d %s", response.StatusCode, body)
+		}
+		if _, metadata := harness.metadata(message); metadata["state"] != "expired" || harness.blobExists(message) {
+			t.Fatalf("the message must have expired at its deadline: %v", metadata)
+		}
+	})
+}
+
+// F13: a reader of a release before Nylzo 0.14.0 cannot open an envelope that seals its deadline, so the server refuses
+// its claim and download before anything changes; a message of an earlier release, which seals none, it still serves,
+// with a policy that names no deadline.
+func TestAnOldReaderSpendsNoOpenOnADeadlineMessage(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "sealed deadline")
+		harness.mustCreate(message)
+		claim := claimRequestFor(message, message.verifier, "")
+		claim.oldReader = true
+		if response, body := harness.do(claim); response.StatusCode != http.StatusBadRequest ||
+			decodeJSON(t, body)["error"] != api.ErrorClientOutdated {
+			t.Fatalf("an old reader's claim: %d %s", response.StatusCode, body)
+		}
+		for _, malformed := range []string{"", "02", "256", "two"} {
+			claim = claimRequestFor(message, message.verifier, "")
+			claim.headers = map[string]string{api.FlagsHeaderName: malformed}
+			if response, body := harness.do(claim); response.StatusCode != http.StatusBadRequest ||
+				decodeJSON(t, body)["error"] != "bad_request" {
+				t.Fatalf("a claim with X-Nylzo-Flags %q: %d %s", malformed, response.StatusCode, body)
+			}
+		}
+		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
+			t.Fatalf("a refused claim spent an open: %v", metadata)
+		}
+		response, _ := harness.claim(message, message.verifier, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("a current reader's claim: %d", response.StatusCode)
+		}
+		download := &testRequest{
+			method:    http.MethodGet,
+			path:      "/api/v1/messages/" + message.id.String() + "/blob",
+			token:     message.readToken,
+			headers:   map[string]string{api.LeaseHeaderName: response.Header.Get(api.LeaseHeaderName)},
+			oldReader: true,
+		}
+		if got, body := harness.do(download); got.StatusCode != http.StatusBadRequest ||
+			decodeJSON(t, body)["error"] != api.ErrorClientOutdated {
+			t.Fatalf("an old reader's download: %d %s", got.StatusCode, body)
+		}
+		legacy := harness.issueMessage(core.KDFNone, "", 1, 3600, "an earlier release")
+		harness.mustCreate(legacy)
+		harness.rewrite(legacy, func(stored *store.Message) { stored.Flags = 0 })
+		claim = claimRequestFor(legacy, legacy.verifier, "")
+		claim.oldReader = true
+		served, _ := harness.do(claim)
+		policy, err := base64.RawURLEncoding.DecodeString(served.Header.Get(api.PolicyHeaderName))
+		if served.StatusCode != http.StatusOK || err != nil || strings.Contains(string(policy), "deadline") {
+			t.Fatalf("a message of an earlier release: %d %s", served.StatusCode, policy)
+		}
+	})
+}
+
+// A message whose open is spent goes like an unspent one: a download whose share went with a peer's clock answers the
+// state at the deadline and changes nothing, and one whose seed is lost ends the message as deleted.
+func TestASpentMessageLosesItsShareLikeALiveOne(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		early := harness.issueMessage(core.KDFNone, "", 1, 600, "spent before the deadline")
+		harness.mustCreate(early)
+		deadline := epoch.Deadline(early.epoch)
+		synctest.Sleep(time.Until(deadline) - 50*time.Second)
+		response, _ := harness.claim(early, early.verifier, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("claim: %d", response.StatusCode)
+		}
+		lease := response.Header.Get(api.LeaseHeaderName)
+		synctest.Sleep(30 * time.Second)
+		if err := harness.server.advanceRatchet(deadline.Add(10 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if got, body := harness.blob(early, lease); got.StatusCode != http.StatusGone ||
+			decodeJSON(t, body)["state"] != "opened" || !harness.blobExists(early) {
+			t.Fatalf("a download whose share went with a peer's clock: %d %s", got.StatusCode, body)
+		}
+		lost := harness.issueMessage(core.KDFNone, "", 1, 3600, "spent before the loss")
+		harness.mustCreate(lost)
+		response, _ = harness.claim(lost, lost.verifier, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("claim: %d", response.StatusCode)
+		}
+		if err := os.Remove(filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)); err != nil {
+			t.Fatal(err)
+		}
+		harness.reopen(&harness.settings)
+		if got, body := harness.blob(
+			lost,
+			response.Header.Get(api.LeaseHeaderName),
+		); got.StatusCode != http.StatusGone ||
+			decodeJSON(t, body)["state"] != "deleted" ||
+			harness.blobExists(lost) {
+			t.Fatalf("a download whose seed is lost: %d %s", got.StatusCode, body)
+		}
+	})
+}
+
+// A clock that stepped back behind the ratchet, which never goes back, gets no id until it catches up.
+func TestAnInstanceBehindTheRatchetIssuesNoID(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		if err := harness.server.advanceRatchet(time.Now().Add(3 * time.Minute)); err != nil {
+			t.Fatal(err)
+		}
+		request := &testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: map[string]string{
+			api.TTLHeaderName:      "3600",
+			api.ShareKeyHeaderName: testShareKeyHeader,
+		}}
+		if response, body := harness.do(request); response.StatusCode != http.StatusServiceUnavailable ||
+			response.Header.Get("Retry-After") != "60" {
+			t.Fatalf("an instance behind the ratchet: %d %s", response.StatusCode, body)
+		}
+	})
+}
 
 // L3: a lost seed ends the live messages and the server goes on with a new one; a damaged seed or a missing
 // directory, which may be a volume that failed to mount, stops it.
@@ -981,7 +1131,7 @@ func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
 			reference,
 			bytes.NewReader(short),
 			int64(len(short)),
-			time.Hour,
+			time.Now().Add(time.Hour),
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -1240,6 +1390,7 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 			t.Fatal(err)
 		}
 		request.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
+		request.Header.Set(api.FlagsHeaderName, strconv.Itoa(envelope.FlagDeadline))
 		harness.sign(request, message.readToken, "", nil)
 		request.Header.Set("X-Forwarded-For", message.address)
 		claimed, err := harness.client.Do(request)
@@ -1572,6 +1723,13 @@ func TestReadBytesPerHourStopsAClaimBeforeItSpendsAnOpen(t *testing.T) {
 		within := int(settings.Rates.ReadBytesPerHour / int64(len(probe.object)))
 		message := newMessage(t, core.KDFNone, "", uint16(within+1), 3600, "x")
 		harness.mustCreate(message)
+		for range within + 1 {
+			outdated := claimRequestFor(message, "", "")
+			outdated.oldReader = true
+			if response, _ := harness.do(outdated); response.StatusCode != http.StatusBadRequest {
+				t.Fatalf("an outdated reader's claim: %d", response.StatusCode)
+			}
+		}
 		for range within {
 			if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusOK {
 				t.Fatalf("a claim within the byte budget: %d", response.StatusCode)

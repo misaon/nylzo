@@ -311,7 +311,7 @@ export const messages: Catalog = {
   'transparency.stores.addresses': '不存储。针对单个地址的限制只保存在永不交换到磁盘的内存中，重启后即不再保留。',
   'transparency.stores.enforced.title': '有效期也由密码学保障',
   'transparency.stores.enforced':
-    '有效期和打开次数由服务器把关。此外，服务器最迟会在有效期结束两小时后删除消息所需的一部分密钥，此后即使有数据副本也无法打开消息。更早获取的副本，没有链接也读不了消息。',
+    '有效期和打开次数由服务器把关。此外，服务器最迟会在有效期结束一分钟后删除消息所需的一部分密钥，此后即使有数据副本也无法打开消息。更早获取的副本，没有链接也读不了消息。',
   'transparency.logs.title': '服务器写入的日志',
   'transparency.logs.written': '会写入',
   'transparency.logs.written.time': '截断到分钟的时间',

@@ -55,7 +55,13 @@ func storeMessage(t *testing.T, directory string) core.ID {
 		seal.NewKey(),
 	)
 	blob := bytes.NewReader(make([]byte, storedBlobBytes))
-	if _, err = blobs.PutExpiring(t.Context(), record.Row.BlobReference, blob, storedBlobBytes, time.Hour); err != nil {
+	if _, err = blobs.PutExpiring(
+		t.Context(),
+		record.Row.BlobReference,
+		blob,
+		storedBlobBytes,
+		time.Now().Add(time.Hour),
+	); err != nil {
 		t.Fatal(err)
 	}
 	if err = database.Create(t.Context(), &record.Row); err != nil {

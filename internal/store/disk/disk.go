@@ -67,18 +67,16 @@ func New(dataDirectory string, options ...Option) (*Blobs, error) {
 	return blobs, nil
 }
 
-// PutExpiring gives the blob the blob_purge_at of a message stored with ttl at the moment the content was stored,
-// so its times show nothing the row does not (spec section 5.2).
+// PutExpiring gives the blob the blob_purge_at of a message that expires at expiresAt, so its times show nothing the
+// row does not (spec section 5.2).
 func (b *Blobs) PutExpiring(
 	ctx context.Context,
 	reference string,
 	content io.Reader,
 	size int64,
-	ttl time.Duration,
+	expiresAt time.Time,
 ) (time.Time, error) {
-	return b.putStamped(ctx, reference, content, size, func(stored time.Time) time.Time {
-		return store.BlobPurgeAt(store.ExpiresAt(stored, ttl))
-	})
+	return b.putStamped(ctx, reference, content, size, store.BlobPurgeAt(expiresAt))
 }
 
 func (b *Blobs) Open(ctx context.Context, reference string) (io.ReadCloser, int64, error) {
@@ -256,7 +254,7 @@ func (b *Blobs) putStamped(
 	reference string,
 	content io.Reader,
 	size int64,
-	purgeAt func(stored time.Time) time.Time,
+	purgeAt time.Time,
 ) (time.Time, error) {
 	final, err := b.path(reference)
 	if err != nil {
@@ -326,7 +324,7 @@ func (u *upload) write(
 	ctx context.Context,
 	content io.Reader,
 	size int64,
-	purgeAt func(stored time.Time) time.Time,
+	purgeAt time.Time,
 ) (time.Time, error) {
 	buffer, _ := copyBuffers.Get().(*[copyBufferLen]byte)
 	written, err := io.CopyBuffer(slotWriter(ctx, u.file), struct{ io.Reader }{content}, buffer[:])
@@ -345,8 +343,7 @@ func (u *upload) write(
 		return time.Time{}, err
 	}
 	stored := time.Now()
-	stamp := purgeAt(stored)
-	return stored, withSlot(ctx, func() error { return os.Chtimes(u.path, stamp, stamp) })
+	return stored, withSlot(ctx, func() error { return os.Chtimes(u.path, purgeAt, purgeAt) })
 }
 
 type writerFunc func(data []byte) (int, error)

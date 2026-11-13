@@ -41,7 +41,6 @@ const (
 	h2cStreamBuffer     = 64 << 10
 	h2cConnectionBuffer = 1 << 20
 	h2cMaxFrame         = 16 << 10
-	ratchetCheck        = time.Minute
 )
 
 type Option func(*Server)
@@ -160,21 +159,29 @@ func (s *Server) Events() *slog.Logger {
 	return s.events
 }
 
-// RunRatchet erases the epoch key of every hour that has passed within a minute of the next one. It reads the wall
-// clock every minute instead of sleeping until the hour, which a suspend or a clock step would delay.
+// RunRatchet erases the epoch key of every minute that has passed when the next one starts, so a share goes at the
+// deadline of its message; it also catches up at once on the minutes that a slow start let pass. It waits for the next
+// minute of the wall clock each time, so a suspend or a clock step delays it by a minute at most.
 func (s *Server) RunRatchet(ctx context.Context) {
-	ticker := time.NewTicker(ratchetCheck)
-	defer ticker.Stop()
+	if err := s.advanceRatchet(time.Now()); err != nil {
+		s.logger.ErrorContext(ctx, "epoch-advance", "err", logging.ErrorText(err))
+	}
 	for {
+		timer := time.NewTimer(untilNextMinute(time.Now()))
 		select {
 		case <-ctx.Done():
+			timer.Stop()
 			return
-		case <-ticker.C:
+		case <-timer.C:
 		}
 		if err := s.advanceRatchet(time.Now()); err != nil {
 			s.logger.ErrorContext(ctx, "epoch-advance", "err", logging.ErrorText(err))
 		}
 	}
+}
+
+func untilNextMinute(now time.Time) time.Duration {
+	return now.Truncate(time.Minute).Add(time.Minute).Sub(now)
 }
 
 func (s *Server) HTTPServer() *http.Server {
@@ -237,7 +244,7 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(now.Truncate(time.Minute).Add(time.Minute).Sub(now)):
+		case <-time.After(untilNextMinute(now)):
 		}
 		now = time.Now()
 		if window.Ended(now) {

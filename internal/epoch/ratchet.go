@@ -28,46 +28,65 @@ import (
 const (
 	SeedLen         = 32
 	GenerationIDLen = 16
-	// Span is how many hours past the hour that starts it a generation makes shares: the longest TTL of seven
-	// days, the time an upload may take and the hour by which a converted chain of an earlier release starts early.
-	Span     = 7*24 + 2
+	// Span is how many hours past the hour that starts it a generation of minutes makes shares: a deadline set in
+	// its hour with the longest TTL of seven days falls at the latest at the start of hour first + Span.
+	Span     = 7*24 + 1
 	FileName = "seed"
 	// FileLen holds a slot for every generation in whole blocks, so ext4 never keeps the seed inline in its inode,
 	// whose changes pass the journal.
-	FileLen = 3 * erase.BlockLen
+	FileLen = 6 * erase.BlockLen
+	// ClockLag is how far behind the ratchet a clock may run while an id is issued: a request that read the clock just
+	// before the ratchet entered the next minute is still issued.
+	ClockLag = time.Minute
 
-	fileFormat = "nylzo-e2"
+	fileFormat = "nylzo-e3"
 	// slotLen divides a 512-byte sector, so a write that a crash cuts short leaves every slot old or new.
-	slotLen     = 64
-	slots       = Span + 1
-	hourLen     = 4
-	firstOffset = GenerationIDLen
-	lastOffset  = firstOffset + hourLen
-	hourOffset  = lastOffset + hourLen
-	seedOffset  = hourOffset + hourLen
-	sumOffset   = seedOffset + SeedLen
-	hourSeconds = int64(time.Hour / time.Second)
-	// issueLag lets a request that read the clock just before the ratchet entered the next hour still be issued.
-	issueLag = time.Minute
+	slotLen          = 128
+	slots            = FileLen/slotLen - 1
+	fieldLen         = 4
+	kindOffset       = GenerationIDLen
+	firstOffset      = kindOffset + fieldLen
+	lastOffset       = firstOffset + fieldLen
+	minuteOffset     = lastOffset + fieldLen
+	hourSeedOffset   = minuteOffset + fieldLen
+	minuteSeedOffset = hourSeedOffset + SeedLen
+	paddingOffset    = minuteSeedOffset + SeedLen
+	sumOffset        = slotLen - crc32.Size
+	minuteSeconds    = int64(time.Minute / time.Second)
+	minutesPerHour   = 60
 
 	legacyFormat     = "nylzo-e1"
 	legacyLen        = erase.BlockLen
 	legacyHourLen    = 8
 	legacySeedOffset = len(legacyFormat) + GenerationIDLen + legacyHourLen
+	// legacySpan covers every share a release before generations issued, up to its hour plus 169, from the hour
+	// before it, so the converted chain never issues.
+	legacySpan = Span + 1
 
-	infoNext = "nylzo/v2/epoch/next"
-	infoKey  = "nylzo/v2/epoch/key"
+	infoNext       = "nylzo/v2/epoch/next"
+	infoKey        = "nylzo/v2/epoch/key"
+	infoMinute     = "nylzo/v2/epoch/minute"
+	infoMinuteNext = "nylzo/v2/epoch/minute-next"
+	infoMinuteKey  = "nylzo/v2/epoch/minute-key"
 )
 
-// The header and every slot fit the file, and a slot ends with its checksum.
+// The header and every slot fill the file, and a slot ends with its checksum after its padding.
 const (
-	_ = uint(FileLen - (slots+1)*slotLen)
-	_ = uint(slotLen - sumOffset - crc32.Size)
+	_ = uint((slots+1)*slotLen - FileLen)
+	_ = uint(sumOffset - paddingOffset)
 )
 
 type (
 	Seed         [SeedLen]byte
 	GenerationID [GenerationIDLen]byte
+	kind         uint8
+)
+
+const (
+	// kindMinutes makes the shares of one minute each, from a chain of hours and a chain of minutes in each hour.
+	kindMinutes kind = 1
+	// kindHours is the chain of an earlier release, which made the shares of whole hours.
+	kindHours kind = 2
 )
 
 var (
@@ -85,28 +104,57 @@ var (
 	ErrSymlink      = errors.New("epoch: the epoch directory or the seed is a symbolic link")
 	ErrNotRegular   = errors.New("epoch: the epoch directory or the seed has the wrong file type")
 	ErrShareGone    = errors.New("epoch: the share of this message no longer exists")
+	// ErrShareExpired is a share that went with its deadline, while the generation that made it is still held.
+	ErrShareExpired = fmt.Errorf("%w: its deadline has passed", ErrShareGone)
+	// ErrClockBehind refuses an id while the clock runs behind the ratchet, which never goes back.
+	ErrClockBehind = errors.New("epoch: the clock runs behind the ratchet")
 
-	errNoIssuer = errors.New("epoch: no generation of this hour makes a share for the epoch")
-	errClosed   = errors.New("epoch: the ratchet is closed")
-	castagnoli  = crc32.MakeTable(crc32.Castagnoli)
+	errNoIssuer         = errors.New("epoch: no generation of this hour makes a share for the epoch")
+	errBeyondGeneration = errors.New("epoch: the epoch lies past the life of the generation that issued it")
+
+	errClosed  = errors.New("epoch: the ratchet is closed")
+	castagnoli = crc32.MakeTable(crc32.Castagnoli)
 )
 
-func Hour(moment time.Time) uint32 {
-	hours := moment.Unix() / hourSeconds
-	return uint32(hours) //nolint:gosec // G115: 32 bits of hours since 1970 last until the year 491970
+func Minute(moment time.Time) uint32 {
+	minutes := moment.Unix() / minuteSeconds
+	return uint32(minutes) //nolint:gosec // G115: 32 bits of minutes since 1970 last until the year 10136
 }
 
-// End is the first instant after the epoch.
-func End(hour uint32) time.Time {
-	return time.Unix((int64(hour)+1)*hourSeconds, 0).UTC()
+// Of is the epoch of a message that expires at the deadline, a whole minute: the last minute in which it lives.
+func Of(deadline time.Time) uint32 {
+	return Minute(deadline) - 1
 }
 
+// Deadline is the instant at which the share of the epoch goes, and its message with it.
+func Deadline(shareEpoch uint32) time.Time {
+	return time.Unix((int64(shareEpoch)+1)*minuteSeconds, 0).UTC()
+}
+
+func hourOf(minute uint32) uint32 {
+	return minute / minutesPerHour
+}
+
+// Next and Key are the chain of hours and the key of an hour that releases before minutes made shares with.
 func Next(seed *Seed) Seed {
 	return Seed(expand(seed, infoNext))
 }
 
 func Key(seed *Seed) [SeedLen]byte {
 	return expand(seed, infoKey)
+}
+
+// FirstMinute starts the chain of minutes of the hour whose seed it is.
+func FirstMinute(hourSeed *Seed) Seed {
+	return Seed(expand(hourSeed, infoMinute))
+}
+
+func NextMinute(seed *Seed) Seed {
+	return Seed(expand(seed, infoMinuteNext))
+}
+
+func MinuteKey(seed *Seed) [SeedLen]byte {
+	return expand(seed, infoMinuteKey)
 }
 
 func ShareOf(epochKey *[SeedLen]byte, locator seal.Locator) [core.ShareLen]byte {
@@ -117,11 +165,11 @@ func ShareOf(epochKey *[SeedLen]byte, locator seal.Locator) [core.ShareLen]byte 
 	return share
 }
 
-func advance(seed *Seed, hours uint32) {
-	for range hours {
-		next := Next(seed)
-		*seed = next
-		clear(next[:])
+func step(seed *Seed, next func(*Seed) Seed, count uint32) {
+	for range count {
+		stepped := next(seed)
+		*seed = stepped
+		clear(stepped[:])
 	}
 }
 
@@ -135,57 +183,136 @@ func expand(seed *Seed, info string) [SeedLen]byte {
 }
 
 // generation is a chain of seeds that starts from fresh entropy in the hour first, makes the shares of the ids issued
-// in that hour, and goes once the hour passes its last epoch. A copy of one predicts no other.
+// in that hour, and goes once the ratchet passes its last epoch. A copy of one predicts no other. A generation of
+// minutes holds the seed of the next hour and the seed of the current minute, so neither yields a passed minute; a
+// chain of hours holds the seed of the current hour and makes the shares of whole hours.
 type generation struct {
-	id    GenerationID
-	first uint32
-	last  uint32
-	seed  Seed
+	id     GenerationID
+	kind   kind
+	first  uint32
+	last   uint32
+	hour   Seed
+	minute Seed
 }
 
 func (g *generation) used() bool {
 	return g.id != GenerationID{}
 }
 
-// state holds the seeds of one hour. A generation keeps its slot for its whole life, so a rewrite never moves a seed
-// to another place in the file.
-type state struct {
-	hour  uint32
-	slots [slots]generation
+// startFresh draws the id and the seed of the hour from the CSPRNG, so the generation predicts no other.
+func (g *generation) startFresh(minute uint32) {
+	var id GenerationID
+	var root Seed
+	defer clear(root[:])
+	rand.Read(id[:])
+	rand.Read(root[:])
+	g.startMinutes(id, &root, minute)
 }
 
-// advance moves every generation to the hour, drops those whose last epoch has passed and starts the generation of
+// startMinutes derives the seeds of the minute the generation starts in from the seed of its hour.
+func (g *generation) startMinutes(id GenerationID, root *Seed, minute uint32) {
+	g.id, g.kind, g.first, g.last = id, kindMinutes, hourOf(minute), (hourOf(minute)+Span)*minutesPerHour-1
+	g.minute = FirstMinute(root)
+	g.hour = Next(root)
+	step(&g.minute, NextMinute, minute%minutesPerHour)
+}
+
+// advance moves the seeds from one minute to a later one and overwrites every seed in between.
+func (g *generation) advance(from, target uint32) {
+	if g.kind == kindHours {
+		step(&g.hour, Next, hourOf(target)-hourOf(from))
+		return
+	}
+	if hourOf(from) == hourOf(target) {
+		step(&g.minute, NextMinute, target-from)
+		return
+	}
+	step(&g.hour, Next, hourOf(target)-hourOf(from)-1)
+	g.minute = FirstMinute(&g.hour)
+	step(&g.hour, Next, 1)
+	step(&g.minute, NextMinute, target%minutesPerHour)
+}
+
+// ends reports whether the generation has no share left at the minute.
+func (g *generation) ends(minute uint32) bool {
+	if g.kind == kindHours {
+		return g.last < hourOf(minute)
+	}
+	return g.last < minute
+}
+
+// makes reports whether the generation, at the minute, still makes the share of the epoch: a minute, or an hour for
+// a chain of hours.
+func (g *generation) makes(minute, shareEpoch uint32) bool {
+	if g.kind == kindHours {
+		return hourOf(minute) <= shareEpoch && shareEpoch <= g.last
+	}
+	return minute <= shareEpoch && shareEpoch <= g.last
+}
+
+// passed reports whether the epoch ended before the minute, so its share went with its deadline.
+func (g *generation) passed(minute, shareEpoch uint32) bool {
+	if g.kind == kindHours {
+		return shareEpoch < hourOf(minute)
+	}
+	return shareEpoch < minute
+}
+
+// keyOf is the epoch key of an epoch the generation makes at the minute; it moves a copy and wipes it.
+func (g *generation) keyOf(minute, shareEpoch uint32) [SeedLen]byte {
+	moved := *g
+	defer moved.clear()
+	if moved.kind == kindHours {
+		step(&moved.hour, Next, shareEpoch-hourOf(minute))
+		return Key(&moved.hour)
+	}
+	moved.advance(minute, shareEpoch)
+	return MinuteKey(&moved.minute)
+}
+
+func (g *generation) clear() {
+	clear(g.hour[:])
+	clear(g.minute[:])
+}
+
+// state holds the seeds of one minute. A generation keeps its slot for its whole life, so a rewrite never moves a
+// seed to another place in the file.
+type state struct {
+	minute uint32
+	slots  [slots]generation
+}
+
+// advance moves every generation to the minute, drops those whose last epoch has passed and starts the generation of
 // the hour from fresh entropy in a free slot.
 func (s *state) advance(target uint32) {
 	for i := range s.slots {
 		slot := &s.slots[i]
 		switch {
 		case !slot.used():
-		case slot.last < target:
+		case slot.ends(target):
 			*slot = generation{}
 		default:
-			advance(&slot.seed, target-s.hour)
+			slot.advance(s.minute, target)
 		}
 	}
-	s.hour = target
+	s.minute = target
 	if s.issuer() != nil {
 		return
 	}
 	for i := range s.slots {
-		if fresh := &s.slots[i]; !fresh.used() {
-			fresh.first, fresh.last = target, target+Span
-			rand.Read(fresh.id[:])
-			rand.Read(fresh.seed[:])
-			return
+		if s.slots[i].used() {
+			continue
 		}
+		s.slots[i].startFresh(target)
+		return
 	}
 }
 
 // issuer is the generation that makes the shares of the ids issued in the hour.
 func (s *state) issuer() *generation {
 	for i := range s.slots {
-		if s.slots[i].used() && s.slots[i].first == s.hour {
-			return &s.slots[i]
+		if slot := &s.slots[i]; slot.used() && slot.kind == kindMinutes && slot.first == hourOf(s.minute) {
+			return slot
 		}
 	}
 	return nil
@@ -209,10 +336,6 @@ func (s *state) named(id GenerationID) *generation {
 		}
 	}
 	return nil
-}
-
-func (s *state) makes(found *generation, shareEpoch uint32) bool {
-	return s.hour <= shareEpoch && shareEpoch <= found.last
 }
 
 type Options struct {
@@ -285,6 +408,20 @@ func fileExists(path string) bool {
 	return err == nil
 }
 
+// MinuteSeeds lists the seeds of the current minute that a seed file holds, which make the share of that minute.
+func MinuteSeeds(content []byte) []Seed {
+	var loaded state
+	defer clear(loaded.slots[:])
+	decode(content, &loaded)
+	var seeds []Seed
+	for i := range loaded.slots {
+		if slot := &loaded.slots[i]; slot.used() && slot.kind == kindMinutes {
+			seeds = append(seeds, slot.minute)
+		}
+	}
+	return seeds
+}
+
 // Seeds lists the seeds a seed file holds, so a test can look for copies of them elsewhere.
 func Seeds(content []byte) []Seed {
 	var loaded state
@@ -292,14 +429,17 @@ func Seeds(content []byte) []Seed {
 	decode(content, &loaded)
 	var seeds []Seed
 	for i := range loaded.slots {
-		if loaded.slots[i].used() {
-			seeds = append(seeds, loaded.slots[i].seed)
+		if slot := &loaded.slots[i]; slot.used() {
+			seeds = append(seeds, slot.hour)
+			if slot.kind == kindMinutes {
+				seeds = append(seeds, slot.minute)
+			}
 		}
 	}
 	return seeds
 }
 
-// Ratchet holds the seeds of the current hour only, in memory and in its file.
+// Ratchet holds the seeds of the current minute only, in memory and in its file.
 type Ratchet struct {
 	path     string
 	mutex    sync.Mutex
@@ -360,7 +500,7 @@ func (r *Ratchet) Generations() []GenerationID {
 	return ids
 }
 
-// Advance moves the ratchet to the current hour and overwrites the older seeds in place. After a failed write it
+// Advance moves the ratchet to the current minute and overwrites the older seeds in place. After a failed write it
 // writes again, because a page that the kernel marked clean after the failure would read back as written.
 func (r *Ratchet) Advance(now time.Time) error {
 	r.mutex.Lock()
@@ -368,10 +508,10 @@ func (r *Ratchet) Advance(now time.Time) error {
 	return r.advanceLocked(now)
 }
 
-// Issue makes the share of a new id that expires in the epoch, from the generation of the current hour, and names
-// that generation. It holds the lock from the write to the share, so it never issues from a generation that only
-// memory holds, and it issues nothing while the clock is behind the ratchet, so after a backward clock step one
-// generation does not issue for several hours.
+// Issue makes the share of a new id whose deadline ends the epoch, from the generation of the current hour, and
+// names that generation. It holds the lock from the write to the share, so it never issues from a generation that only
+// memory holds, and it issues nothing while the clock is behind the ratchet, so after a backward clock step no
+// generation issues outside its own hour.
 func (r *Ratchet) Issue(
 	shareEpoch uint32,
 	locator seal.Locator,
@@ -382,14 +522,18 @@ func (r *Ratchet) Issue(
 		r.mutex.Unlock()
 		return GenerationID{}, [core.ShareLen]byte{}, err
 	}
-	issuer := r.state.issuer()
-	if issuer == nil || Hour(now.Add(issueLag)) < r.state.hour || !r.state.makes(issuer, shareEpoch) {
+	issuer, current := r.state.issuer(), r.state.minute
+	if Minute(now.Add(ClockLag)) < current {
+		r.mutex.Unlock()
+		return GenerationID{}, [core.ShareLen]byte{}, ErrClockBehind
+	}
+	if issuer == nil || !issuer.makes(current, shareEpoch) {
 		r.mutex.Unlock()
 		return GenerationID{}, [core.ShareLen]byte{}, errNoIssuer
 	}
-	id, seed, current := issuer.id, issuer.seed, r.state.hour
+	found := *issuer
 	r.mutex.Unlock()
-	return id, shareFrom(&seed, shareEpoch-current, locator), nil
+	return found.id, shareFrom(&found, current, shareEpoch, locator), nil
 }
 
 // Share recomputes E for a message of the generation that expires in the epoch; it never stores it.
@@ -401,13 +545,30 @@ func (r *Ratchet) Share(
 ) ([core.ShareLen]byte, error) {
 	r.mutex.Lock()
 	named, err := r.findLocked(id, now)
-	if err != nil || named == nil || !r.state.makes(named, shareEpoch) {
+	current := r.state.minute
+	if err != nil || named == nil || !named.makes(current, shareEpoch) {
+		held, passed := err == nil && named != nil, err == nil && named != nil && named.passed(current, shareEpoch)
 		r.mutex.Unlock()
-		return [core.ShareLen]byte{}, cmp.Or(err, ErrShareGone)
+		switch {
+		case passed:
+			return [core.ShareLen]byte{}, ErrShareExpired
+		case held:
+			return [core.ShareLen]byte{}, errBeyondGeneration
+		default:
+			return [core.ShareLen]byte{}, cmp.Or(err, ErrShareGone)
+		}
 	}
-	seed, current := named.seed, r.state.hour
+	found := *named
 	r.mutex.Unlock()
-	return shareFrom(&seed, shareEpoch-current, locator), nil
+	return shareFrom(&found, current, shareEpoch, locator), nil
+}
+
+// Passed reports whether the minute epoch has ended by the minute of the ratchet, so its share went with its deadline
+// whether or not the generation that made it is still held.
+func (r *Ratchet) Passed(shareEpoch uint32) bool {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return shareEpoch < r.state.minute
 }
 
 // Holds reports whether the ratchet still holds the generation, which a lost seed file takes along.
@@ -424,7 +585,7 @@ func (r *Ratchet) Covers(id GenerationID, shareEpoch uint32) bool {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	named := r.state.named(id)
-	return named != nil && r.state.makes(named, shareEpoch)
+	return named != nil && named.makes(r.state.minute, shareEpoch)
 }
 
 // Close erases the seeds from memory; a share asked for afterwards fails instead of reading as lost.
@@ -439,14 +600,14 @@ func (r *Ratchet) advanceLocked(now time.Time) error {
 	if r.closed {
 		return errClosed
 	}
-	if Hour(now) <= r.state.hour && !r.unsynced {
+	if Minute(now) <= r.state.minute && !r.unsynced {
 		return nil
 	}
 	return r.loadLocked(now)
 }
 
 // findLocked reads the file again before it gives up on a generation, because another process that shares the file
-// may have started it in an hour this process has not reached yet.
+// may have started it in a minute this process has not reached yet.
 func (r *Ratchet) findLocked(id GenerationID, now time.Time) (*generation, error) {
 	if err := r.advanceLocked(now); err != nil {
 		return nil, err
@@ -460,10 +621,9 @@ func (r *Ratchet) findLocked(id GenerationID, now time.Time) (*generation, error
 	return r.state.named(id), nil
 }
 
-func shareFrom(seed *Seed, hours uint32, locator seal.Locator) [core.ShareLen]byte {
-	defer clear(seed[:])
-	advance(seed, hours)
-	key := Key(seed)
+func shareFrom(found *generation, current, shareEpoch uint32, locator seal.Locator) [core.ShareLen]byte {
+	defer found.clear()
+	key := found.keyOf(current, shareEpoch)
 	defer clear(key[:])
 	return ShareOf(&key, locator)
 }
@@ -472,7 +632,7 @@ func shareFrom(seed *Seed, hours uint32, locator seal.Locator) [core.ShareLen]by
 func (r *Ratchet) create(now time.Time) (bool, error) {
 	var fresh state
 	defer clear(fresh.slots[:])
-	fresh.advance(Hour(now))
+	fresh.advance(Minute(now))
 	content := encode(&fresh)
 	defer clear(content)
 	file, err := os.OpenFile(r.path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
@@ -498,8 +658,8 @@ func (r *Ratchet) load(now time.Time) error {
 // loadLocked reads the file under an exclusive lock, so processes that share it advance it one at a time and agree
 // on the generation of each hour. It always writes the file back and syncs it, because bytes that another process
 // wrote may still be only in the page cache, and it never replaces a file it cannot read from memory, which may lack
-// generations that another process wrote. Memory moves to the new hour before the write, so no seed of a passed hour
-// stays in it while the disk fails, and its hour never goes back.
+// generations that another process wrote. Memory moves to the new minute before the write, so no seed of a passed
+// minute stays in it while the disk fails, and its minute never goes back.
 func (r *Ratchet) loadLocked(now time.Time) error {
 	file, err := os.OpenFile(r.path, os.O_RDWR, 0)
 	if err != nil {
@@ -527,7 +687,7 @@ func (r *Ratchet) loadLocked(now time.Time) error {
 	if !decode(content, &loaded) {
 		return ErrCorrupt
 	}
-	loaded.advance(max(Hour(now), loaded.hour, r.state.hour))
+	loaded.advance(max(Minute(now), loaded.minute, r.state.minute))
 	r.state = loaded
 	updated := encode(&r.state)
 	defer clear(updated)
@@ -581,10 +741,12 @@ func encode(saved *state) []byte {
 		}
 		slot := content[(i+1)*slotLen : (i+2)*slotLen]
 		copy(slot, entry.id[:])
+		slot[kindOffset] = byte(entry.kind)
 		binary.BigEndian.PutUint32(slot[firstOffset:], entry.first)
 		binary.BigEndian.PutUint32(slot[lastOffset:], entry.last)
-		binary.BigEndian.PutUint32(slot[hourOffset:], saved.hour)
-		copy(slot[seedOffset:], entry.seed[:])
+		binary.BigEndian.PutUint32(slot[minuteOffset:], saved.minute)
+		copy(slot[hourSeedOffset:], entry.hour[:])
+		copy(slot[minuteSeedOffset:], entry.minute[:])
 		binary.BigEndian.PutUint32(slot[sumOffset:], crc32.Checksum(slot[:sumOffset], castagnoli))
 	}
 	return content
@@ -607,24 +769,24 @@ func decode(content []byte, into *state) bool {
 	return ok
 }
 
-// decodeSlots accepts slots of different hours, which a write that a crash cut short leaves behind, and brings the
+// decodeSlots accepts slots of different minutes, which a write that a crash cut short leaves behind, and brings the
 // older ones forward to the newest; every slot must pass its checksum.
 func decodeSlots(content []byte, into *state) bool {
-	if !zeroed(content[len(fileFormat):slotLen]) || !zeroed(content[(slots+1)*slotLen:]) {
+	if !zeroed(content[len(fileFormat):slotLen]) {
 		return false
 	}
-	var hours [slots]uint32
+	var minutes [slots]uint32
 	for i := range into.slots {
 		slot := content[(i+1)*slotLen : (i+2)*slotLen]
 		if zeroed(slot) {
 			continue
 		}
-		hour, ok := readSlot(slot, &into.slots[i])
+		minute, ok := readSlot(slot, &into.slots[i])
 		if !ok {
 			return false
 		}
-		hours[i] = hour
-		into.hour = max(into.hour, hour)
+		minutes[i] = minute
+		into.minute = max(into.minute, minute)
 	}
 	if !distinct(into) || into.empty() {
 		return false
@@ -633,33 +795,47 @@ func decodeSlots(content []byte, into *state) bool {
 		entry := &into.slots[i]
 		switch {
 		case !entry.used():
-		case entry.last < into.hour:
+		case entry.ends(into.minute):
 			*entry = generation{}
 		default:
-			advance(&entry.seed, into.hour-hours[i])
+			entry.advance(minutes[i], into.minute)
 		}
 	}
 	return true
 }
 
-// readSlot reads a slot that is not empty and returns the hour of its seed.
+// readSlot reads a slot that is not empty and returns the minute of its seeds.
 func readSlot(slot []byte, entry *generation) (uint32, bool) {
 	copy(entry.id[:], slot)
+	entry.kind = kind(slot[kindOffset])
 	entry.first = binary.BigEndian.Uint32(slot[firstOffset:])
 	entry.last = binary.BigEndian.Uint32(slot[lastOffset:])
-	hour := binary.BigEndian.Uint32(slot[hourOffset:])
-	copy(entry.seed[:], slot[seedOffset:sumOffset])
-	valid := binary.BigEndian.Uint32(slot[sumOffset:]) == crc32.Checksum(slot[:sumOffset], castagnoli) &&
-		entry.used() && entry.first <= hour && hour <= entry.last && entry.last-entry.first <= Span
-	return hour, valid
+	minute := binary.BigEndian.Uint32(slot[minuteOffset:])
+	copy(entry.hour[:], slot[hourSeedOffset:])
+	copy(entry.minute[:], slot[minuteSeedOffset:])
+	return minute, binary.BigEndian.Uint32(slot[sumOffset:]) == crc32.Checksum(slot[:sumOffset], castagnoli) &&
+		entry.used() && zeroed(slot[kindOffset+1:firstOffset]) && zeroed(slot[paddingOffset:sumOffset]) &&
+		entry.lives(minute) && (entry.kind == kindMinutes || entry.minute == Seed{})
 }
 
-// distinct refuses two slots of one generation or of one hour.
+// lives checks that the minute lies within the life of the generation and that the life fits its kind.
+func (g *generation) lives(minute uint32) bool {
+	switch g.kind {
+	case kindMinutes:
+		return g.first <= hourOf(minute) && minute <= g.last && g.last < (g.first+Span)*minutesPerHour
+	case kindHours:
+		return g.first <= hourOf(minute) && hourOf(minute) <= g.last && g.last-g.first <= legacySpan
+	default:
+		return false
+	}
+}
+
+// distinct refuses two slots of one generation or two generations of one kind that start in one hour.
 func distinct(loaded *state) bool {
 	for i := range loaded.slots {
 		for j := i + 1; j < len(loaded.slots); j++ {
 			a, b := &loaded.slots[i], &loaded.slots[j]
-			if a.used() && b.used() && (a.id == b.id || a.first == b.first) {
+			if a.used() && b.used() && (a.id == b.id || (a.kind == b.kind && a.first == b.first)) {
 				return false
 			}
 		}
@@ -667,21 +843,23 @@ func distinct(loaded *state) bool {
 	return true
 }
 
-// decodeLegacy turns the single chain of a release before generations into a generation that makes every share that
-// release can have handed out, up to its hour plus 169, but starts in the hour before, so it never issues again and a
-// copy of the old file predicts no share issued after the upgrade. Zero bytes may follow it up to the length of this
-// release.
+// decodeLegacy turns the single chain of a release before generations into a chain of hours that makes every share
+// that release can have handed out, up to its hour plus 169. It starts in the hour before and makes no minutes, so it
+// never issues again and a copy of the old file predicts no share issued after the upgrade. Zero bytes may follow it
+// up to the length of this release.
 func decodeLegacy(content []byte, into *state) bool {
 	entry := &into.slots[0]
 	copy(entry.id[:], content[len(legacyFormat):])
 	hour := binary.BigEndian.Uint64(content[len(legacyFormat)+GenerationIDLen:])
-	copy(entry.seed[:], content[legacySeedOffset:])
-	if hour == 0 || hour > uint64(^uint32(0)-Span) || !entry.used() || !zeroed(content[legacySeedOffset+SeedLen:]) {
+	copy(entry.hour[:], content[legacySeedOffset:])
+	if hour == 0 || hour > uint64(^uint32(0)/minutesPerHour-legacySpan) || !entry.used() ||
+		!zeroed(content[legacySeedOffset+SeedLen:]) {
 		return false
 	}
-	into.hour = uint32(hour)
-	entry.first = into.hour - 1
-	entry.last = entry.first + Span
+	into.minute = uint32(hour) * minutesPerHour
+	entry.kind = kindHours
+	entry.first = uint32(hour) - 1
+	entry.last = entry.first + legacySpan
 	return true
 }
 

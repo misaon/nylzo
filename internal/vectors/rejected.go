@@ -19,8 +19,8 @@ var (
 
 // Rejected is an object a reader of the link of envelope case Base must refuse with Error. The reader
 // receives the object of ObjectFrom (default Base) or Object, with FlipByte flipped, SetByte set and cut to
-// TruncateTo. ReaderID, OpensMax and TTLSeconds replace what the reader expects: a link to another id, or a
-// policy that the server reports differently.
+// TruncateTo. ReaderID, OpensMax, TTLSeconds and Deadline replace what the reader expects: a link to another id, or
+// a policy that the server reports differently, where a Deadline of 0 is a policy without one.
 type Rejected struct {
 	Name       string   `json:"name"`
 	Base       string   `json:"base"`
@@ -32,6 +32,7 @@ type Rejected struct {
 	ReaderID   *string  `json:"reader_id,omitempty"`
 	OpensMax   *int     `json:"opens_max,omitempty"`
 	TTLSeconds *int     `json:"ttl_s,omitempty"`
+	Deadline   *int     `json:"deadline,omitempty"`
 	ObjectHash string   `json:"h"`
 	E          string   `json:"e_hex"`
 	KDFID      int      `json:"kdf_id"`
@@ -47,6 +48,7 @@ type SetByte struct {
 const (
 	rejectedBase     = "text-ascii"
 	scryptBase       = "scrypt-text"
+	legacyBase       = "legacy-text"
 	errorIntegrity   = "integrity"
 	errorPlaintext   = "plaintext"
 	errorVersion     = "version"
@@ -66,7 +68,8 @@ type rejection struct {
 func (f *File) rejected() error {
 	sealed := map[string]sealedCase{}
 	for _, vector := range envelopeCases {
-		if vector.name == rejectedBase || vector.name == "text-escapes" || vector.name == scryptBase {
+		if vector.name == rejectedBase || vector.name == "text-escapes" || vector.name == scryptBase ||
+			vector.name == legacyBase {
 			sealedVector, err := sealCase(vector)
 			if err != nil {
 				return err
@@ -87,6 +90,7 @@ func (f *File) rejected() error {
 		return err
 	}
 	cases := rejectedCases(&base, twoKey, secondShare, sealed["text-escapes"].object)
+	cases = append(cases, deadlineRejections(&base)...)
 	for index := range cases {
 		vector, checkErr := rejectedVector(sealed, &cases[index])
 		if checkErr != nil {
@@ -179,6 +183,35 @@ func rejectedCases(
 	}
 }
 
+// deadlineRejections change the deadline a reader expects or the flag that seals it in (F13).
+func deadlineRejections(base *sealedCase) []rejection {
+	return []rejection{
+		{
+			vector: Rejected{
+				Name:     "changed-deadline",
+				Deadline: new(int(base.policy.Deadline) + 60),
+				Error:    errorIntegrity,
+			},
+		},
+		{vector: Rejected{Name: "deadline-missing", Deadline: new(0), Error: errorIntegrity}},
+		{
+			vector: Rejected{
+				Name:    "deadline-flag-cleared",
+				SetByte: &SetByte{Offset: 2, Value: 0},
+				Error:   errorIntegrity,
+			},
+		},
+		{
+			vector: Rejected{
+				Name:     "deadline-for-a-legacy-object",
+				Base:     legacyBase,
+				Deadline: new(int(base.policy.Deadline)),
+				Error:    errorIntegrity,
+			},
+		},
+	}
+}
+
 func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected, error) {
 	vector := rejected.vector
 	if vector.Base == "" {
@@ -259,6 +292,9 @@ func readerOf(base *sealedCase, vector *Rejected) (core.ID, envelope.Policy, err
 	}
 	if vector.TTLSeconds != nil {
 		policy.TTLSeconds = uint32(*vector.TTLSeconds) //nolint:gosec // G115: a generated case near the base policy
+	}
+	if vector.Deadline != nil {
+		policy.Deadline = uint32(*vector.Deadline) //nolint:gosec // G115: a generated case near the base policy
 	}
 	return id, policy, nil
 }

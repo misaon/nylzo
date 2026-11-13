@@ -935,7 +935,16 @@ func TestReadChecksTheOutputBeforeItSpendsAnOpen(t *testing.T) {
 func TestLiedPolicyHeaderIsRefused(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)
-	for name, field := range map[string][2]string{"kdf": {`"kdf_id":0`, `"kdf_id":3`}, "flags": {`"flags":0`, `"flags":1`}} {
+	for name, lie := range map[string]func(string) string{
+		"kdf":   func(policy string) string { return strings.Replace(policy, `"kdf_id":0`, `"kdf_id":3`, 1) },
+		"flags": func(policy string) string { return strings.Replace(policy, `"flags":2`, `"flags":3`, 1) },
+		"deadline": func(policy string) string {
+			return regexp.MustCompile(`"deadline":(\d+)`).ReplaceAllStringFunc(policy, func(field string) string {
+				deadline, _ := strconv.ParseInt(strings.TrimPrefix(field, `"deadline":`), 10, 64)
+				return `"deadline":` + strconv.FormatInt(deadline+60, 10)
+			})
+		},
+	} {
 		link, _ := createText(t, instance, "policy header")
 		proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			request, _ := http.NewRequestWithContext(r.Context(), r.Method, instance.url+r.URL.RequestURI(), r.Body)
@@ -950,7 +959,7 @@ func TestLiedPolicyHeaderIsRefused(t *testing.T) {
 			if policy := response.Header.Get("X-Nylzo-Policy"); policy != "" {
 				raw, _ := base64.RawURLEncoding.DecodeString(policy)
 				w.Header().
-					Set("X-Nylzo-Policy", core.Encode([]byte(strings.Replace(string(raw), field[0], field[1], 1))))
+					Set("X-Nylzo-Policy", core.Encode([]byte(lie(string(raw)))))
 			}
 			w.WriteHeader(response.StatusCode)
 			io.Copy(w, response.Body)

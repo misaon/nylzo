@@ -493,7 +493,7 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	return nil
 }
 
-// advanceRatchet erases the epoch keys of the hours that have passed while serve does not run; it starts no ratchet,
+// advanceRatchet erases the epoch keys of the minutes that have passed while serve does not run; it starts no ratchet,
 // and only a directory the operator named must exist.
 func advanceRatchet(settings *config.Server, now time.Time, logger *slog.Logger) error {
 	options := epoch.Options{CheckFileSystem: func(directory string) error {
