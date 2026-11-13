@@ -174,13 +174,14 @@ export const messages: Catalog = {
   'clipboard.cleared': 'Schránka je prázdna. Kópie, ktoré už sú v\u{A0}histórii schránky, tam zostanú.',
   'created.another': 'Nová správa',
   'created.remembered': 'Toto zariadenie si správu zapamätalo.',
+  'created.remembered.session': 'Táto karta si správu pamätá najdlhšie do zatvorenia alebo obnovenia.',
   'created.status_link': 'Otvoriť Odoslané',
   'created.not_remembered':
     'Správu sa v\u{A0}tomto zariadení nepodarilo zapamätať, takže ju odtiaľto nebude možné zrušiť.',
 
   'sent.title': 'Odoslané',
   'sent.note':
-    'Zoznam je uložený len v\u{A0}tomto prehliadači a\u{A0}odkazy na správy neobsahuje. Záznam zmizne {days} po skončení správy.',
+    'Odkazy na správy tu nie sú. Záznam o\u{A0}skončenej správe stránka vymaže, hneď ako tu uvidíte, ako dopadla. Ostatné záznamy maže pri návštevách Nylzo, najskôr {days} po skončení platnosti.',
   'sent.loading': 'Načítavame odoslané správy…',
   'sent.unavailable':
     'Tento prehliadač stránke nedovolí ukladať dáta, takže si odoslané správy nepamätá. Povoľte pre tento web ukladanie dát alebo použite iný prehliadač.',
@@ -199,7 +200,7 @@ export const messages: Catalog = {
   'sent.not_opened': 'zatiaľ nie',
   'sent.until': 'do {time}',
   'sent.opens': '{used} z\u{A0}{max}',
-  'sent.unknown': 'Správa už zo servera zmizla.',
+  'sent.unknown': 'Server správu nenašiel. Možno už skončila. Ak ju tu nepotrebujete, odoberte ju.',
   'sent.failed': 'Stav sa nepodarilo načítať. Skontrolujte pripojenie a\u{A0}skúste to znova.',
   'sent.cancel': 'Zrušiť správu',
   'sent.cancel.confirm': 'Po zrušení už správu nikto neotvorí.',
@@ -216,13 +217,16 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'Zoznam odoslaných správ sa tu nedá uložiť',
   'sent.empty.title': 'Zatiaľ tu nič nie je',
   'sent.created': 'Vytvorená {time}',
-  'sent.state.unknown': 'Už neexistuje',
+  'sent.created.session': 'Vytvorená {time}, len v\u{A0}tejto karte',
+  'sent.state.unknown': 'Nenájdená',
   'sent.state.failed': 'Neznámy stav',
   'sent.state.loading': 'Načítavame',
-  'sent.ended.opened': 'Otvorená {time}. Zo servera je vymazaná, záznam tu zostane ešte {days}.',
-  'sent.ended.expired': 'Platnosť skončila {time}. Zo servera je vymazaná, záznam tu zostane ešte {days}.',
-  'sent.ended.cancelled': 'Zrušená {time}. Zo servera je vymazaná, záznam tu zostane ešte {days}.',
-  'sent.ended.deleted': 'Vymazal ju príjemca alebo ju odstránil prevádzkovateľ. Záznam tu zostane ešte {days}.',
+  'sent.ended.opened': 'Otvorená {time}. Zo servera je vymazaná a\u{A0}zo zoznamu zmizne, keď stránku opustíte.',
+  'sent.ended.expired':
+    'Platnosť skončila {time}. Zo servera je vymazaná a\u{A0}zo zoznamu zmizne, keď stránku opustíte.',
+  'sent.ended.cancelled': 'Zrušená {time}. Zo servera je vymazaná a\u{A0}zo zoznamu zmizne, keď stránku opustíte.',
+  'sent.ended.deleted':
+    'Vymazal ju príjemca alebo ju odstránil prevádzkovateľ. Zo zoznamu zmizne, keď stránku opustíte.',
   'sent.cancel.title': 'Zrušiť správu „{label}“?',
   'sent.cancel.title.untitled': 'Zrušiť správu?',
   'sent.forget.label': 'Odobrať zo zoznamu',
@@ -389,7 +393,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Na meranie návštevnosti nepoužívame externú službu.',
   'transparency.personal.browser.title': 'Vo vašom prehliadači',
   'transparency.personal.browser':
-    'Zvolený jazyk, dočasný údaj počas otvárania správy a\u{A0}zoznam Odoslaných, ak správu sledujete. Je to nevyhnutné pre funkcie, o\u{A0}ktoré žiadate, a\u{A0}preto to nevyžaduje súhlas.',
+    'Zvolený jazyk, dočasný údaj počas otvárania správy a\u{A0}zoznam Odoslaných, ak si sledovanú správu necháte aj po zatvorení karty. Je to nevyhnutné pre funkcie, o\u{A0}ktoré žiadate, a\u{A0}preto to nevyžaduje súhlas.',
   'transparency.limits.title': 'Limity tejto inštancie',
   'transparency.limits.short': 'Limity',
   'transparency.limits.file': 'Najväčšia príloha',
@@ -520,7 +524,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Skopírovať heslo',
   'created.track.title': 'Sledovať v\u{A0}Odoslaných',
   'created.track.note':
-    'Uvidíte, či správu niekto otvoril, a\u{A0}budete ju môcť zrušiť. Uloží sa len v\u{A0}tomto prehliadači. Zrušiť ju potom môže každý, kto sa k\u{A0}nemu dostane.',
+    'Uvidíte, či správu niekto otvoril, a\u{A0}budete ju môcť zrušiť. Pamätá si ju len táto karta a\u{A0}zabudne ju najneskôr po zatvorení alebo obnovení.',
+  'created.track.note.kept':
+    'Uvidíte, či správu niekto otvoril, a\u{A0}budete ju môcť zrušiť. Uloží sa v\u{A0}tomto prehliadači, takže ju potom môže zrušiť každý, kto sa k\u{A0}nemu dostane.',
+  'created.track.keep': 'Pamätať si aj po zatvorení karty',
   'created.track.label': 'Popis, vidíte ho len vy',
   'created.track.placeholder': 'Popis, napríklad „Heslo pre Petra“',
   'created.track.save': 'Uložiť',

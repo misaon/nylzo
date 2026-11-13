@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { committed, openDatabase, requestResult } from './indexed-database.ts';
 import { RETENTION_MS } from './sent-record.ts';
 import type { SentRecord } from './sent-record.ts';
-import { browserSentStore, purgeSentRecords } from './sent-store.ts';
+import { browserSentStore, keepPurgingSentRecords, purgeSentRecords } from './sent-store.ts';
 import type { SentStore } from './sent-store.ts';
 
 const NOW = Date.parse('2026-11-01T12:00:00Z');
@@ -26,9 +26,8 @@ describe('persistent sent records', () => {
     };
   });
 
-  it('reads, ends, forgets and clears without creating a database nobody asked for', async () => {
+  it('reads, forgets and clears without creating a database nobody asked for', async () => {
     expect(await store.list()).toEqual([]);
-    expect(await store.markEnded(record.id, NOW)).toBeUndefined();
     await store.remove(record.id);
     await store.clear();
     expect(await factory.databases()).toEqual([]);
@@ -85,14 +84,6 @@ describe('persistent sent records', () => {
     await expect(crypto.subtle.verify('Ed25519', publicKey, signature, payload)).resolves.toBe(true);
   });
 
-  it('marks a record ended once, preserves that timestamp and ignores absent records', async () => {
-    await store.put(record);
-    await expect(store.markEnded('missing', NOW)).resolves.toBeUndefined();
-    await expect(store.markEnded(record.id, NOW + 1000)).resolves.toMatchObject({ endedAt: NOW + 1000 });
-    await expect(store.markEnded(record.id, NOW + 2000)).resolves.toMatchObject({ endedAt: NOW + 1000 });
-    expect(await store.list()).toMatchObject([{ endedAt: NOW + 1000 }]);
-  });
-
   it('removes individual records and clears the database only when requested', async () => {
     const second = { ...record, id: 'AQEBAQEBAQEBAQEBAQEBAQ' };
     await store.put(record);
@@ -104,14 +95,19 @@ describe('persistent sent records', () => {
     await expect(store.list()).resolves.toEqual([]);
   });
 
-  it('removes corrupt stored records instead of exposing malformed keys', async () => {
+  it.each([
+    ['a malformed key', { publicKey: 'invalid' }],
+    ['the end an older client marked', { endedAt: NOW }],
+  ])('removes a stored record with %s instead of listing it', async (_case, change) => {
     await store.put(record);
     const database = await openDatabase(factory, 'nylzo', () => {
       throw new Error('must not recreate stores');
     });
     const transaction = database.transaction('sent', 'readwrite');
     const done = committed(transaction);
-    await requestResult(transaction.objectStore('sent').put({ id: record.id, publicKey: 'invalid' }));
+    const records = transaction.objectStore('sent');
+    const stored: unknown = await requestResult(records.get(record.id));
+    await requestResult(records.put(Object.assign({}, stored, change)));
     await done;
     await expect(store.list()).resolves.toEqual([]);
     const read = database.transaction('sent', 'readonly');
@@ -119,11 +115,50 @@ describe('persistent sent records', () => {
     database.close();
   });
 
-  it('purges expired records without creating a database for a browser with no records', async () => {
-    await purgeSentRecords(factory, NOW);
+  it('checks again every hour and when a record is due, so an open page removes a record saved after it started', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let clock = NOW;
+      await keepPurgingSentRecords(factory, () => clock);
+      expect(vi.getTimerCount()).toBe(1);
+      await store.put(record);
+      clock += 3_600_000;
+      await vi.advanceTimersByTimeAsync(3_600_000);
+      await vi.waitFor(async () => expect(await factory.databases()).toHaveLength(1));
+      clock = record.expiresAt + RETENTION_MS;
+      await vi.advanceTimersByTimeAsync(record.expiresAt + RETENTION_MS - NOW);
+      await vi.waitFor(async () => expect(await store.list()).toEqual([]));
+      expect(vi.getTimerCount()).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps checking every hour when the browser never answers the database listing', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const hanging = Object.assign(Object.create(factory) as IDBFactory, {
+        databases: async () => Promise.withResolvers<IDBDatabaseInfo[]>().promise,
+      });
+      const purging = keepPurgingSentRecords(hanging, () => NOW);
+      await vi.advanceTimersByTimeAsync(2000);
+      await purging;
+      expect(vi.getTimerCount()).toBe(1);
+      expect(await factory.databases()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('purges expired records, names the next purge and creates no database for a browser with no records', async () => {
+    await expect(purgeSentRecords(factory, NOW)).resolves.toBeUndefined();
     await expect(factory.databases()).resolves.toEqual([]);
     await store.put(record);
-    await purgeSentRecords(factory, record.expiresAt + RETENTION_MS + 1);
-    await expect(store.list()).resolves.toEqual([]);
+    await store.put({ ...record, id: 'AQEBAQEBAQEBAQEBAQEBAQ', expiresAt: record.expiresAt + 1000 });
+    await expect(purgeSentRecords(factory, NOW)).resolves.toBe(record.expiresAt + RETENTION_MS);
+    await expect(purgeSentRecords(factory, record.expiresAt + RETENTION_MS)).resolves.toBe(
+      record.expiresAt + 1000 + RETENTION_MS,
+    );
+    await expect(store.list()).resolves.toMatchObject([{ id: 'AQEBAQEBAQEBAQEBAQEBAQ' }]);
   });
 });

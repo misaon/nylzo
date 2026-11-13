@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { homePath } from '../language/language.ts';
   import type { Language } from '../language/language.ts';
   import LanguageMenu from '../language/LanguageMenu.svelte';
   import { getTranslator } from '../language/translator.svelte.ts';
@@ -15,7 +16,9 @@
   }
 
   const { variant, current, onlanguage }: Props = $props();
-  const { translate } = getTranslator();
+  const translator = getTranslator();
+  const { translate } = translator;
+  const home = $derived(homePath(translator.language));
 
   const sections = [
     { href: '#how-it-works', key: 'nav.how' },
@@ -32,7 +35,7 @@
     aria-label={translate('nav.label')}
   >
     <a
-      href={variant === 'home' ? '#create' : '/'}
+      href={variant === 'home' ? '#create' : home}
       class="flex items-center rounded-control py-1"
       aria-label={translate('nav.home')}
     >
@@ -65,7 +68,7 @@
         </Button>
       {/if}
       {#if variant === 'read' || variant === 'page'}
-        <Button variant="ghost" href="/" class="max-[379px]:w-11 max-[379px]:px-0 max-sm:px-3">
+        <Button variant="ghost" href={home} class="max-[379px]:w-11 max-[379px]:px-0 max-sm:px-3">
           <Icon name="pen" animated />
           <span class="max-[379px]:sr-only sm:hidden">{translate('nav.write.short')}</span>
           <span class="hidden sm:inline">{translate('nav.write')}</span>

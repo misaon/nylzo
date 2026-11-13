@@ -180,13 +180,14 @@ export const messages: Catalog = {
   'clipboard.cleared': 'A área de transferência está vazia. As cópias que já estão no histórico dela continuam lá.',
   'created.another': 'Nova mensagem',
   'created.remembered': 'Este dispositivo guardou a mensagem.',
+  'created.remembered.session': 'Esta aba lembra da mensagem no máximo até você fechá-la ou recarregá-la.',
   'created.status_link': 'Abrir Enviadas',
   'created.not_remembered':
     'Não foi possível guardar a mensagem neste dispositivo, então não será possível cancelá-la daqui.',
 
   'sent.title': 'Enviadas',
   'sent.note':
-    'A lista fica salva só neste navegador e não contém os links das mensagens. Cada item some {days} depois que a mensagem termina.',
+    'A lista não contém os links das mensagens. A página apaga o item de uma mensagem encerrada assim que você vê aqui como ela terminou. Os outros itens ela apaga durante suas visitas ao Nylzo, não antes de {days} depois que expiram.',
   'sent.loading': 'Carregando as mensagens enviadas…',
   'sent.unavailable':
     'Este navegador não permite que a página armazene dados, então não guarda as mensagens enviadas. Permita o armazenamento de dados para este site ou use outro navegador.',
@@ -205,7 +206,8 @@ export const messages: Catalog = {
   'sent.not_opened': 'ainda não',
   'sent.until': 'até {time}',
   'sent.opens': '{used} de {max}',
-  'sent.unknown': 'A mensagem já não está no servidor.',
+  'sent.unknown':
+    'O servidor não encontrou a mensagem. Ela pode já ter terminado. Se não precisar mais dela aqui, remova-a.',
   'sent.failed': 'Não foi possível carregar o status. Verifique a conexão e tente novamente.',
   'sent.cancel': 'Cancelar mensagem',
   'sent.cancel.confirm': 'Depois de cancelada, ninguém mais poderá abrir a mensagem.',
@@ -222,13 +224,14 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'Não é possível salvar aqui a lista de mensagens enviadas',
   'sent.empty.title': 'Ainda não há nada aqui',
   'sent.created': 'Criada em {time}',
-  'sent.state.unknown': 'Não existe mais',
+  'sent.created.session': 'Criada em {time}, só nesta aba',
+  'sent.state.unknown': 'Não encontrada',
   'sent.state.failed': 'Status desconhecido',
   'sent.state.loading': 'Carregando',
-  'sent.ended.opened': 'Aberta em {time}. Foi apagada do servidor; o item continua aqui por mais {days}.',
-  'sent.ended.expired': 'Expirou em {time}. Foi apagada do servidor; o item continua aqui por mais {days}.',
-  'sent.ended.cancelled': 'Cancelada em {time}. Foi apagada do servidor; o item continua aqui por mais {days}.',
-  'sent.ended.deleted': 'O destinatário a apagou ou o operador a removeu. O item continua aqui por mais {days}.',
+  'sent.ended.opened': 'Aberta em {time}. Foi apagada do servidor; o item some quando você sair desta página.',
+  'sent.ended.expired': 'Expirou em {time}. Foi apagada do servidor; o item some quando você sair desta página.',
+  'sent.ended.cancelled': 'Cancelada em {time}. Foi apagada do servidor; o item some quando você sair desta página.',
+  'sent.ended.deleted': 'O destinatário a apagou ou o operador a removeu. O item some quando você sair desta página.',
   'sent.cancel.title': 'Cancelar a mensagem “{label}”?',
   'sent.cancel.title.untitled': 'Cancelar a mensagem?',
   'sent.forget.label': 'Remover da lista',
@@ -395,7 +398,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Não usamos um serviço externo para analisar as visitas.',
   'transparency.personal.browser.title': 'No seu navegador',
   'transparency.personal.browser':
-    'O idioma escolhido, um dado temporário durante a abertura da mensagem e a lista Enviadas, se você acompanhar alguma mensagem. Isso é necessário para as funções que você solicita e, por isso, não exige consentimento.',
+    'O idioma escolhido, um dado temporário durante a abertura da mensagem e a lista Enviadas, se você mantiver uma mensagem acompanhada depois de fechar a aba. Isso é necessário para as funções que você solicita e, por isso, não exige consentimento.',
   'transparency.limits.title': 'Limites desta instância',
   'transparency.limits.short': 'Limites',
   'transparency.limits.file': 'Maior anexo',
@@ -525,7 +528,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Copiar senha',
   'created.track.title': 'Acompanhar em Enviadas',
   'created.track.note':
-    'Você verá se alguém abriu a mensagem e poderá cancelá-la. O acompanhamento fica salvo só neste navegador, e qualquer pessoa com acesso a ele também poderá cancelar a mensagem.',
+    'Você verá se alguém abriu a mensagem e poderá cancelá-la. Só esta aba lembra dela, no máximo até você fechá-la ou recarregá-la.',
+  'created.track.note.kept':
+    'Você verá se alguém abriu a mensagem e poderá cancelá-la. O acompanhamento fica salvo neste navegador, e qualquer pessoa com acesso a ele também poderá cancelar a mensagem.',
+  'created.track.keep': 'Lembrar mesmo depois de fechar a aba',
   'created.track.label': 'Rótulo, visível só para você',
   'created.track.placeholder': 'Rótulo, por exemplo “Senha para o Pedro”',
   'created.track.save': 'Salvar',

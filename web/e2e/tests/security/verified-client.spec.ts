@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline';
 
 import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
-import { chooseLanguage, createMessageInPage, expectMessageShown, showMessage } from '../support/pages.ts';
+import { chooseLanguage, createMessageInPage, expectMessageShown, showMessage, trackInSent } from '../support/pages.ts';
 import { BASE_URL, NYLZO_BINARY } from '../support/servers.ts';
 
 const PASSPHRASE = 'orbit maple velvet thunder';
@@ -159,7 +159,8 @@ test(
         local,
       );
       expect(link.startsWith(`${hostile.origin}/r#`), 'links from the verified client name the instance').toBe(true);
-      await expect(sender.getByText('Track in Sent')).toHaveCount(0);
+      await expect(sender.getByRole('switch', { name: 'Keep after closing this tab' })).toHaveCount(0);
+      await trackInSent(sender, '', 'tab');
       expect(await sender.evaluate(async () => indexedDB.databases())).toEqual([]);
 
       const open = runNylzo(['open', '--no-browser', '--server', hostile.origin], link);

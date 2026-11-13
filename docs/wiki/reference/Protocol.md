@@ -660,7 +660,7 @@ A message is safe from such a server only when its sender and its reader both us
 - A relayed request leaves as from the command line: over HTTPS, or plain HTTP only to a loopback instance, with only `Authorization`, `Content-Type`, `Accept`, `X-Requested-With`, the `X-Nylzo-*` headers and `User-Agent: nylzo-cli`, besides the length and encoding headers of HTTP itself. Cookies, `Origin`, `Referer`, `Accept-Language` and the `Sec-*` headers stay on the computer, so the instance sees the native client of §9.
 - A relayed answer keeps only `Content-Length`, `Retry-After` and the `X-Nylzo-*` headers. Its `Content-Type` is `application/json; charset=utf-8` when the instance sent exactly that and `application/octet-stream` otherwise, and it carries the local headers of non-HTML responses, so nothing the instance sends can run in the local origin. Only a final answer passes: an informational answer (`1xx`), a protocol upgrade or a redirect answers 502, and trailers are dropped.
 - A web client served this way builds its links on the instance's origin from the `nylzo-instance` element (§9).
-- It keeps no key in the browser. A web client whose `nylzo-instance` origin differs from its own origin offers no option to remember a sent message and opens no browser storage, because the next session has another origin and could never remove what this one stored.
+- It keeps no key in browser storage. A web client whose `nylzo-instance` origin differs from its own origin tracks a sent message only in the memory of its tab and opens no browser storage, because the next session has another origin and could never remove what this one stored.
 
 ### 14.2 Handing a link to the local client
 

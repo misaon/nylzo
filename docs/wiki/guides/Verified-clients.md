@@ -35,7 +35,7 @@ To write a message:
 nylzo web --server https://nylzo.example
 ```
 
-Your browser opens the familiar page at a new random address such as `http://k7q2m9x4w8r3t6y1u5i0o2p4a6.localhost:53211/`. The link it creates points to `https://nylzo.example`, so the reader can open it with any client. Press Ctrl-C in the terminal when you are done. The local client keeps no key in the browser, so it does not offer to remember a message for cancelling it later. To keep that option, create the message with `nylzo create --manage-token-file`.
+Your browser opens the familiar page at a new random address such as `http://k7q2m9x4w8r3t6y1u5i0o2p4a6.localhost:53211/`. The link it creates points to `https://nylzo.example`, so the reader can open it with any client. Press Ctrl-C in the terminal when you are done. The local client keeps no key in browser storage, so Track in Sent works only until you close the tab or leave Nylzo. To cancel a message later, create it with `nylzo create --manage-token-file`.
 
 To read a message, copy the link and run:
 

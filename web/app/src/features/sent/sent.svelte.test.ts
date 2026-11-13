@@ -2,7 +2,9 @@
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { formatMoment } from '../../shared/language/format.ts';
 import { getTranslator, Translator } from '../../shared/language/translator.svelte.ts';
+import { getSessionSentStore, sessionSentStore } from '../../shared/sent-records/session-sent-store.ts';
 import type { CancelOutcome, ItemState, SentItem, SentView } from './sent-page.ts';
 import { createSentPage } from './sent-page.ts';
 import Sent from './Sent.svelte';
@@ -10,6 +12,9 @@ import Sent from './Sent.svelte';
 vi.mock('./sent-page.ts', () => ({ createSentPage: vi.fn<typeof import('./sent-page.ts').createSentPage>() }));
 vi.mock(import('../../shared/language/translator.svelte.ts'), (original) =>
   original().then((actual) => ({ ...actual, getTranslator: vi.fn<typeof actual.getTranslator>() })),
+);
+vi.mock(import('../../shared/sent-records/session-sent-store.ts'), (original) =>
+  original().then((actual) => ({ ...actual, getSessionSentStore: vi.fn<typeof actual.getSessionSentStore>() })),
 );
 
 const NOW = Date.parse('2026-11-01T12:00:00Z');
@@ -30,6 +35,7 @@ describe('sent messages interface', () => {
     cancel: vi.fn<(id: string) => Promise<CancelOutcome>>(),
     forget: vi.fn<(id: string) => Promise<void>>(),
     forgetAll: vi.fn<() => Promise<void>>(),
+    stop: vi.fn<() => void>(),
   };
 
   function button(label: string): HTMLButtonElement {
@@ -55,13 +61,14 @@ describe('sent messages interface', () => {
       return;
     }
 
-    notify({ view: 'list', items });
+    notify({ view: 'list', items, storageFailed: false });
     flushSync();
   }
 
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(getTranslator).mockReturnValue(translator);
+    vi.mocked(getSessionSentStore).mockReturnValue(sessionSentStore());
     page.load.mockResolvedValue();
     page.refresh.mockResolvedValue();
     page.forget.mockResolvedValue();
@@ -86,7 +93,7 @@ describe('sent messages interface', () => {
     notify({ view: 'unavailable' });
     flushSync();
     expect(target.querySelector('[role="alert"]')?.textContent.trim()).toBe(translator.translate('sent.unavailable'));
-    notify({ view: 'list', items: [] });
+    notify({ view: 'list', items: [], storageFailed: false });
     flushSync();
     expect(target.textContent).toContain(translator.translate('sent.empty'));
     expect(target.querySelectorAll('button')).toHaveLength(1);
@@ -98,13 +105,13 @@ describe('sent messages interface', () => {
     { kind: 'unknown' },
     { kind: 'failed' },
     { kind: 'retry_later', retryAfter: 30 },
-  ])('renders a $kind item and offers retry only for failures', async (state) => {
+  ])('renders a $kind item and offers retry when the status did not load', async (state) => {
     show([item(state)]);
     expect(target.querySelector('h2')).not.toBeNull();
     const retry = [...target.querySelectorAll('button')].find(
       (candidate) => candidate.textContent.trim() === translator.translate('action.retry'),
     );
-    expect(retry !== undefined).toBe(state.kind === 'failed' || state.kind === 'retry_later');
+    expect(retry !== undefined).toBe(state.kind !== 'loaded' && state.kind !== 'loading');
     if (!retry) {
       return;
     }
@@ -132,11 +139,38 @@ describe('sent messages interface', () => {
           state: { kind: 'loaded', status: { ...loaded.status, endedAt: openedAt, state: 'expired' } },
         },
       ],
+      storageFailed: false,
     });
     flushSync();
     expect(target.textContent).toContain(translator.translate('sent.state.expired'));
+    expect(target.textContent).toContain(
+      translator.translate('sent.ended.expired', { time: formatMoment(openedAt, translator.language) }),
+    );
     expect(target.textContent).not.toContain(translator.translate('sent.opens', { used: 1, max: 3 }));
     expect(() => button(translator.translate('sent.cancel'))).toThrow('missing button');
+  });
+
+  it('stops loading and clears what it showed, an open dialog included, when the page is left or replaced', async () => {
+    show([{ ...item(), label: 'Password for Peter' }]);
+    button(translator.translate('sent.cancel')).click();
+    flushSync();
+    expect(target.querySelector('dialog')?.textContent).toContain('Password for Peter');
+    dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+    expect(target.querySelector('dialog')).toBeNull();
+    expect(page.stop).toHaveBeenCalledOnce();
+    await unmount(component);
+    expect(page.stop).toHaveBeenCalledTimes(2);
+    show();
+  });
+
+  it('marks a message that only this tab tracks', () => {
+    const time = formatMoment(NOW, translator.language);
+    show([item(), { ...item(), id: 'AQEBAQEBAQEBAQEBAQEBAQ', session: true }]);
+    const captions = [...target.querySelectorAll('li p.text-caption')].map((caption) => caption.textContent);
+    expect(captions).toEqual([
+      translator.translate('sent.created', { time }),
+      translator.translate('sent.created.session', { time }),
+    ]);
   });
 
   it.each<CancelOutcome>([{ outcome: 'cancelled' }, { outcome: 'failed' }, { outcome: 'retry_later', retryAfter: 30 }])(
@@ -201,5 +235,6 @@ function item(state: ItemState = initialState): SentItem {
     state,
     ended: false,
     cancellable: true,
+    session: false,
   };
 }

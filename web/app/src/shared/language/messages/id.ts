@@ -182,13 +182,14 @@ export const messages: Catalog = {
   'clipboard.cleared': 'Papan klip sudah kosong. Salinan yang sudah ada di riwayat papan klip tetap tersimpan di sana.',
   'created.another': 'Pesan baru',
   'created.remembered': 'Perangkat ini sudah mengingat pesan tersebut.',
+  'created.remembered.session': 'Tab ini mengingat pesan tersebut paling lama sampai tab ditutup atau dimuat ulang.',
   'created.status_link': 'Buka Terkirim',
   'created.not_remembered':
     'Pesan tidak dapat diingat di perangkat ini, sehingga Anda tidak bisa membatalkannya dari sini.',
 
   'sent.title': 'Terkirim',
   'sent.note':
-    'Daftar ini hanya tersimpan di browser ini dan tidak berisi tautan ke pesan. Catatan akan hilang {days} setelah pesan berakhir.',
+    'Daftar ini tidak berisi tautan ke pesan. Halaman menghapus catatan pesan yang sudah berakhir begitu Anda melihat hasilnya di sini. Catatan lain dihapus saat Anda mengunjungi Nylzo, paling cepat {days} setelah masa berlakunya habis.',
   'sent.loading': 'Memuat pesan terkirim…',
   'sent.unavailable':
     'Browser ini tidak mengizinkan halaman menyimpan data, sehingga pesan terkirim tidak bisa diingat. Izinkan situs ini menyimpan data, atau gunakan browser lain.',
@@ -207,7 +208,8 @@ export const messages: Catalog = {
   'sent.not_opened': 'belum',
   'sent.until': 'hingga {time}',
   'sent.opens': '{used} dari {max}',
-  'sent.unknown': 'Pesan sudah tidak ada di server.',
+  'sent.unknown':
+    'Server tidak menemukan pesan ini. Mungkin pesan sudah berakhir. Jika tidak diperlukan lagi di sini, hapus dari daftar.',
   'sent.failed': 'Status tidak dapat dimuat. Periksa koneksi dan coba lagi.',
   'sent.cancel': 'Batalkan pesan',
   'sent.cancel.confirm': 'Setelah dibatalkan, tidak ada lagi yang bisa membuka pesan ini.',
@@ -224,16 +226,18 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'Daftar pesan terkirim tidak bisa disimpan di sini',
   'sent.empty.title': 'Belum ada apa-apa di sini',
   'sent.created': 'Dibuat {time}',
-  'sent.state.unknown': 'Sudah tidak ada',
+  'sent.created.session': 'Dibuat {time}, hanya di tab ini',
+  'sent.state.unknown': 'Tidak ditemukan',
   'sent.state.failed': 'Status tidak diketahui',
   'sent.state.loading': 'Memuat',
-  'sent.ended.opened': 'Dibuka {time}. Pesan sudah dihapus dari server, catatannya tetap di sini selama {days} lagi.',
+  'sent.ended.opened':
+    'Dibuka {time}. Pesan sudah dihapus dari server, catatannya hilang saat Anda meninggalkan halaman ini.',
   'sent.ended.expired':
-    'Masa berlaku berakhir {time}. Pesan sudah dihapus dari server, catatannya tetap di sini selama {days} lagi.',
+    'Masa berlaku berakhir {time}. Pesan sudah dihapus dari server, catatannya hilang saat Anda meninggalkan halaman ini.',
   'sent.ended.cancelled':
-    'Dibatalkan {time}. Pesan sudah dihapus dari server, catatannya tetap di sini selama {days} lagi.',
+    'Dibatalkan {time}. Pesan sudah dihapus dari server, catatannya hilang saat Anda meninggalkan halaman ini.',
   'sent.ended.deleted':
-    'Penerima menghapusnya, atau operator menurunkannya. Catatannya tetap di sini selama {days} lagi.',
+    'Penerima menghapusnya, atau operator menurunkannya. Catatannya hilang saat Anda meninggalkan halaman ini.',
   'sent.cancel.title': 'Batalkan pesan “{label}”?',
   'sent.cancel.title.untitled': 'Batalkan pesan?',
   'sent.forget.label': 'Keluarkan dari daftar',
@@ -400,7 +404,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Kami tidak menggunakan layanan eksternal untuk analitik pengunjung.',
   'transparency.personal.browser.title': 'Di browser Anda',
   'transparency.personal.browser':
-    'Bahasa yang Anda pilih, data sementara selama pesan sedang dibuka, dan daftar Terkirim jika Anda memantau pesan. Semua itu diperlukan untuk fitur yang Anda minta, sehingga tidak memerlukan persetujuan.',
+    'Bahasa yang Anda pilih, data sementara selama pesan sedang dibuka, dan daftar Terkirim jika Anda tetap menyimpan pesan yang dipantau setelah tab ditutup. Semua itu diperlukan untuk fitur yang Anda minta, sehingga tidak memerlukan persetujuan.',
   'transparency.limits.title': 'Batas instans ini',
   'transparency.limits.short': 'Batas',
   'transparency.limits.file': 'Lampiran terbesar',
@@ -531,7 +535,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Salin kata sandi',
   'created.track.title': 'Pantau di Terkirim',
   'created.track.note':
-    'Anda akan melihat apakah pesan sudah dibuka seseorang, dan Anda bisa membatalkannya. Data hanya tersimpan di browser ini. Siapa pun yang bisa mengakses browser ini juga bisa membatalkannya.',
+    'Anda akan melihat apakah pesan sudah dibuka seseorang, dan Anda bisa membatalkannya. Hanya tab ini yang mengingatnya, paling lama sampai tab ditutup atau dimuat ulang.',
+  'created.track.note.kept':
+    'Anda akan melihat apakah pesan sudah dibuka seseorang, dan Anda bisa membatalkannya. Data tersimpan di browser ini, jadi siapa pun yang bisa mengaksesnya juga bisa membatalkan pesan.',
+  'created.track.keep': 'Tetap ingat setelah tab ditutup',
   'created.track.label': 'Label, hanya terlihat oleh Anda',
   'created.track.placeholder': 'Label, misalnya “Kata sandi untuk Budi”',
   'created.track.save': 'Simpan',

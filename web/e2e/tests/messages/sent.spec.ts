@@ -8,6 +8,7 @@ import {
 } from '../support/indexed-database.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
 import {
+  chooseLanguage,
   createdLink,
   createMessageInPage,
   expectMessageShown,
@@ -31,7 +32,7 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   newPage,
 }) => {
   const violations = await watchViolations(page);
-  const link = await createMessageInPage(page, { text: 'cancel me', remember: true });
+  const link = await createMessageInPage(page, { text: 'cancel me', remember: 'browser' });
   await expect(page.getByText(REMEMBERED)).toBeVisible();
   await page.getByRole('link', { name: 'Open Sent' }).click();
   await expect(page.getByRole('heading', { name: 'Sent', exact: true })).toBeVisible();
@@ -62,7 +63,10 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   await expect(cancel).toHaveCount(0);
   await expect(item.getByRole('heading', { level: 2 })).toBeFocused();
   await expect(page.getByRole('status').first()).toHaveText('The message is cancelled.');
-  await expect.poll(() => sentRecords(page)).toMatchObject([{ id: idOf(link), endedAt: expect.any(Number) }]);
+  await expect(item.getByText('the entry goes when you leave this page')).toBeVisible();
+  await expect
+    .poll(() => sentRecords(page), 'an ended message leaves storage once the list shows it (F16)')
+    .toEqual([]);
 
   const recipient = await newPage();
   await recipient.goto(link);
@@ -75,6 +79,74 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   await page.reload();
   await expect(page.getByText(NOTHING_REMEMBERED)).toBeVisible();
   expect(await violations()).toEqual([]);
+});
+
+test(
+  'a message tracked only in this tab stays out of browser storage and moves with the tab between pages (F16)',
+  { tag: '@cross-browser' },
+  async ({ page }) => {
+    const completedWrites = await countCompletedWrites(page);
+    await createMessageInPage(page, { text: 'only this tab', remember: 'tab' });
+    await page.evaluate(() => {
+      Reflect.set(globalThis, 'sameDocument', true);
+    });
+    const sameDocument = () => page.evaluate(() => Reflect.get(globalThis, 'sameDocument') === true);
+    await page.getByRole('link', { name: 'Open Sent' }).click();
+    await expect(page).toHaveURL(/\/sent$/u);
+    const item = page.getByRole('listitem');
+    await expect(item.getByText('Waiting to be opened')).toBeVisible();
+    await expect(item.getByText(/in this tab only/u).filter({ visible: true })).toBeVisible();
+    await page.getByRole('link', { name: 'Transparency' }).first().click();
+    await expect(page).toHaveURL(/\/transparency$/u);
+    await page.goBack();
+    await expect(item.getByText('Waiting to be opened')).toBeVisible();
+    expect(await sameDocument()).toBe(true);
+
+    await item.getByRole('button', { name: 'Cancel message' }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Yes, cancel', exact: true }).click();
+    await expect(item.getByText('Cancelled', { exact: true })).toBeVisible();
+    expect(await completedWrites()).toBe(0);
+    expect(await databaseNames(page)).toEqual([]);
+
+    await createMessageInPage(page, { text: 'left behind', remember: 'tab' });
+    await page.getByRole('link', { name: 'Open Sent' }).click();
+    await expect(item.getByText('Waiting to be opened')).toBeVisible();
+    await page.evaluate(() => {
+      dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
+    });
+    await expect(page.getByRole('listitem')).toHaveCount(0);
+    await page.evaluate(() => {
+      dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+    });
+    await expect(
+      page.getByText(NOTHING_REMEMBERED),
+      'a page kept for the back button forgets the tab list',
+    ).toBeVisible();
+    expect(await completedWrites()).toBe(0);
+  },
+);
+
+test('switching the language with motion while the tab tracks a message moves the address to the new home (F16)', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await createMessageInPage(page, { text: 'language', remember: 'tab' });
+  await chooseLanguage(page, 'Čeština');
+  await expect(page).toHaveURL(/\/cs\/$/u);
+  await expect(page.getByText('Tato karta si zprávu pamatuje nejdéle do zavření nebo obnovení.')).toBeVisible();
+  await page.evaluate(() => {
+    Reflect.set(globalThis, 'sameDocument', true);
+  });
+  await page.getByRole('link', { name: 'Otevřít Odeslané' }).click();
+  await expect(page.getByRole('listitem').getByText('Čeká na otevření')).toBeVisible();
+  await page
+    .getByRole('link', { name: /Napsat/u })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/cs\/$/u);
+  await page.goBack();
+  await expect(page.getByRole('listitem').getByText('Čeká na otevření')).toBeVisible();
+  expect(await page.evaluate(() => Reflect.get(globalThis, 'sameDocument') === true)).toBe(true);
 });
 
 test('this device remembers a new message only when the sender saves it in the created panel (UX13)', async ({
@@ -99,7 +171,7 @@ test(
   'the manage key lies in IndexedDB only as a non-extractable Ed25519 signing key (D39)',
   { tag: '@cross-browser' },
   async ({ page }) => {
-    const link = await createMessageInPage(page, { text: 'key', remember: true });
+    const link = await createMessageInPage(page, { text: 'key', remember: 'browser' });
     await expect(page.getByText(REMEMBERED)).toBeVisible();
     expect(await sentRecords(page)).toEqual([
       {
@@ -117,7 +189,7 @@ test('a status that answers after the sender forgot the message does not store i
   newPage,
 }) => {
   const completedWrites = await countCompletedWrites(page);
-  const link = await createMessageInPage(page, { text: 'forget me', remember: true });
+  const link = await createMessageInPage(page, { text: 'forget me', remember: 'browser' });
   await expect(page.getByText(REMEMBERED)).toBeVisible();
   const recipient = await newPage();
   const acknowledged = recipient.waitForResponse((response) => response.url().endsWith('/ack'));
@@ -142,6 +214,7 @@ test('a status that answers after the sender forgot the message does not store i
   await page.unrouteAll();
   await page.reload();
   await expect(page.getByText(NOTHING_REMEMBERED)).toBeVisible();
+  expect(await sentRecords(page)).toEqual([]);
 });
 
 test('a visitor, a sender who keeps the default and a look at the sent list leave no database, and every page load drops records 7 days after expiry (D39)', async ({
@@ -162,7 +235,7 @@ test('a visitor, a sender who keeps the default and a look at the sent list leav
   expect(await databaseNames(page), 'opening the sent list creates no database').toEqual([]);
 
   const sender = await newPage();
-  const kept = idOf(await createMessageInPage(sender, { text: 'kept', remember: true }));
+  const kept = idOf(await createMessageInPage(sender, { text: 'kept', remember: 'browser' }));
   await expect(sender.getByText(REMEMBERED)).toBeVisible();
   await storeExpiredRecord(sender);
   const storedIds = async () => {
@@ -178,7 +251,7 @@ test('a browser without IndexedDB still creates the link and says it cannot reme
   await page.addInitScript(() => {
     Object.defineProperty(globalThis, 'indexedDB', { value: undefined });
   });
-  await createMessageInPage(page, { text: 'no storage', remember: true });
+  await createMessageInPage(page, { text: 'no storage', remember: 'browser' });
   await expect(
     page.getByText('This device could not remember the message, so you cannot cancel it from here.'),
   ).toBeVisible();
