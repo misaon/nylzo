@@ -245,6 +245,45 @@ var profileCaddyfiles = map[string]string{
 	"Compose":         filepath.Join("..", "compose", "Caddyfile"),
 }
 
+// TestCaddyfilesDialTheBackendByAddress covers F19: while the backend is down, Docker passes a lookup of its
+// name to the host's resolvers, so a name could send API requests and their X-Nylzo-* headers to another host.
+func TestCaddyfilesDialTheBackendByAddress(t *testing.T) {
+	t.Setenv("NYLZO_DOMAIN", "localhost")
+	t.Setenv("NYLZO_CONTACT", operatorContact)
+	for name, caddyfile := range profileCaddyfiles {
+		t.Run(name, func(t *testing.T) {
+			source, err := os.ReadFile(caddyfile)
+			if err != nil {
+				t.Fatal(err)
+			}
+			adapted, _, err := caddyconfig.GetAdapter("nylzo").Adapt(source, map[string]any{"filename": caddyfile})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var config map[string]any
+			if err = json.Unmarshal(adapted, &config); err != nil {
+				t.Fatal(err)
+			}
+			var dials []string
+			rewrite(config, func(key string, value any) any {
+				if key == "dial" {
+					dials = append(dials, fmt.Sprint(value))
+				}
+				return value
+			})
+			if len(dials) == 0 {
+				t.Fatal("the Caddyfile proxies to no backend")
+			}
+			for _, dial := range dials {
+				host, _, splitErr := net.SplitHostPort(dial)
+				if splitErr != nil || net.ParseIP(host) == nil {
+					t.Errorf("the backend is dialled as %q, a name instead of an address", dial)
+				}
+			}
+		})
+	}
+}
+
 func TestCaddyfilesProtectTheEdge(t *testing.T) {
 	for name, caddyfile := range profileCaddyfiles {
 		t.Run(name, func(t *testing.T) {

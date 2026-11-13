@@ -20,7 +20,7 @@ services:
       NYLZO_DATA_DIR: /home/nonroot
       NYLZO_PEPPER_FILE: /run/secrets/nylzo_pepper
       NYLZO_REPORT_KEY: ${NYLZO_REPORT_KEY:?set NYLZO_REPORT_KEY; create it with nylzo report-key on your own computer}
-      NYLZO_TRUSTED_PROXIES: 172.30.80.2/32,fd1f:9791:e50b::2/128
+      NYLZO_TRUSTED_PROXIES: 172.30.82.2/32,fd1f:9791:e50b:1::2/128
       NYLZO_GLOBAL_DAILY_CREATES: ${NYLZO_GLOBAL_DAILY_CREATES:-2000}
       NYLZO_OPERATOR: ${NYLZO_OPERATOR:-}
       NYLZO_CONTACT: ${NYLZO_CONTACT:-}
@@ -29,7 +29,10 @@ services:
     secrets: [nylzo_pepper]
     volumes:
       - nylzo-data:/home/nonroot
-    networks: [nylzo]
+    networks:
+      backend:
+        ipv4_address: 172.30.82.3
+        ipv6_address: fd1f:9791:e50b:1::3
     logging: &logging
       driver: local
       options:
@@ -71,9 +74,10 @@ services:
           create_host_path: false
     depends_on: [nylzo]
     networks:
-      nylzo:
-        ipv4_address: 172.30.80.2
-        ipv6_address: fd1f:9791:e50b::2
+      backend:
+        ipv4_address: 172.30.82.2
+        ipv6_address: fd1f:9791:e50b:1::2
+      edge: {}
 
 secrets:
   nylzo_pepper:
@@ -83,11 +87,17 @@ volumes:
   nylzo-data:
 
 networks:
-  nylzo:
+  backend:
+    internal: true
     enable_ipv6: true
+    driver_opts:
+      com.docker.network.bridge.gateway_mode_ipv4: isolated
+      com.docker.network.bridge.gateway_mode_ipv6: isolated
     ipam:
       config:
-        - subnet: 172.30.80.0/24
-          ip_range: 172.30.80.128/25
-        - subnet: fd1f:9791:e50b::/64
-          ip_range: fd1f:9791:e50b:0:8000::/65
+        - subnet: 172.30.82.0/24
+          ip_range: 172.30.82.128/25
+        - subnet: fd1f:9791:e50b:1::/64
+          ip_range: fd1f:9791:e50b:1:8000::/65
+  edge:
+    enable_ipv6: true

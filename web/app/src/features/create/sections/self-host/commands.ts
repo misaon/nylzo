@@ -99,6 +99,7 @@ export function installLines(tab: InstallTab, domain: string): readonly (readonl
           argument('caddy-state'),
         ],
         [command('docker'), word('compose'), word('up'), flag('-d')],
+        [command('sudo'), command('bash'), argument('check-isolation')],
       ];
     }
     case 'binary': {
@@ -157,4 +158,5 @@ export const LINE_DELAYS = [
   '[--reveal-delay:1640ms]',
   '[--reveal-delay:1810ms]',
   '[--reveal-delay:1980ms]',
+  '[--reveal-delay:2150ms]',
 ] as const;

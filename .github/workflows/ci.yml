@@ -626,6 +626,21 @@ jobs:
         env:
           SSL_CERT_FILE: ${{ runner.temp }}/root.crt
         run: dist/nylzo verify-client --server https://localhost
+      - name: Nylzo's network reaches neither the host nor the internet, not even through DNS
+        working-directory: deploy/compose
+        run: |
+          sudo bash check-isolation
+          nylzo=$(docker compose ps -q nylzo)
+          pid=$(docker inspect --format '{{.State.Pid}}' "$nylzo")
+          in_nylzo() { sudo nsenter --target "$pid" --net -- "$@"; }
+          caddy=$(in_nylzo dig @127.0.0.11 +short +tries=1 +time=3 caddy A)
+          test "$caddy" = 172.30.82.2
+          outside=$(in_nylzo dig @127.0.0.11 +tries=1 +time=3 example.com A)
+          grep -E 'status: (SERVFAIL|REFUSED)' <<< "$outside"
+          docker network connect nylzo_edge "$nylzo"
+          sudo bash check-isolation 2>&1 | grep -F 'nylzo is attached to networks other than nylzo_backend'
+          docker network disconnect nylzo_edge "$nylzo"
+          sudo bash check-isolation
       - name: Caddy logs nothing about a request that fails (spec §10)
         working-directory: deploy/compose
         run: |

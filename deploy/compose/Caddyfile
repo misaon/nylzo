@@ -36,7 +36,7 @@
 			maintenance /var/lib/caddy/maintenance
 			contact {$NYLZO_CONTACT}
 		}
-		reverse_proxy nylzo:8080 {
+		reverse_proxy 172.30.82.3:8080 {
 			handle_response {
 				route {
 					nylzo_data
