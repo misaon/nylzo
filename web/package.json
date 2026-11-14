@@ -18,19 +18,19 @@
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
-    "@sveltejs/mcp": "0.1.28",
+    "@sveltejs/mcp": "0.1.30",
     "@types/bun": "1.4.4",
     "eslint-plugin-perfectionist": "5.13.0",
-    "eslint-plugin-playwright": "2.12.1",
-    "eslint-plugin-regexp": "3.3.1",
-    "knip": "6.42.0",
-    "oxfmt": "0.75.0",
-    "oxlint": "1.90.0",
-    "oxlint-tsgolint": "7.0.2005"
+    "eslint-plugin-playwright": "2.12.2",
+    "eslint-plugin-regexp": "3.3.3",
+    "knip": "6.45.0",
+    "oxfmt": "0.78.0",
+    "oxlint": "1.93.0",
+    "oxlint-tsgolint": "7.0.2006"
   },
   "overrides": {
-    "eslint": "10.13.0",
-    "minimatch": "11.0.1"
+    "eslint": "10.14.0",
+    "minimatch": "11.0.7"
   },
   "engines": {
     "bun": "1.4.4"
