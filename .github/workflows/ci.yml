@@ -136,28 +136,14 @@ jobs:
           name: windows-tests
           path: ${{ runner.temp }}/windows-tests
           digest-mismatch: error
-      - name: Files and directories get an owner-only access list in a directory everyone can read
+      - name: Owner-only access lists, Internet zone marks, protected process memory, the entry point and stop signals
         shell: pwsh
         run: |
-          & "$env:RUNNER_TEMP/windows-tests/privatefile.test.exe" '-test.v' '-test.count=1'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: A new file gets the Internet zone mark without an address before it holds content
-        shell: pwsh
-        run: |
-          & "$env:RUNNER_TEMP/windows-tests/quarantine.test.exe" '-test.v' '-test.count=1'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: A protected process denies memory reads to other processes of the user, and the entry point protects it
-        shell: pwsh
-        run: |
-          foreach ($test in 'harden', 'nylzo') {
+          foreach ($test in 'privatefile', 'quarantine', 'harden', 'nylzo', 'stopsignal') {
+            Write-Host "== $test"
             & "$env:RUNNER_TEMP/windows-tests/$test.test.exe" '-test.v' '-test.count=1'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-      - name: A stop signal ends the process with 128 plus its number
-        shell: pwsh
-        run: |
-          & "$env:RUNNER_TEMP/windows-tests/stopsignal.test.exe" '-test.v' '-test.count=1'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   macos:
     name: Go platform tests on macOS
@@ -768,9 +754,8 @@ jobs:
           PY
       - name: The ko images run as their own users and contain the archived binaries
         run: |
+          architecture=$(go env GOHOSTARCH)
           for id in nylzo caddy; do
-            architecture=amd64
-            if [ "$(uname -m)" = aarch64 ]; then architecture=arm64; fi
             image="127.0.0.1:5000/${id}:staging-$(jq -r .version dist/metadata.json)"
             docker pull --platform "linux/$architecture" "$image"
             user=$(docker image inspect --format '{{.Config.User}}' "$image")
@@ -783,9 +768,7 @@ jobs:
           done
       - name: The binary and embedded client carry the same build identity
         run: |
-          architecture=amd64
-          if [ "$(uname -m)" = aarch64 ]; then architecture=arm64; fi
-          binary=(dist/nylzo_linux_"${architecture}"_*/nylzo)
+          binary=(dist/nylzo_linux_"$(go env GOHOSTARCH)"_*/nylzo)
           "${binary[0]}" version --json | cmp - internal/server/web/dist/assets/build-info.json
       - run: sha256sum dist/*/nylzo dist/*/nylzo.exe dist/*/caddy dist/*.tar.gz dist/*.zip .host-bundle/*.tar internal/server/web/dist/*.html internal/server/web/dist/*.md internal/server/web/dist/assets/* > hashes.txt
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -852,7 +835,6 @@ jobs:
           queries: security-extended
           config: |
             threat-models: remote
-      - uses: github/codeql-action/autobuild@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
       - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: /language:go
