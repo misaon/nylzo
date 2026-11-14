@@ -29,7 +29,7 @@ func RunReportKey(_ context.Context, environment *command.Environment, arguments
 			command.Program,
 		)
 	}
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	if *keyFile == "" {
@@ -65,7 +65,7 @@ func RunReports(_ context.Context, environment *command.Environment, arguments [
 			command.Program,
 		)
 	}
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	if *keyFile == "" || environment.Terminal.StdinIsTerminal() {

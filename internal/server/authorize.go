@@ -250,7 +250,7 @@ const emptyBodyWait = time.Second
 // signed request never waits longer for bytes it must not have.
 func emptyBody(w http.ResponseWriter, r *http.Request) bool {
 	if r.ContentLength > 0 || (r.ContentLength < 0 && !endsWithin(w, r, emptyBodyWait)) {
-		writeError(w, http.StatusBadRequest, errBadRequest)
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 		return false
 	}
 	return true

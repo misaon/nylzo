@@ -132,9 +132,9 @@ func createWithFile(t *testing.T, instance *testServer, text, name string, data 
 	if err != nil {
 		t.Fatal(err)
 	}
-	message := content{
-		meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: name, Size: int64(len(data))}},
-		file: data,
+	message := envelope.Payload{
+		Meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: name, Size: int64(len(data))}},
+		File: data,
 	}
 	created, err := createOnce(
 		t.Context(),
@@ -276,9 +276,9 @@ func TestReadNeverLosesAMessageToANameClash(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := "beside a clashing attachment"
-	message := content{
-		meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: "MESSAGE.TXT", MIME: "text/plain", Size: 4}},
-		file: []byte("file"),
+	message := envelope.Payload{
+		Meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: "MESSAGE.TXT", MIME: "text/plain", Size: 4}},
+		File: []byte("file"),
 	}
 	created, err := createOnce(
 		t.Context(),
@@ -322,9 +322,9 @@ func TestNamesThatFoldTogetherDoNotClash(t *testing.T) {
 	}
 	text := "beside a folded clash"
 	for _, name := range []string{"Meßage.txt", "meſſage.txt", "MESSAGE.TXT"} {
-		message := content{
-			meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: name, MIME: "text/plain", Size: 4}},
-			file: []byte("file"),
+		message := envelope.Payload{
+			Meta: envelope.Meta{Text: &text, File: &envelope.FileMeta{Name: name, MIME: "text/plain", Size: 4}},
+			File: []byte("file"),
 		}
 		created, createErr := createOnce(
 			t.Context(),

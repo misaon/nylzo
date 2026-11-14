@@ -110,12 +110,12 @@ func TestFromEnvironmentReadsEveryVariable(t *testing.T) {
 	if settings.Listen != ":9090" || !slices.Equal(settings.TrustedProxies, proxies) ||
 		settings.ProxyMode != config.ProxyModeScaleway || settings.SweepInterval != 15*time.Minute ||
 		settings.Limits.MaxTTL != config.MaxTTL || settings.Limits.MaxOpens != 3 ||
-		settings.Limits.MaxObjectBytes != envelope.ObjectLimit(1048576) || settings.Rates.CreatePerHour != 7 ||
+		settings.Limits.MaxObjectBytes() != envelope.ObjectLimit(1048576) || settings.Rates.CreatePerHour != 7 ||
 		settings.Rates.GlobalDailyCreates != 500 || settings.PoWConcurrency != 4 || settings.MinFreeBytes != 0 ||
 		settings.PublicURL != "https://nylzo.example" || len(settings.PepperPrevious) != 32 {
 		t.Fatalf("settings %+v", settings)
 	}
-	if got := config.Defaults().Limits.MaxObjectBytes; got != 5373952 {
+	if got := config.Defaults().Limits.MaxObjectBytes(); got != 5373952 {
 		t.Fatalf("default max_object_bytes %d, spec section 3 says 5373952", got)
 	}
 	if _, withoutPepper := config.FromEnvironment(environment(nil), false); withoutPepper != nil {
@@ -178,7 +178,6 @@ func TestValidateRefusesSettingsOutsideTheLimits(t *testing.T) {
 		"zero burst":          func(settings *config.Server) { settings.Rates.BucketBurst = 0 },
 		"zero rate":           func(settings *config.Server) { settings.Rates.SourcePerSecond = 0 },
 		"negative sweep":      func(settings *config.Server) { settings.SweepInterval = -time.Second },
-		"stale object limit":  func(settings *config.Server) { settings.Limits.MaxFileBytes = 1 << 20 },
 		"overflowing limit":   func(settings *config.Server) { settings.Rates.CreatePerHour = 1 << 62 },
 		"plain http publicly": func(settings *config.Server) { settings.PublicURL = "http://nylzo.example" },
 	} {

@@ -88,13 +88,9 @@ func (c *Client) handshake(
 		seed:    read,
 		headers: map[string]string{api.KE1HeaderName: core.Encode(ke1)},
 	}
-	response, err := c.signed(ctx, &request, shortTimeout)
-	if err != nil {
-		return handshakeAnswer{}, err
-	}
 	var body api.Handshake
-	if readErr := readJSON(response, &body); readErr != nil {
-		return handshakeAnswer{}, readErr
+	if err := c.signedJSON(ctx, &request, &body); err != nil {
+		return handshakeAnswer{}, err
 	}
 	ke2, ke2Err := core.DecodeExact(body.KE2, opaque.KE2Len)
 	challenge, challengeErr := core.DecodeExact(body.Challenge, signing.ChallengeLen)

@@ -42,7 +42,7 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = store.Ack(t.Context(), storage, blobs, record, claimed.Lease.MAC, claimedAt); err != nil {
+	if err = store.Ack(t.Context(), storage, blobs, record, claimed.MAC, claimedAt); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = store.SweepAll(t.Context(), storage, blobs, testNow.Add(9*24*time.Hour)); err != nil {
@@ -85,7 +85,7 @@ func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 	create(t, storage, shared)
 	var leaseMACs [][]byte
 	for range 3 {
-		leaseMACs = append(leaseMACs, claim(t, storage, shared, attemptAt).Lease.MAC)
+		leaseMACs = append(leaseMACs, claim(t, storage, shared, attemptAt).MAC)
 	}
 	storage.Close()
 	data, err := os.ReadFile(path)

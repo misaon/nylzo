@@ -249,7 +249,7 @@ func encodeMessage(message *Message) []byte {
 	data = append(data, saturate[uint8](int64(len(message.Leases))))
 	for _, lease := range message.Leases {
 		data = append(data, lease.PepperID)
-		data = append(data, fixedMAC(lease.MAC)...)
+		data = append(data, fixed(lease.MAC, macLen)...)
 		data = appendTime(data, lease.ExpiresAt)
 		data = append(data, saturate[uint8](int64(lease.Downloads)))
 	}
@@ -375,10 +375,6 @@ func optional(moment *time.Time) time.Time {
 		return time.Time{}
 	}
 	return *moment
-}
-
-func fixedMAC(mac []byte) []byte {
-	return fixed(mac, macLen)
 }
 
 func fixed(value []byte, length int) []byte {

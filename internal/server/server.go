@@ -25,7 +25,6 @@ import (
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/sweep"
-	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store"
@@ -93,7 +92,6 @@ type Server struct {
 	requestCounts *logging.RequestCounts
 	eventCounts   *logging.Events
 	events        *slog.Logger
-	pace          transport.Pace
 	handler       http.Handler
 }
 
@@ -116,7 +114,6 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		leaseTimers: leasetimer.New(),
 		logger:      logging.New(os.Stderr),
 		webFiles:    web.Files(),
-		pace:        transport.DefaultPace(),
 	}
 	server.recordsKey = ring.RecordsKey()
 	server.dummyRow = newDummyRow(server.recordsKey)
@@ -150,7 +147,7 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 		server.epochs.Close()
 		return nil, prepareErr
 	}
-	server.disk = server.newDiskReserver(diskspace.Free)
+	server.disk = diskspace.NewReserver(settings.DataDirectory, settings.MinFreeBytes, diskspace.Free, server.events)
 	server.handler = server.routes()
 	return server, nil
 }
@@ -169,19 +166,14 @@ func (s *Server) Events() *slog.Logger {
 // deadline of its message; it also catches up at once on the minutes that a slow start let pass. It waits for the next
 // minute of the wall clock each time, so a suspend or a clock step delays it by a minute at most.
 func (s *Server) RunRatchet(ctx context.Context) {
-	if err := s.advanceRatchet(time.Now()); err != nil {
-		s.logger.ErrorContext(ctx, "epoch-advance", "err", logging.ErrorText(err))
-	}
 	for {
-		timer := time.NewTimer(untilNextMinute(time.Now()))
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			return
-		case <-timer.C:
-		}
 		if err := s.advanceRatchet(time.Now()); err != nil {
 			s.logger.ErrorContext(ctx, "epoch-advance", "err", logging.ErrorText(err))
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(untilNextMinute(time.Now())):
 		}
 	}
 }
@@ -285,10 +277,6 @@ func (s *Server) loadWebClient() error {
 	}
 	s.logger.Info("web-client", "built", build.Built, "assets", len(build.Assets), "public_url", s.settings.PublicURL)
 	return nil
-}
-
-func (s *Server) newDiskReserver(free diskspace.FreeFunc) *diskspace.Reserver {
-	return diskspace.NewReserver(s.settings.DataDirectory, s.settings.MinFreeBytes, free, s.events)
 }
 
 func (s *Server) flushCounts(ctx context.Context) {

@@ -12,13 +12,9 @@ import (
 )
 
 type frontend struct {
-	pages        Pages
-	previews     map[string][]byte
-	assets       map[string]Asset
-	robots       []byte
-	sitemap      []byte
-	securityText []byte
-	manifest     []byte
+	pages    Pages
+	previews map[string][]byte
+	assets   map[string]Asset
 }
 
 func NewHandler(build Build, publicURL, contact string, information buildinfo.Info) (http.Handler, error) {
@@ -32,24 +28,17 @@ func NewHandler(build Build, publicURL, contact string, information buildinfo.In
 		return nil, err
 	}
 	manifest, _ := json.Marshal(build.Manifest(information.Version, publicURL, pages, information))
-	site := &frontend{
-		pages:        pages,
-		previews:     previewPages(publicURL, build.Assets),
-		assets:       build.Assets,
-		robots:       Robots(publicURL),
-		sitemap:      Sitemap(publicURL),
-		securityText: SecurityText(publicURL, contact, information.Date),
-		manifest:     manifest,
-	}
+	site := &frontend{pages: pages, previews: previewPages(publicURL, build.Assets), assets: build.Assets}
 	mux := http.NewServeMux()
 	HandlePages(mux, site.page)
 	mux.HandleFunc("GET /", site.serveNotFound)
 	mux.HandleFunc("GET /assets/{name}", site.serveAsset)
 	mux.HandleFunc("GET /"+agentsGuideFile, serveIfBuilt(build.AgentsGuide))
-	mux.HandleFunc("GET "+robotsPath, site.serveRobots)
-	mux.HandleFunc("GET "+sitemapPath, site.serveSitemap)
-	mux.HandleFunc("GET "+SecurityTextPath, site.serveSecurityText)
-	mux.HandleFunc("GET "+ManifestPath, site.serveManifest)
+	mux.HandleFunc("GET "+robotsPath, serveBody("text/plain; charset=utf-8", Robots(publicURL)))
+	mux.HandleFunc("GET "+sitemapPath, serveBody("application/xml; charset=utf-8", Sitemap(publicURL)))
+	securityText := SecurityText(publicURL, contact, information.Date)
+	mux.HandleFunc("GET "+SecurityTextPath, serveBody("text/plain; charset=utf-8", securityText))
+	mux.HandleFunc("GET "+ManifestPath, serveBody("application/json; charset=utf-8", manifest))
 	return frontendHeaders(mux), nil
 }
 
@@ -117,32 +106,16 @@ func (f *frontend) serveAsset(w http.ResponseWriter, r *http.Request) {
 	asset.Serve(w, r)
 }
 
-func (f *frontend) serveRobots(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write(f.robots)
-}
-
-func (f *frontend) serveSitemap(w http.ResponseWriter, r *http.Request) {
-	if f.sitemap == nil {
-		http.NotFound(w, r)
-		return
+// serveBody answers with a document that is fixed for the process, or 404 when this instance has none.
+func serveBody(contentType string, body []byte) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if body == nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", contentType)
+		_, _ = w.Write(body)
 	}
-	w.Header().Set("Content-Type", "application/xml; charset=utf-8")
-	_, _ = w.Write(f.sitemap)
-}
-
-func (f *frontend) serveSecurityText(w http.ResponseWriter, r *http.Request) {
-	if f.securityText == nil {
-		http.NotFound(w, r)
-		return
-	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = w.Write(f.securityText)
-}
-
-func (f *frontend) serveManifest(w http.ResponseWriter, _ *http.Request) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_, _ = w.Write(f.manifest)
 }
 
 func serveIfBuilt(asset *Asset) http.HandlerFunc {

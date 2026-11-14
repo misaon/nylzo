@@ -149,7 +149,7 @@ func (f *fixture) get(created *message) *store.Record {
 	return &record
 }
 
-func (f *fixture) claim(created *message, now time.Time, seed int) (store.ClaimResult, error) {
+func (f *fixture) claim(created *message, now time.Time, seed int) (store.Lease, error) {
 	record := f.get(created)
 	return store.Claim(f.t.Context(), f.store, record, claimParameters(record, now, seed))
 }
@@ -181,7 +181,7 @@ func (f *fixture) claimAndAck(created *message) {
 	if err != nil {
 		f.t.Fatal(err)
 	}
-	if err = f.ack(created, &claimed.Lease, baseTime, f.blobs); err != nil {
+	if err = f.ack(created, &claimed, baseTime, f.blobs); err != nil {
 		f.t.Fatal(err)
 	}
 }

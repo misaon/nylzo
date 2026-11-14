@@ -183,12 +183,7 @@ func HandOver(raw, instance string) (HandedOver, error) {
 func readFlags(environment *command.Environment) (*flag.FlagSet, *readOptions) {
 	options := &readOptions{}
 	flags := command.NewFlags(environment, "read")
-	flags.StringVar(
-		&options.linkFile,
-		"link-file",
-		"",
-		"read the link from this file (or "+command.EnvironmentLink+", or stdin)",
-	)
+	flags.StringVar(&options.linkFile, "link-file", "", linkFileUsage)
 	passphraseFlags(flags, &options.passphrase)
 	flags.StringVar(
 		&options.out,
@@ -274,22 +269,18 @@ func read(
 	guard *claimGuard,
 ) int {
 	flags, options := readFlags(environment)
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	if code, ok := checkDestination(ctx, environment, options); !ok {
 		return code
 	}
-	link, err := linkFromInput(environment, options.linkFile)
+	link, server, err := linkClient(environment, options.linkFile)
 	if err != nil {
-		return command.Failf(environment, "link: %s", command.Explain(err))
+		return command.Failf(environment, "%s", err)
 	}
 	defer link.wipe()
-	server, err := client.New(link.origin)
-	if err != nil {
-		return command.Failf(environment, "%s", command.Explain(err))
-	}
-	unlocked, err := unlockClaim(ctx, environment, server, &link, options.passphrase)
+	unlocked, err := unlockClaim(ctx, environment, server, link, options.passphrase)
 	if err != nil {
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
@@ -303,7 +294,7 @@ func read(
 	}
 	guard.out = options.out
 	guard.hangup = options.out != "" || !environment.Terminal.StdoutIsTerminal()
-	opened, claimCtx, err := claimMessage(ctx, server, &link, unlocked, guard)
+	opened, claimCtx, err := claimMessage(ctx, server, link, unlocked, guard)
 	if err != nil {
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
@@ -317,7 +308,7 @@ func read(
 			fmt.Fprintln(environment.Stdout, path)
 		}
 	}
-	acknowledge(claimCtx, environment, server, &link, opened.lease)
+	acknowledge(claimCtx, environment, server, link, opened.lease)
 	return finishRead(environment, paths, loss)
 }
 
@@ -733,7 +724,7 @@ func fetchEnvelope(
 	login *client.Login,
 	size int64,
 ) (client.Envelope, string, error) {
-	claimed, err := server.Claim(ctx, link.id, &link.keys.R, login, size, nil)
+	claimed, err := server.Claim(ctx, link.id, &link.keys.R, login, size)
 	if err == nil {
 		return claimed.Envelope, claimed.Lease, nil
 	}
@@ -796,21 +787,6 @@ func outputFiles(payload envelope.Payload, withText bool) []outputFile {
 	return files
 }
 
-func writeOutput(
-	environment *command.Environment,
-	directory *os.Root,
-	base string,
-	files []outputFile,
-) ([]string, error) {
-	if len(files) == 0 {
-		return nil, nil
-	}
-	if directory == nil {
-		return nil, errAttachmentDiscarded
-	}
-	return writeWithFallback(environment, directory, base, files)
-}
-
 func printSaveNotices(environment *command.Environment, paths []string, toStdout, attached bool) {
 	if toStdout {
 		for _, path := range paths {
@@ -855,13 +831,19 @@ func printText(environment *command.Environment, text string) {
 	}
 }
 
-// writeWithFallback tries a second new directory next to the first, so a failed write does not lose the message.
-func writeWithFallback(
+// writeOutput tries a second new directory next to the first, so a failed write does not lose the message.
+func writeOutput(
 	environment *command.Environment,
 	directory *os.Root,
 	base string,
 	files []outputFile,
 ) ([]string, error) {
+	if len(files) == 0 {
+		return nil, nil
+	}
+	if directory == nil {
+		return nil, errAttachmentDiscarded
+	}
 	paths, err := writeAll(environment, directory, files)
 	if err == nil {
 		return paths, nil

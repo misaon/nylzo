@@ -26,7 +26,7 @@ func (s *Store) DueBlobs(ctx context.Context, now time.Time, after seal.Locator,
 	rows, err := s.reader.QueryContext(
 		ctx,
 		dueBlobsQuery,
-		milliseconds(now),
+		now.UnixMilli(),
 		after[:],
 		limit,
 	)
@@ -78,13 +78,21 @@ func (s *Store) PurgeRows(ctx context.Context, now time.Time, limit int) (int, e
 }
 
 func (s *Store) KnownBlobReferences(ctx context.Context) (map[string]struct{}, error) {
-	references, err := s.strings(ctx, `SELECT blob_ref FROM messages WHERE blob_ref IS NOT NULL`)
+	rows, err := s.reader.QueryContext(ctx, `SELECT blob_ref FROM messages WHERE blob_ref IS NOT NULL`)
 	if err != nil {
 		return nil, err
 	}
-	known := make(map[string]struct{}, len(references))
-	for _, reference := range references {
+	defer rows.Close()
+	known := map[string]struct{}{}
+	for rows.Next() {
+		var reference string
+		if scanErr := rows.Scan(&reference); scanErr != nil {
+			return nil, scanErr
+		}
 		known[reference] = struct{}{}
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, rowsErr
 	}
 	return known, nil
 }
@@ -92,7 +100,7 @@ func (s *Store) KnownBlobReferences(ctx context.Context) (map[string]struct{}, e
 func (s *Store) purge(ctx context.Context, query string, now time.Time, limit int) (int, error) {
 	var purged int64
 	err := s.transaction(ctx, func(tx *sql.Tx) error {
-		result, err := tx.ExecContext(ctx, query, milliseconds(now), limit)
+		result, err := tx.ExecContext(ctx, query, now.UnixMilli(), limit)
 		if err != nil {
 			return err
 		}
@@ -100,21 +108,4 @@ func (s *Store) purge(ctx context.Context, query string, now time.Time, limit in
 		return err
 	})
 	return int(purged), err
-}
-
-func (s *Store) strings(ctx context.Context, query string, arguments ...any) ([]string, error) {
-	rows, err := s.reader.QueryContext(ctx, query, arguments...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var values []string
-	for rows.Next() {
-		var value string
-		if scanErr := rows.Scan(&value); scanErr != nil {
-			return nil, scanErr
-		}
-		values = append(values, value)
-	}
-	return values, rows.Err()
 }

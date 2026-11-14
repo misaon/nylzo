@@ -2,7 +2,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"time"
 
@@ -19,9 +18,6 @@ import (
 // handleHandshake answers KE1 with KE2 and counts a passphrase attempt until a matching KE3 takes it back (spec
 // section 6.4). Every message runs it, also one without a passphrase.
 func (s *Server) handleHandshake(w http.ResponseWriter, r *http.Request) {
-	if !validPathID(w, r) || !s.allowRead(w, r) {
-		return
-	}
 	ke1, ok := parseKE1(w, r)
 	if !ok {
 		return
@@ -51,8 +47,7 @@ func (s *Server) handleHandshake(w http.ResponseWriter, r *http.Request) {
 	defer clear(registration)
 	challenge, expires, issued := s.challenges.IssueLogin(now)
 	if !issued {
-		setRetryAfter(w, challengesFullRetry)
-		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		writeUnavailable(w, challengesFullRetry)
 		return
 	}
 	attempt, status, err := store.CountAttempt(r.Context(), s.store, record, time.Now)
@@ -74,8 +69,7 @@ func (s *Server) handleHandshake(w http.ResponseWriter, r *http.Request) {
 	) {
 		login.Wipe()
 		s.takeBackUnanswered(r, record, attempt)
-		setRetryAfter(w, challengesFullRetry)
-		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		writeUnavailable(w, challengesFullRetry)
 		return
 	}
 	writeJSON(w, http.StatusOK, api.Handshake{
@@ -92,8 +86,7 @@ func (s *Server) handleHandshake(w http.ResponseWriter, r *http.Request) {
 func (s *Server) mayCount(w http.ResponseWriter, r *http.Request, record *store.Record) bool {
 	if !s.ring.Holds(record.Message.RegistrationPepperID) {
 		s.events.ErrorContext(r.Context(), "registration-pepper-missing")
-		setRetryAfter(w, challengesFullRetry)
-		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		writeUnavailable(w, challengesFullRetry)
 		return false
 	}
 	if err := store.RefuseAttempt(record, time.Now()); err != nil {
@@ -190,14 +183,14 @@ func (s *Server) takeBackUnchecked(r *http.Request) {
 	if login == nil {
 		return
 	}
-	ke3, err := parseOPAQUEHeader(r, api.KE3HeaderName, opaque.KE3Len)
-	if err != nil || login.Server.ServerFinish(ke3) != nil {
+	ke3, ok := parseOPAQUEHeader(r, api.KE3HeaderName, opaque.KE3Len)
+	if !ok || login.Server.ServerFinish(ke3) != nil {
 		return
 	}
 	ctx := context.WithoutCancel(r.Context())
-	granted, ok, err := s.authorize(ctx, r, login.ID.String(), seal.Read, nil)
+	granted, found, err := s.authorize(ctx, r, login.ID.String(), seal.Read, nil)
 	defer granted.forget()
-	if err == nil && ok && granted.record.Row.Locator == login.Locator {
+	if err == nil && found && granted.record.Row.Locator == login.Locator {
 		err = store.TakeBack(ctx, s.store, &granted.record, login.Attempt, time.Now())
 	}
 	if err != nil {
@@ -205,17 +198,15 @@ func (s *Server) takeBackUnchecked(r *http.Request) {
 	}
 }
 
-var errOPAQUEHeader = errors.New("server: malformed OPAQUE header")
-
 func parseKE1(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
-	ke1, err := parseOPAQUEHeader(r, api.KE1HeaderName, opaque.KE1Len)
-	if err == nil {
+	ke1, ok := parseOPAQUEHeader(r, api.KE1HeaderName, opaque.KE1Len)
+	if ok {
 		_, blindedErr := opaque.DeserializeElement(ke1[:opaque.ElementLen])
 		_, keyshareErr := opaque.DeserializeElement(ke1[opaque.KE1Len-opaque.ElementLen:])
-		err = errors.Join(blindedErr, keyshareErr)
+		ok = blindedErr == nil && keyshareErr == nil
 	}
-	if err != nil {
-		writeError(w, http.StatusBadRequest, errBadRequest)
+	if !ok {
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 		return nil, false
 	}
 	return ke1, true
@@ -224,15 +215,10 @@ func parseKE1(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 // parseKE3 answers a client of protocol v2, which sends X-Nylzo-Verifier instead, with client_outdated.
 func parseKE3(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	if len(r.Header.Values(api.VerifierHeaderName)) > 0 {
-		writeError(w, http.StatusBadRequest, errClientOutdated)
+		writeError(w, http.StatusBadRequest, api.ErrorClientOutdated)
 		return nil, false
 	}
-	ke3, err := parseOPAQUEHeader(r, api.KE3HeaderName, opaque.KE3Len)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, errBadRequest)
-		return nil, false
-	}
-	return ke3, true
+	return requireKE3(w, r)
 }
 
 // parseOptionalKE3 reads the KE3 that a download may carry, nil without one; a malformed or repeated one answers 400.
@@ -240,22 +226,22 @@ func parseOptionalKE3(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	if len(r.Header.Values(api.KE3HeaderName)) == 0 {
 		return nil, true
 	}
-	ke3, err := parseOPAQUEHeader(r, api.KE3HeaderName, opaque.KE3Len)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, errBadRequest)
-		return nil, false
-	}
-	return ke3, true
+	return requireKE3(w, r)
 }
 
-func parseOPAQUEHeader(r *http.Request, name string, length int) ([]byte, error) {
+func requireKE3(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	ke3, ok := parseOPAQUEHeader(r, api.KE3HeaderName, opaque.KE3Len)
+	if !ok {
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
+	}
+	return ke3, ok
+}
+
+func parseOPAQUEHeader(r *http.Request, name string, length int) ([]byte, bool) {
 	values := r.Header.Values(name)
 	if len(values) != 1 {
-		return nil, errOPAQUEHeader
+		return nil, false
 	}
 	decoded, err := core.DecodeExact(values[0], length)
-	if err != nil {
-		return nil, errOPAQUEHeader
-	}
-	return decoded, nil
+	return decoded, err == nil
 }

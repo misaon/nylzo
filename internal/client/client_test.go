@@ -350,7 +350,7 @@ func TestCreateRefusesAnotherExpiryAndReadersNameTheirFlags(t *testing.T) {
 		w.Write([]byte(`{"error":"gone","state":"expired"}`))
 	})
 	id := core.NewID()
-	reader.Claim(t.Context(), id, core.NewSecret(), &Login{}, 0, nil)
+	reader.Claim(t.Context(), id, core.NewSecret(), &Login{}, 0)
 	reader.Blob(t.Context(), id, core.NewSecret(), "lease", 0)
 	if len(flags) != 2 || flags[0] != "2" || flags[1] != "2" {
 		t.Fatalf("readers sent X-Nylzo-Flags %q", flags)
@@ -418,7 +418,6 @@ func TestAClaimSignsTheChallengeOfItsHandshakeAndNeverRetries(t *testing.T) {
 		core.NewSecret(),
 		login,
 		0,
-		nil,
 	); !IsKind(
 		err,
 		api.ErrorNotFound,

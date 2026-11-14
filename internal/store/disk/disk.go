@@ -33,7 +33,6 @@ var ErrReference = errors.New("disk: invalid blob reference")
 type Blobs struct {
 	root          string
 	pool          Pool
-	filling       sync.Mutex
 	refilling     atomic.Bool
 	onPoolFailure func(error)
 	known         sync.Mutex
@@ -76,7 +75,33 @@ func (b *Blobs) PutExpiring(
 	size int64,
 	expiresAt time.Time,
 ) (time.Time, error) {
-	return b.putStamped(ctx, reference, content, size, store.BlobPurgeAt(expiresAt))
+	final, err := b.path(reference)
+	if err != nil {
+		return time.Time{}, err
+	}
+	taken, err := b.claim(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	stored, err := taken.write(ctx, content, size, store.BlobPurgeAt(expiresAt))
+	if err == nil {
+		err = withSlot(ctx, func() error { return os.Link(taken.path, final) })
+	}
+	if err == nil {
+		removePublishedTemporary(taken.path)
+	} else {
+		b.giveBack(&taken)
+	}
+	if errors.Is(err, os.ErrExist) {
+		return time.Time{}, store.ErrConflict
+	}
+	if err != nil {
+		return time.Time{}, err
+	}
+	if err = b.syncDirectory(ctx); err != nil {
+		return time.Time{}, errors.Join(err, erase.Shred(final, erase.BlockLen))
+	}
+	return stored, nil
 }
 
 func (b *Blobs) Open(ctx context.Context, reference string) (io.ReadSeekCloser, int64, error) {
@@ -251,42 +276,6 @@ func (b *Blobs) Restamp(_ context.Context, now time.Time) error {
 		errs = append(errs, os.Chtimes(directory, quarter, quarter))
 	}
 	return errors.Join(errs...)
-}
-
-func (b *Blobs) putStamped(
-	ctx context.Context,
-	reference string,
-	content io.Reader,
-	size int64,
-	purgeAt time.Time,
-) (time.Time, error) {
-	final, err := b.path(reference)
-	if err != nil {
-		return time.Time{}, err
-	}
-	taken, err := b.claim(ctx)
-	if err != nil {
-		return time.Time{}, err
-	}
-	stored, err := taken.write(ctx, content, size, purgeAt)
-	if err == nil {
-		err = withSlot(ctx, func() error { return os.Link(taken.path, final) })
-	}
-	if err == nil {
-		removePublishedTemporary(taken.path)
-	} else {
-		b.giveBack(&taken)
-	}
-	if errors.Is(err, os.ErrExist) {
-		return time.Time{}, store.ErrConflict
-	}
-	if err != nil {
-		return time.Time{}, err
-	}
-	if err = b.syncDirectory(ctx); err != nil {
-		return time.Time{}, errors.Join(err, erase.Shred(final, erase.BlockLen))
-	}
-	return stored, nil
 }
 
 // removePublishedTemporary unlinks the temporary name of a published blob, whose final name keeps the data; a name it

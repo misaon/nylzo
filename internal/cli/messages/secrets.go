@@ -175,12 +175,10 @@ func parseManageToken(raw string) (manageToken, error) {
 	if !ok || err != nil {
 		return manageToken{}, errManageToken
 	}
-	seed, err := core.Decode32(lines[1])
-	if err != nil {
+	token := manageToken{origin: origin, id: id}
+	if !core.DecodeInto(token.seed[:], lines[1]) {
 		return manageToken{}, errManageToken
 	}
-	token := manageToken{origin: origin, id: id, seed: *seed}
-	clear(seed[:])
 	return token, nil
 }
 

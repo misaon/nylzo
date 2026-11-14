@@ -46,17 +46,9 @@ func (c *Challenges) IssueLogin(now time.Time) ([signing.ChallengeLen]byte, time
 	return c.issueFor(now, loginTTL)
 }
 
-// See reports whether this process issued the challenge, no request presented it before and its window is open. A
-// genuine challenge is used up before its window is checked, so whatever the answer, the process never accepts it again.
-func (c *Challenges) See(challenge [signing.ChallengeLen]byte, now time.Time) bool {
-	accepted, login := c.Take(challenge, now)
-	if login != nil {
-		login.Wipe()
-	}
-	return accepted
-}
-
-// Take is See that also hands over the login state of a handshake that issued the challenge (spec section 5.5).
+// Take reports whether this process issued the challenge, no request presented it before and its window is open, and
+// hands over the login state of a handshake that issued it (spec section 5.5). A genuine challenge is used up before
+// its window is checked, so whatever the answer, the process never accepts it again.
 func (c *Challenges) Take(challenge [signing.ChallengeLen]byte, now time.Time) (bool, *Login) {
 	if !c.genuine(challenge) {
 		return false, nil

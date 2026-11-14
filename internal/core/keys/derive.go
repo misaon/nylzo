@@ -4,6 +4,7 @@ import (
 	"crypto/hkdf"
 	"crypto/sha256"
 	"errors"
+	"slices"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/opaque"
@@ -61,7 +62,7 @@ func PassphraseSalt(secret *[core.SecretLen]byte) ([PassphraseSaltLen]byte, erro
 // CredentialIdentifier is the credential_identifier of OPAQUE for a message: its id and its expiry share, so the OPRF
 // key that tests a passphrase stops existing with the share (spec section 5.1).
 func CredentialIdentifier(id core.ID, share *[core.ShareLen]byte) []byte {
-	return concatenate(id[:], share[:])
+	return slices.Concat(id[:], share[:])
 }
 
 func DeriveContent(
@@ -73,7 +74,7 @@ func DeriveContent(
 	if share == nil {
 		return ContentKeys{}, ErrShare
 	}
-	keyMaterial := concatenate(secret[:], exportKey[:], share[:])
+	keyMaterial := slices.Concat(secret[:], exportKey[:], share[:])
 	defer clear(keyMaterial)
 	var keys ContentKeys
 	err := expandAll(id, keyMaterial, []expansion{
@@ -114,16 +115,4 @@ func expand(prk []byte, step expansion) error {
 	copy(step.output, derived)
 	clear(derived)
 	return nil
-}
-
-func concatenate(parts ...[]byte) []byte {
-	length := 0
-	for _, part := range parts {
-		length += len(part)
-	}
-	joined := make([]byte, 0, length)
-	for _, part := range parts {
-		joined = append(joined, part...)
-	}
-	return joined
 }

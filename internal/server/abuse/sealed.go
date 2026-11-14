@@ -51,20 +51,17 @@ func kem() hpke.KEM { return hpke.MLKEM768X25519() }
 
 // Seal pads the report to one length, so a sealed report shows nothing about its reason or contact.
 func Seal(key hpke.PublicKey, now time.Time, submitted *Report) ([]byte, error) {
-	return sealStored(key, &Stored{
+	stored := Stored{
 		Date:      reportDate(now),
 		ID:        submitted.ID,
 		Reason:    report.RedactReason(submitted.Reason),
 		GoodFaith: submitted.GoodFaith,
 		Contact:   submitted.Contact,
-	})
-}
-
-func sealStored(key hpke.PublicKey, stored *Stored) ([]byte, error) {
+	}
 	var plain bytes.Buffer
 	encoder := json.NewEncoder(&plain)
 	encoder.SetEscapeHTML(false)
-	if err := encoder.Encode(stored); err != nil {
+	if err := encoder.Encode(&stored); err != nil {
 		return nil, err
 	}
 	if plain.Len() > plaintextLen {

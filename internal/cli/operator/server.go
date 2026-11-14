@@ -83,7 +83,7 @@ func runServer(
 			name,
 		)
 	}
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	logger := logging.New(environment.Stderr)

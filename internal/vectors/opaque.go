@@ -23,48 +23,48 @@ var errOPAQUERun = errors.New("does not complete")
 // OPAQUE is one registration and one handshake of spec section 2.1 with Nylzo's configuration, the server keys
 // derived from Pepper as in spec section 5.1. Messages that travel in headers are base64url, everything else hex.
 type OPAQUE struct {
-	Name                 string  `json:"name"`
-	ID                   string  `json:"id"`
-	S                    string  `json:"s"`
-	KDFID                int     `json:"kdf_id"`
-	Passphrase           *string `json:"passphrase,omitempty"`
-	PassphraseSalt       string  `json:"salt_pw_hex"`
-	Password             string  `json:"password_hex"`
-	Context              string  `json:"context_hex"`
-	E                    string  `json:"e_hex"`
-	CredentialIdentifier string  `json:"credential_identifier_hex"`
-	Pepper               string  `json:"pepper_hex"`
-	OPRFSeed             string  `json:"oprf_seed_hex"`
-	ServerKeySeed        string  `json:"server_key_seed_hex"`
-	ServerPublicKey      string  `json:"server_public_key_hex"`
-	BlindRegistration    string  `json:"blind_registration_hex"`
-	EnvelopeNonce        string  `json:"envelope_nonce_hex"`
-	RegistrationRequest  string  `json:"registration_request"`
-	RegistrationResponse string  `json:"registration_response"`
-	Registration         string  `json:"registration"`
-	BlindLogin           string  `json:"blind_login_hex"`
-	ClientNonce          string  `json:"client_nonce_hex"`
-	ClientKeyshareSeed   string  `json:"client_keyshare_seed_hex"`
-	MaskingNonce         string  `json:"masking_nonce_hex"`
-	ServerNonce          string  `json:"server_nonce_hex"`
-	ServerKeyshareSeed   string  `json:"server_keyshare_seed_hex"`
-	KE1                  string  `json:"ke1"`
-	KE2                  string  `json:"ke2"`
-	KE3                  string  `json:"ke3"`
-	P                    string  `json:"p_hex"`
-	Heavy                bool    `json:"heavy"`
+	Name                 string `json:"name"`
+	ID                   string `json:"id"`
+	S                    string `json:"s"`
+	KDFID                int    `json:"kdf_id"`
+	Passphrase           string `json:"passphrase,omitempty"`
+	PassphraseSalt       string `json:"salt_pw_hex"`
+	Password             string `json:"password_hex"`
+	Context              string `json:"context_hex"`
+	E                    string `json:"e_hex"`
+	CredentialIdentifier string `json:"credential_identifier_hex"`
+	Pepper               string `json:"pepper_hex"`
+	OPRFSeed             string `json:"oprf_seed_hex"`
+	ServerKeySeed        string `json:"server_key_seed_hex"`
+	ServerPublicKey      string `json:"server_public_key_hex"`
+	BlindRegistration    string `json:"blind_registration_hex"`
+	EnvelopeNonce        string `json:"envelope_nonce_hex"`
+	RegistrationRequest  string `json:"registration_request"`
+	RegistrationResponse string `json:"registration_response"`
+	Registration         string `json:"registration"`
+	BlindLogin           string `json:"blind_login_hex"`
+	ClientNonce          string `json:"client_nonce_hex"`
+	ClientKeyshareSeed   string `json:"client_keyshare_seed_hex"`
+	MaskingNonce         string `json:"masking_nonce_hex"`
+	ServerNonce          string `json:"server_nonce_hex"`
+	ServerKeyshareSeed   string `json:"server_keyshare_seed_hex"`
+	KE1                  string `json:"ke1"`
+	KE2                  string `json:"ke2"`
+	KE3                  string `json:"ke3"`
+	P                    string `json:"p_hex"`
+	Heavy                bool   `json:"heavy"`
 }
 
 type opaqueCase struct {
 	name       string
 	kdf        core.KDF
-	passphrase *string
+	passphrase string
 }
 
 var opaqueCases = []opaqueCase{
-	{"no-passphrase", core.KDFNone, nil},
-	{"scrypt-ascii", core.KDFScrypt, new("correct horse battery staple")},
-	{"scrypt-nfc-decomposed", core.KDFScrypt, new("héslo s češtinou")},
+	{"no-passphrase", core.KDFNone, ""},
+	{"scrypt-ascii", core.KDFScrypt, "correct horse battery staple"},
+	{"scrypt-nfc-decomposed", core.KDFScrypt, "héslo s češtinou"},
 }
 
 func (f *File) opaque() error {
@@ -114,7 +114,7 @@ func opaqueSetup(vector opaqueCase) (*opaqueInputs, error) {
 	if err != nil {
 		return nil, err
 	}
-	if inputs.password, err = keys.Password(inputs.secret, vector.kdf, valueOr(vector.passphrase)); err != nil {
+	if inputs.password, err = keys.Password(inputs.secret, vector.kdf, vector.passphrase); err != nil {
 		return nil, err
 	}
 	if inputs.config, err = keys.OPAQUEConfig(inputs.id, vector.kdf); err != nil {

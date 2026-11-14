@@ -176,11 +176,6 @@ type ClaimParameters struct {
 	LeasePepperID byte
 }
 
-type ClaimResult struct {
-	Message *Message
-	Lease   Lease
-}
-
 type RateHit struct {
 	Key         string
 	WindowStart time.Time

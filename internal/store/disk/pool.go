@@ -97,8 +97,6 @@ func (b *Blobs) refillInBackground() {
 	}
 	go func() {
 		defer b.refilling.Store(false)
-		b.filling.Lock()
-		defer b.filling.Unlock()
 		if err := b.fillEmptyPool(); err != nil {
 			b.onPoolFailure(err)
 		}
@@ -153,9 +151,7 @@ func (b *Blobs) listPool() error {
 	if err != nil {
 		return err
 	}
-	b.known.Lock()
-	b.poolNames = names
-	b.known.Unlock()
+	b.knowPool(names)
 	return nil
 }
 

@@ -187,16 +187,6 @@ func (p Page) Allowlist() string {
 	return p.ownHeaders().allowlist
 }
 
-// SecurityHeaders lists the headers the page carries at requestPath besides its policy and allowlist.
-func (Page) SecurityHeaders(requestPath string) map[string]string {
-	return SecurityHeaders(requestPath)
-}
-
-// ContactlessAllowlist is the page's Connection-Allowlist from a front that was not given the operator's contact.
-func (Page) ContactlessAllowlist() string {
-	return ConnectionAllowlist("")
-}
-
 func (p Page) SHA256() string {
 	return sha256Hex(p.body)
 }
