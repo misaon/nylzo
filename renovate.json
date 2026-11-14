@@ -338,12 +338,14 @@
       "allowedVersions": "/^\\d*[02468]\\.04$/"
     },
     {
-      "description": "Caddy compiles against the quic-go API it requires, so quic-go moves only when a Caddy update raises it.",
+      "description": "Caddy compiles against the quic-go it requires and its smallstep/certificates against go.step.sm/crypto, which smallstep/cli-utils raises; they move only when a Caddy update raises them.",
       "matchFileNames": [
         "deploy/caddy/go.mod"
       ],
       "matchPackageNames": [
-        "github.com/quic-go/quic-go"
+        "github.com/quic-go/quic-go",
+        "go.step.sm/crypto",
+        "github.com/smallstep/cli-utils"
       ],
       "enabled": false
     },
