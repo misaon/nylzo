@@ -4,7 +4,7 @@ min_version = "2026.10.9"
 lockfile = true
 
 [tools]
-go = "1.27.3"
+go = "1.27.4"
 goreleaser = "2.20.0"
 golangci-lint = "2.15.0"
 "aqua:rhysd/actionlint" = "1.7.12"
