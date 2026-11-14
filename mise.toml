@@ -5,7 +5,7 @@ lockfile = true
 
 [tools]
 go = "1.27.4"
-goreleaser = "2.20.1"
+goreleaser = "2.20.2"
 golangci-lint = "2.15.0"
 "aqua:rhysd/actionlint" = "1.7.12"
 zizmor = "1.32.0"
@@ -13,7 +13,7 @@ shellcheck = "0.11.0"
 cosign = "3.1.4"
 grype = "0.121.3"
 gitsign = "0.18.0"
-gh = "2.103.3"
+gh = "2.104.0"
 jq = "1.8.2"
 osv-scanner = "2.7.1"
 opentofu = "1.13.9"
