@@ -51,6 +51,9 @@ func ContactURL(contact string) (*url.URL, error) {
 	return parsed, nil
 }
 
+// MaxTransparencyBytes bounds the transparency document a client fetches for the operator's contact.
+const MaxTransparencyBytes = 64 << 10
+
 // OperatorContact reads the operator's contact from an instance's transparency document.
 func OperatorContact(transparency []byte) (string, error) {
 	var document struct {

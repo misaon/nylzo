@@ -63,7 +63,7 @@ func checkDataDirectory(ctx context.Context, settings *config.Server, output io.
 		return err
 	}
 	paths := []string{dataDirectory}
-	if len(existing(filepath.Join(dataDirectory, disk.Directory, "tmp"))) > 0 {
+	if _, statErr := os.Stat(filepath.Join(dataDirectory, disk.Directory, "tmp")); statErr == nil {
 		if paths, err = erasablePaths(dataDirectory); err != nil {
 			return err
 		}
@@ -123,14 +123,4 @@ func checkEpochDirectory(settings *config.Server, output io.Writer, logger *slog
 		return fmt.Errorf("%w %d is unknown", errUnknownEpochState, state)
 	}
 	return nil
-}
-
-func existing(paths ...string) []string {
-	var found []string
-	for _, path := range paths {
-		if _, err := os.Stat(path); err == nil {
-			found = append(found, path)
-		}
-	}
-	return found
 }

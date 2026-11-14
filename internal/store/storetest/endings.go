@@ -41,7 +41,7 @@ func (f *fixture) crashBeforeTheFileIsDeleted() *message {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = f.ack(created, &claimed.Lease, baseTime, failing); !errors.Is(err, ErrInjected) {
+	if err = f.ack(created, &claimed, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatalf("a failed delete after the last ack must surface: %v", err)
 	}
 	if f.get(created).HasBlob() || !f.blobExists(created.reference()) {
@@ -184,10 +184,10 @@ func (f *fixture) recordedEndingHoldsTheLease(recorded store.State) {
 	if _, err = f.end(created, recorded, baseTime, failing); !errors.Is(err, ErrInjected) {
 		t.Fatal(err)
 	}
-	if err = f.download(created, &claimed.Lease, baseTime); goneState(err) != recorded {
+	if err = f.download(created, &claimed, baseTime); goneState(err) != recorded {
 		t.Fatalf("a download after a recorded %s must report it: %v", recorded, err)
 	}
-	if err = f.ack(created, &claimed.Lease, baseTime, f.blobs); goneState(err) != recorded {
+	if err = f.ack(created, &claimed, baseTime, f.blobs); goneState(err) != recorded {
 		t.Fatalf("an ack after a recorded %s must report it: %v", recorded, err)
 	}
 	if finished, finishErr := f.finish(created, baseTime, f.blobs); finishErr != nil || !finished {
@@ -242,7 +242,7 @@ func (f *fixture) burnAndCancel() {
 	}
 	if err = f.download(
 		cancelled,
-		&claimed.Lease,
+		&claimed,
 		baseTime.Add(2*time.Second),
 	); goneState(
 		err,

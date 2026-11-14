@@ -103,7 +103,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		t.Fatalf("create during slowloris: %v %v", err, response)
 	}
 	response.Body.Close()
-	tooLarge := harness.settings.Limits.MaxObjectBytes + envelope.Pad
+	tooLarge := harness.settings.Limits.MaxObjectBytes() + envelope.Pad
 	checks := []struct {
 		name         string
 		header       string
@@ -326,7 +326,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if got := blobWriter.write.Sub(start); got < want || got > want+time.Second {
 		t.Fatalf("a %d byte response may take %v, got a write deadline %v ahead", size, want, got)
 	}
-	window := transport.DefaultPace().Window
+	window := transport.PaceWindow
 	if chunks := len(blobWriter.writes) - 1; chunks < size/transport.PaceChunk ||
 		slices.ContainsFunc(blobWriter.writes[1:], func(deadline time.Time) bool {
 			return time.Until(deadline) > window
@@ -398,7 +398,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 	if got := writer.writes[len(writer.writes)-1].Sub(stored); got > writeTimeout || got < writeTimeout-time.Second {
 		t.Fatalf("the 201 got a write deadline %v after the stored body, want %v", got, writeTimeout)
 	}
-	if len(writer.reads) < 2 || writer.reads[1].Sub(stored) > transport.DefaultPace().Window {
+	if len(writer.reads) < 2 || writer.reads[1].Sub(stored) > transport.PaceWindow {
 		t.Fatalf("F7: the body must arrive at the minimum rate, chunk by chunk: %v", writer.reads)
 	}
 }
@@ -951,7 +951,7 @@ func TestBrowserMutationGuardPrecedesChallengeSpendAndBodyReads(t *testing.T) {
 			strings.TrimSpace(response.Body.String()) != `{"error":"cross_origin"}` {
 			t.Fatalf("unexpected denial: %d %s", response.Code, response.Body.String())
 		}
-		if !harness.server.challenges.See(challenge, time.Now()) {
+		if accepted, _ := harness.server.challenges.Take(challenge, time.Now()); !accepted {
 			t.Fatal("a cross-origin request used up a challenge")
 		}
 	})

@@ -13,13 +13,16 @@ import (
 	"github.com/misaon/nylzo/internal/core/report"
 )
 
-const manageTokenFileUsage = "read the manage token from this file (or " + command.EnvironmentManageToken + ", or stdin)"
+const (
+	manageTokenFileUsage = "read the manage token from this file (or " + command.EnvironmentManageToken + ", or stdin)"
+	linkFileUsage        = "read the link from this file (or " + command.EnvironmentLink + ", or stdin)"
+)
 
 func RunStatus(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "status")
 	file := flags.String("manage-token-file", "", manageTokenFileUsage)
 	asJSON := flags.Bool("json", false, "print the status as JSON")
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	token, server, err := manageClient(environment, *file)
@@ -65,7 +68,7 @@ func printStatus(environment *command.Environment, status *api.Status) {
 func RunCancel(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "cancel")
 	file := flags.String("manage-token-file", "", manageTokenFileUsage)
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	token, server, err := manageClient(environment, *file)
@@ -96,10 +99,10 @@ func manageClient(environment *command.Environment, file string) (*manageToken, 
 // RunBurn checks the message before it asks for the passphrase, whose handshake the server needs to delete it (F05).
 func RunBurn(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "burn")
-	linkFile := flags.String("link-file", "", "read the link from this file (or "+command.EnvironmentLink+", or stdin)")
+	linkFile := flags.String("link-file", "", linkFileUsage)
 	var source passphraseSource
 	passphraseFlags(flags, &source)
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	link, server, err := linkClient(environment, *linkFile)
@@ -141,7 +144,7 @@ func linkClient(environment *command.Environment, linkFile string) (*openLink, *
 
 func RunReport(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "report")
-	linkFile := flags.String("link-file", "", "read the link from this file (or "+command.EnvironmentLink+", or stdin)")
+	linkFile := flags.String("link-file", "", linkFileUsage)
 	reasonFile := flags.String(
 		"reason-file",
 		"",
@@ -157,7 +160,7 @@ func RunReport(ctx context.Context, environment *command.Environment, arguments 
 		false,
 		"state that you believe in good faith that the report is accurate and complete",
 	)
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	contact, err := report.ParseContact(*contactFlag)

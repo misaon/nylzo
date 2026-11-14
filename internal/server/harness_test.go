@@ -266,7 +266,7 @@ func deadlineFor(ttlSeconds uint32) time.Time {
 }
 
 func (h *testHarness) setFreeSpace(free diskspace.FreeFunc) {
-	h.server.disk = h.server.newDiskReserver(free)
+	h.server.disk = diskspace.NewReserver(h.settings.DataDirectory, h.settings.MinFreeBytes, free, h.server.events)
 }
 
 func (h *testHarness) do(request *testRequest) (testResponse, responseBody) {
@@ -1096,7 +1096,7 @@ func (m *testMessage) seal() error {
 		return err
 	}
 	m.content = content
-	m.object, err = envelope.Seal(&content, envelope.NewHeader(m.kdf), m.id, m.policy, m.payload)
+	m.object, err = envelope.Seal(&content, envelope.NewHeader(m.kdf), m.id, m.policy, m.payload, false)
 	return err
 }
 

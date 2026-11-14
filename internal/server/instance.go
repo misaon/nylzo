@@ -77,7 +77,7 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
 	creation, refusal := s.parseCreation(r.Header)
 	if refusal != nil {
-		writeError(w, http.StatusBadRequest, *refusal)
+		writeError(w, http.StatusBadRequest, refusal.Error)
 		return
 	}
 	response := instanceResponse{
@@ -96,8 +96,7 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 		created, err := s.issueID(&creation, now)
 		if errors.Is(err, epoch.ErrClockBehind) {
 			s.events.WarnContext(r.Context(), "epoch-clock-behind")
-			setRetryAfter(w, clockBehindRetry)
-			writeError(w, http.StatusServiceUnavailable, errUnavailable)
+			writeUnavailable(w, clockBehindRetry)
 			return
 		}
 		if err != nil {
@@ -138,18 +137,18 @@ func (s *Server) parseCreation(header http.Header) (creationRequest, *api.ErrorR
 	if err != nil || seconds < envelope.MinTTLSeconds ||
 		time.Duration(seconds)*time.Second > s.settings.Limits.MaxTTL ||
 		strconv.FormatUint(parsed, 10) != values.ttl {
-		return creationRequest{}, &errBadRequest
+		return creationRequest{}, &api.ErrorResponse{Error: api.ErrorBadRequest}
 	}
 	key, err := share.ParseKey(values.shareKey)
 	if err != nil {
 		if errors.Is(err, share.ErrOutdated) {
-			return creationRequest{}, &errClientOutdated
+			return creationRequest{}, &api.ErrorResponse{Error: api.ErrorClientOutdated}
 		}
-		return creationRequest{}, &errBadRequest
+		return creationRequest{}, &api.ErrorResponse{Error: api.ErrorBadRequest}
 	}
 	creation := creationRequest{requested: true, ttlSeconds: seconds, shareKey: key}
 	if !parseElement(creation.registration[:], values.registration) {
-		return creationRequest{}, &errBadRequest
+		return creationRequest{}, &api.ErrorResponse{Error: api.ErrorBadRequest}
 	}
 	return creation, nil
 }
@@ -167,9 +166,9 @@ func creationHeaders(header http.Header) (*creationValues, *api.ErrorResponse) {
 	case len(ttlValues) == 0 && len(keyValues) == 0 && len(registrationValues) == 0:
 		return nil, nil
 	case len(ttlValues) == 1 && len(keyValues) == 1 && len(registrationValues) == 0:
-		return nil, &errClientOutdated
+		return nil, &api.ErrorResponse{Error: api.ErrorClientOutdated}
 	case len(ttlValues) != 1 || len(keyValues) != 1 || len(registrationValues) != 1:
-		return nil, &errBadRequest
+		return nil, &api.ErrorResponse{Error: api.ErrorBadRequest}
 	default:
 		return &creationValues{ttl: ttlValues[0], shareKey: keyValues[0], registration: registrationValues[0]}, nil
 	}
@@ -235,8 +234,7 @@ func (s *Server) issueID(creation *creationRequest, now time.Time) (api.Instance
 func (s *Server) handleChallenge(w http.ResponseWriter, _ *http.Request) {
 	challenge, expires, issued := s.challenges.Issue(time.Now())
 	if !issued {
-		setRetryAfter(w, challengesFullRetry)
-		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		writeUnavailable(w, challengesFullRetry)
 		return
 	}
 	writeJSON(w, http.StatusOK, api.Challenge{Challenge: core.Encode(challenge[:]), ExpiresAt: formatTime(expires)})
@@ -277,7 +275,7 @@ func (s *Server) instanceLimits() api.InstanceLimits {
 	return api.InstanceLimits{
 		MaxFileBytes:      limits.MaxFileBytes,
 		MaxTextBytes:      envelope.MaxTextBytes,
-		MaxObjectBytes:    limits.MaxObjectBytes,
+		MaxObjectBytes:    limits.MaxObjectBytes(),
 		MaxTTLSeconds:     int64(limits.MaxTTL / time.Second),
 		DefaultTTLSeconds: int64(limits.DefaultTTL / time.Second),
 		MaxOpens:          limits.MaxOpens,

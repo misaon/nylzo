@@ -279,7 +279,7 @@ configuration from NYLZO_* variables, described in README.md.
 func runVersion(_ context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "version")
 	asJSON := flags.Bool("json", false, "print version and source build metadata as JSON")
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	information := environment.BuildInformation()

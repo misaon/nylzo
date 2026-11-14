@@ -203,13 +203,8 @@ func (c *Client) Metadata(ctx context.Context, id core.ID, read *[core.SeedLen]b
 		purpose: signing.PurposeRead,
 		seed:    read,
 	}
-	response, err := c.signed(ctx, &request, shortTimeout)
-	if err != nil {
-		return api.Metadata{}, err
-	}
 	var metadata api.Metadata
-	err = readJSON(response, &metadata)
-	if err != nil {
+	if err := c.signedJSON(ctx, &request, &metadata); err != nil {
 		return api.Metadata{}, err
 	}
 	if !api.KnownState(metadata.State) || metadata.Size < 0 || metadata.Size > envelope.MaxObjectBytes ||
@@ -226,13 +221,8 @@ func (c *Client) Status(ctx context.Context, id core.ID, manage *[core.SeedLen]b
 		purpose: signing.PurposeManage,
 		seed:    manage,
 	}
-	response, err := c.signed(ctx, &request, shortTimeout)
-	if err != nil {
-		return api.Status{}, err
-	}
 	var status api.Status
-	err = readJSON(response, &status)
-	if err != nil {
+	if err := c.signedJSON(ctx, &request, &status); err != nil {
 		return api.Status{}, err
 	}
 	if !api.KnownState(status.State) ||
@@ -270,20 +260,12 @@ func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byt
 	if err != nil {
 		return err
 	}
-	payload := map[string]any{"id": id.String()}
-	if reason := report.RedactReason(submitted.Reason); reason != "" {
-		payload["reason"] = reason
-	}
-	if contact != "" {
-		payload["contact"] = contact
-	}
-	if submitted.GoodFaith {
-		payload["good_faith"] = true
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
+	body, _ := json.Marshal(struct {
+		Contact   string `json:"contact,omitempty"`
+		GoodFaith bool   `json:"good_faith,omitempty"`
+		ID        string `json:"id"`
+		Reason    string `json:"reason,omitempty"`
+	}{contact, submitted.GoodFaith, id.String(), report.RedactReason(submitted.Reason)})
 	request := signedRequest{
 		method:  http.MethodPost,
 		path:    api.AbusePath,
@@ -292,15 +274,11 @@ func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byt
 		headers: map[string]string{"Content-Type": "application/json"},
 		body:    body,
 	}
-	response, err := c.signed(ctx, &request, shortTimeout)
-	if err != nil {
-		return err
-	}
 	var answer struct {
 		Status string `json:"status"`
 	}
-	if readErr := readJSON(response, &answer); readErr != nil {
-		return readErr
+	if answerErr := c.signedJSON(ctx, &request, &answer); answerErr != nil {
+		return answerErr
 	}
 	switch answer.Status {
 	case "accepted":
@@ -310,6 +288,14 @@ func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byt
 	default:
 		return ErrResponse
 	}
+}
+
+func (c *Client) signedJSON(ctx context.Context, request *signedRequest, target any) error {
+	response, err := c.signed(ctx, request, shortTimeout)
+	if err != nil {
+		return err
+	}
+	return readJSON(response, target)
 }
 
 func (c *Client) finish(ctx context.Context, request *signedRequest) error {

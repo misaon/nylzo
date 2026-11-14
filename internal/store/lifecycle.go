@@ -10,8 +10,6 @@ import (
 	"github.com/misaon/nylzo/internal/seal"
 )
 
-var errClaimParameters = errors.New("store: claim needs a clock")
-
 type Removal int
 
 const (
@@ -52,24 +50,20 @@ func (r *Record) Lease(mac []byte) *Lease {
 }
 
 // Claim spends an open of a message whose handshake the caller has finished with a matching KE3.
-func Claim(ctx context.Context, messages Messages, record *Record, parameters ClaimParameters) (ClaimResult, error) {
-	if parameters.Clock == nil {
-		return ClaimResult{}, errClaimParameters
-	}
-	var result ClaimResult
+func Claim(ctx context.Context, messages Messages, record *Record, parameters ClaimParameters) (Lease, error) {
+	var lease Lease
 	err := record.update(ctx, messages, parameters.Clock(), func(current *Record) error {
 		now := parameters.Clock()
-		result = ClaimResult{}
-		if err := claimClosed(current, now); err != nil {
+		if err := RefuseClaim(current, now); err != nil {
 			return err
 		}
-		result = ClaimResult{Message: current.Message, Lease: consumeOpen(current, &parameters, now)}
+		lease = consumeOpen(current, &parameters, now)
 		return nil
 	})
 	if err != nil {
-		return ClaimResult{}, err
+		return Lease{}, err
 	}
-	return result, nil
+	return lease, nil
 }
 
 // CountAttempt counts a handshake as a failed passphrase attempt until a matching KE3 takes it back, because its KE2
@@ -157,10 +151,6 @@ func RefuseAttempt(record *Record, now time.Time) error {
 // RefuseClaim answers a claim that the transaction would refuse, so such a claim reads no blob; the transaction
 // decides again. The handshake before it has already applied the passphrase waits.
 func RefuseClaim(record *Record, now time.Time) error {
-	return claimClosed(record, now)
-}
-
-func claimClosed(record *Record, now time.Time) error {
 	if state := record.State(now); state != StateAvailable {
 		return &GoneError{State: state}
 	}

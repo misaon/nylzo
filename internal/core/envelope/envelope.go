@@ -176,22 +176,8 @@ func padded(length int) int {
 	return length + Pad - length%Pad
 }
 
-func Seal(content *keys.ContentKeys, header Header, id core.ID, policy Policy, payload Payload) ([]byte, error) {
-	return sealEnvelope(content, header, id, policy, payload, false)
-}
-
-// SealWithCompression compresses the attachment, which the sender has asked for, when that shrinks its size class.
-func SealWithCompression(
-	content *keys.ContentKeys,
-	header Header,
-	id core.ID,
-	policy Policy,
-	payload Payload,
-) ([]byte, error) {
-	return sealEnvelope(content, header, id, policy, payload, true)
-}
-
-func sealEnvelope(
+// Seal compresses the attachment, which the sender has asked for with compress, when that shrinks its size class.
+func Seal(
 	content *keys.ContentKeys,
 	header Header,
 	id core.ID,

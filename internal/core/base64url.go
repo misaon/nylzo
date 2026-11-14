@@ -34,11 +34,3 @@ func DecodeInto(destination []byte, text string) bool {
 	clear(decoded)
 	return true
 }
-
-func Decode32(text string) (*[32]byte, error) {
-	decoded, err := DecodeExact(text, len([32]byte{}))
-	if err != nil {
-		return nil, err
-	}
-	return (*[32]byte)(decoded), nil
-}

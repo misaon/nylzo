@@ -354,10 +354,7 @@ func TestHandoffIsSingleUse(t *testing.T) {
 		request.body = token
 		return request
 	}
-	token, err := server.Offer("/m/AAAAAAAAAAAAAAAAAAAAAA", "1.0.secret", time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
+	token := server.Offer("/m/AAAAAAAAAAAAAAAAAAAAAA", "1.0.secret", time.Minute)
 	if len(token) < 26 {
 		t.Fatalf("the token must carry at least 128 random bits: %q", token)
 	}
@@ -395,17 +392,11 @@ func TestHandoffIsSingleUse(t *testing.T) {
 		t.Fatalf("notices %v, want %v", got, want)
 	}
 
-	expired, err := server.Offer("/m/AAAAAAAAAAAAAAAAAAAAAA", "1.0.secret", -time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
+	expired := server.Offer("/m/AAAAAAAAAAAAAAAAAAAAAA", "1.0.secret", -time.Second)
 	if response := do(t, server, redeem(expired)); response.Code != http.StatusNotFound {
 		t.Fatalf("an expired handoff: %d", response.Code)
 	}
-	withdrawn, err := server.Offer("/m/AAAAAAAAAAAAAAAAAAAAAA", "1.0.secret", time.Minute)
-	if err != nil {
-		t.Fatal(err)
-	}
+	withdrawn := server.Offer("/m/AAAAAAAAAAAAAAAAAAAAAA", "1.0.secret", time.Minute)
 	server.Withdraw()
 	if response := do(t, server, redeem(withdrawn)); response.Code != http.StatusNotFound {
 		t.Fatalf("a withdrawn handoff: %d", response.Code)

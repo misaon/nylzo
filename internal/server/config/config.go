@@ -30,11 +30,15 @@ const (
 var ErrInvalid = errors.New("server: invalid configuration")
 
 type Limits struct {
-	MaxFileBytes   int64
-	MaxObjectBytes int64
-	MaxTTL         time.Duration
-	DefaultTTL     time.Duration
-	MaxOpens       int
+	MaxFileBytes int64
+	MaxTTL       time.Duration
+	DefaultTTL   time.Duration
+	MaxOpens     int
+}
+
+// MaxObjectBytes is the largest envelope that an attachment of MaxFileBytes seals into.
+func (l Limits) MaxObjectBytes() int64 {
+	return envelope.ObjectLimit(l.MaxFileBytes)
 }
 
 type Rates struct {
@@ -88,11 +92,10 @@ func Defaults() Server {
 		DataDirectory: "data",
 		SweepInterval: 5 * time.Minute,
 		Limits: Limits{
-			MaxFileBytes:   envelope.MaxFileBytes,
-			MaxObjectBytes: envelope.ObjectLimit(envelope.MaxFileBytes),
-			MaxTTL:         MaxTTL,
-			DefaultTTL:     24 * time.Hour,
-			MaxOpens:       10,
+			MaxFileBytes: envelope.MaxFileBytes,
+			MaxTTL:       MaxTTL,
+			DefaultTTL:   24 * time.Hour,
+			MaxOpens:     10,
 		},
 		Rates: Rates{
 			CreatePerHour:     20,
@@ -171,10 +174,6 @@ func (s *Server) rules() []rule {
 			fmt.Sprintf("NYLZO_MAX_FILE_BYTES must be between 1 and %d", envelope.MaxFileBytes),
 		},
 		{
-			limits.MaxObjectBytes == envelope.ObjectLimit(limits.MaxFileBytes),
-			"the object limit must follow NYLZO_MAX_FILE_BYTES",
-		},
-		{
 			limits.MaxOpens >= 1 && limits.MaxOpens <= MaxOpens,
 			fmt.Sprintf("NYLZO_MAX_OPENS must be between 1 and %d", MaxOpens),
 		},
@@ -215,7 +214,7 @@ func (s *Server) rules() []rule {
 		{rates.BucketBurst >= 1, "NYLZO_RATE_BUCKET_BURST must be at least 1"},
 		{rates.SourceBurst >= 1, "NYLZO_RATE_SOURCE_BURST must be at least 1"},
 		{
-			rates.ReadBytesPerHour == 0 || rates.ReadBytesPerHour >= limits.MaxObjectBytes,
+			rates.ReadBytesPerHour == 0 || rates.ReadBytesPerHour >= limits.MaxObjectBytes(),
 			"NYLZO_RATE_READ_BYTES_HOUR must be 0 or at least the largest object, or no such message could be read",
 		},
 		{

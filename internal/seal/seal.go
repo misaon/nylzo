@@ -127,12 +127,7 @@ func ResealWrap(current Key, earlier []Key, wrap *[]byte, locator Locator, purpo
 
 // keyFor derives the key of the inner wrap from a public key the server never stores.
 func keyFor(publicKey []byte, locator Locator, purpose Purpose) Key {
-	derived, err := hkdf.Key(sha256.New, publicKey, locator[:], infoRecord+string(purpose), KeyLen)
-	if err != nil {
-		panic(err)
-	}
-	defer clear(derived)
-	return Key(derived)
+	return derive(publicKey, locator[:], infoRecord+string(purpose))
 }
 
 func sealWrap(pepperKey Key, wrapped []byte, locator Locator, purpose Purpose) []byte {
@@ -237,7 +232,11 @@ func OpenRecord(key Key, locator Locator, sealed []byte) ([]byte, error) {
 
 // subkey gives each use of a key its own key for one locator (spec section 5.2).
 func subkey(key Key, locator Locator, info string) Key {
-	derived, err := hkdf.Key(sha256.New, key[:], locator[:], info, KeyLen)
+	return derive(key[:], locator[:], info)
+}
+
+func derive(secret, salt []byte, info string) Key {
+	derived, err := hkdf.Key(sha256.New, secret, salt, info, KeyLen)
 	if err != nil {
 		panic(err)
 	}
@@ -278,23 +277,17 @@ func StoredBlobSize(objectSize int64) int64 {
 
 // BlobStream encrypts and decrypts a stored blob under a key that needs the salt of its erase block.
 func BlobStream(blobKey Key, salt EraseSalt) cipher.Stream {
-	derived, err := hkdf.Key(sha256.New, blobKey[:], salt[:], infoBlob, KeyLen)
-	if err != nil {
-		panic(err)
-	}
-	defer clear(derived)
+	key := derive(blobKey[:], salt[:], infoBlob)
+	defer clear(key[:])
 	//nolint:gosec // G407: every blob has its own random key and salt, so its counter may start at zero.
-	return cipher.NewCTR(newBlock(Key(derived)), make([]byte, aes.BlockSize))
+	return cipher.NewCTR(newBlock(key), make([]byte, aes.BlockSize))
 }
 
 // BlobMAC starts the tag of a stored blob with its salt; the caller writes the encrypted bytes after the erase block.
 func BlobMAC(blobKey Key, salt EraseSalt) hash.Hash {
-	derived, err := hkdf.Key(sha256.New, blobKey[:], salt[:], infoBlobTag, KeyLen)
-	if err != nil {
-		panic(err)
-	}
-	defer clear(derived)
-	mac := hmac.New(sha256.New, derived)
+	key := derive(blobKey[:], salt[:], infoBlobTag)
+	defer clear(key[:])
+	mac := hmac.New(sha256.New, key[:])
 	mac.Write(salt[:])
 	return mac
 }
@@ -308,12 +301,9 @@ func CheckBlobTag(mac hash.Hash, tag *BlobTag) error {
 
 // SaltTagOf lets a burn trust the salt of a blob without reading the rest of it.
 func SaltTagOf(blobKey Key, salt EraseSalt) BlobTag {
-	derived, err := hkdf.Key(sha256.New, blobKey[:], nil, infoSaltTag, KeyLen)
-	if err != nil {
-		panic(err)
-	}
-	defer clear(derived)
-	mac := hmac.New(sha256.New, derived)
+	key := derive(blobKey[:], nil, infoSaltTag)
+	defer clear(key[:])
+	mac := hmac.New(sha256.New, key[:])
 	mac.Write(salt[:])
 	return BlobTag(mac.Sum(nil))
 }

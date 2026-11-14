@@ -66,15 +66,6 @@ type createOptions struct {
 	compress    bool
 }
 
-type content struct {
-	meta envelope.Meta
-	file []byte
-}
-
-func (c *content) wipe() {
-	clear(c.file)
-}
-
 func createFlags(environment *command.Environment) (*flag.FlagSet, *createOptions) {
 	options := &createOptions{}
 	flags := command.NewFlags(environment, "create")
@@ -128,7 +119,7 @@ func createFlags(environment *command.Environment) (*flag.FlagSet, *createOption
 
 func RunCreate(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := createFlags(environment)
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	address, ok := command.ServerAddress(environment, "create", options.server)
@@ -143,7 +134,7 @@ func RunCreate(ctx context.Context, environment *command.Environment, arguments 
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
-	defer message.wipe()
+	defer clear(message.File)
 	var (
 		passphrase string
 		generated  *generatedPassphrase
@@ -268,7 +259,7 @@ func weakPassphrase(passphrase string) bool {
 	return utf8.RuneCountInString(normalized) < weakBelowCharacters || len(words) < weakBelowWords
 }
 
-func readContent(environment *command.Environment, fromFile string) (content, error) {
+func readContent(environment *command.Environment, fromFile string) (envelope.Payload, error) {
 	if fromFile != "" {
 		return readAttachment(fromFile)
 	}
@@ -280,39 +271,39 @@ func readContent(environment *command.Environment, fromFile string) (content, er
 		raw, err = command.ReadLimited(environment.Stdin, envelope.MaxTextBytes)
 	}
 	if err != nil {
-		return content{}, err
+		return envelope.Payload{}, err
 	}
 	defer clear(raw)
 	if len(raw) == 0 {
-		return content{}, errNothingToSend
+		return envelope.Payload{}, errNothingToSend
 	}
 	if !utf8.Valid(raw) {
-		return content{}, errTextNotUTF8
+		return envelope.Payload{}, errTextNotUTF8
 	}
 	text := string(raw)
-	return content{meta: envelope.Meta{Text: &text}}, nil
+	return envelope.Payload{Meta: envelope.Meta{Text: &text}}, nil
 }
 
-func readAttachment(path string) (content, error) {
+func readAttachment(path string) (envelope.Payload, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return content{}, fmt.Errorf("--from-file: %w", command.Unreadable(err))
+		return envelope.Payload{}, fmt.Errorf("--from-file: %w", command.Unreadable(err))
 	}
 	if !info.Mode().IsRegular() || info.Size() > envelope.MaxFileBytes {
-		return content{}, fmt.Errorf("%w of at most %d bytes", errFromFileTooLarge, envelope.MaxFileBytes)
+		return envelope.Payload{}, fmt.Errorf("%w of at most %d bytes", errFromFileTooLarge, envelope.MaxFileBytes)
 	}
 	data, err := command.ReadFileLimited(path, envelope.MaxFileBytes)
 	if err != nil {
-		return content{}, fmt.Errorf("--from-file: %w", err)
+		return envelope.Payload{}, fmt.Errorf("--from-file: %w", err)
 	}
 	name := attachmentName(filepath.Base(path))
 	kind := mime.TypeByExtension(filepath.Ext(name))
 	if kind == "" || len(kind) > envelope.MaxMIME || !utf8.ValidString(kind) {
 		kind = attachmentMIME
 	}
-	return content{
-		meta: envelope.Meta{File: &envelope.FileMeta{Name: name, MIME: kind, Size: int64(len(data))}},
-		file: data,
+	return envelope.Payload{
+		Meta: envelope.Meta{File: &envelope.FileMeta{Name: name, MIME: kind, Size: int64(len(data))}},
+		File: data,
 	}, nil
 }
 
@@ -331,7 +322,7 @@ func (m *createdMessage) wipe() {
 type createInput struct {
 	options    *createOptions
 	passphrase string
-	message    *content
+	message    *envelope.Payload
 	policy     envelope.Policy
 	maxObject  int64
 }
@@ -469,7 +460,7 @@ type sealInput struct {
 	registration *registration
 	response     *[opaque.RegistrationResponseLen]byte
 	policy       envelope.Policy
-	message      *content
+	message      *envelope.Payload
 	compress     bool
 }
 
@@ -504,12 +495,9 @@ func sealWithDerivedKeys(input *sealInput) (client.CreateRequest, error) {
 	if err != nil {
 		return client.CreateRequest{}, err
 	}
-	payload := envelope.Payload{Meta: input.message.meta, File: input.message.file}
-	encode := envelope.Seal
-	if input.compress {
-		encode = envelope.SealWithCompression
-	}
-	object, err := encode(&content, envelope.NewHeader(input.kdf), input.id, input.policy, payload)
+	object, err := envelope.Seal(
+		&content, envelope.NewHeader(input.kdf), input.id, input.policy, *input.message, input.compress,
+	)
 	if err != nil {
 		return client.CreateRequest{}, err
 	}
@@ -525,12 +513,16 @@ func sealWithDerivedKeys(input *sealInput) (client.CreateRequest, error) {
 	}, nil
 }
 
-func createPolicy(options *createOptions, limits api.InstanceLimits, message *content) (envelope.Policy, error) {
+func createPolicy(
+	options *createOptions,
+	limits api.InstanceLimits,
+	message *envelope.Payload,
+) (envelope.Policy, error) {
 	maxText := min(limits.MaxTextBytes, envelope.MaxTextBytes)
-	if message.meta.Text != nil && int64(len(*message.meta.Text)) > maxText {
+	if message.Meta.Text != nil && int64(len(*message.Meta.Text)) > maxText {
 		return envelope.Policy{}, fmt.Errorf("%w: the text is longer than %d bytes", errPolicy, maxText)
 	}
-	if message.meta.File != nil && message.meta.File.Size > limits.MaxFileBytes {
+	if message.Meta.File != nil && message.Meta.File.Size > limits.MaxFileBytes {
 		return envelope.Policy{}, fmt.Errorf("%w: the file is larger than %d bytes", errPolicy, limits.MaxFileBytes)
 	}
 	ttl := time.Duration(limits.DefaultTTLSeconds) * time.Second

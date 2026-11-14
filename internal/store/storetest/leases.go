@@ -108,7 +108,7 @@ func (f *fixture) refuseForgedLeases(created *message, lease *store.Lease, now t
 
 func (f *fixture) claimConcurrently(created *message, count int) []store.Lease {
 	f.t.Helper()
-	results := make([]store.ClaimResult, count)
+	results := make([]store.Lease, count)
 	errs := make([]error, count)
 	var wait sync.WaitGroup
 	for i := range count {
@@ -120,11 +120,11 @@ func (f *fixture) claimConcurrently(created *message, count int) []store.Lease {
 	leases := make([]store.Lease, 0, count)
 	for i, result := range results {
 		if errs[i] != nil || slices.ContainsFunc(leases, func(lease store.Lease) bool {
-			return bytes.Equal(lease.MAC, result.Lease.MAC)
+			return bytes.Equal(lease.MAC, result.MAC)
 		}) {
 			f.t.Fatalf("claim %d: %v, or its lease was handed out twice", i, errs[i])
 		}
-		leases = append(leases, result.Lease)
+		leases = append(leases, result)
 	}
 	return leases
 }
@@ -136,14 +136,14 @@ func (f *fixture) leaseExpiry() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	expiry := claimed.Lease.ExpiresAt
+	expiry := claimed.ExpiresAt
 	if !expiry.Equal(baseTime.Add(3 * time.Minute)) {
 		t.Fatalf("a lease from 10:00:17 must end at the full minute 10:03, got %v", expiry)
 	}
-	if claimed.Lease.Active(expiry) || !claimed.Lease.Active(expiry.Add(-time.Millisecond)) {
+	if claimed.Active(expiry) || !claimed.Active(expiry.Add(-time.Millisecond)) {
 		t.Fatal("a lease must end exclusively at lease_expires_at")
 	}
-	if err = f.download(created, &claimed.Lease, expiry); !errors.Is(err, store.ErrLeaseInvalid) {
+	if err = f.download(created, &claimed, expiry); !errors.Is(err, store.ErrLeaseInvalid) {
 		t.Fatalf("download at the expiry: %v", err)
 	}
 	if finished, _ := f.finish(
@@ -215,7 +215,7 @@ func (f *fixture) staleLeaseLeavesOtherMessages() {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stale := claimed.Lease
+	stale := claimed
 	if err = f.ack(first, &stale, baseTime, f.blobs); err != nil {
 		t.Fatal(err)
 	}

@@ -21,7 +21,6 @@ const (
 	shutdownTimeout = 5 * time.Second
 	noticeBuffer    = 8
 	reminderShare   = 12
-	maxContactBytes = 64 << 10
 	contactTimeout  = 3 * time.Second
 )
 
@@ -83,10 +82,7 @@ func Serve(ctx context.Context, environment *command.Environment, options Option
 	defer shutdown(ctx, httpServer)
 	defer func() { current.cleanup() }()
 	current.keepNameLocal()
-	timers, err := current.announce()
-	if err != nil {
-		return command.Failf(environment, "%s", err)
-	}
+	timers := current.announce()
 	defer timers.stop()
 	return current.run(ctx, served, timers)
 }
@@ -108,6 +104,7 @@ func (s *session) config() *localclient.Config {
 	}
 }
 
+// instanceContact reads the operator's contact, the one address outside the client its pages may reach.
 func instanceContact(ctx context.Context, instance string) (string, error) {
 	server, err := client.New(instance)
 	if err != nil {
@@ -115,33 +112,11 @@ func instanceContact(ctx context.Context, instance string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, contactTimeout)
 	defer cancel()
-	return OperatorContact(ctx, server)
-}
-
-// ContactError is a transparency document that was fetched but names no contact the pages could link.
-type ContactError struct {
-	err error
-}
-
-func (e *ContactError) Error() string {
-	return e.err.Error()
-}
-
-func (e *ContactError) Unwrap() error {
-	return e.err
-}
-
-// OperatorContact reads the operator's contact, the one address outside the client its pages may reach.
-func OperatorContact(ctx context.Context, server *client.Client) (string, error) {
-	fetched, err := server.Fetch(ctx, api.TransparencyPath, "identity", maxContactBytes)
+	fetched, err := server.Fetch(ctx, api.TransparencyPath, "identity", operatoraddress.MaxTransparencyBytes)
 	if err != nil {
 		return "", err
 	}
-	contact, err := operatoraddress.OperatorContact(fetched.Body)
-	if err != nil {
-		return "", &ContactError{err: err}
-	}
-	return contact, nil
+	return operatoraddress.OperatorContact(fetched.Body)
 }
 
 func (s *session) keepNameLocal() {
@@ -156,16 +131,13 @@ func (s *session) keepNameLocal() {
 	}
 }
 
-func (s *session) announce() (deadlines, error) {
+func (s *session) announce() deadlines {
 	timers := deadlines{stop: func() {}}
 	if s.options.Link == nil {
 		s.compose()
-		return timers, nil
+		return timers
 	}
-	opened, err := s.handOver()
-	if err != nil {
-		return timers, err
-	}
+	opened := s.handOver()
 	expiry := time.NewTimer(s.options.Link.Lifetime)
 	reminder := time.NewTimer(s.options.Link.Lifetime / reminderShare)
 	timers.expired, timers.stop = expiry.C, func() {
@@ -175,7 +147,7 @@ func (s *session) announce() (deadlines, error) {
 	if opened {
 		timers.remind = reminder.C
 	}
-	return timers, nil
+	return timers
 }
 
 func (s *session) run(ctx context.Context, served <-chan error, timers deadlines) int {
@@ -215,11 +187,8 @@ func (s *session) compose() {
 	}
 }
 
-func (s *session) handOver() (bool, error) {
-	token, err := s.server.Offer(s.options.Link.Path, s.options.Link.Fragment, s.options.Link.Lifetime)
-	if err != nil {
-		return false, err
-	}
+func (s *session) handOver() bool {
+	token := s.server.Offer(s.options.Link.Path, s.options.Link.Fragment, s.options.Link.Lifetime)
 	s.address = s.server.Origin() + localclient.HandoffPath + "#" + token
 	if s.options.OpenBrowser {
 		page, writeErr := writeHandoffFile(s.address)
@@ -227,7 +196,7 @@ func (s *session) handOver() (bool, error) {
 			s.cleanup = sync.OnceFunc(page.remove)
 			if openErr := browser(s.environment)(page.path); openErr == nil {
 				s.notef("opening the message in your browser through the verified client at %s", s.server.Origin())
-				return true, nil
+				return true
 			}
 			s.cleanup()
 		}
@@ -235,7 +204,7 @@ func (s *session) handOver() (bool, error) {
 	fmt.Fprintln(s.environment.Stdout, s.address)
 	s.notef("open this address in your browser within %s; it works once and carries no part of the link",
 		s.options.Link.Lifetime)
-	return false, nil
+	return false
 }
 
 // remind gives the address to a user whose browser could not read the handoff file, such as a confined one.

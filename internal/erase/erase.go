@@ -27,43 +27,50 @@ var (
 
 // Overwrite replaces the first length bytes of the file with zeros where they lie and syncs them to the disk.
 func Overwrite(path string, length int64) error {
-	iolimit.Hold()
-	defer iolimit.Release()
-	file, err := openForOverwrite(path)
-	if err != nil {
-		return err
-	}
-	size, err := regularSize(file)
-	if err == nil {
-		err = writeZeros(file, 0, min(length, size))
-	}
-	return closeSynced(file, err)
+	return rewrite(path, func(file *os.File, size int64) error {
+		return writeZeros(file, 0, min(length, size))
+	})
 }
 
 // Cut overwrites the file past size with zeros where it lies and syncs them before it truncates the file to size, so
 // the blocks the truncation frees hold nothing.
 func Cut(path string, size int64) error {
-	iolimit.Hold()
-	defer iolimit.Release()
-	file, err := openForOverwrite(path)
-	if err != nil {
-		return err
-	}
-	length, err := regularSize(file)
-	if err == nil && length > size {
-		err = writeZeros(file, size, length-size)
+	return rewrite(path, func(file *os.File, length int64) error {
+		if length <= size {
+			return nil
+		}
+		err := writeZeros(file, size, length-size)
 		if err == nil {
 			err = file.Sync()
 		}
 		if err == nil {
 			err = file.Truncate(size)
 		}
-	}
-	return closeSynced(file, err)
+		return err
+	})
 }
 
 // Replace writes content over the whole file where it lies, so the old content is gone once it returns.
 func Replace(path string, content []byte) error {
+	return rewrite(path, func(file *os.File, size int64) error {
+		if size != int64(len(content)) {
+			return ErrLength
+		}
+		_, err := file.WriteAt(content, 0)
+		return err
+	})
+}
+
+// Pad writes zeros from start up to end where they lie, growing a shorter file, and syncs them. It writes them on
+// every call, so a later Replace of that length overwrites in place even after an earlier write or sync failed.
+func Pad(path string, start, end int64) error {
+	return rewrite(path, func(file *os.File, _ int64) error {
+		return writeZeros(file, start, end-start)
+	})
+}
+
+// rewrite changes a regular file where it lies and syncs it; change receives the size the file has.
+func rewrite(path string, change func(file *os.File, size int64) error) error {
 	iolimit.Hold()
 	defer iolimit.Release()
 	file, err := openForOverwrite(path)
@@ -71,28 +78,13 @@ func Replace(path string, content []byte) error {
 		return err
 	}
 	size, err := regularSize(file)
-	if err == nil && size != int64(len(content)) {
-		err = ErrLength
+	if err == nil {
+		err = change(file, size)
 	}
 	if err == nil {
-		_, err = file.WriteAt(content, 0)
+		err = file.Sync()
 	}
-	return closeSynced(file, err)
-}
-
-// Pad writes zeros from start up to end where they lie, growing a shorter file, and syncs them. It writes them on
-// every call, so a later Replace of that length overwrites in place even after an earlier write or sync failed.
-func Pad(path string, start, end int64) error {
-	iolimit.Hold()
-	defer iolimit.Release()
-	file, err := openForOverwrite(path)
-	if err != nil {
-		return err
-	}
-	if _, err = regularSize(file); err == nil {
-		err = writeZeros(file, start, end-start)
-	}
-	return closeSynced(file, err)
+	return errors.Join(err, file.Close())
 }
 
 // Shred overwrites the first length bytes and unlinks the file; the caller syncs the directory, once per batch.
@@ -150,11 +142,4 @@ func writeZeros(file *os.File, start, length int64) error {
 		offset += int64(written)
 	}
 	return nil
-}
-
-func closeSynced(file *os.File, err error) error {
-	if err == nil {
-		err = file.Sync()
-	}
-	return errors.Join(err, file.Close())
 }

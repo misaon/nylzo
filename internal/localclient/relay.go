@@ -29,10 +29,6 @@ type relay struct {
 	transport http.RoundTripper
 }
 
-func newRelay(instance *url.URL, transport http.RoundTripper) http.Handler {
-	return relay{instance: instance, transport: transport}
-}
-
 func (rl relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery || strings.Contains(r.URL.Path, "..") {
 		writeJSON(w, http.StatusNotFound, apiError{Error: "not_found"})

@@ -43,7 +43,6 @@ type Config struct {
 	Build     webclient.Build
 	Version   string
 	BuildInfo buildinfo.Info
-	Transport http.RoundTripper
 	Notify    func(Notice)
 }
 
@@ -77,10 +76,6 @@ func New(listeners *Listeners, config *Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	transport := config.Transport
-	if transport == nil {
-		transport = client.NewTransport(instance)
-	}
 	host := strings.ToLower(rand.Text()) + sessionDomain + ":" + strconv.Itoa(listeners.Port())
 	local := &Server{
 		host:     host,
@@ -89,7 +84,7 @@ func New(listeners *Listeners, config *Config) (*Server, error) {
 		pages:    pages,
 		assets:   config.Build.Assets,
 		manifest: config.Build.Manifest(config.Version, instance, pages, config.BuildInfo),
-		relay:    newRelay(target, transport),
+		relay:    relay{instance: target, transport: client.NewTransport(instance)},
 		notify:   config.Notify,
 	}
 	if local.notify == nil {

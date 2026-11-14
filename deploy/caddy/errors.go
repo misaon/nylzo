@@ -62,11 +62,9 @@ func (e *ErrorPage) UnmarshalCaddyfile(dispenser *caddyfile.Dispenser) error {
 			if dispenser.Val() != "contact" {
 				return dispenser.Errf("unknown subdirective %q", dispenser.Val())
 			}
-			contact, err := contactArgument(dispenser)
-			if err != nil {
+			if err := contactArgument(dispenser, &e.Contact); err != nil {
 				return err
 			}
-			e.Contact = contact
 		}
 	}
 	return nil

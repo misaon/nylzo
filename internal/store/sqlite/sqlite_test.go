@@ -101,7 +101,7 @@ func create(tb testing.TB, storage *sqlite.Store, record *store.Record, counters
 	}
 }
 
-func claim(tb testing.TB, storage store.Messages, record *store.Record, now time.Time) store.ClaimResult {
+func claim(tb testing.TB, storage store.Messages, record *store.Record, now time.Time) store.Lease {
 	tb.Helper()
 	claimed, err := store.Claim(tb.Context(), storage, record, claimParameters(now))
 	if err != nil {
@@ -267,7 +267,7 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 	claimed := claim(t, storage, record, testNow)
 	ctx, cancel := context.WithCancel(t.Context())
 	leaving := cancelOnDelete{Blobs: blobs, cancel: cancel}
-	if err := store.Ack(ctx, storage, leaving, record, claimed.Lease.MAC, testNow); err != nil {
+	if err := store.Ack(ctx, storage, leaving, record, claimed.MAC, testNow); err != nil {
 		t.Fatalf("an ack whose client left after the commit: %v", err)
 	}
 	row, err := storage.Load(t.Context(), record.Row.Locator)

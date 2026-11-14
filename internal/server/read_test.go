@@ -2132,8 +2132,7 @@ func TestReadBytesPerHourStopsAClaimBeforeItSpendsAnOpen(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		settings := harness.settings
 		settings.Limits.MaxFileBytes = 1
-		settings.Limits.MaxObjectBytes = envelope.ObjectLimit(1)
-		settings.Rates.ReadBytesPerHour = settings.Limits.MaxObjectBytes
+		settings.Rates.ReadBytesPerHour = settings.Limits.MaxObjectBytes()
 		harness.reopen(&settings)
 		probe := newMessage(t, core.KDFNone, "", 1, 3600, "x")
 		within := int(settings.Rates.ReadBytesPerHour / int64(len(probe.object)))

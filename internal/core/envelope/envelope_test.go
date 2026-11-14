@@ -53,7 +53,7 @@ func seal(tb testing.TB, text string, file []byte) sealed {
 		sample.payload.File = file
 	}
 	var err error
-	sample.object, err = envelope.Seal(&sample.content, sample.header, id, sample.policy, sample.payload)
+	sample.object, err = envelope.Seal(&sample.content, sample.header, id, sample.policy, sample.payload, false)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestF1ReaderRejectsAnObjectTheLinkDoesNotPin(t *testing.T) {
 	t.Parallel()
 	sample := seal(t, "the original", nil)
 	forged, err := envelope.Seal(&sample.content, envelope.NewHeader(core.KDFNone), sample.id, sample.policy,
-		envelope.Payload{Meta: envelope.Meta{Text: new("a forgery under the same keys")}})
+		envelope.Payload{Meta: envelope.Meta{Text: new("a forgery under the same keys")}}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestSealEnforcesTheLimits(t *testing.T) {
 			envelope.ErrPolicy,
 		},
 	} {
-		_, err := envelope.Seal(&sample.content, test.header, sample.id, test.policy, test.payload)
+		_, err := envelope.Seal(&sample.content, test.header, sample.id, test.policy, test.payload, false)
 		if !errors.Is(err, test.want) {
 			t.Errorf("%s: want %v, got %v", name, test.want, err)
 		}

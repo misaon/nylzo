@@ -52,13 +52,6 @@ func DeserializeElement(encoded []byte) (*ristretto255.Element, error) {
 	return element, nil
 }
 
-func deserializeScalar(encoded []byte) (*ristretto255.Scalar, error) {
-	if len(encoded) != ScalarLen {
-		return nil, ErrDeserialize
-	}
-	return ristretto255.NewScalar().SetCanonicalBytes(encoded)
-}
-
 // NewBlind draws a scalar other than zero (RandomScalar of RFC 9497 section 4.7).
 func NewBlind() [ScalarLen]byte {
 	var uniform [uniformLen]byte
@@ -77,7 +70,7 @@ func NewBlind() [ScalarLen]byte {
 }
 
 func blindFrom(encoded *[ScalarLen]byte) (*ristretto255.Scalar, error) {
-	scalar, err := deserializeScalar(encoded[:])
+	scalar, err := ristretto255.NewScalar().SetCanonicalBytes(encoded[:])
 	if err != nil || scalar.Equal(ristretto255.NewScalar()) == 1 {
 		return nil, ErrDeserialize
 	}

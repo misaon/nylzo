@@ -26,6 +26,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -59,8 +60,8 @@ func (s *Server) handleCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	releaseDisk, ok := s.disk.Reserve(request.header.Size)
 	if !ok {
-		setRetryAfter(w, diskFullRetry)
-		rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
+		closeAfterResponse(w, r)
+		writeUnavailable(w, diskFullRetry)
 		return
 	}
 	defer releaseDisk()
@@ -103,22 +104,22 @@ func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequ
 	}
 	switch {
 	case request.outdated:
-		rejectCreate(w, r, http.StatusBadRequest, errClientOutdated)
+		rejectCreate(w, r, http.StatusBadRequest, api.ErrorClientOutdated)
 	case !ok:
-		rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
+		rejectCreate(w, r, http.StatusBadRequest, api.ErrorBadRequest)
 	case !tokenOK:
-		rejectCreate(w, r, http.StatusForbidden, errIDToken)
+		rejectCreate(w, r, http.StatusForbidden, api.ErrorIDToken)
 	case heldErr != nil:
 		closeAfterResponse(w, r)
 		s.writeInternal(w, r, heldErr)
 	case !held:
-		rejectCreate(w, r, http.StatusConflict, errShareLost)
+		rejectCreate(w, r, http.StatusConflict, api.ErrorShareLost)
 	case r.ContentLength < 0 || r.Header.Get("Content-Length") == "":
-		rejectCreate(w, r, http.StatusLengthRequired, errLengthRequired)
+		rejectCreate(w, r, http.StatusLengthRequired, api.ErrorLengthRequired)
 	case r.ContentLength != size:
-		rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
-	case size > s.settings.Limits.MaxObjectBytes:
-		rejectCreate(w, r, http.StatusRequestEntityTooLarge, errTooLarge)
+		rejectCreate(w, r, http.StatusBadRequest, api.ErrorBadRequest)
+	case size > s.settings.Limits.MaxObjectBytes():
+		rejectCreate(w, r, http.StatusRequestEntityTooLarge, api.ErrorTooLarge)
 	default:
 		request.bodyBy = time.Now().Add(max(createBodyTimeout, store.TransferTime(size)))
 		s.setCreateDeadlines(w, request.bodyBy)
@@ -209,13 +210,8 @@ func (s *Server) reserveCreate(
 	now time.Time,
 ) (func(context.Context), bool) {
 	if retry := s.limitCreate(now, s.bucketsOf(r), request.header.Size); retry > 0 {
-		setRetryAfter(w, retry)
-		rejectCreate(
-			w,
-			r,
-			http.StatusTooManyRequests,
-			api.RateLimitedResponse{Error: api.ErrorRateLimited, RetryAfter: retrySeconds(retry)},
-		)
+		closeAfterResponse(w, r)
+		writeRateLimited(w, retry)
 		return nil, false
 	}
 	gate, err := s.globalGate(r.Context(), now)
@@ -241,7 +237,7 @@ func (s *Server) reserveCreate(
 	}
 	release := func(ctx context.Context) { s.releaseGlobalCreate(ctx, now) }
 	if !gate.workNeeded && s.workNeededAfter(slot.number-1) {
-		rejectCreate(w, r, http.StatusForbidden, errWorkRequired)
+		rejectCreate(w, r, http.StatusForbidden, api.ErrorWork)
 		release(r.Context())
 		return nil, false
 	}
@@ -254,10 +250,10 @@ func (s *Server) verifyWork(w http.ResponseWriter, r *http.Request, id core.ID, 
 	case err == nil:
 		return true
 	case errors.Is(err, proof.ErrWorkBusy):
-		setRetryAfter(w, workBusyRetry)
-		rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
+		closeAfterResponse(w, r)
+		writeUnavailable(w, workBusyRetry)
 	case errors.Is(err, proof.ErrWork):
-		rejectCreate(w, r, http.StatusForbidden, errWorkRequired)
+		rejectCreate(w, r, http.StatusForbidden, api.ErrorWork)
 	default:
 		s.writeInternal(w, r, err)
 	}
@@ -276,8 +272,8 @@ func (s *Server) rejectCapped(w http.ResponseWriter, r *http.Request, now time.T
 		retry = day.End.Sub(now) + time.Second
 	default:
 	}
-	setRetryAfter(w, retry)
-	rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
+	closeAfterResponse(w, r)
+	writeUnavailable(w, retry)
 }
 
 // idAvailable answers the same 409 for a live message and an ended one (AK21).
@@ -285,7 +281,7 @@ func (s *Server) idAvailable(w http.ResponseWriter, r *http.Request, id core.ID)
 	_, err := s.store.Load(r.Context(), seal.LocatorOf(id[:]))
 	switch {
 	case err == nil:
-		rejectCreate(w, r, http.StatusConflict, errConflict)
+		rejectCreate(w, r, http.StatusConflict, api.ErrorConflict)
 	case !errors.Is(err, store.ErrNotFound):
 		s.writeInternal(w, r, err)
 	default:
@@ -358,20 +354,24 @@ func (s *Server) receiveBlob(
 ) (envelope.Header, time.Time, bool) {
 	size := request.header.Size
 	body := &trackingReader{
-		reader: s.pace.Reader(http.MaxBytesReader(w, r.Body, size), http.NewResponseController(w), request.bodyBy),
+		reader: transport.PacedReader(
+			http.MaxBytesReader(w, r.Body, size),
+			http.NewResponseController(w),
+			request.bodyBy,
+		),
 	}
 	var raw [envelope.HeaderLen]byte
 	if _, err := io.ReadFull(body, raw[:]); err != nil {
-		writeError(w, http.StatusBadRequest, errBadRequest)
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 		return envelope.Header{}, time.Time{}, false
 	}
 	envelopeHeader, err := envelope.ParseHeader(raw[:])
 	if raw[0] < envelope.Version || (err == nil && envelopeHeader.Flags&envelope.FlagDeadline == 0) {
-		writeError(w, http.StatusBadRequest, errClientOutdated)
+		writeError(w, http.StatusBadRequest, api.ErrorClientOutdated)
 		return envelope.Header{}, time.Time{}, false
 	}
 	if err != nil || int(envelopeHeader.KDF) != request.header.KDFID {
-		writeError(w, http.StatusBadRequest, errBadRequest)
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 		return envelope.Header{}, time.Time{}, false
 	}
 	uploaded, err := s.blobs.PutExpiring(
@@ -388,14 +388,14 @@ func (s *Server) receiveBlob(
 	}
 	switch {
 	case errors.Is(err, store.ErrConflict):
-		rejectCreate(w, r, http.StatusConflict, errConflict)
+		rejectCreate(w, r, http.StatusConflict, api.ErrorConflict)
 	case errors.Is(err, store.ErrPoolEmpty):
-		setRetryAfter(w, poolEmptyRetry)
-		rejectCreate(w, r, http.StatusServiceUnavailable, errUnavailable)
+		closeAfterResponse(w, r)
+		writeUnavailable(w, poolEmptyRetry)
 	case isMaxBytesError(body.err):
-		writeError(w, http.StatusRequestEntityTooLarge, errTooLarge)
+		writeError(w, http.StatusRequestEntityTooLarge, api.ErrorTooLarge)
 	case body.err != nil || errors.Is(err, io.ErrUnexpectedEOF):
-		writeError(w, http.StatusBadRequest, errBadRequest)
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 	default:
 		s.writeInternal(w, r, err)
 	}
@@ -430,11 +430,11 @@ func (s *Server) storeMessage(
 	}
 	switch {
 	case errors.Is(err, store.ErrConflict):
-		rejectCreate(w, r, http.StatusConflict, errConflict)
+		rejectCreate(w, r, http.StatusConflict, api.ErrorConflict)
 	case errors.Is(err, errDeadlinePassed):
-		rejectCreate(w, r, http.StatusForbidden, errIDToken)
+		rejectCreate(w, r, http.StatusForbidden, api.ErrorIDToken)
 	case errors.Is(err, errGenerationGone):
-		rejectCreate(w, r, http.StatusConflict, errShareLost)
+		rejectCreate(w, r, http.StatusConflict, api.ErrorShareLost)
 	default:
 		s.writeInternal(w, r, err)
 	}
@@ -507,9 +507,9 @@ func (s *Server) newMessage(
 	return message
 }
 
-func rejectCreate(w http.ResponseWriter, r *http.Request, status int, body any) {
+func rejectCreate(w http.ResponseWriter, r *http.Request, status int, code string) {
 	closeAfterResponse(w, r)
-	writeJSON(w, status, body)
+	writeError(w, status, code)
 }
 
 // closeAfterResponse ends an HTTP/1 connection whose create body was never read.
