@@ -156,7 +156,8 @@ const coreDownloads = new Map([
 
 function officialDownloadPrefix(key: string, backend: string): string | undefined {
   if (backend.startsWith('aqua:')) {
-    const repository = backend.slice('aqua:'.length);
+    // A package from a repository subdirectory is named owner/repo/name and ships in the repository's releases.
+    const repository = backend.slice('aqua:'.length).split('/').slice(0, 2).join('/');
     return key === 'url_api'
       ? `https://api.github.com/repos/${repository}/releases/assets/`
       : `https://github.com/${repository}/releases/download/`;
