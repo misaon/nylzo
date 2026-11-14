@@ -35,12 +35,18 @@ test('Bun lockfile overrides may advance a version but not change their list or 
   const overrides = lock['overrides'] as Record<string, string>;
   const withOverrides = (changed: Record<string, string>): string =>
     JSON.stringify({ ...lock, overrides: { ...overrides, ...changed } });
-  const patch = review('web/bun.lock', locked, withOverrides({ minimatch: '11.0.5' }));
+  const [major = 0, minor = 0, patchLevel = 0] = (overrides['minimatch'] ?? '').split('.').map(Number);
+  const newerPatch = `${major}.${minor}.${patchLevel + 1}`;
+  const patch = review('web/bun.lock', locked, withOverrides({ minimatch: newerPatch }));
   assert.deepEqual(patch.findings, []);
   assert.deepEqual(patch.updates.map(upgradeProblem), [undefined]);
-  const major = review('web/bun.lock', locked, withOverrides({ minimatch: '12.0.0' }));
-  assert.ok(major.updates.some((update) => upgradeProblem(update) !== undefined));
-  for (const changed of [{ attacker: '1.0.0' }, { minimatch: '^11.0.5' }, { attacker: '1.0.0', minimatch: '11.0.5' }]) {
+  const nextMajor = review('web/bun.lock', locked, withOverrides({ minimatch: `${major + 1}.0.0` }));
+  assert.ok(nextMajor.updates.some((update) => upgradeProblem(update) !== undefined));
+  for (const changed of [
+    { attacker: '1.0.0' },
+    { minimatch: `^${newerPatch}` },
+    { attacker: '1.0.0', minimatch: newerPatch },
+  ]) {
     assert.ok(review('web/bun.lock', locked, withOverrides(changed)).findings.length > 0);
   }
   const { minimatch: _removed, ...remaining } = overrides;
