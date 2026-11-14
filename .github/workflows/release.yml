@@ -187,7 +187,7 @@ jobs:
         with:
           distribution: goreleaser
           # renovate: datasource=github-releases depName=goreleaser/goreleaser
-          version: v2.20.1
+          version: v2.20.2
           install-only: true
       - name: Build archives, SBOMs and OCI images into the local registry
         env:
