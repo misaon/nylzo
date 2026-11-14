@@ -1,10 +1,11 @@
 # actionlint 1.7.12 predates three GitHub Actions features this repository uses:
 # concurrency.queue (May 2026, https://github.com/rhysd/actionlint/issues/657),
-# the ubuntu-26.04 runner label, and `$/` references to actions in this repository (July 2026).
+# the ubuntu-26.04 and ubuntu-26.04-arm runner labels, and `$/` references to actions in this repository (July 2026).
 # Every other syntax and security diagnostic stays enabled.
 self-hosted-runner:
   labels:
     - ubuntu-26.04
+    - ubuntu-26.04-arm
 paths:
   .github/workflows/*.yml:
     ignore:

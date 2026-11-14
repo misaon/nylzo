@@ -338,6 +338,16 @@
       "allowedVersions": "/^\\d*[02468]\\.04$/"
     },
     {
+      "description": "Caddy compiles against the quic-go API it requires, so quic-go moves only when a Caddy update raises it.",
+      "matchFileNames": [
+        "deploy/caddy/go.mod"
+      ],
+      "matchPackageNames": [
+        "github.com/quic-go/quic-go"
+      ],
+      "enabled": false
+    },
+    {
       "description": "modernc.org/libc follows modernc.org/sqlite; a libc major on its own is never wanted.",
       "matchPackageNames": [
         "modernc.org/libc"

@@ -130,6 +130,19 @@ const miseLockUpdate = miseLock
   .replace('a'.repeat(64), 'c'.repeat(64))
   .replace('384924896', '400000000');
 
+const regctlLock = `
+[[tools.regctl]]
+version = "0.11.7"
+backend = "aqua:regclient/regclient/regctl"
+specifiers = ["0.11.7"]
+
+[tools.regctl."platforms.linux-x64"]
+checksum = "sha256:${'e'.repeat(64)}"
+url = "https://github.com/regclient/regclient/releases/download/v0.11.7/regctl-linux-amd64"
+url_api = "https://api.github.com/repos/regclient/regclient/releases/assets/660897960"
+provenance = "cosign"
+`;
+
 const actionlintPlatform = '[tools.actionlint."platforms.linux-x64"]';
 const nodeSection = '\n\n[[tools.node]]';
 const actionlintAsset = miseLockUpdate.slice(
@@ -591,6 +604,20 @@ const cases: readonly Case[] = [
     before: miseLock,
     expected: 'rejected',
     name: 'mise lock download from another repository',
+    path: 'mise.lock',
+  },
+  {
+    after: `${miseLockUpdate}${regctlLock}`,
+    before: `${miseLock}${regctlLock}`,
+    expected: 'safe',
+    name: 'mise lock update next to an aqua package from a repository subdirectory',
+    path: 'mise.lock',
+  },
+  {
+    after: `${miseLockUpdate}${regctlLock.replace('github.com/regclient/regclient/releases', 'github.com/regclient/attacker/releases')}`,
+    before: `${miseLock}${regctlLock}`,
+    expected: 'rejected',
+    name: 'mise lock download of a subdirectory package from another repository',
     path: 'mise.lock',
   },
   {
