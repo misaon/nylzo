@@ -205,17 +205,17 @@ jobs:
           done
       - name: Provenance of the archives, checksums and web client files
         id: files-provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: dist/checksums.txt
       - name: Provenance of the image
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ghcr.io/misaon/nylzo
           subject-digest: ${{ steps.image.outputs.digest }}
           push-to-registry: true
       - name: Provenance of the Caddy image
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ghcr.io/misaon/nylzo-caddy
           subject-digest: ${{ steps.image.outputs.caddy_digest }}
@@ -263,7 +263,7 @@ jobs:
           gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" "$RUNNER_TEMP/web-client/evidence/"*.json "$manifest" "${manifest}.sigstore.json"
       - name: Provenance of the source SBOM and vulnerability evidence
         id: evidence-provenance
-        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-checksums: ${{ runner.temp }}/web-client/evidence.sha256
       - name: Attach the verified provenance as the in-toto asset Scorecard reads
