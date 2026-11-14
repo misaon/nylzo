@@ -2,6 +2,7 @@ package keys
 
 import (
 	"errors"
+	"slices"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/scrypt"
@@ -36,8 +37,8 @@ func NormalizePassphrase(passphrase string) []byte {
 
 // Password is the OPRF input salt_pw || pw of spec section 2.1; pw is empty without a passphrase.
 func Password(secret *[core.SecretLen]byte, kdf core.KDF, passphrase string) ([]byte, error) {
-	if err := checkPassphrase(kdf, passphrase); err != nil {
-		return nil, err
+	if kdf != core.KDFNone && !utf8.ValidString(passphrase) {
+		return nil, ErrMalformedPassphrase
 	}
 	if !kdf.Valid() {
 		return nil, core.ErrKDF
@@ -55,7 +56,7 @@ func Password(secret *[core.SecretLen]byte, kdf core.KDF, passphrase string) ([]
 	if len(normalized) > MaxPassphraseBytes {
 		return nil, ErrLongPassphrase
 	}
-	return concatenate(salt[:], normalized), nil
+	return slices.Concat(salt[:], normalized), nil
 }
 
 // OPAQUEConfig binds a run to the message and its profile and picks the stretching function of the profile.
@@ -78,11 +79,4 @@ func stretchScrypt(message []byte) ([]byte, error) {
 	derivations <- struct{}{}
 	defer func() { <-derivations }()
 	return scrypt.Key(message, make([]byte, stretchSalt), scryptN, scryptR, scryptP, opaque.HashLen)
-}
-
-func checkPassphrase(kdf core.KDF, passphrase string) error {
-	if kdf != core.KDFNone && !utf8.ValidString(passphrase) {
-		return ErrMalformedPassphrase
-	}
-	return nil
 }

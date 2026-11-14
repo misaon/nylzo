@@ -40,7 +40,14 @@ func TestRetiredProfileIsRefusedEverywhere(t *testing.T) {
 	}
 	payload := envelope.Payload{Meta: envelope.Meta{Text: new("x")}}
 	policy := envelope.Policy{OpensMax: 1, TTLSeconds: 60}
-	_, err := envelope.Seal(&keys.ContentKeys{}, envelope.NewHeader(core.KDFRetired), core.NewID(), policy, payload)
+	_, err := envelope.Seal(
+		&keys.ContentKeys{},
+		envelope.NewHeader(core.KDFRetired),
+		core.NewID(),
+		policy,
+		payload,
+		false,
+	)
 	if !errors.Is(err, core.ErrKDF) {
 		t.Fatalf("sealed an envelope for the retired profile: %v", err)
 	}

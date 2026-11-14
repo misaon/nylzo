@@ -88,8 +88,6 @@ func ServerAddress(environment *Environment, name, flagValue string) (string, bo
 var ErrNoLocalClient = errors.New("this nylzo carries no web client to compare with; use a release build")
 
 var (
-	errUsage          = errors.New("usage")
-	errHelp           = errors.New("help")
 	errTooLong        = errors.New("the input is longer than nylzo accepts")
 	errFileMissing    = errors.New("the file does not exist")
 	errFileDenied     = errors.New("the file is not readable")
@@ -106,8 +104,9 @@ func NewFlags(environment *Environment, name string) *flag.FlagSet {
 	return flags
 }
 
-// ParseFlags reports bad flags without echoing their values, which could hold a secret.
-func ParseFlags(flags *flag.FlagSet, environment *Environment, arguments []string) error {
+// ParseFlags reports bad flags without echoing their values, which could hold a secret; done tells the command to end
+// with the exit code, after help or a usage error.
+func ParseFlags(flags *flag.FlagSet, environment *Environment, arguments []string) (int, bool) {
 	flags.SetOutput(io.Discard)
 	err := flags.Parse(arguments)
 	flags.SetOutput(environment.Stderr)
@@ -115,7 +114,7 @@ func ParseFlags(flags *flag.FlagSet, environment *Environment, arguments []strin
 	case errors.Is(err, flag.ErrHelp):
 		flags.SetOutput(environment.Stdout)
 		flags.Usage()
-		return errHelp
+		return ExitOK, true
 	case err != nil:
 		if match := badFlagValue.FindStringSubmatch(err.Error()); match != nil {
 			fmt.Fprintf(
@@ -128,7 +127,7 @@ func ParseFlags(flags *flag.FlagSet, environment *Environment, arguments []strin
 		} else {
 			fmt.Fprintf(environment.Stderr, "%s: unknown or incomplete flag; run %s -h\n", flags.Name(), flags.Name())
 		}
-		return errUsage
+		return ExitUsage, true
 	case flags.NArg() > 0:
 		reason := "takes no arguments"
 		if keyLike.MatchString(strings.Join(flags.Args(), " ")) {
@@ -140,17 +139,6 @@ func ParseFlags(flags *flag.FlagSet, environment *Environment, arguments []strin
 			flags.Name(),
 			reason,
 		)
-		return errUsage
-	default:
-		return nil
-	}
-}
-
-func FlagsDone(err error) (int, bool) {
-	switch {
-	case errors.Is(err, errHelp):
-		return ExitOK, true
-	case err != nil:
 		return ExitUsage, true
 	default:
 		return ExitOK, false

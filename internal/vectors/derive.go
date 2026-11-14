@@ -74,10 +74,3 @@ func deriveVector(name string) (Derive, error) {
 		ManageKey:      core.Encode(manageKey[:]),
 	}, nil
 }
-
-func valueOr(text *string) string {
-	if text == nil {
-		return ""
-	}
-	return *text
-}

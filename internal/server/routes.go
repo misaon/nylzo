@@ -33,22 +33,29 @@ func (s *Server) routes() http.Handler {
 	onMessage := func(pattern string, handler http.HandlerFunc) {
 		mux.Handle(pattern, logging.InGroup(messageRoutes, handler))
 	}
+	onMessageID := func(pattern string, handler http.HandlerFunc) {
+		onMessage(pattern, func(w http.ResponseWriter, r *http.Request) {
+			if validPathID(w, r) && s.allowRead(w, r) {
+				handler(w, r)
+			}
+		})
+	}
 	message := api.MessagePath("{id}")
 	mux.HandleFunc("GET "+api.InstancePath, s.handleInstance)
 	mux.HandleFunc("HEAD "+api.InstancePath, handleAPINotFound)
 	mux.HandleFunc("GET "+api.ChallengePath, s.handleChallenge)
 	mux.HandleFunc("HEAD "+api.ChallengePath, handleAPINotFound)
 	mux.HandleFunc("POST "+api.MessagesPath, s.handleCreate)
-	onMessage("GET "+message, s.handleMetadata)
+	onMessageID("GET "+message, s.handleMetadata)
 	onMessage("HEAD "+message, handleAPINotFound)
-	onMessage("POST "+message+api.HandshakeAction, s.handleHandshake)
-	onMessage("POST "+message+api.ClaimAction, s.handleClaim)
-	onMessage("GET "+message+api.BlobAction, s.handleBlob)
+	onMessageID("POST "+message+api.HandshakeAction, s.handleHandshake)
+	onMessageID("POST "+message+api.ClaimAction, s.handleClaim)
+	onMessageID("GET "+message+api.BlobAction, s.handleBlob)
 	onMessage("HEAD "+message+api.BlobAction, handleAPINotFound)
-	onMessage("POST "+message+api.AckAction, s.handleAck)
-	onMessage("POST "+message+api.BurnAction, s.handleBurn)
-	onMessage("POST "+message+api.CancelAction, s.handleCancel)
-	onMessage("GET "+message+api.StatusAction, s.handleStatus)
+	onMessageID("POST "+message+api.AckAction, s.handleAck)
+	onMessageID("POST "+message+api.BurnAction, s.handleBurn)
+	onMessageID("POST "+message+api.CancelAction, s.handleCancel)
+	onMessageID("GET "+message+api.StatusAction, s.handleStatus)
 	onMessage("HEAD "+message+api.StatusAction, handleAPINotFound)
 	onMessage("POST "+api.AbusePath, s.handleAbuse)
 	mux.HandleFunc(api.Prefix, handleAPINotFound)
@@ -92,7 +99,7 @@ func isAPI(r *http.Request) bool {
 }
 
 func refuseCrossOrigin(w http.ResponseWriter, _ *http.Request) {
-	writeError(w, http.StatusForbidden, errCrossOrigin)
+	writeError(w, http.StatusForbidden, api.ErrorCrossOrigin)
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -107,7 +114,7 @@ func securityHeaders(next http.Handler) http.Handler {
 func (s *Server) noticeForwarded(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		header := ratelimit.ForwardingHeader(r)
-		if header != "" && s.clientAddress(r) == ratelimit.PeerAddress(r.RemoteAddr) {
+		if header != "" && s.proxies.ClientAddress(r) == ratelimit.PeerAddress(r.RemoteAddr) {
 			s.events.WarnContext(r.Context(), "forwarded-header-ignored", "category", header)
 		}
 		next.ServeHTTP(w, r)
@@ -162,8 +169,7 @@ func prefetchGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		guarded := r.URL.Path == core.LinkPath || strings.HasPrefix(r.URL.Path, "/m/") || isAPI(r)
 		if guarded && r.Header.Get("Sec-Purpose") != "" {
-			setRetryAfter(w, prefetchRetry)
-			writeError(w, http.StatusServiceUnavailable, errUnavailable)
+			writeUnavailable(w, prefetchRetry)
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -187,22 +193,6 @@ func (s *Server) throttle(next http.Handler) http.Handler {
 
 const timeFormat = time.RFC3339
 
-var (
-	errBadRequest     = api.ErrorResponse{Error: api.ErrorBadRequest}
-	errClientOutdated = api.ErrorResponse{Error: api.ErrorClientOutdated}
-	errContact        = api.ErrorResponse{Error: api.ErrorContact}
-	errNotFound       = api.ErrorResponse{Error: api.ErrorNotFound}
-	errConflict       = api.ErrorResponse{Error: api.ErrorConflict}
-	errShareLost      = api.ErrorResponse{Error: api.ErrorShareLost}
-	errLengthRequired = api.ErrorResponse{Error: api.ErrorLengthRequired}
-	errTooLarge       = api.ErrorResponse{Error: api.ErrorTooLarge}
-	errUnavailable    = api.ErrorResponse{Error: api.ErrorUnavailable}
-	errWorkRequired   = api.ErrorResponse{Error: api.ErrorWork}
-	errIDToken        = api.ErrorResponse{Error: api.ErrorIDToken}
-	errCrossOrigin    = api.ErrorResponse{Error: api.ErrorCrossOrigin}
-	errInternal       = api.ErrorResponse{Error: api.ErrorInternal}
-)
-
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	body, err := json.Marshal(value)
 	if err != nil {
@@ -215,12 +205,17 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Write(body)
 }
 
-func writeError(w http.ResponseWriter, status int, body api.ErrorResponse) {
-	writeJSON(w, status, body)
+func writeError(w http.ResponseWriter, status int, code string) {
+	writeJSON(w, status, api.ErrorResponse{Error: code})
 }
 
 func writeNotFound(w http.ResponseWriter) {
-	writeJSON(w, http.StatusNotFound, errNotFound)
+	writeError(w, http.StatusNotFound, api.ErrorNotFound)
+}
+
+func writeUnavailable(w http.ResponseWriter, wait time.Duration) {
+	setRetryAfter(w, wait)
+	writeError(w, http.StatusServiceUnavailable, api.ErrorUnavailable)
 }
 
 func writeGone(w http.ResponseWriter, state string) {
@@ -255,10 +250,10 @@ func (s *Server) writeInternal(w http.ResponseWriter, r *http.Request, err error
 	entry := failure(r.Context(), err)
 	s.events.Log(r.Context(), entry.level, "handler", "err", entry.text)
 	if entry.clientGone {
-		writeError(w, http.StatusBadRequest, errBadRequest)
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 		return
 	}
-	writeError(w, http.StatusInternalServerError, errInternal)
+	writeError(w, http.StatusInternalServerError, api.ErrorInternal)
 }
 
 type failureEntry struct {

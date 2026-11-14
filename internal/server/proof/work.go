@@ -38,7 +38,6 @@ type Work struct {
 	ring     *pepper.Ring
 	counters HitCounter
 	slots    chan struct{}
-	slotWait time.Duration
 }
 
 func NewWork(ring *pepper.Ring, counters HitCounter, concurrency int) *Work {
@@ -46,7 +45,6 @@ func NewWork(ring *pepper.Ring, counters HitCounter, concurrency int) *Work {
 		ring:     ring,
 		counters: counters,
 		slots:    make(chan struct{}, concurrency),
-		slotWait: workSlotWait,
 	}
 }
 
@@ -74,7 +72,7 @@ func (w *Work) Verify(ctx context.Context, encoded string, id core.ID, now time.
 	if err := w.spend(ctx, token.challenge); err != nil {
 		return err
 	}
-	wait := time.NewTimer(w.slotWait)
+	wait := time.NewTimer(workSlotWait)
 	defer wait.Stop()
 	select {
 	case w.slots <- struct{}{}:

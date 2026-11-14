@@ -48,7 +48,6 @@ func init() {
 }
 
 type crawlerFile struct {
-	Sources  []string `json:"sources"`
 	Prefixes []string `json:"prefixes"`
 }
 

@@ -19,12 +19,13 @@ func TestAttachmentCompression(t *testing.T) {
 	for _, size := range []int{128 * 1024, envelope.MaxFileBytes} {
 		file := bytes.Repeat([]byte{'A'}, size)
 		sample := seal(t, "this text never enters the compressor", file)
-		object, err := envelope.SealWithCompression(
+		object, err := envelope.Seal(
 			&sample.content,
 			sample.header,
 			sample.id,
 			sample.policy,
 			sample.payload,
+			true,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -57,12 +58,13 @@ func TestCompressionKeepsTheOriginalWhenItCannotHalveTheLength(t *testing.T) {
 	rand.Read(random)
 	for _, file := range [][]byte{nil, {}, bytes.Repeat([]byte{'A'}, 40*1024), random} {
 		sample := seal(t, "text", file)
-		object, err := envelope.SealWithCompression(
+		object, err := envelope.Seal(
 			&sample.content,
 			sample.header,
 			sample.id,
 			sample.policy,
 			sample.payload,
+			true,
 		)
 		if err != nil || !bytes.Equal(object, sample.object) {
 			t.Fatalf("unchanged encoding for %d bytes: %v", len(file), err)
@@ -76,12 +78,13 @@ func TestF6CompressedLengthShowsOnlyAHalvingClass(t *testing.T) {
 	file := make([]byte, 1024*1024)
 	rand.Read(file[600*1024:])
 	sample := seal(t, "text", file)
-	object, err := envelope.SealWithCompression(
+	object, err := envelope.Seal(
 		&sample.content,
 		sample.header,
 		sample.id,
 		sample.policy,
 		sample.payload,
+		true,
 	)
 	if err != nil {
 		t.Fatal(err)

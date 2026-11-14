@@ -32,7 +32,7 @@ func localFlags(environment *command.Environment, name string) (*flag.FlagSet, *
 
 func runWeb(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := localFlags(environment, "web")
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	address, ok := command.ServerAddress(environment, "web", options.server)
@@ -58,7 +58,7 @@ func runWeb(ctx context.Context, environment *command.Environment, arguments []s
 func runOpen(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := localFlags(environment, "open")
 	linkFile := flags.String("link-file", "", "read the link from this file (or "+command.EnvironmentLink+", or stdin)")
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	address, ok := command.ServerAddress(environment, "open", options.server)

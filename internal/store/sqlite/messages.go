@@ -138,7 +138,7 @@ func rowValues(row *store.Row) []any {
 		blobWrap = row.BlobWrap
 	}
 	if !row.BlobPurgeAt.IsZero() {
-		blobPurgeAt = milliseconds(row.BlobPurgeAt)
+		blobPurgeAt = row.BlobPurgeAt.UnixMilli()
 	}
 	return []any{
 		row.Locator[:],
@@ -148,7 +148,7 @@ func rowValues(row *store.Row) []any {
 		blobReference,
 		blobWrap,
 		blobPurgeAt,
-		milliseconds(row.PurgeAt),
+		row.PurgeAt.UnixMilli(),
 	}
 }
 
@@ -194,10 +194,6 @@ func scanRow(scanner *sql.Row) (store.Row, error) {
 	}
 	row.PurgeAt = fromMilliseconds(purgeAt)
 	return row, nil
-}
-
-func milliseconds(moment time.Time) int64 {
-	return moment.UnixMilli()
 }
 
 func fromMilliseconds(milliseconds int64) time.Time {

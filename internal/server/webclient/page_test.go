@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
-	"maps"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -320,12 +319,8 @@ func TestEveryPageRejectsThirdPartyScriptsAndAnalyticsConnections(t *testing.T) 
 			if policy["connect-src"] != "'self'" || policy["trusted-types"] != "nylzo-kdf" {
 				t.Errorf("%s %s policy %q", publicURL, name, page.Policy())
 			}
-			if page.Allowlist() != webclient.ConnectionAllowlist(contact) ||
-				page.ContactlessAllowlist() != webclient.ConnectionAllowlist("") {
+			if page.Allowlist() != webclient.ConnectionAllowlist(contact) {
 				t.Errorf("%s %s allowlist %q", publicURL, name, page.Allowlist())
-			}
-			if !maps.Equal(page.SecurityHeaders("/"), shared) {
-				t.Errorf("%s %s headers %v", publicURL, name, page.SecurityHeaders("/"))
 			}
 			response := httptest.NewRecorder()
 			webclient.SetSecurityHeaders(response.Header(), true)

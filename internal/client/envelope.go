@@ -46,7 +46,6 @@ func (c *Client) Claim(
 	read *[core.SeedLen]byte,
 	login *Login,
 	size int64,
-	onLease func(string),
 ) (Claimed, error) {
 	sent := &sentShareKey{}
 	request := signedRequest{
@@ -69,9 +68,6 @@ func (c *Client) Claim(
 	lease := response.Header.Get(api.LeaseHeaderName)
 	if lease == "" {
 		return Claimed{}, ErrResponse
-	}
-	if onLease != nil {
-		onLease(lease)
 	}
 	received, err := readEnvelope(response)
 	if err != nil {
@@ -124,11 +120,7 @@ func (c *Client) Ack(ctx context.Context, id core.ID, read *[core.SeedLen]byte, 
 		seed:    read,
 		headers: map[string]string{api.LeaseHeaderName: lease},
 	}
-	response, err := c.signed(ctx, &request, shortTimeout)
-	if err != nil {
-		return err
-	}
-	return drain(response)
+	return c.finish(ctx, &request)
 }
 
 func readEnvelope(response *http.Response) (Envelope, error) {

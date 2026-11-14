@@ -67,8 +67,6 @@ var assetTypes = map[string]string{
 	".png":   "image/png",
 }
 
-var compressedVariants = map[string]string{".gz": EncodingGzip}
-
 var assetReference = regexp.MustCompile(
 	`(?:(?:src|href|content)="(?:` + publicURLPlaceholder + `)?|url\("?)/assets/([^"')]*)`,
 )
@@ -156,42 +154,35 @@ func loadAssets(files fs.FS) (map[string]Asset, error) {
 	if err != nil {
 		return nil, fmt.Errorf("server: web assets: %w", err)
 	}
-	variants := map[string]map[string][]byte{}
+	gzipped := map[string][]byte{}
 	for _, entry := range entries {
-		name, encoding := entry.Name(), ""
-		if compressed, ok := compressedVariants[path.Ext(name)]; ok {
-			name, encoding = strings.TrimSuffix(name, path.Ext(name)), compressed
-		}
-		if _, ok := assetTypes[path.Ext(name)]; !ok {
+		name, compressed := strings.CutSuffix(entry.Name(), ".gz")
+		contentType, ok := assetTypes[path.Ext(name)]
+		if !ok {
 			return nil, fmt.Errorf("server: web asset %s %w", entry.Name(), errUnknownAssetType)
 		}
-		if variants[name] == nil {
-			variants[name] = map[string][]byte{}
+		body, readErr := fs.ReadFile(files, path.Join(assetsDirectory, entry.Name()))
+		if readErr != nil {
+			return nil, fmt.Errorf("server: web asset %s: %w", entry.Name(), readErr)
 		}
-		if variants[name][encoding], err = fs.ReadFile(files, path.Join(assetsDirectory, entry.Name())); err != nil {
-			return nil, fmt.Errorf("server: web asset %s: %w", entry.Name(), err)
+		if compressed {
+			gzipped[name] = body
+		} else {
+			assets[name] = Asset{ContentType: contentType, Body: body}
 		}
 	}
-	for name, bodies := range variants {
-		if assets[name], err = newAsset(name, bodies); err != nil {
-			return nil, err
+	for name, compressed := range gzipped {
+		asset, ok := assets[name]
+		if !ok {
+			return nil, fmt.Errorf("server: web asset %s %w", name, errCompressedWithoutFile)
 		}
+		if gunzipErr := sameAfterGunzip(compressed, asset.Body); gunzipErr != nil {
+			return nil, fmt.Errorf("server: web asset %s.gz: %w", name, gunzipErr)
+		}
+		asset.Gzip = compressed
+		assets[name] = asset
 	}
 	return assets, nil
-}
-
-func newAsset(name string, bodies map[string][]byte) (Asset, error) {
-	plain, ok := bodies[""]
-	if !ok {
-		return Asset{}, fmt.Errorf("server: web asset %s %w", name, errCompressedWithoutFile)
-	}
-	compressed, ok := bodies[EncodingGzip]
-	if ok {
-		if err := sameAfterGunzip(compressed, plain); err != nil {
-			return Asset{}, fmt.Errorf("server: web asset %s.gz: %w", name, err)
-		}
-	}
-	return Asset{ContentType: assetTypes[path.Ext(name)], Body: plain, Gzip: compressed}, nil
 }
 
 func sameAfterGunzip(compressed, plain []byte) error {

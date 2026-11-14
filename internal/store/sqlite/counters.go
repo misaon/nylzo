@@ -48,14 +48,14 @@ func (s *Store) RateReserve(ctx context.Context, hit store.RateHit) (int64, erro
 
 func (s *Store) RateRelease(ctx context.Context, key string, windowStart time.Time) error {
 	return s.transaction(ctx, func(tx *sql.Tx) error {
-		_, err := execIn(ctx, tx, s.statements.releaseCounter, key, milliseconds(windowStart))
+		_, err := execIn(ctx, tx, s.statements.releaseCounter, key, windowStart.UnixMilli())
 		return err
 	})
 }
 
 // RateCopy sets an existing counter to the count of another one in the same window, or to 0 when that has none.
 func (s *Store) RateCopy(ctx context.Context, sourceKey, targetKey string, windowStart time.Time) error {
-	window := milliseconds(windowStart)
+	window := windowStart.UnixMilli()
 	return s.transaction(ctx, func(tx *sql.Tx) error {
 		_, err := tx.ExecContext(
 			ctx,
@@ -73,7 +73,7 @@ func (s *Store) RateCopy(ctx context.Context, sourceKey, targetKey string, windo
 
 func (s *Store) RateGet(ctx context.Context, key string, windowStart time.Time) (store.RateCount, error) {
 	var count store.RateCount
-	err := s.statements.loadCounter.QueryRowContext(ctx, key, milliseconds(windowStart)).Scan(&count.Count)
+	err := s.statements.loadCounter.QueryRowContext(ctx, key, windowStart.UnixMilli()).Scan(&count.Count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return store.RateCount{}, nil
 	}
@@ -86,14 +86,14 @@ func (s *Store) RatePurge(ctx context.Context, now time.Time, limit int) (int, e
 
 func countHit(ctx context.Context, statement *sql.Stmt, hit *store.RateHit) (store.RateCount, error) {
 	var count store.RateCount
-	err := statement.QueryRowContext(ctx, hit.Key, milliseconds(hit.WindowStart), milliseconds(hit.PurgeAt)).
+	err := statement.QueryRowContext(ctx, hit.Key, hit.WindowStart.UnixMilli(), hit.PurgeAt.UnixMilli()).
 		Scan(&count.Count)
 	return count, err
 }
 
 func reserveHit(ctx context.Context, statement *sql.Stmt, hit *store.RateHit) (int64, error) {
 	var count int64
-	err := statement.QueryRowContext(ctx, hit.Key, milliseconds(hit.WindowStart), milliseconds(hit.PurgeAt), hit.Limit).
+	err := statement.QueryRowContext(ctx, hit.Key, hit.WindowStart.UnixMilli(), hit.PurgeAt.UnixMilli(), hit.Limit).
 		Scan(&count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil

@@ -397,15 +397,11 @@ func Inspect(directory string) (State, error) {
 // ErasablePaths are the directory and, once it exists, the seed file, whose overwrites must land in place.
 func ErasablePaths(directory string) []string {
 	paths := []string{directory}
-	if seed := filepath.Join(directory, FileName); fileExists(seed) {
+	seed := filepath.Join(directory, FileName)
+	if _, err := os.Lstat(seed); err == nil {
 		paths = append(paths, seed)
 	}
 	return paths
-}
-
-func fileExists(path string) bool {
-	_, err := os.Lstat(path)
-	return err == nil
 }
 
 // MinuteSeeds lists the seeds of the current minute that a seed file holds, which make the share of that minute.

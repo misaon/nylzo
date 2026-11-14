@@ -199,19 +199,8 @@ func Restamp(dataDirectory string, now time.Time) error {
 		if !ok {
 			continue
 		}
-		start, parseErr := time.Parse(time.DateOnly, day)
-		if parseErr != nil {
-			continue
-		}
-		if chtimesErr := os.Chtimes(
-			filepath.Join(directory, entry.Name()),
-			start,
-			start,
-		); !errors.Is(
-			chtimesErr,
-			fs.ErrNotExist,
-		) {
-			errs = append(errs, chtimesErr)
+		if stampErr := stampDay(filepath.Join(directory, entry.Name()), day); !errors.Is(stampErr, fs.ErrNotExist) {
+			errs = append(errs, stampErr)
 		}
 	}
 	quarter := now.Truncate(store.BlobPurgeStep)

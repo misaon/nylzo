@@ -33,9 +33,6 @@ type abuseRequest struct {
 
 // handleBurn deletes a message only after a handshake whose KE3 matches, checked and counted as for a claim (F05).
 func (s *Server) handleBurn(w http.ResponseWriter, r *http.Request) {
-	if !validPathID(w, r) || !s.allowRead(w, r) {
-		return
-	}
 	ke3, ok := parseKE3(w, r)
 	if !ok {
 		return
@@ -50,9 +47,6 @@ func (s *Server) handleBurn(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
-	if !validPathID(w, r) || !s.allowRead(w, r) {
-		return
-	}
 	granted, ok := s.authorizedOpenable(w, r, seal.Manage)
 	defer granted.forget()
 	if !ok {
@@ -84,9 +78,6 @@ func (s *Server) answerEnding(
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if !validPathID(w, r) || !s.allowRead(w, r) {
-		return
-	}
 	granted, ok := s.authorized(w, r, seal.Manage)
 	defer granted.forget()
 	if !ok {
@@ -119,19 +110,19 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
-		writeError(w, http.StatusBadRequest, errBadRequest)
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 		return
 	}
 	raw, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxAbuseBody))
 	defer clear(raw)
 	var submitted abuseRequest
 	if err != nil || json.Unmarshal(raw, &submitted) != nil {
-		writeError(w, http.StatusBadRequest, errBadRequest)
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 		return
 	}
 	contact, err := report.ParseContact(submitted.Contact)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, errContact)
+		writeError(w, http.StatusBadRequest, api.ErrorContact)
 		return
 	}
 	if _, idErr := core.ParseID(submitted.ID); idErr != nil {
@@ -195,8 +186,7 @@ func (s *Server) recordAbuse(
 	}
 	if errors.Is(err, abuse.ErrFull) {
 		s.events.ErrorContext(r.Context(), "abuse-file-full")
-		setRetryAfter(w, abuseFullRetry)
-		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		writeUnavailable(w, abuseFullRetry)
 		return
 	}
 	s.writeInternal(w, r, err)

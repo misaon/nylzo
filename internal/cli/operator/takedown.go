@@ -33,7 +33,7 @@ func RunTakedown(ctx context.Context, environment *command.Environment, argument
 			command.Program,
 		)
 	}
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	if !serverSupported {

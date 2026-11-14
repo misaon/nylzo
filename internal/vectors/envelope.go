@@ -151,7 +151,7 @@ func sealCase(vector envelopeCase) (sealedCase, error) {
 	}
 	sealed.content = content
 	sealed.payload, _ = vector.payload()
-	sealed.object, err = envelope.Seal(&sealed.content, sealed.header, sealed.id, sealed.policy, sealed.payload)
+	sealed.object, err = envelope.Seal(&sealed.content, sealed.header, sealed.id, sealed.policy, sealed.payload, false)
 	return sealed, err
 }
 

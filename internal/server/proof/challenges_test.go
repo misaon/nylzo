@@ -4,6 +4,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/misaon/nylzo/internal/core/signing"
 )
 
 func TestChallengesAreUsedOnceWithinTheirWindow(t *testing.T) {
@@ -20,25 +22,25 @@ func TestChallengesAreUsedOnceWithinTheirWindow(t *testing.T) {
 		{now.Add(-challengeTTL - time.Second), false},
 	} {
 		challenge, _, _ := challenges.Issue(testCase.issued)
-		if accepted := challenges.See(challenge, now); accepted != testCase.accepted {
+		if accepted := see(challenges, challenge, now); accepted != testCase.accepted {
 			t.Fatalf("a challenge issued %v from now: accepted %v", testCase.issued.Sub(now), accepted)
 		}
 	}
 	challenge, _, _ := challenges.Issue(now)
 	forged := challenge
 	forged[len(forged)-1] ^= 1
-	if challenges.See(forged, now) {
+	if see(challenges, forged, now) {
 		t.Fatal("a challenge with a wrong tag was accepted")
 	}
-	if !challenges.See(challenge, now) {
+	if !see(challenges, challenge, now) {
 		t.Fatal("a forged copy used up the genuine challenge")
 	}
-	if challenges.See(challenge, now) {
+	if see(challenges, challenge, now) {
 		t.Fatal("the process accepted a challenge it had seen")
 	}
 	early, _, _ := challenges.Issue(now.Add(6 * time.Second))
-	challenges.See(early, now)
-	if challenges.See(early, now.Add(time.Second)) {
+	see(challenges, early, now)
+	if see(challenges, early, now.Add(time.Second)) {
 		t.Fatal("a challenge refused for its window was accepted once the clock caught up")
 	}
 }
@@ -49,25 +51,25 @@ func TestAProcessAcceptsOnlyChallengesItIssuedAndStillHolds(t *testing.T) {
 	earlier := NewChallenges(testRing(t), MinCapacity)
 	challenges := NewChallenges(testRing(t), MinCapacity)
 	fromEarlier, _, _ := earlier.Issue(now)
-	if challenges.See(fromEarlier, now) {
+	if see(challenges, fromEarlier, now) {
 		t.Fatal("a process accepted a challenge that another process issued")
 	}
 	behind := now.Add(-10 * time.Second)
 	own, _, _ := challenges.Issue(behind)
-	if !challenges.See(own, behind) {
+	if !see(challenges, own, behind) {
 		t.Fatal("a process refused its own challenge after its clock stepped back")
 	}
 	expired, _, _ := challenges.Issue(now)
 	ahead, _, _ := challenges.Issue(now.Add(time.Hour))
 	live, _, _ := challenges.Issue(now.Add(challengeTTL))
 	challenges.Purge(now.Add(challengeTTL + clockSkew + time.Second))
-	if challenges.See(expired, now) {
+	if see(challenges, expired, now) {
 		t.Fatal("a challenge the purge dropped was accepted after the clock stepped back")
 	}
-	if challenges.See(ahead, now.Add(time.Hour)) {
+	if see(challenges, ahead, now.Add(time.Hour)) {
 		t.Fatal("a challenge issued by a clock that later stepped back was kept by the purge")
 	}
-	if !challenges.See(live, now.Add(challengeTTL)) {
+	if !see(challenges, live, now.Add(challengeTTL)) {
 		t.Fatal("the purge dropped a challenge whose window was open")
 	}
 }
@@ -81,19 +83,19 @@ func TestAHandshakeChallengeOutlivesAnOrdinaryOne(t *testing.T) {
 	login, _, _ := challenges.IssueLogin(now)
 	later := now.Add(challengeTTL + 30*time.Second)
 	challenges.Purge(later)
-	if challenges.See(ordinary, later) {
+	if see(challenges, ordinary, later) {
 		t.Fatal("an ordinary challenge was accepted after its minute")
 	}
-	if !challenges.See(login, later) {
+	if !see(challenges, login, later) {
 		t.Fatal("a handshake's challenge was refused while its client could still be stretching")
 	}
 	forgotten, _, _ := challenges.IssueLogin(now)
 	challenges.Forget(forgotten)
-	if challenges.See(forgotten, now) {
+	if see(challenges, forgotten, now) {
 		t.Fatal("a challenge its refused handshake gave back was accepted")
 	}
 	early, _, _ := challenges.IssueLogin(now.Add(clockSkew + time.Second))
-	if challenges.See(early, now) {
+	if see(challenges, early, now) {
 		t.Fatal("a handshake's challenge from a clock ahead was accepted")
 	}
 }
@@ -112,7 +114,7 @@ func TestAFullTableMakesRoomForNewChallenges(t *testing.T) {
 		t.Fatal("a full table of expired challenges refused a new one")
 	}
 	used, _, _ := challenges.Issue(later)
-	if !challenges.See(used, later) {
+	if !see(challenges, used, later) {
 		t.Fatal("a held challenge was refused")
 	}
 	if _, _, issued := challenges.Issue(later); !issued {
@@ -140,4 +142,9 @@ func TestCapacityHoldsTwiceWhatTheInstanceBucketCanIssue(t *testing.T) {
 			)
 		}
 	}
+}
+
+func see(challenges *Challenges, challenge [signing.ChallengeLen]byte, now time.Time) bool {
+	accepted, _ := challenges.Take(challenge, now)
+	return accepted
 }

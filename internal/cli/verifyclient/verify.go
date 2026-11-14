@@ -18,7 +18,6 @@ import (
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/command"
-	"github.com/misaon/nylzo/internal/cli/local"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
@@ -123,7 +122,7 @@ func verifyFlags(environment *command.Environment) (*flag.FlagSet, *verifyOption
 
 func Run(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags, options := verifyFlags(environment)
-	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
+	if code, done := command.ParseFlags(flags, environment, arguments); done {
 		return code
 	}
 	address, ok := command.ServerAddress(environment, "verify-client", options.server)
@@ -276,12 +275,13 @@ func (v *verifier) manifest(ctx context.Context, served *webclient.Manifest) err
 
 // contact reads the operator's contact, which every page's Connection-Allowlist admits.
 func (v *verifier) contact(ctx context.Context) (string, error) {
-	contact, err := local.OperatorContact(ctx, v.server)
-	if _, unreadable := errors.AsType[*local.ContactError](err); unreadable {
-		return "", differs("%s: %s", api.TransparencyPath, err)
-	}
+	fetched, err := v.server.Fetch(ctx, api.TransparencyPath, identity, operatoraddress.MaxTransparencyBytes)
 	if err != nil {
 		return "", fetchFailed(api.TransparencyPath, err)
+	}
+	contact, err := operatoraddress.OperatorContact(fetched.Body)
+	if err != nil {
+		return "", differs("%s: %s", api.TransparencyPath, err)
 	}
 	return contact, nil
 }
@@ -294,7 +294,7 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	if err != nil {
 		return fetchFailed(where, err)
 	}
-	headersErr := v.headers(fetched.Header, expected.SecurityHeaders(path), "text/html; charset=utf-8", where)
+	headersErr := v.headers(fetched.Header, webclient.SecurityHeaders(path), "text/html; charset=utf-8", where)
 	if isDifference(headersErr) {
 		return headersErr
 	}
@@ -322,7 +322,7 @@ func allowlist(values []string, expected webclient.Page, where string) error {
 	switch {
 	case len(values) == 1 && values[0] == expected.Allowlist():
 		return nil
-	case len(values) == 1 && values[0] == expected.ContactlessAllowlist():
+	case len(values) == 1 && values[0] == webclient.ConnectionAllowlist(""):
 		return fmt.Errorf("%s: %w", where, errContactLeftOut)
 	default:
 		return differs("%s: the Connection-Allowlist differs from this nylzo", where)

@@ -22,6 +22,7 @@ import (
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/logging"
+	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -30,9 +31,6 @@ const octetStream = "application/octet-stream"
 var errBlobSize = errors.New("server: blob size differs from the stored message size")
 
 func (s *Server) handleMetadata(w http.ResponseWriter, r *http.Request) {
-	if !validPathID(w, r) || !s.allowRead(w, r) {
-		return
-	}
 	granted, ok := s.authorized(w, r, seal.Read)
 	defer granted.forget()
 	if !ok {
@@ -97,14 +95,8 @@ func formatEnd(end time.Time) string {
 	return formatTime(end)
 }
 
-// admitStream checks what costs no lookup before a claim or a download takes a stream slot, which it does before the
-// signature is checked (D24), so a malformed request never holds one.
-func (s *Server) admitStream(w http.ResponseWriter, r *http.Request) bool {
-	return validPathID(w, r) && s.allowRead(w, r) && emptyBody(w, r)
-}
-
 func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
-	if !s.admitStream(w, r) {
+	if !emptyBody(w, r) {
 		return
 	}
 	ke3, ok := parseKE3(w, r)
@@ -141,7 +133,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	defer clear(blob.salt[:])
 	lease := core.NewSecret()
 	leaseTag := s.ring.MAC(pepper.Lease, lease[:])
-	result, err := store.Claim(r.Context(), s.store, &granted.record, store.ClaimParameters{
+	claimed, err := store.Claim(r.Context(), s.store, &granted.record, store.ClaimParameters{
 		Clock:         time.Now,
 		LeaseMAC:      leaseTag.MAC[:],
 		LeasePepperID: leaseTag.PepperID,
@@ -150,10 +142,11 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 		s.writeClaimFailure(w, r, err)
 		return
 	}
-	if result.Message.OpensRemaining == 0 {
-		s.releaseAtLeaseEnd(&granted.record, result.Lease.ExpiresAt)
+	message := granted.record.Message
+	if message.OpensRemaining == 0 {
+		s.releaseAtLeaseEnd(&granted.record, claimed.ExpiresAt)
 	}
-	s.serveBlob(w, r, result.Message, servedHeaders{lease: core.Encode(lease[:]), share: wrappedShare}, blob.content)
+	s.serveBlob(w, r, message, servedHeaders{lease: core.Encode(lease[:]), share: wrappedShare}, blob.content)
 }
 
 // readerKey reads the share key and refuses, before anything is counted or changed, a reader of an earlier release:
@@ -164,9 +157,9 @@ func readerKey(w http.ResponseWriter, r *http.Request, message *store.Message) (
 	readerFlags, flagsOK := parseReaderFlags(r.Header)
 	switch {
 	case errors.Is(keyErr, share.ErrOutdated) || (flagsOK && message.Flags&^readerFlags != 0):
-		writeError(w, http.StatusBadRequest, errClientOutdated)
+		writeError(w, http.StatusBadRequest, api.ErrorClientOutdated)
 	case keyErr != nil || !flagsOK:
-		writeError(w, http.StatusBadRequest, errBadRequest)
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 	default:
 		return clientKey, true
 	}
@@ -262,8 +255,7 @@ func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err e
 		return
 	}
 	if busyErr, isBusy := errors.AsType[*store.BusyError](err); isBusy {
-		setRetryAfter(w, busyErr.RetryAfter)
-		writeError(w, http.StatusServiceUnavailable, errUnavailable)
+		writeUnavailable(w, busyErr.RetryAfter)
 		return
 	}
 	if errors.Is(err, store.ErrNotFound) {
@@ -295,7 +287,7 @@ func (s *Server) releaseAtLeaseEnd(record *store.Record, leaseExpires time.Time)
 // handleBlob serves a download through a lease. A reader that resumes from the lease after a reload ran a handshake
 // for P again, and its download may carry that KE3, which takes the handshake's attempt back (spec section 6.5).
 func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
-	if !s.admitStream(w, r) {
+	if !emptyBody(w, r) {
 		return
 	}
 	ke3, ok := parseOptionalKE3(w, r)
@@ -341,9 +333,6 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
-	if !validPathID(w, r) || !s.allowRead(w, r) {
-		return
-	}
 	leased, ok := s.activeLease(w, r)
 	defer clear(leased.record.Key[:])
 	if !ok {
@@ -398,8 +387,8 @@ func (s *Server) activeLease(w http.ResponseWriter, r *http.Request) (leaseAcces
 }
 
 func (s *Server) findLease(r *http.Request, record *store.Record, now time.Time) (store.Lease, bool) {
-	raw, ok := leaseToken(r)
-	if !ok {
+	raw, err := core.DecodeExact(r.Header.Get(api.LeaseHeaderName), core.SeedLen)
+	if err != nil {
 		return store.Lease{}, false
 	}
 	for _, lease := range record.Message.Leases {
@@ -409,11 +398,6 @@ func (s *Server) findLease(r *http.Request, record *store.Record, now time.Time)
 		}
 	}
 	return store.Lease{}, false
-}
-
-func leaseToken(r *http.Request) ([]byte, bool) {
-	raw, err := core.DecodeExact(r.Header.Get(api.LeaseHeaderName), core.SeedLen)
-	return raw, err == nil
 }
 
 type decryptedBlob struct {
@@ -474,7 +458,7 @@ func (s *Server) openCheckedBlob(
 func (s *Server) writeBlobFailure(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, seal.ErrBlobChanged) || errors.Is(err, errBlobSize) || errors.Is(err, store.ErrBlobMissing) {
 		s.events.ErrorContext(r.Context(), "blob-changed")
-		writeError(w, http.StatusInternalServerError, errInternal)
+		writeError(w, http.StatusInternalServerError, api.ErrorInternal)
 		return
 	}
 	s.writeInternal(w, r, err)
@@ -594,7 +578,7 @@ func (s *Server) serveBlob(
 	header.Set("Content-Type", octetStream)
 	header.Set("Content-Length", strconv.FormatInt(size, 10))
 	w.WriteHeader(http.StatusOK)
-	paced := s.pace.Writer(w, http.NewResponseController(w), overall)
+	paced := transport.PacedWriter(w, http.NewResponseController(w), overall)
 	buffer := borrowStreamBuffer()
 	defer giveBackStreamBuffer(buffer)
 	if copied, err := io.CopyBuffer(

@@ -126,13 +126,6 @@ func exportKeyOf(t *testing.T, text string) *keys.ExportKey {
 	return (*keys.ExportKey)(decoded)
 }
 
-func valueOf(text *string) string {
-	if text == nil {
-		return ""
-	}
-	return *text
-}
-
 func TestEnvelopeVectors(t *testing.T) {
 	t.Parallel()
 	for _, vector := range loadVectors(t).Envelope {
@@ -177,7 +170,7 @@ func checkEnvelopeVector(t *testing.T, vector *vectors.Envelope) {
 	if err != nil || string(meta) != vector.MetaJSON {
 		t.Fatalf("meta %s differs: %v", meta, err)
 	}
-	object, err := envelope.Seal(&content, header, id, policy, payload)
+	object, err := envelope.Seal(&content, header, id, policy, payload, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,9 +361,9 @@ func openRejected(t *testing.T, envelopes map[string]vectors.Envelope, vector *v
 	if vector.TruncateTo != nil {
 		object = object[:*vector.TruncateTo]
 	}
-	hash, err := core.Decode32(vector.ObjectHash)
-	if err != nil {
-		t.Fatal(err)
+	var hash [sha256.Size]byte
+	if !core.DecodeInto(hash[:], vector.ObjectHash) {
+		t.Fatalf("%s: object hash", vector.Name)
 	}
 	if vector.ReaderID != nil {
 		if id, err = core.ParseID(*vector.ReaderID); err != nil {
@@ -395,7 +388,7 @@ func openRejected(t *testing.T, envelopes map[string]vectors.Envelope, vector *v
 	if err != nil {
 		t.Fatal(err)
 	}
-	expected := envelope.Expected{ID: id, Policy: policy, KDF: kdf, ObjectHash: hash}
+	expected := envelope.Expected{ID: id, Policy: policy, KDF: kdf, ObjectHash: &hash}
 	_, _, err = envelope.Open(&content, &expected, object)
 	return err
 }
@@ -428,6 +421,7 @@ func sealVector(t *testing.T, vector *vectors.Envelope) []byte {
 		id,
 		policy,
 		envelope.Payload{Meta: envelope.Meta{Text: vector.Text}},
+		false,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -618,7 +612,7 @@ func checkOPAQUEVector(t *testing.T, vector *vectors.OPAQUE) {
 		t.Fatal(err)
 	}
 	kdf := core.KDF(vector.KDFID)
-	password, err := keys.Password(decode32(t, vector.S), kdf, valueOf(vector.Passphrase))
+	password, err := keys.Password(decode32(t, vector.S), kdf, vector.Passphrase)
 	if err != nil || hex.EncodeToString(password) != vector.Password ||
 		!strings.HasPrefix(vector.Password, vector.PassphraseSalt) {
 		t.Fatalf("OPRF input: %v", err)
@@ -691,7 +685,7 @@ func TestOPAQUEVectorsNormalizeThePassphrase(t *testing.T) {
 			continue
 		}
 		composed := hex.EncodeToString([]byte("h\u00e9slo s \u010de\u0161tinou"))
-		if *vector.Passphrase == "h\u00e9slo s \u010de\u0161tinou" ||
+		if vector.Passphrase == "h\u00e9slo s \u010de\u0161tinou" ||
 			vector.Password != vector.PassphraseSalt+composed {
 			t.Fatal("the OPRF input must hold the passphrase in NFC")
 		}
