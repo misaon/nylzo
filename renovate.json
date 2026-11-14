@@ -12,7 +12,9 @@
     ":semanticCommits"
   ],
   "timezone": "Europe/Prague",
-  "dependencyDashboard": false,
+  "dependencyDashboard": {
+    "enabled": false
+  },
   "enabledManagers": [
     "gomod",
     "github-actions",
