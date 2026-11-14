@@ -12,7 +12,7 @@ export function memoryStore(
       throw new Error('storage disabled');
     }
   };
-  /* oxlint-disable typescript/require-await -- the fake keeps the async methods of SentStore, so a refused write rejects the promise as with IndexedDB */
+  /* oxlint-disable typescript/require-await -- the methods stay async like SentStore, so a refused write rejects the promise as with IndexedDB */
   return {
     records,
     async list() {
@@ -21,18 +21,8 @@ export function memoryStore(
     },
     async put(record) {
       check();
-      storedForm(record);
-      records.set(record.id, record);
-    },
-    async markEnded(id, endedAt) {
-      check();
-      const record = records.get(id);
-      if (!record || record.endedAt !== undefined) {
-        return record;
-      }
-      const ended = { ...record, endedAt };
-      records.set(id, ended);
-      return ended;
+      const { id, createdAt, expiresAt, label } = storedForm(record);
+      records.set(id, { id, createdAt, expiresAt, ...(label !== undefined && { label }), manageKey: record.manageKey });
     },
     async remove(id) {
       check();
@@ -43,5 +33,5 @@ export function memoryStore(
       records.clear();
     },
   };
-  /* oxlint-enable typescript/require-await -- only the fake methods above */
+  /* oxlint-enable typescript/require-await -- only the store methods above */
 }

@@ -159,6 +159,7 @@ export const messages: Catalog = {
   'problem.opens.out_of_range': 'Die Anzahl der Aufrufe muss zwischen 1 und {max} liegen.',
   'problem.passphrase.too_short': 'Noch {missing} zu kurz (mindestens {min}), oder wählen Sie „Generieren“.',
   'problem.passphrase.malformed': 'Das Passwort enthält ungültige Zeichen.',
+  'problem.passphrase.too_long': 'Das Passwort ist zu lang.',
   'problem.passphrase.repetitive': 'Das Passwort besteht aus zu wenigen verschiedenen Zeichen.',
   'problem.passphrase.sequential': 'Das Passwort ist eine fortlaufende Folge von Buchstaben, Ziffern oder Tasten.',
   'problem.passphrase.context': 'Das Passwort besteht hauptsächlich aus dem Wort Nylzo.',
@@ -187,13 +188,14 @@ export const messages: Catalog = {
     'Die Zwischenablage ist leer. Kopien, die schon im Verlauf der Zwischenablage sind, bleiben dort.',
   'created.another': 'Neue Nachricht',
   'created.remembered': 'Dieses Gerät hat sich die Nachricht gemerkt.',
+  'created.remembered.session': 'Dieser Tab merkt sich die Nachricht, höchstens bis Sie ihn schließen oder neu laden.',
   'created.status_link': 'Zur Seite Gesendet',
   'created.not_remembered':
     'Dieses Gerät konnte sich die Nachricht nicht merken. Sie können sie deshalb von hier aus nicht widerrufen.',
 
   'sent.title': 'Gesendet',
   'sent.note':
-    'Die Liste ist nur in diesem Browser gespeichert und enthält keine Links zu den Nachrichten. Ein Eintrag verschwindet {days} nach dem Ende der Nachricht.',
+    'Die Liste enthält keine Links zu den Nachrichten. Den Eintrag einer beendeten Nachricht löscht die Seite, sobald Sie hier ihr Ergebnis gesehen haben. Andere Einträge löscht sie bei Ihren Besuchen von Nylzo, frühestens {days} nach ihrem Ablauf.',
   'sent.loading': 'Gesendete Nachrichten werden geladen…',
   'sent.unavailable':
     'Dieser Browser erlaubt der Seite nicht, Daten zu speichern, deshalb kann sie sich gesendete Nachrichten nicht merken. Erlauben Sie dieser Website, Daten zu speichern, oder verwenden Sie einen anderen Browser.',
@@ -205,14 +207,16 @@ export const messages: Catalog = {
   'sent.state.expired': 'Abgelaufen',
   'sent.state.cancelled': 'Widerrufen',
   'sent.state.deleted': 'Gelöscht',
+  'sent.state.lost': 'Verloren',
   'sent.label.time': 'Gültigkeit',
   'sent.label.opens': 'Aufrufe',
-  'sent.label.attempts': 'Falsche Passwörter',
+  'sent.label.attempts': 'Fehlgeschlagene Versuche',
   'sent.label.first_opened': 'Erster Aufruf',
   'sent.not_opened': 'noch nicht',
   'sent.until': 'bis {time}',
   'sent.opens': '{used} von {max}',
-  'sent.unknown': 'Die Nachricht ist nicht mehr auf dem Server.',
+  'sent.unknown':
+    'Der Server hat die Nachricht nicht gefunden. Vielleicht ist sie schon beendet. Wenn Sie sie hier nicht mehr brauchen, entfernen Sie sie.',
   'sent.failed': 'Der Status konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.',
   'sent.cancel': 'Nachricht widerrufen',
   'sent.cancel.confirm': 'Nach dem Widerruf kann niemand mehr die Nachricht öffnen.',
@@ -229,14 +233,20 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'Die Liste gesendeter Nachrichten lässt sich hier nicht speichern',
   'sent.empty.title': 'Noch nichts da',
   'sent.created': 'Erstellt am {time}',
-  'sent.state.unknown': 'Existiert nicht mehr',
+  'sent.created.session': 'Erstellt am {time}, nur in diesem Tab',
+  'sent.state.unknown': 'Nicht gefunden',
   'sent.state.failed': 'Status unbekannt',
   'sent.state.loading': 'Wird geladen',
-  'sent.ended.opened': 'Geöffnet am {time}. Vom Server gelöscht, der Eintrag bleibt hier noch {days}.',
-  'sent.ended.expired': 'Abgelaufen am {time}. Vom Server gelöscht, der Eintrag bleibt hier noch {days}.',
-  'sent.ended.cancelled': 'Widerrufen am {time}. Vom Server gelöscht, der Eintrag bleibt hier noch {days}.',
+  'sent.ended.opened':
+    'Geöffnet am {time}. Vom Server gelöscht, der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
+  'sent.ended.expired':
+    'Abgelaufen am {time}. Vom Server gelöscht, der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
+  'sent.ended.cancelled':
+    'Widerrufen am {time}. Vom Server gelöscht, der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
   'sent.ended.deleted':
-    'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt. Der Eintrag bleibt hier noch {days}.',
+    'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt. Der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
+  'sent.ended.lost':
+    'Der Server hat den Schlüssel dazu verloren, meist bei einem Neustart, daher kann sie niemand mehr öffnen. Senden Sie sie erneut, wenn sie noch gebraucht wird. Der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
   'sent.cancel.title': 'Nachricht „{label}“ widerrufen?',
   'sent.cancel.title.untitled': 'Nachricht widerrufen?',
   'sent.forget.label': 'Aus der Liste entfernen',
@@ -246,10 +256,12 @@ export const messages: Catalog = {
   'read.title': 'Einmalige Nachricht',
   'read.loading': 'Nachricht wird geladen…',
   'read.retry_later': 'Der Dienst ist überlastet. Versuchen Sie es in {time} erneut.',
+  'read.wait': 'Nach zu vielen fehlgeschlagenen Versuchen ist das Öffnen pausiert. Versuchen Sie es in {time} erneut.',
   'read.ended.opened': 'Die Nachricht wurde bereits geöffnet.',
   'read.ended.expired': 'Die Nachricht ist abgelaufen.',
   'read.ended.cancelled': 'Der Absender hat die Nachricht widerrufen.',
   'read.ended.deleted': 'Die Nachricht wurde gelöscht.',
+  'read.ended.lost': 'Der Server kann die Nachricht nicht mehr öffnen.',
   'read.passphrase': 'Passwort',
   'read.reveal': 'Nachricht anzeigen',
   'read.resumable':
@@ -262,8 +274,7 @@ export const messages: Catalog = {
     'Das Passwort stimmt nicht. Sie haben die Nachricht noch nicht geöffnet. Noch {attempts}, danach müssen Sie kurz warten.',
   'read.rejected.wait': 'Das Passwort stimmt nicht. Der nächste Versuch ist in {time} möglich.',
   'read.rejected.malformed': 'Das Passwort enthält ungültige Zeichen.',
-  'read.rejected.wrong_or_changed':
-    'Die Nachricht konnte nicht entschlüsselt werden: Das Passwort stimmt nicht oder die Daten wurden verändert. Geben Sie das Passwort erneut ein.',
+  'read.rejected.long': 'Das Passwort ist zu lang.',
   'read.delete': 'Ohne Öffnen löschen',
   'read.delete.rest': 'Nachricht löschen',
   'read.delete.rest.short': 'Löschen',
@@ -276,6 +287,11 @@ export const messages: Catalog = {
   'read.delete.no': 'Nicht löschen',
   'read.deleted_rest': 'Die verbleibenden Aufrufe sind gelöscht.',
   'read.delete.failed': 'Die Nachricht konnte nicht gelöscht werden. Versuchen Sie es erneut.',
+  'read.delete.wait':
+    'Nach vielen falschen Passworteingaben lässt sich die Nachricht gerade nicht löschen. Versuchen Sie es in {time} erneut.',
+  'read.delete.locked':
+    'Nach vielen falschen Passworteingaben ist die Nachricht bis zum Ablauf der Gültigkeit gesperrt. Niemand kann sie öffnen, aber der Absender kann sie noch widerrufen.',
+  'read.delete.passphrase': 'Geben Sie das Passwort vom Absender ein und wählen Sie dann „Ohne Öffnen löschen“.',
 
   'busy.deriving': 'Schlüssel wird aus dem Passwort erzeugt…',
   'busy.claiming': 'Nachricht wird geöffnet…',
@@ -290,9 +306,9 @@ export const messages: Catalog = {
     'Bei einer Bitte um Geld, eine Anmeldung oder eine Installation fragen Sie auf einem anderen Weg beim Absender nach.',
   'revealed.file': 'Anhang',
   'revealed.file.unchecked':
-    'Der Anhang ist verschlüsselt, deshalb kann Nylzo ihn nicht mit einem Virenscanner prüfen. Öffnen Sie nur Dateien von Personen, die Sie kennen.',
+    'Der Anhang ist verschlüsselt, deshalb kann Nylzo ihn nicht mit einem Virenscanner prüfen. Laden Sie nur Dateien von Absendern herunter, denen Sie vertrauen.',
   'revealed.confirm.title':
-    'Dieser Dateityp kann Code ausführen. Öffnen Sie die Datei nur, wenn Sie dem Absender vertrauen.',
+    'Jede Datei kann Schadcode enthalten, auch ein PDF, ein Dokument oder ein Bild. Laden Sie die Datei nur herunter, wenn Sie dem Absender vertrauen.',
   'revealed.confirm.extension': 'Dateiendung:',
   'revealed.confirm.none': 'Die Datei hat keine Endung.',
   'revealed.confirm.download': 'Trotzdem herunterladen',
@@ -346,7 +362,7 @@ export const messages: Catalog = {
     'Er speichert sie nicht. Limits pro Adresse hält er nur im Arbeitsspeicher, der nie auf den Datenträger ausgelagert wird, und vergisst sie beim Neustart.',
   'transparency.stores.enforced.title': 'Auch Kryptografie sichert die Gültigkeit ab',
   'transparency.stores.enforced':
-    'Gültigkeit und Zahl der Aufrufe überwacht der Server. Spätestens zwei Stunden nach Ablauf der Gültigkeit löscht er außerdem den Teil des Schlüssels, den die Nachricht braucht, sodass sie sich danach auch mit einer Kopie der Daten nicht mehr öffnen lässt. Eine früher angefertigte Kopie kann die Nachricht ohne den Link nicht lesen.',
+    'Gültigkeit und Zahl der Aufrufe überwacht der Server. Spätestens eine Minute nach Ablauf der Gültigkeit löscht er außerdem den Teil des Schlüssels, den die Nachricht braucht, sodass sie sich danach auch mit einer Kopie der Daten nicht mehr öffnen lässt. Eine früher angefertigte Kopie kann die Nachricht ohne den Link nicht lesen.',
   'transparency.logs.title': 'Was der Server protokolliert',
   'transparency.logs.written': 'Schreibt',
   'transparency.logs.written.time': 'Zeit, auf die Minute gekürzt',
@@ -400,7 +416,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Wir nutzen keinen externen Dienst zur Besucheranalyse.',
   'transparency.personal.browser.title': 'In Ihrem Browser',
   'transparency.personal.browser':
-    'Die gewählte Sprache, eine vorübergehende Angabe während des Öffnens einer Nachricht und die Liste unter Gesendet, wenn Sie eine Nachricht verfolgen. Das ist für Funktionen erforderlich, die Sie anfordern, und bedarf daher keiner Einwilligung.',
+    'Die gewählte Sprache, eine vorübergehende Angabe während des Öffnens einer Nachricht und die Liste unter Gesendet, wenn Sie eine verfolgte Nachricht auch nach dem Schließen des Tabs behalten. Das ist für Funktionen erforderlich, die Sie anfordern, und bedarf daher keiner Einwilligung.',
   'transparency.limits.title': 'Limits dieser Instanz',
   'transparency.limits.short': 'Limits',
   'transparency.limits.file': 'Größter Anhang',
@@ -505,7 +521,7 @@ export const messages: Catalog = {
   'step.derive.title': 'Schlüssel werden abgeleitet',
   'step.derive.detail':
     'HKDF-SHA-256 leitet den Inhaltsschlüssel und die Schlüssel ab, mit denen das Öffnen signiert wird',
-  'step.derive.detail.passphrase': 'scrypt aus dem Passwort, dann HKDF-SHA-256',
+  'step.derive.detail.passphrase': 'OPAQUE und scrypt aus dem Passwort, dann HKDF-SHA-256',
   'step.encrypt.label': 'Verschlüsselung',
   'step.encrypt.title': 'Inhalt wird verschlüsselt',
   'step.encrypt.detail': 'AES-256-GCM, auf ganze Blöcke aufgefüllt',
@@ -531,7 +547,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Passwort kopieren',
   'created.track.title': 'Unter Gesendet verfolgen',
   'created.track.note':
-    'Sie sehen, ob jemand die Nachricht geöffnet hat, und können sie widerrufen. Das wird nur in diesem Browser gespeichert. Widerrufen kann sie dann jeder, der Zugriff auf diesen Browser hat.',
+    'Sie sehen, ob jemand die Nachricht geöffnet hat, und können sie widerrufen. Nur dieser Tab merkt sie sich, höchstens bis Sie ihn schließen oder neu laden.',
+  'created.track.note.kept':
+    'Sie sehen, ob jemand die Nachricht geöffnet hat, und können sie widerrufen. Sie wird in diesem Browser gespeichert, also kann sie jeder widerrufen, der Zugriff auf diesen Browser hat.',
+  'created.track.keep': 'Auch nach dem Schließen des Tabs merken',
   'created.track.label': 'Bezeichnung, nur für Sie sichtbar',
   'created.track.placeholder': 'Bezeichnung, z.\u{A0}B. „Passwort für Thomas“',
   'created.track.save': 'Speichern',
@@ -581,6 +600,9 @@ export const messages: Catalog = {
     'Niemand kann sie mehr öffnen. Wenn Sie sie noch brauchen, bitten Sie den Absender um einen neuen Link.',
   'open.notice.deleted': 'Die Nachricht wurde gelöscht',
   'open.notice.deleted.text': 'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt.',
+  'open.notice.lost': 'Der Server kann diese Nachricht nicht mehr öffnen',
+  'open.notice.lost.text':
+    'Der Server hat den Schlüssel dazu verloren, meist bei einem Neustart. Niemand kann sie mehr öffnen. Bitten Sie den Absender, sie erneut zu senden.',
   'open.notice.unknown': 'Wir haben die Nachricht nicht gefunden',
   'open.notice.unknown.text':
     'Vielleicht ist der Link unvollständig, oder die Nachricht ist schon vor längerer Zeit abgelaufen. Bitten Sie den Absender um einen neuen.',
@@ -653,7 +675,7 @@ export const messages: Catalog = {
   'how.link.meta.title': 'Version',
   'how.link.meta.meta': 'nur zur Kompatibilität',
   'how.link.meta.body':
-    'Die 2 ist die Version des Linkformats, die 0 steht für eine Nachricht ohne Passwort. Eine ältere Nylzo-Version erkennt an der Version einen Link aus einer neueren und meldet das, statt ihn als beschädigt zu bezeichnen. Der Server kennt beide Werte auch aus der Nachricht, dieser Teil verrät ihm also nichts Neues.',
+    'Die 3 ist die Version des Linkformats, die 0 steht für eine Nachricht ohne Passwort. Eine ältere Nylzo-Version erkennt an der Version einen Link aus einer neueren und meldet das, statt ihn als beschädigt zu bezeichnen. Der Server kennt beide Werte auch aus der Nachricht, dieser Teil verrät ihm also nichts Neues.',
   'how.link.id.title': 'Nachrichten-ID',
   'how.link.id.meta': 'damit findet der Server die Nachricht',
   'how.link.id.body':

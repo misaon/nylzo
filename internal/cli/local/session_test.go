@@ -277,7 +277,10 @@ func TestOpenGivesTheAddressWhenNoBrowserTakesTheLinkSoon(t *testing.T) {
 		t.Fatalf("a confined browser cannot read the handoff file, so the address must follow: %q %s",
 			printed, current.stderr.String())
 	}
-	current.stop(t)
+	if code := current.stop(t); code != command.ExitError ||
+		!strings.Contains(current.stderr.String(), "before a browser took the link, which still works") {
+		t.Fatalf("a stop before a browser took the link must fail: %d %s", code, current.stderr.String())
+	}
 }
 
 func TestNoBrowserOpensWhereSafariWouldAskTheNetworkForTheName(t *testing.T) {

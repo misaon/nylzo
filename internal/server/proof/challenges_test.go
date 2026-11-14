@@ -72,6 +72,32 @@ func TestAProcessAcceptsOnlyChallengesItIssuedAndStillHolds(t *testing.T) {
 	}
 }
 
+// A handshake's challenge stays open while its client stretches the passphrase, and the purge keeps it (spec 6.4).
+func TestAHandshakeChallengeOutlivesAnOrdinaryOne(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	challenges := NewChallenges(testRing(t), MinCapacity)
+	ordinary, _, _ := challenges.Issue(now)
+	login, _, _ := challenges.IssueLogin(now)
+	later := now.Add(challengeTTL + 30*time.Second)
+	challenges.Purge(later)
+	if challenges.See(ordinary, later) {
+		t.Fatal("an ordinary challenge was accepted after its minute")
+	}
+	if !challenges.See(login, later) {
+		t.Fatal("a handshake's challenge was refused while its client could still be stretching")
+	}
+	forgotten, _, _ := challenges.IssueLogin(now)
+	challenges.Forget(forgotten)
+	if challenges.See(forgotten, now) {
+		t.Fatal("a challenge its refused handshake gave back was accepted")
+	}
+	early, _, _ := challenges.IssueLogin(now.Add(clockSkew + time.Second))
+	if challenges.See(early, now) {
+		t.Fatal("a handshake's challenge from a clock ahead was accepted")
+	}
+}
+
 func TestAFullTableMakesRoomForNewChallenges(t *testing.T) {
 	t.Parallel()
 	now := time.Now()
@@ -100,8 +126,8 @@ func TestCapacityHoldsTwiceWhatTheInstanceBucketCanIssue(t *testing.T) {
 		perSecond, burst float64
 		capacity         int
 	}{
-		{500, 1000, MinCapacity},
-		{2000, 2000, 2 * (2000*126 + 2000)},
+		{200, 1000, MinCapacity},
+		{2000, 2000, 2 * (2000*186 + 2000)},
 		{1e300, 1e300, math.MaxInt32},
 	} {
 		if capacity := Capacity(testCase.perSecond, testCase.burst); capacity != testCase.capacity {

@@ -31,10 +31,6 @@ func (k KDF) Valid() bool {
 	return k == KDFNone || k == KDFScrypt
 }
 
-func (k KDF) RequiresPassphrase() bool {
-	return k != KDFNone
-}
-
 func (k KDF) String() string {
 	return strconv.FormatUint(uint64(k), 10)
 }

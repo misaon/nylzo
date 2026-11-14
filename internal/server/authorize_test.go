@@ -20,9 +20,9 @@ import (
 	"filippo.io/edwards25519"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
-	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/proof"
@@ -70,13 +70,7 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 	harness.mustCreate(live)
 	ended := newMessage(t, core.KDFNone, "", 1, 3600, "ended")
 	harness.mustCreate(ended)
-	if response, _ := harness.do(
-		&testRequest{
-			method: http.MethodPost,
-			path:   "/api/v1/messages/" + ended.id.String() + "/burn",
-			token:  ended.readToken,
-		},
-	); response.StatusCode != http.StatusNoContent {
+	if response, _ := harness.burn(ended, "", ""); response.StatusCode != http.StatusNoContent {
 		t.Fatalf("burn: %d", response.StatusCode)
 	}
 	if state, gone := harness.endedState(ended); !gone || state != store.StateDeleted {
@@ -318,19 +312,11 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 			signedRequest(message.manage, signing.PurposeManage, "GET", path+"/status", harness.challenge(), nil),
 			http.StatusOK,
 		)
-		replayed(
-			"claim",
-			signedRequest(&message.link.R, signing.PurposeRead, "POST", path+"/claim", harness.challenge(), nil),
-			http.StatusOK,
-		)
+		replayed("claim", harness.loggedIn(message, "/claim", ""), http.StatusOK)
 		if _, status := harness.status(message); status["opens_used"] != 1.0 {
 			t.Fatalf("a replayed claim spent an open: %v", status)
 		}
-		replayed(
-			"burn",
-			signedRequest(&message.link.R, signing.PurposeRead, "POST", path+"/burn", harness.challenge(), nil),
-			http.StatusNoContent,
-		)
+		replayed("burn", harness.loggedIn(message, "/burn", ""), http.StatusNoContent)
 
 		other := newMessage(t, core.KDFNone, "", 1, 3600, "cancel once")
 		harness.mustCreate(other)
@@ -380,6 +366,9 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 		moved := func(method, to string) *testRequest {
 			request := signedRequest(&message.link.R, signing.PurposeRead, "GET", path, harness.challenge(), nil)
 			request.method, request.path = method, to
+			if strings.HasSuffix(to, "/claim") || strings.HasSuffix(to, "/burn") {
+				request.headers[api.KE3HeaderName] = core.Encode(make([]byte, 64))
+			}
 			return request
 		}
 		for name, request := range map[string]*testRequest{
@@ -431,73 +420,92 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 	})
 }
 
-func TestVerifierSignatureIsBoundToTheClaim(t *testing.T) {
+func TestKE3IsBoundToItsHandshake(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		const passphrase = "correct horse battery staple"
 		message := newMessage(t, core.KDFScrypt, passphrase, 1, 3600, "behind a passphrase")
+		other := newMessage(t, core.KDFNone, "", 1, 3600, "another message")
 		harness.mustCreate(message)
+		harness.mustCreate(other)
 		path := "/api/v1/messages/" + message.id.String() + "/claim"
-		stranger := core.NewSecret()
-		pkV := signing.PublicKey(message.verifierKey)
-		cases := []struct {
-			name   string
-			header func(challenge [signing.ChallengeLen]byte) string
-		}{
-			{"other challenge", func([signing.ChallengeLen]byte) string {
-				return signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path, harness.challenge(), nil, testRequestComponents(path)).
-					VerifierHeader()
-			}},
-			{"read purpose", func(challenge [signing.ChallengeLen]byte) string {
-				return signing.SignRequest(message.verifierKey, signing.PurposeRead, "POST", path, challenge, nil, testRequestComponents(path)).
-					VerifierHeader()
-			}},
-			{"other path", func(challenge [signing.ChallengeLen]byte) string {
-				return signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path+"x", challenge, nil, testRequestComponents(path)).
-					VerifierHeader()
-			}},
-			{"right key, foreign signature", func(challenge [signing.ChallengeLen]byte) string {
-				signature := signing.SignRequest(
-					stranger,
-					signing.PurposeVerifier,
+		claimWith := func(challenge [signing.ChallengeLen]byte, signedKE3, sentKE3 string) testResponse {
+			components := signing.Components{ShareKey: testShareKeyHeader, KE3: signedKE3}
+			response, _ := harness.do(&testRequest{method: http.MethodPost, path: path, headers: map[string]string{
+				"Authorization": signedHeader(
+					message.readToken,
+					signing.PurposeRead,
 					"POST",
 					path,
 					challenge,
 					nil,
-					testRequestComponents(path),
-				)
-				signature.PublicKey = pkV
-				return signature.VerifierHeader()
-			}},
+					components,
+				),
+				api.KE3HeaderName: sentKE3,
+			}})
+			return response
 		}
-		for i, testCase := range cases {
-			challenge := harness.challenge()
-			request := signedRequest(&message.link.R, signing.PurposeRead, "POST", path, challenge, nil)
-			request.headers["X-Nylzo-Verifier"] = testCase.header(challenge)
-			response, body := harness.do(request)
-			var got passphraseResponse
-			if err := json.Unmarshal(body, &got); err != nil {
-				t.Fatalf("%s: %d %s: %v", testCase.name, response.StatusCode, body, err)
-			}
-			if response.StatusCode != http.StatusForbidden || got.AttemptsLeft != 4-i {
-				t.Fatalf("%s: %d %+v", testCase.name, response.StatusCode, got)
-			}
+		first, _, _ := harness.handshake(message, passphrase, "")
+		if got := claimWith(harness.challenge(), first.ke3, first.ke3); got.StatusCode != http.StatusNotFound {
+			t.Fatalf("a KE3 over a challenge that no handshake issued: %d", got.StatusCode)
 		}
-		challenge := harness.challenge()
-		request := signedRequest(&message.link.R, signing.PurposeRead, "POST", path, challenge, nil)
-		request.headers["X-Nylzo-Verifier"] = signing.SignRequest(message.verifierKey, signing.PurposeVerifier, "POST", path, challenge, nil, testRequestComponents(path)).
-			VerifierHeader()
-		if response, _ := harness.do(request); response.StatusCode != http.StatusOK {
-			t.Fatalf("correct verifier: %d", response.StatusCode)
+		foreign, _, _ := harness.handshake(other, "", "")
+		if got := claimWith(foreign.challenge, first.ke3, first.ke3); got.StatusCode != http.StatusNotFound {
+			t.Fatalf("the challenge of another message's handshake: %d", got.StatusCode)
+		}
+		second, _, _ := harness.handshake(message, passphrase, "")
+		if got := claimWith(second.challenge, second.ke3, first.ke3); got.StatusCode != http.StatusNotFound {
+			t.Fatalf("a KE3 header other than the signed one: %d", got.StatusCode)
+		}
+		third, _, _ := harness.handshake(message, passphrase, "")
+		response := claimWith(third.challenge, first.ke3, first.ke3)
+		if response.StatusCode != http.StatusForbidden {
+			t.Fatalf("the KE3 of another handshake: %d", response.StatusCode)
+		}
+		if _, status := harness.status(message); status["failed_passphrase_attempts"] != float64(3) {
+			t.Fatalf("three handshakes without a matching KE3 stay counted: %v", status)
+		}
+		fourth, _, _ := harness.handshake(message, passphrase, "")
+		if got := claimWith(fourth.challenge, fourth.ke3, fourth.ke3); got.StatusCode != http.StatusOK {
+			t.Fatalf("the KE3 of its own handshake: %d", got.StatusCode)
+		}
+		if got := claimWith(fourth.challenge, fourth.ke3, fourth.ke3); got.StatusCode != http.StatusNotFound {
+			t.Fatalf("a KE3 sent again: %d", got.StatusCode)
+		}
+		if _, status := harness.status(message); status["failed_passphrase_attempts"] != float64(3) {
+			t.Fatalf("a matching KE3 takes its attempt back: %v", status)
 		}
 	})
 }
 
-type passphraseResponse struct {
-	Error        string `json:"error"`
-	RetryAfter   int    `json:"retry_after"`
-	AttemptsLeft int    `json:"attempts_left"`
+func TestAClientOfProtocolTwoIsTold(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "v2 reader")
+		harness.mustCreate(message)
+		for _, action := range []string{"/claim", "/burn"} {
+			response, body := harness.do(&testRequest{
+				method:  http.MethodPost,
+				path:    "/api/v1/messages/" + message.id.String() + action,
+				token:   message.readToken,
+				headers: map[string]string{api.VerifierHeaderName: "a.b"},
+			})
+			if response.StatusCode != http.StatusBadRequest || decodeJSON(t, body)["error"] != "client_outdated" {
+				t.Fatalf("%s with X-Nylzo-Verifier: %d %s", action, response.StatusCode, body)
+			}
+		}
+		response, body := harness.do(
+			&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: map[string]string{
+				api.TTLHeaderName:      "3600",
+				api.ShareKeyHeaderName: testShareKeyHeader,
+			}},
+		)
+		if response.StatusCode != http.StatusBadRequest || decodeJSON(t, body)["error"] != "client_outdated" {
+			t.Fatalf("an instance request without a registration request: %d %s", response.StatusCode, body)
+		}
+	})
 }
 
 func TestChallengeWindowAndRotation(t *testing.T) {
@@ -702,6 +710,7 @@ func TestRejectedRequestsCannotBeReplayed(t *testing.T) {
 					"/api/v1/messages/"+message.id.String()+"/claim",
 					harness.challenge(),
 				)
+				claim.headers[api.KE3HeaderName] = core.Encode(make([]byte, 64))
 				maps.Copy(claim.headers, testCase.header)
 				if response, _ := harness.do(claim); response.StatusCode != testCase.status {
 					t.Fatalf("the victim's claim: %d, want %d", response.StatusCode, testCase.status)
@@ -743,10 +752,6 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
-		ring, err := pepper.NewRing(pepperA, nil)
-		if err != nil {
-			t.Fatal(err)
-		}
 		identity := [signing.PublicKeyLen]byte{1}
 		forge := func(purpose, method, path string, challenge [signing.ChallengeLen]byte) *signing.Signature {
 			signature := &signing.Signature{
@@ -769,7 +774,7 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 		defer database.Close()
 		rewrap := func(record *store.Record, column string, purpose seal.Purpose) {
 			locator := record.Row.Locator
-			wrapped := seal.Wrap(seal.KeyFor(identity[:], locator, purpose), record.Key, locator, purpose)
+			wrapped := seal.WrapRecordKey(harness.server.recordsKey, identity[:], record.Key, locator, purpose)
 			if _, execErr := database.Exec(
 				`UPDATE messages SET `+column+` = ? WHERE locator = ?`,
 				wrapped,
@@ -788,35 +793,15 @@ func TestStoredSmallOrderKeysCannotSign(t *testing.T) {
 		for name, request := range map[string]*testRequest{
 			"metadata": rawAuth(&testRequest{method: http.MethodGet, path: path}, forge(signing.PurposeRead, "GET", path, harness.challenge()).Authorization()),
 			"status":   rawAuth(&testRequest{method: http.MethodGet, path: path + "/status"}, forge(signing.PurposeManage, "GET", path+"/status", harness.challenge()).Authorization()),
-			"burn":     rawAuth(&testRequest{method: http.MethodPost, path: path + "/burn"}, forge(signing.PurposeRead, "POST", path+"/burn", harness.challenge()).Authorization()),
+			"burn": rawAuth(&testRequest{
+				method:  http.MethodPost,
+				path:    path + "/burn",
+				headers: map[string]string{api.KE3HeaderName: core.Encode(make([]byte, 64))},
+			}, forge(signing.PurposeRead, "POST", path+"/burn", harness.challenge()).Authorization()),
 		} {
 			if response, body := harness.do(request); response.StatusCode != http.StatusNotFound {
 				t.Fatalf("%s signed with the identity key: %d %s", name, response.StatusCode, body)
 			}
-		}
-
-		const passphrase = "correct horse battery staple"
-		withPassphrase := newMessage(t, core.KDFScrypt, passphrase, 1, 3600, "verifier stored before keys were checked")
-		harness.mustCreate(withPassphrase)
-		harness.rewrite(withPassphrase, func(message *store.Message) {
-			verifier := ring.MAC(pepper.Verifier, identity[:])
-			message.VerifierMAC, message.VerifierPepperID = verifier.MAC[:], verifier.PepperID
-		})
-		claimPath := "/api/v1/messages/" + withPassphrase.id.String() + "/claim"
-		challenge := harness.challenge()
-		request := signedRequest(&withPassphrase.link.R, signing.PurposeRead, "POST", claimPath, challenge, nil)
-		request.headers["X-Nylzo-Verifier"] = forge(
-			signing.PurposeVerifier,
-			"POST",
-			claimPath,
-			challenge,
-		).VerifierHeader()
-		response, body := harness.do(request)
-		if response.StatusCode != http.StatusForbidden || !strings.Contains(string(body), `"attempts_left":4`) {
-			t.Fatalf("claim with the identity verifier key: %d %s", response.StatusCode, body)
-		}
-		if _, metadata := harness.metadata(withPassphrase); metadata["opens_remaining"] != float64(1) {
-			t.Fatalf("the refused verifier consumed an open: %v", metadata)
 		}
 	})
 }
@@ -884,7 +869,7 @@ func TestAK27PepperRotation(t *testing.T) {
 		if response, _ := harness.metadata(old); response.StatusCode != http.StatusOK {
 			t.Fatalf("old message after rotation: %d", response.StatusCode)
 		}
-		response, _ := harness.claim(old, old.verifier, "")
+		response, _ := harness.claim(old, old.passphrase, "")
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("claim old message after rotation: %d", response.StatusCode)
 		}
@@ -898,10 +883,10 @@ func TestAK27PepperRotation(t *testing.T) {
 			t.Fatal("new message must verify with the new pepper alone")
 		}
 		if got, _ := harness.metadata(old); got.StatusCode != http.StatusOK {
-			t.Fatalf("a record opens with the read key, whatever the pepper: %d", got.StatusCode)
+			t.Fatalf("serve sealed the old record under the new pepper at the rotation: %d", got.StatusCode)
 		}
-		if got, body := harness.claim(old, old.verifier, ""); got.StatusCode != http.StatusForbidden {
-			t.Fatalf("a verifier mac under a dropped pepper must not verify: %d %s", got.StatusCode, body)
+		if got, body := harness.claim(old, old.passphrase, ""); got.StatusCode != http.StatusServiceUnavailable {
+			t.Fatalf("a registration under a dropped pepper must wait for it: %d %s", got.StatusCode, body)
 		}
 		if _, err := New(baseSettings(pepperA, pepperA), harness.store, harness.blobs); err == nil {
 			t.Fatal("identical peppers accepted")
@@ -947,7 +932,7 @@ func TestReplayAfterRestartIsRefused(t *testing.T) {
 		message := newMessage(t, core.KDFNone, "", 2, 3600, "replay after restart")
 		harness.mustCreate(message)
 		path := "/api/v1/messages/" + message.id.String()
-		claim := signedRequest(&message.link.R, signing.PurposeRead, "POST", path+"/claim", harness.challenge(), nil)
+		claim := harness.loggedIn(message, "/claim", "")
 		status := signedRequest(message.manage, signing.PurposeManage, "GET", path+"/status", harness.challenge(), nil)
 		for _, request := range []*testRequest{claim, status} {
 			if response, _ := harness.do(request); response.StatusCode != http.StatusOK {
@@ -1128,7 +1113,16 @@ func TestSecurityHeaderTamperingFailsBeforeSideEffects(t *testing.T) {
 			for _, name := range []string{"X-Nylzo-Share-Key", "X-Nylzo-Lease"} {
 				for _, mutation := range []string{"replace", "remove", "duplicate", "append other"} {
 					func() {
-						path := "/api/v1/messages/" + message.id.String() + route.action
+						target, challenge := message, harness.challenge()
+						var ke3 string
+						if route.action == "/claim" {
+							// Each refused claim leaves its handshake counted, so it gets a message of its own.
+							target = newMessage(t, core.KDFNone, "", 2, 3600, "signed headers")
+							harness.mustCreate(target)
+							login, _, _ := harness.handshake(target, "", "")
+							challenge, ke3 = login.challenge, login.ke3
+						}
+						path := "/api/v1/messages/" + target.id.String() + route.action
 						r, _ := http.NewRequestWithContext(
 							t.Context(),
 							route.method,
@@ -1141,13 +1135,16 @@ func TestSecurityHeaderTamperingFailsBeforeSideEffects(t *testing.T) {
 						if route.action == "/blob" || route.action == "/ack" {
 							r.Header.Set("X-Nylzo-Lease", lease)
 						}
+						if ke3 != "" {
+							r.Header.Set(api.KE3HeaderName, ke3)
+						}
 						components, _ := requestComponents(r)
 						signature := signing.SignRequest(
-							&message.link.R,
+							&target.link.R,
 							signing.PurposeRead,
 							route.method,
 							path,
-							harness.challenge(),
+							challenge,
 							nil,
 							components,
 						)
@@ -1157,7 +1154,7 @@ func TestSecurityHeaderTamperingFailsBeforeSideEffects(t *testing.T) {
 						case "replace":
 							value := core.Encode(core.NewSecret()[:])
 							if name == "X-Nylzo-Share-Key" {
-								value = core.Encode(share.NewKey().PublicKey().Bytes())
+								value = share.FormatKey(share.NewKey().PublicKey())
 							}
 							r.Header.Set(name, value)
 						case "remove":
@@ -1208,52 +1205,6 @@ func TestSecurityHeaderTamperingFailsBeforeSideEffects(t *testing.T) {
 		}
 		if response := harness.ack(message, lease); response.StatusCode != http.StatusNoContent {
 			t.Fatalf("signed ack: %d", response.StatusCode)
-		}
-	})
-}
-
-func TestVerifierSignatureBindsSecurityHeaders(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "verifier headers")
-		harness.mustCreate(message)
-		path := "/api/v1/messages/" + message.id.String() + "/claim"
-		current := signing.Components{ShareKey: testShareKeyHeader, Lease: core.Encode(core.NewSecret()[:])}
-		for _, altered := range []signing.Components{
-			{ShareKey: core.Encode(share.NewKey().PublicKey().Bytes()), Lease: current.Lease},
-			{ShareKey: current.ShareKey, Lease: core.Encode(core.NewSecret()[:])},
-			{Lease: current.Lease},
-			{ShareKey: current.ShareKey},
-		} {
-			challenge := harness.challenge()
-			read := signing.SignRequest(&message.link.R, signing.PurposeRead, "POST", path, challenge, nil, current)
-			verifier := signing.SignRequest(
-				message.verifierKey,
-				signing.PurposeVerifier,
-				"POST",
-				path,
-				challenge,
-				nil,
-				altered,
-			)
-			response, body := harness.do(&testRequest{
-				method: http.MethodPost, path: path,
-				headers: map[string]string{
-					"Authorization": read.Authorization(), "X-Nylzo-Verifier": verifier.VerifierHeader(),
-					"X-Nylzo-Share-Key": current.ShareKey, "X-Nylzo-Lease": current.Lease,
-				},
-			})
-			if response.StatusCode != http.StatusForbidden || decodeJSON(t, body)["error"] != "passphrase" ||
-				response.Header.Get("X-Nylzo-Share") != "" || response.Header.Get("X-Nylzo-Lease") != "" {
-				t.Fatalf("verifier with mismatched components: %d %s", response.StatusCode, body)
-			}
-		}
-		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
-			t.Fatalf("a mismatched verifier spent an open: %v", metadata)
-		}
-		if response, _ := harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusOK {
-			t.Fatalf("matching read and verifier signatures: %d", response.StatusCode)
 		}
 	})
 }

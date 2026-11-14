@@ -125,6 +125,11 @@ func (s *Server) EpochDirectory() string {
 	if s.EpochDirectoryOverride != "" {
 		return s.EpochDirectoryOverride
 	}
+	return s.DataEpochDirectory()
+}
+
+// DataEpochDirectory is the default epoch directory inside the data directory, which every backup of it copies.
+func (s *Server) DataEpochDirectory() string {
 	return filepath.Join(s.DataDirectory, "epoch")
 }
 

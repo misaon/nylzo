@@ -10,19 +10,24 @@ import (
 	"github.com/misaon/nylzo/internal/core/keys"
 )
 
-const octetStream = "application/octet-stream"
+const (
+	octetStream = "application/octet-stream"
+	// vectorDeadline is the deadline every case seals in, a whole minute; the legacy case has none.
+	vectorDeadline = 1_797_000_000
+)
 
 type Envelope struct {
 	Name         string       `json:"name"`
 	ID           string       `json:"id"`
 	S            string       `json:"s"`
 	KDFID        int          `json:"kdf_id"`
-	Passphrase   *string      `json:"passphrase,omitempty"`
+	P            string       `json:"p_hex"`
 	E            string       `json:"e_hex"`
 	Flags        int          `json:"flags"`
 	IV           string       `json:"iv_hex"`
 	OpensMax     int          `json:"opens_max"`
 	TTLSeconds   int          `json:"ttl_s"`
+	Deadline     int          `json:"deadline"`
 	Text         *string      `json:"text,omitempty"`
 	File         *FileContent `json:"file,omitempty"`
 	MetaJSON     string       `json:"meta_json"`
@@ -44,13 +49,14 @@ type FileContent struct {
 }
 
 type envelopeCase struct {
-	name       string
-	kdf        core.KDF
-	passphrase *string
-	opens      uint16
-	ttl        uint32
-	text       *string
-	file       *fileCase
+	name string
+	// legacy seals a message as releases before Nylzo 0.14.0 did, without the deadline.
+	legacy bool
+	kdf    core.KDF
+	opens  uint16
+	ttl    uint32
+	text   *string
+	file   *fileCase
 }
 
 type fileCase struct {
@@ -81,13 +87,12 @@ var envelopeCases = []envelopeCase{
 		file:  &fileCase{name: "b.bin", mime: octetStream, size: 1, inHex: true},
 	},
 	{
-		name:       "file-and-text-scrypt",
-		kdf:        core.KDFScrypt,
-		passphrase: new("password"),
-		opens:      1,
-		ttl:        86400,
-		text:       new("příloha v příloze"),
-		file:       &fileCase{name: "příloha č.1.pdf", mime: "application/pdf", size: 1000, inHex: true},
+		name:  "file-and-text-scrypt",
+		kdf:   core.KDFScrypt,
+		opens: 1,
+		ttl:   86400,
+		text:  new("příloha v příloze"),
+		file:  &fileCase{name: "příloha č.1.pdf", mime: "application/pdf", size: 1000, inHex: true},
 	},
 	{
 		name:  "file-5mib",
@@ -95,23 +100,9 @@ var envelopeCases = []envelopeCase{
 		ttl:   604800,
 		file:  &fileCase{name: "big.bin", mime: octetStream, size: envelope.MaxFileBytes},
 	},
-	{
-		name:       "scrypt-text",
-		kdf:        core.KDFScrypt,
-		passphrase: new("correct horse battery staple"),
-		opens:      1,
-		ttl:        86400,
-		text:       new("scrypt protected"),
-	},
-	{
-		name:       "scrypt-nfc-decomposed",
-		kdf:        core.KDFScrypt,
-		passphrase: new("héslo s češtinou"),
-		opens:      1,
-		ttl:        86400,
-		text:       new("nfc"),
-	},
+	{name: "scrypt-text", kdf: core.KDFScrypt, opens: 1, ttl: 86400, text: new("scrypt protected")},
 	{name: "opens-10-ttl-7d", opens: 10, ttl: 604800, text: new("many opens")},
+	{name: "legacy-text", legacy: true, opens: 1, ttl: 86400, text: new("created before the deadline")},
 }
 
 func (f *File) envelope() error {
@@ -126,39 +117,39 @@ func (f *File) envelope() error {
 }
 
 type sealedCase struct {
-	id      core.ID
-	secret  *[core.SecretLen]byte
-	share   *[core.ShareLen]byte
-	header  envelope.Header
-	policy  envelope.Policy
-	payload envelope.Payload
-	content keys.ContentKeys
-	object  []byte
+	id        core.ID
+	secret    *[core.SecretLen]byte
+	exportKey *keys.ExportKey
+	share     *[core.ShareLen]byte
+	header    envelope.Header
+	policy    envelope.Policy
+	payload   envelope.Payload
+	content   keys.ContentKeys
+	object    []byte
 }
 
 func sealCase(vector envelopeCase) (sealedCase, error) {
 	sealed := sealedCase{
-		id:     deterministicID("env/" + vector.name),
-		secret: deterministic32("env/s/" + vector.name),
-		share:  deterministic32("env/e/" + vector.name),
+		id:        deterministicID("env/" + vector.name),
+		secret:    deterministic32("env/s/" + vector.name),
+		exportKey: deterministicExportKey("env/p/" + vector.name),
+		share:     deterministic32("env/e/" + vector.name),
 		header: envelope.Header{
 			Version: envelope.Version,
 			KDF:     vector.kdf,
+			Flags:   envelope.FlagDeadline,
 			IV:      [envelope.IVLen]byte(deterministic("iv/"+vector.name, envelope.IVLen)),
 		},
-		policy: envelope.Policy{OpensMax: vector.opens, TTLSeconds: vector.ttl},
+		policy: envelope.Policy{OpensMax: vector.opens, TTLSeconds: vector.ttl, Deadline: vectorDeadline},
 	}
-	derived, err := keys.DeriveAll(
-		sealed.id,
-		sealed.secret,
-		vector.kdf,
-		valueOr(vector.passphrase),
-		sealed.share,
-	)
+	if vector.legacy {
+		sealed.header.Flags, sealed.policy.Deadline = 0, 0
+	}
+	content, err := keys.DeriveContent(sealed.id, sealed.secret, sealed.exportKey, sealed.share)
 	if err != nil {
 		return sealedCase{}, err
 	}
-	sealed.content = derived.Content
+	sealed.content = content
 	sealed.payload, _ = vector.payload()
 	sealed.object, err = envelope.Seal(&sealed.content, sealed.header, sealed.id, sealed.policy, sealed.payload)
 	return sealed, err
@@ -183,10 +174,12 @@ func envelopeVector(vector envelopeCase) (Envelope, error) {
 		ID:           sealed.id.String(),
 		S:            hex.EncodeToString(sealed.secret[:]),
 		KDFID:        int(vector.kdf),
-		Passphrase:   vector.passphrase,
+		P:            hex.EncodeToString(sealed.exportKey[:]),
+		Flags:        int(sealed.header.Flags),
 		IV:           hex.EncodeToString(sealed.header.IV[:]),
 		OpensMax:     int(vector.opens),
 		TTLSeconds:   int(vector.ttl),
+		Deadline:     int(sealed.policy.Deadline),
 		Text:         vector.text,
 		File:         file,
 		MetaJSON:     string(meta),

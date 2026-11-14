@@ -1,9 +1,10 @@
-import { encodeBase64url, idToString, utf8 } from '@nylzo/core';
+import { encodeBase64url, FLAG_DEADLINE, idToString, opaqueContext, wrapShare } from '@nylzo/core';
 import type { RequestKey, ShareKey } from '@nylzo/core';
+import { createRegistrationResponse, generateKE2, newServerKeys } from '@nylzo/core/testing';
 
 import { ApiError, StoppedError } from './api-errors.ts';
 import type { MessageState } from './api-errors.ts';
-import type { Api, CreateRequest, Instance, Metadata, Status } from './api.ts';
+import type { Api, CreateRequest, Instance, Login, Metadata, Status } from './api.ts';
 
 interface Stored {
   readonly request: CreateRequest;
@@ -15,6 +16,7 @@ interface Stored {
 }
 
 export interface FakeOptions {
+  readonly otherServerKeys?: boolean;
   pow?: { required: boolean; difficulty: number };
   withholdShare?: boolean;
   failCreate?: ApiError[];
@@ -22,6 +24,7 @@ export interface FakeOptions {
   servedOpensMax?: number;
   servedTtlSeconds?: number;
   servedFlags?: number;
+  servedDeadline?: number;
   tombstone?: boolean;
   metadataKdfId?: number;
   metadataOpensMax?: number;
@@ -36,33 +39,21 @@ export interface FakeOptions {
 
 export interface FakeApi extends Api {
   readonly calls: string[];
+  readonly handshakes: string[];
   readonly challenges: string[];
   readonly stored: Map<string, Stored>;
   readonly issuedIds: Uint8Array<ArrayBuffer>[];
-}
-
-// Wraps a share as the server does (spec 5.6), so the flow tests exercise the client's unwrapping.
-async function wrapShare(share: Uint8Array<ArrayBuffer>, clientKey: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
-  const server = await crypto.subtle.generateKey({ name: 'X25519' }, true, ['deriveBits']);
-  const client = await crypto.subtle.importKey('raw', new Uint8Array(clientKey), { name: 'X25519' }, true, []);
-  const secret = await crypto.subtle.deriveBits({ name: 'X25519', public: client }, server.privateKey, 256);
-  const serverPublic = new Uint8Array(await crypto.subtle.exportKey('raw', server.publicKey));
-  const keyMaterial = await crypto.subtle.importKey('raw', secret, 'HKDF', false, ['deriveBits']);
-  const salt = new Uint8Array([...clientKey, ...serverPublic]);
-  const mask = new Uint8Array(
-    await crypto.subtle.deriveBits(
-      { name: 'HKDF', hash: 'SHA-256', salt, info: utf8('nylzo/v2/share') },
-      keyMaterial,
-      256,
-    ),
-  );
-  return new Uint8Array([...serverPublic, ...share.map((byte, index) => byte ^ (mask[index] ?? 0))]);
 }
 
 function sameBytes(first: Uint8Array | undefined, second: Uint8Array | undefined): boolean {
   return (
     first !== undefined && second?.length === first.length && first.every((value, index) => value === second[index])
   );
+}
+
+// The OPAQUE credential identifier of spec section 5.1: the id and the expiry share.
+function credentialOf(id: Uint8Array, share: Uint8Array): Uint8Array {
+  return new Uint8Array([...id, ...share]);
 }
 
 export function fakeApi(options: FakeOptions = {}): FakeApi {
@@ -75,7 +66,18 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
   const failCancel = [...(options.failCancel ?? [])];
   const failBurn = [...(options.failBurn ?? [])];
   const shares = new Map<string, Uint8Array<ArrayBuffer>>();
-  const expiresAt = new Date(Date.now() + (options.expiresInSeconds ?? 3600) * 1000).toISOString();
+  const serverKeys = newServerKeys();
+  const handshakes: string[] = [];
+  const expectedMacs = new Map<string, { readonly id: string; readonly mac: Uint8Array }>();
+
+  // The deadline the server fixes when it issues an id: the TTL from now, rounded up to the minute (spec 5.6).
+  function deadlineAfter(ttlSeconds: number): number {
+    return Math.ceil((Date.now() / 1000 + (options.expiresInSeconds ?? ttlSeconds)) / 60) * 60;
+  }
+
+  function expiresAt(message: Stored): string {
+    return new Date(message.request.deadline * 1000).toISOString();
+  }
 
   function find(id: Uint8Array, readKey: RequestKey): Stored {
     const message = stored.get(idToString(id));
@@ -93,8 +95,30 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     return message;
   }
 
+  function attemptsOf(message: Stored) {
+    const locked = message.failures >= (options.lockAfter ?? 100);
+    return { retryAfter: locked ? 3600 : 0, attemptsLeft: locked ? 0 : Math.max(0, 5 - message.failures) };
+  }
+
+  // Every handshake counts an attempt that only a matching KE3 takes back (spec 6.4).
+  function checkLogin(message: Stored, { challenge, ke3 }: Login): void {
+    const expected = expectedMacs.get(encodeBase64url(challenge));
+    expectedMacs.delete(encodeBase64url(challenge));
+    if (expected?.id !== idToString(message.request.id)) {
+      throw new ApiError(404, 'not_found');
+    }
+    if (!sameBytes(expected.mac, ke3)) {
+      throw new ApiError(403, 'passphrase', attemptsOf(message));
+    }
+    message.failures--;
+  }
+
+  function live(message: Stored): boolean {
+    return message.state === 'available' || (message.state === 'opened' && message.leases.size > 0);
+  }
+
   function end(message: Stored, state: MessageState): void {
-    if (message.state !== 'available' && !(message.state === 'opened' && message.leases.size > 0)) {
+    if (!live(message)) {
       throw new ApiError(410, 'gone', { state: message.state });
     }
     message.state = state;
@@ -113,7 +137,8 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         opensMax: options.servedOpensMax ?? message.request.opensMax,
         ttlSeconds: options.servedTtlSeconds ?? message.request.ttlSeconds,
         kdfId: options.servedKdfId ?? message.request.kdfId,
-        flags: options.servedFlags ?? 0,
+        flags: options.servedFlags ?? FLAG_DEADLINE,
+        deadline: options.servedDeadline ?? message.request.deadline,
       },
       object,
       share:
@@ -134,7 +159,15 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         issuedIds.push(id);
         const share = crypto.getRandomValues(new Uint8Array(32));
         shares.set(idToString(id), share);
-        create = { id, idToken: 'token', epoch: 493_000, share: await wrapShare(share, creation.shareKey) };
+        const deadline = deadlineAfter(creation.ttlSeconds);
+        create = {
+          id,
+          idToken: 'token',
+          epoch: deadline / 60 - 1,
+          deadline,
+          share: await wrapShare(share, creation.shareKey),
+          registration: createRegistrationResponse(creation.registrationRequest, serverKeys, credentialOf(id, share)),
+        };
       }
       return {
         limits: {
@@ -160,14 +193,15 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       if (failure) {
         throw failure;
       }
-      stored.set(idToString(request.id), {
+      const message: Stored = {
         request,
         state: 'available',
         opensRemaining: request.opensMax,
         failures: 0,
         leases: new Set(),
-      });
-      return { expiresAt };
+      };
+      stored.set(idToString(request.id), message);
+      return { expiresAt: expiresAt(message) };
     },
     async metadata(id, readKey): Promise<Metadata> {
       calls.push('metadata');
@@ -192,25 +226,44 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         kdfId: options.metadataKdfId ?? message.request.kdfId,
         size: message.request.object.length,
         createdAt: new Date().toISOString(),
-        expiresAt,
+        expiresAt: expiresAt(message),
       };
     },
+    // With a lease the handshake also runs on an opened message whose last open that lease holds (spec 6.4).
+    async handshake(id, readKey, ke1, lease) {
+      calls.push(lease === undefined ? 'handshake' : 'handshake+lease');
+      const message = find(id, readKey);
+      const open = lease === undefined ? message.state === 'available' : message.leases.has(lease);
+      if (!open) {
+        throw new ApiError(410, 'gone', { state: message.state });
+      }
+      if (message.failures >= (options.lockAfter ?? 100)) {
+        throw new ApiError(403, 'passphrase', attemptsOf(message));
+      }
+      message.failures++;
+      const share = shares.get(idToString(message.request.id)) ?? new Uint8Array(32);
+      const { ke2, expectedClientMac } = generateKE2(
+        options.otherServerKeys === true ? newServerKeys() : serverKeys,
+        message.request.registration,
+        credentialOf(message.request.id, share),
+        ke1,
+        opaqueContext(message.request.id, message.request.kdfId),
+      );
+      const challenge = new Uint8Array(36).fill(handshakes.length + 1);
+      handshakes.push(encodeBase64url(challenge));
+      expectedMacs.set(encodeBase64url(challenge), { id: idToString(message.request.id), mac: expectedClientMac });
+      return { ke2, challenge, ...attemptsOf(message) };
+    },
     async claim(id, readKey, claimOptions) {
+      const message = find(id, readKey);
+      const login = await claimOptions.unlock();
       if (claimOptions.proceed?.() === false) {
         throw new StoppedError();
       }
+      checkLogin(message, login);
       calls.push('claim');
-      const message = find(id, readKey);
       if (message.state !== 'available') {
         throw new ApiError(410, 'gone', { state: message.state });
-      }
-      if (message.request.kdfId !== 0 && !sameBytes(message.request.verifierKey, claimOptions.verifierKey.publicKey)) {
-        message.failures++;
-        const locked = message.failures >= (options.lockAfter ?? 100);
-        throw new ApiError(403, 'passphrase', {
-          retryAfter: locked ? 3600 : 0,
-          attemptsLeft: locked ? 0 : Math.max(0, 5 - message.failures),
-        });
       }
       message.opensRemaining--;
       if (message.opensRemaining === 0) {
@@ -219,17 +272,20 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       const lease = `lease-${message.leases.size + 1}`;
       message.leases.add(lease);
       claimOptions.onLease?.(lease);
-      const served = await envelope(message, await claimOptions.shareKeys());
+      const served = await envelope(message, claimOptions.shareKeys());
       claimOptions.onProgress?.(served.object.length, served.object.length);
       return { lease, ...served };
     },
-    async blob(id, readKey, lease, shareKeys) {
-      calls.push('blob');
+    async blob(id, readKey, lease, shareKeys, blobOptions) {
       const message = find(id, readKey);
+      if (blobOptions?.unlock) {
+        checkLogin(message, await blobOptions.unlock());
+      }
+      calls.push('blob');
       if (!message.leases.has(lease)) {
         throw new ApiError(410, 'gone', { state: message.state });
       }
-      return envelope(message, await shareKeys());
+      return envelope(message, shareKeys());
     },
     async challenge() {
       calls.push('challenge');
@@ -239,13 +295,18 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       calls.push('ack');
       find(id, readKey).leases.delete(lease);
     },
-    async burn(id, readKey) {
-      calls.push('burn');
+    async burn(id, readKey, unlock) {
       const failure = failBurn.shift();
       if (failure) {
+        calls.push('burn');
         throw failure;
       }
-      end(find(id, readKey), 'deleted');
+      const message = find(id, readKey);
+      if (live(message)) {
+        checkLogin(message, await unlock());
+      }
+      calls.push('burn');
+      end(message, 'deleted');
     },
     async cancel(id, manageKey) {
       calls.push('cancel');
@@ -277,10 +338,10 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         opensMax: message.request.opensMax,
         failedPassphraseAttempts: message.failures,
         createdAt: '2026-10-23T10:00:00Z',
-        expiresAt,
+        expiresAt: expiresAt(message),
       };
     },
   };
   /* oxlint-enable typescript/require-await -- only the fake methods above */
-  return Object.assign(api, { calls, challenges, stored, issuedIds });
+  return Object.assign(api, { calls, challenges, handshakes, stored, issuedIds });
 }

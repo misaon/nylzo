@@ -9,10 +9,11 @@ import (
 	"sync"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/keys"
 )
 
 const (
-	Spec      = "nylzo/v2"
+	Spec      = "nylzo/v3"
 	Generator = "go run ./cmd/nylzo-vectors -out spec/vectors.json"
 	seed      = "nylzo/vectors/2026-10-22"
 	inlineMax = 4096
@@ -24,6 +25,7 @@ type File struct {
 	Generator        string             `json:"generator"`
 	Scrypt           []Scrypt           `json:"scrypt_rfc7914"`
 	Derive           []Derive           `json:"derive"`
+	OPAQUE           []OPAQUE           `json:"opaque"`
 	Envelope         []Envelope         `json:"envelope"`
 	Rejected         []Rejected         `json:"envelope_rejected"`
 	CompressedLength []CompressedLength `json:"compressed_length"`
@@ -46,6 +48,7 @@ func Generate() (*File, error) {
 	steps := []func() error{
 		file.scrypt,
 		file.derive,
+		file.opaque,
 		file.envelope,
 		file.rejected,
 		file.compressedLength,
@@ -97,6 +100,10 @@ func deterministicID(label string) core.ID {
 
 func deterministic32(label string) *[32]byte {
 	return (*[32]byte)(deterministic(label, 32))
+}
+
+func deterministicExportKey(label string) *keys.ExportKey {
+	return (*keys.ExportKey)(deterministic(label, len(keys.ExportKey{})))
 }
 
 func counterBytes(length int) []byte {

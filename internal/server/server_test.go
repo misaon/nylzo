@@ -20,6 +20,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -28,12 +29,16 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/gtank/ristretto255"
+
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/epoch"
+	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -198,11 +203,11 @@ func (b *gatedPut) PutExpiring(
 	reference string,
 	body io.Reader,
 	size int64,
-	ttl time.Duration,
+	expiresAt time.Time,
 ) (time.Time, error) {
 	close(b.entered)
 	<-b.release
-	return b.Blobs.PutExpiring(ctx, reference, body, size, ttl)
+	return b.Blobs.PutExpiring(ctx, reference, body, size, expiresAt)
 }
 
 func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
@@ -227,7 +232,7 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 			"id_token":     token,
 			"read_key":     core.Encode(readKey[:]),
 			"manage_key":   core.Encode(manageKey[:]),
-			"verifier_key": otherPublicKey(),
+			"registration": anyRegistration(),
 			"epoch":        shareEpochFor(60),
 			"kdf_id":       0,
 			"opens_max":    1,
@@ -337,7 +342,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 			"id_token":     issueIDToken(server, id),
 			"read_key":     core.Encode(readKey[:]),
 			"manage_key":   core.Encode(manageKey[:]),
-			"verifier_key": otherPublicKey(),
+			"registration": anyRegistration(),
 			"epoch":        shareEpochFor(60),
 			"kdf_id":       0,
 			"opens_max":    1,
@@ -372,7 +377,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 			"id_token":     issueIDToken(server, id),
 			"read_key":     core.Encode(readKey[:]),
 			"manage_key":   core.Encode(manageKey[:]),
-			"verifier_key": otherPublicKey(),
+			"registration": anyRegistration(),
 			"epoch":        shareEpochFor(60),
 			"kdf_id":       0,
 			"opens_max":    1,
@@ -399,13 +404,15 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 }
 
 func issueIDToken(server *Server, id core.ID) string {
-	token, _ := server.idTokens.Issue(id, shareEpochFor(60), server.epochs.ID(), time.Now())
+	token, _ := server.idTokens.Issue(id, shareEpochFor(60), 60, issuingGeneration(server), time.Now())
 	return token
 }
 
-func otherPublicKey() string {
-	key := signing.PublicKey(core.NewSecret())
-	return core.Encode(key[:])
+// anyRegistration is a well-formed registration record for a create that no reader opens.
+func anyRegistration() string {
+	record := make([]byte, opaque.RecordLen)
+	copy(record, ristretto255.NewGeneratorElement().Bytes())
+	return core.Encode(record)
 }
 
 func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
@@ -420,7 +427,7 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 	}
 	id := core.NewID().String()
 	for _, request := range []*http.Request{
-		httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+id+"/claim", http.NoBody),
+		claimRequest("/api/v1/messages/" + id + "/claim"),
 		httptest.NewRequest(http.MethodGet, "/api/v1/messages/"+id+"/blob", http.NoBody),
 	} {
 		recorder := httptest.NewRecorder()
@@ -436,11 +443,17 @@ func TestStreamsBeyondTheLimitAnswer503BeforeAuthorization(t *testing.T) {
 	}
 	server.streams.Release(source, ranges)
 	recorder := httptest.NewRecorder()
-	server.handler.
-		ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+id+"/claim", http.NoBody))
+	server.handler.ServeHTTP(recorder, claimRequest("/api/v1/messages/"+id+"/claim"))
 	if recorder.Code != http.StatusNotFound || !server.streams.Take(source, ranges) {
 		t.Fatalf("a claim with a free slot: %d, or it kept its slot", recorder.Code)
 	}
+}
+
+// claimRequest is a claim with a well-formed KE3, which every claim needs before it takes a stream slot.
+func claimRequest(path string) *http.Request {
+	request := httptest.NewRequest(http.MethodPost, path, http.NoBody)
+	request.Header.Set(api.KE3HeaderName, core.Encode(make([]byte, 64)))
+	return request
 }
 
 func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
@@ -449,7 +462,7 @@ func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 	settings.MaxStreams = 64
 	server := newHarness(t, settings).server
 	claim := func(address string) int {
-		request := httptest.NewRequest(http.MethodPost, "/api/v1/messages/"+core.NewID().String()+"/claim", http.NoBody)
+		request := claimRequest("/api/v1/messages/" + core.NewID().String() + "/claim")
 		request.RemoteAddr = address + ":1234"
 		recorder := httptest.NewRecorder()
 		server.handler.ServeHTTP(recorder, request)
@@ -568,6 +581,49 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 			t.Fatalf("a sweep cut short by shutdown logged an error: %s", logs.String())
 		}
 	})
+}
+
+// F18: swap turned on after the start reaches the log at every sweep as its own event, and the sweep still runs.
+func TestEpochStorageThatStopsBeingErasableIsLogged(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.SweepInterval = time.Minute
+	settings.Development.AllowSwap = false
+	if runtime.GOOS == "linux" {
+		settings.EpochDirectoryOverride = swappableTmpfs(t)
+		settings.Development.AllowUnerasableStorage = true
+	}
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, settings)
+		harness.server.settings.Development.AllowUnerasableStorage = false
+		due := newMessage(t, core.KDFNone, "", 1, 60, "due")
+		harness.mustCreate(due)
+		synctest.Sleep(store.BlobPurgeStep + time.Minute)
+		ctx, cancel := context.WithCancel(t.Context())
+		go harness.server.RunSweeper(ctx)
+		synctest.Wait()
+		cancel()
+		synctest.Wait()
+		if !strings.Contains(harness.logs.String(), `"msg":"epoch-storage-not-erasable"`) || harness.blobExists(due) {
+			t.Fatalf("the sweep must log the epoch storage and still erase: %s", harness.logs.String())
+		}
+	})
+}
+
+// swappableTmpfs is a directory on a tmpfs that swap can reach, the storage serve refuses at start.
+func swappableTmpfs(t *testing.T) string {
+	t.Helper()
+	swaps, err := os.ReadFile("/proc/swaps")
+	onTmpfs, tmpfsErr := erase.OnTmpfs("/dev/shm")
+	if err != nil || tmpfsErr != nil || len(strings.Split(strings.TrimSpace(string(swaps)), "\n")) < 2 || !onTmpfs {
+		t.Skip("needs active swap and /dev/shm on a tmpfs")
+	}
+	directory, err := os.MkdirTemp("/dev/shm", "nylzo-epoch-") //nolint:usetesting // must lie on /dev/shm
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(directory) })
+	return directory
 }
 
 func TestConfigErrorsAreCaughtByNew(t *testing.T) {
@@ -787,7 +843,7 @@ func TestRequestsAreLoggedAsCountsPerHour(t *testing.T) {
 			status, _ := entry["status"].(float64)
 			counts[method+" "+route+" "+strconv.Itoa(int(status))] += count
 		}
-		if counts["message 2xx"] != 4 || counts["POST POST /api/v1/messages 201"] != 1 ||
+		if counts["message 2xx"] != 5 || counts["POST POST /api/v1/messages 201"] != 1 ||
 			counts["OTHER /api/ 404"] != 1 || strings.Contains(harness.logs.String(), "AAAAAAAAAAAAAAAAAAAAAA") ||
 			strings.Contains(harness.logs.String(), "{id}") {
 			t.Fatalf("counts per method, route and status, the message routes by class only: %v", counts)
@@ -948,12 +1004,36 @@ func TestABodyThatNeverArrivesIsAnsweredAtOnce(t *testing.T) {
 	}
 }
 
-// TestHeadersOver8KiBGet431WithTheSecurityHeaders covers A4-9 and F10: net/http answers before any handler runs.
-func TestHeadersOver8KiBGet431WithTheSecurityHeaders(t *testing.T) {
+// F15: a 1624-character share key plus what a browser and a proxy add stays below the h2c header list limit.
+func TestH2CAcceptsAShareKeyWithBrowserHeaders(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	address := harness.listen()
-	for padding, want := range map[int]int{7 << 10: http.StatusOK, 9 << 10: http.StatusRequestHeaderFieldsTooLarge} {
+	var protocols http.Protocols
+	protocols.SetUnencryptedHTTP2(true)
+	client := &http.Client{Transport: &http.Transport{Protocols: &protocols}, Timeout: 5 * time.Second}
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+address+"/healthz", http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
+	request.Header.Set("X-Padding", strings.Repeat("a", 5<<10))
+	response, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK || response.ProtoMajor != 2 {
+		t.Fatalf("a request with a share key over h2c: %d HTTP/%d", response.StatusCode, response.ProtoMajor)
+	}
+}
+
+// TestHeadersOver12KiBGet431WithTheSecurityHeaders covers A4-9 and F10: net/http answers before any handler runs.
+func TestHeadersOver12KiBGet431WithTheSecurityHeaders(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	address := harness.listen()
+	for padding, want := range map[int]int{11 << 10: http.StatusOK, 13 << 10: http.StatusRequestHeaderFieldsTooLarge} {
 		connection, err := new(net.Dialer).DialContext(t.Context(), "tcp", address)
 		if err != nil {
 			t.Fatal(err)
@@ -977,36 +1057,59 @@ func TestHeadersOver8KiBGet431WithTheSecurityHeaders(t *testing.T) {
 	}
 }
 
-// openWithShares tries every share a seed directory can still make, as an attacker with the link would.
-func openWithShares(t *testing.T, directory string, link *core.Link, policy envelope.Policy, object []byte) bool {
+// openWithShares holds what a reader of the link holds after the handshake, P included, and tries every share a seed
+// directory can still make for the epochs around the deadline the policy authenticates, as an attacker with the link
+// would: with a clock in the past, so the copy keeps the minute it was taken in.
+func openWithShares(
+	t *testing.T,
+	directory string,
+	link *core.Link,
+	exportKey *keys.ExportKey,
+	policy envelope.Policy,
+	object []byte,
+) bool {
 	t.Helper()
-	ratchet, _, err := epoch.Open(directory, time.Now(), epoch.Options{})
+	attackerClock := time.Unix(0, 0)
+	ratchet, _, err := epoch.Open(directory, attackerClock, epoch.Options{})
 	if err != nil || ratchet == nil {
 		t.Fatalf("open the stolen seed: %v", err)
 	}
 	defer ratchet.Close()
 	locator := seal.LocatorOf(link.ID[:])
-	now := epoch.Hour(time.Now())
-	for hour := now; hour < now+200; hour++ {
-		expiryShare, shareErr := ratchet.Share(ratchet.ID(), hour, locator, time.Now())
-		if shareErr != nil {
-			t.Fatal(shareErr)
-		}
-		derived, deriveErr := keys.DeriveAll(link.ID, &link.Secret, link.KDF, "", &expiryShare)
-		if deriveErr != nil {
-			t.Fatal(deriveErr)
-		}
-		expected := envelope.Expected{
-			ID:         link.ID,
-			Policy:     policy,
-			KDF:        link.KDF,
-			ObjectHash: &link.ObjectHash,
-		}
-		if _, _, openErr := envelope.Open(&derived.Content, &expected, object); openErr == nil {
-			return true
+	sealed := epoch.Of(time.Unix(int64(policy.Deadline), 0))
+	for _, generation := range ratchet.Generations() {
+		for shareEpoch := sealed - 120; shareEpoch <= sealed+120; shareEpoch++ {
+			expiryShare, shareErr := ratchet.Share(generation, shareEpoch, locator, attackerClock)
+			if errors.Is(shareErr, epoch.ErrShareGone) {
+				continue
+			}
+			if shareErr != nil {
+				t.Fatal(shareErr)
+			}
+			if opensWith(t, link, exportKey, policy, object, &expiryShare) {
+				return true
+			}
 		}
 	}
 	return false
+}
+
+func opensWith(
+	t *testing.T,
+	link *core.Link,
+	exportKey *keys.ExportKey,
+	policy envelope.Policy,
+	object []byte,
+	expiryShare *[core.ShareLen]byte,
+) bool {
+	t.Helper()
+	content, err := keys.DeriveContent(link.ID, &link.Secret, exportKey, expiryShare)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := envelope.Expected{ID: link.ID, Policy: policy, KDF: link.KDF, ObjectHash: &link.ObjectHash}
+	_, _, err = envelope.Open(&content, &expected, object)
+	return err == nil
 }
 
 func seedCopy(t *testing.T, seed []byte) string {
@@ -1018,10 +1121,10 @@ func seedCopy(t *testing.T, seed []byte) string {
 	return directory
 }
 
-// TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed copies the data directory and the object while a
-// message lives, lets it expire and the epoch advance, and shows that nothing the attacker can steal then,
-// the link included, opens the copy (spec section 5.6).
-func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
+// TestF3ACopyTakenWhileLiveStaysClosedOnceItsDeadlineHasPassed copies the data directory and the object while a
+// message lives, lets it expire and the epoch advance, and shows that nothing the attacker can steal from the minute
+// after the deadline on, the link included, opens the copy (spec section 5.6, F13).
+func TestF3ACopyTakenWhileLiveStaysClosedOnceItsDeadlineHasPassed(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
@@ -1029,7 +1132,7 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 		harness := newHarness(t, settings)
 		message := harness.issueMessage(core.KDFNone, "", 2, 600, "plaintext expiring sentinel")
 		harness.mustCreate(message)
-		response, object := harness.claim(message, message.verifier, "")
+		response, object := harness.claim(message, message.passphrase, "")
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("claim: %d", response.StatusCode)
 		}
@@ -1047,32 +1150,51 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !openWithShares(t, seedCopy(t, liveSeed), &link, policy, object) {
+		if !openWithShares(t, seedCopy(t, liveSeed), &link, &message.exportKey, policy, object) {
 			t.Fatal("the seed of a live message must open it; the test would prove nothing")
 		}
 
-		synctest.Sleep(time.Until(epoch.End(message.epoch)) + time.Minute)
-		if _, err = harness.server.sweepOnce(t.Context()); err != nil {
-			t.Fatal(err)
+		deadline := epoch.Deadline(message.epoch)
+		if int64(policy.Deadline) != deadline.Unix() ||
+			!deadline.Truncate(time.Hour).Equal(time.Now().Truncate(time.Hour)) {
+			t.Fatalf("the policy names deadline %d, want %v within this hour", policy.Deadline, deadline)
 		}
-		if response, _ = harness.claim(message, message.verifier, ""); response.StatusCode != http.StatusGone {
-			t.Fatalf("a claim after the expiry: %d", response.StatusCode)
-		}
+		synctest.Sleep(17 * time.Second)
+		ratchetCtx, stopRatchet := context.WithCancel(t.Context())
+		ratchetDone := make(chan struct{})
+		go func() {
+			defer close(ratchetDone)
+			harness.server.RunRatchet(ratchetCtx)
+		}()
+		synctest.Sleep(time.Until(deadline))
 		currentSeed, err := os.ReadFile(seedPath)
+		stopRatchet()
+		<-ratchetDone
 		if err != nil {
 			t.Fatal(err)
 		}
-		oldSeed := liveSeed[epoch.SeedOffset : epoch.SeedOffset+epoch.SeedLen]
-		if bytes.Contains(currentSeed, oldSeed) {
-			t.Fatal("the seed file still holds the seed of the hour that has passed")
+		response, body := harness.claim(message, message.passphrase, "")
+		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" {
+			t.Fatalf("a claim at the deadline: %d %s", response.StatusCode, body)
 		}
-		for where, data := range dataCopy {
-			if bytes.Contains(data, oldSeed) {
-				t.Fatalf("the copy of the data directory holds the seed in %s", where)
+		oldMinutes := epoch.MinuteSeeds(liveSeed)
+		if len(oldMinutes) == 0 {
+			t.Fatal("the live seed file holds no seed of its minute")
+		}
+		for _, oldSeed := range oldMinutes {
+			if bytes.Contains(currentSeed, oldSeed[:]) {
+				t.Fatal("the seed file still holds the seed of a minute that has passed")
 			}
 		}
-		if openWithShares(t, seedCopy(t, currentSeed), &link, policy, object) {
-			t.Fatal("the seed stolen after the expiry hour opened a copy taken while the message lived")
+		for _, oldSeed := range epoch.Seeds(liveSeed) {
+			for where, data := range dataCopy {
+				if bytes.Contains(data, oldSeed[:]) {
+					t.Fatalf("the copy of the data directory holds the seed in %s", where)
+				}
+			}
+		}
+		if openWithShares(t, seedCopy(t, currentSeed), &link, &message.exportKey, policy, object) {
+			t.Fatal("the seed stolen at the deadline opened a copy taken while the message lived")
 		}
 		missing := envelope.Expected{
 			ID:         link.ID,
@@ -1080,12 +1202,53 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsHourHasPassed(t *testing.T) {
 			KDF:        link.KDF,
 			ObjectHash: &link.ObjectHash,
 		}
-		withoutShare, err := keys.DeriveAll(link.ID, &link.Secret, link.KDF, "", new([core.ShareLen]byte))
+		withoutShare, err := keys.DeriveContent(link.ID, &link.Secret, &message.exportKey, new([core.ShareLen]byte))
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, _, err = envelope.Open(&withoutShare.Content, &missing, object); err == nil {
+		if _, _, err = envelope.Open(&withoutShare, &missing, object); err == nil {
 			t.Fatal("the link alone opened the copy")
+		}
+	})
+}
+
+// TestF12ASeedCopiedEarlierOpensNoMessageIssuedInALaterHour copies the seed file, lets the hour end and creates a
+// message: its share comes from a generation of fresh entropy that the copy cannot make (spec section 5.6).
+func TestF12ASeedCopiedEarlierOpensNoMessageIssuedInALaterHour(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.EpochDirectoryOverride = t.TempDir()
+		harness := newHarness(t, settings)
+		seedPath := filepath.Join(settings.EpochDirectoryOverride, epoch.FileName)
+		stolenSeed, err := os.ReadFile(seedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		synctest.Sleep(time.Until(time.Now().Truncate(time.Hour).Add(time.Hour)) + time.Minute)
+		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "issued after the copy")
+		harness.mustCreate(message)
+		response, object := harness.claim(message, message.passphrase, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("claim: %d", response.StatusCode)
+		}
+		policy, err := decodePolicy(response.Header.Get(api.PolicyHeaderName))
+		if err != nil {
+			t.Fatal(err)
+		}
+		link, err := core.ParseLink(message.linkText())
+		if err != nil {
+			t.Fatal(err)
+		}
+		currentSeed, err := os.ReadFile(seedPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !openWithShares(t, seedCopy(t, currentSeed), &link, &message.exportKey, policy, object) {
+			t.Fatal("the current seed must open the message; the test would prove nothing")
+		}
+		if openWithShares(t, seedCopy(t, stolenSeed), &link, &message.exportKey, policy, object) {
+			t.Fatal("a seed copied in an earlier hour opened a message issued after that hour")
 		}
 	})
 }
@@ -1115,15 +1278,20 @@ func (n *stolenNeedles) addMessage(label string, message *testMessage, passphras
 	hash := envelope.ObjectHash(message.object)
 	n.secret(label+" H", hash[:])
 	n.secret(label+" commitment", message.object[envelope.HeaderLen:envelope.PrefixLen])
-	n.secret(label+" V", message.verifierKey[:])
 	n.secret(label+" M", message.manage[:])
-	readKey, verifierKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.verifierKey)
-	manageKey := signing.PublicKey(message.manage)
+	readKey, manageKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.manage)
 	n.secret(label+" pk_R", readKey[:])
-	n.secret(label+" pk_V", verifierKey[:])
 	n.secret(label+" pk_M", manageKey[:])
+	n.secret(label+" P", message.exportKey[:])
+	n.secret(label+" registration record", message.registration[:])
+	n.secret(label+" masking_key", message.registration[opaque.ElementLen:opaque.ElementLen+opaque.HashLen])
+	n.secret(label+" client public key", message.registration[:opaque.ElementLen])
+	salt, err := keys.PassphraseSalt(message.secret)
+	if err != nil {
+		n.t.Fatal(err)
+	}
+	n.secret(label+" salt_pw", salt[:])
 	if passphrase != "" {
-		n.secret(label+" P", testPassphraseKey(message.kdf, passphrase, &message.link.PassphraseSalt))
 		n.text(label+" passphrase", passphrase)
 	}
 	if message.text != "" {
@@ -1135,26 +1303,19 @@ func fileMessage(t *testing.T, content []byte) *testMessage {
 	t.Helper()
 	message := newMessage(t, core.KDFNone, "", 1, 3600, "unused")
 	message.text = ""
-	object, err := envelope.Seal(
-		&message.content,
-		envelope.NewHeader(core.KDFNone),
-		message.id,
-		message.policy,
-		envelope.Payload{
-			Meta: envelope.Meta{
-				File: &envelope.FileMeta{
-					Name: "quarterly-plan-sentinel.pdf",
-					MIME: "application/pdf",
-					Size: int64(len(content)),
-				},
+	message.payload = envelope.Payload{
+		Meta: envelope.Meta{
+			File: &envelope.FileMeta{
+				Name: "quarterly-plan-sentinel.pdf",
+				MIME: "application/pdf",
+				Size: int64(len(content)),
 			},
-			File: content,
 		},
-	)
-	if err != nil {
+		File: content,
+	}
+	if err := message.seal(); err != nil {
 		t.Fatal(err)
 	}
-	message.object = object
 	return message
 }
 
@@ -1195,7 +1356,7 @@ func TestAnEndedMessageStaysUnreadableWithItsLinkAndAnOlderRow(t *testing.T) {
 			}
 		}
 		readKey := signing.PublicKey(&message.link.R)
-		record, err := openRow(&older, seal.Read, readKey[:])
+		record, err := harness.server.openRow(&older, seal.Read, readKey[:])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -1225,9 +1386,9 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		raw6 := netip.MustParseAddr(ip6).As16()
 		needles.named["IPv6 address, raw"] = raw6[:]
 		var lease string
-		claimed := func(message *testMessage, verifier, ip string) {
+		claimed := func(message *testMessage, passphrase, ip string) {
 			t.Helper()
-			response, _ := harness.claim(message, verifier, ip)
+			response, _ := harness.claim(message, passphrase, ip)
 			if response.StatusCode != http.StatusOK {
 				t.Fatalf("claim: %d", response.StatusCode)
 			}
@@ -1250,7 +1411,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 			t.Fatalf("expired: %v", metadata)
 		}
 
-		opened := newMessage(t, core.KDFNone, "", 1, 3600, "plaintext opened sentinel")
+		opened := harness.issueMessage(core.KDFNone, "", 1, 3600, "plaintext opened sentinel")
 		opened.address = ip4
 		harness.mustCreate(opened)
 		needles.addMessage("opened", opened, "")
@@ -1265,7 +1426,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		harness.mustCreate(leased)
 		needles.addMessage("leased", leased, passphrase)
 		harness.claim(leased, core.Encode(make([]byte, 32)), ip6)
-		claimed(leased, leased.verifier, ip6)
+		claimed(leased, leased.passphrase, ip6)
 
 		content := bytes.Repeat([]byte("file-content-sentinel "), 3000)
 		file := fileMessage(t, content)
@@ -1279,7 +1440,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		burned.address = ip4
 		harness.mustCreate(burned)
 		needles.addMessage("burned", burned, "")
-		if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode != http.StatusNoContent {
+		if response, _ := harness.burn(burned, "", ip4); response.StatusCode != http.StatusNoContent {
 			t.Fatalf("burn: %d", response.StatusCode)
 		}
 
@@ -1287,6 +1448,9 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		cancelled.address = ip6
 		harness.mustCreate(cancelled)
 		needles.addMessage("cancelled", cancelled, passphrase)
+		if login, _, _ := harness.handshake(cancelled, passphrase, ip6); login == nil || !login.matched {
+			t.Fatal("the handshake that the sender leaves unfinished did not run")
+		}
 		if response, _ := harness.post(
 			cancelled,
 			"cancel",
@@ -1304,11 +1468,7 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 			Path: filepath.Join(harness.directory, "blobs", hex.EncodeToString([]byte(harness.blobReference(stuck)))),
 			Err:  syscall.EROFS,
 		})
-		if response, _ := harness.post(
-			stuck,
-			"burn",
-			stuck.readToken,
-		); response.StatusCode != http.StatusInternalServerError {
+		if response, _ := harness.burn(stuck, "", ip4); response.StatusCode != http.StatusInternalServerError {
 			t.Fatalf("burn with a failing blob store: %d", response.StatusCode)
 		}
 
@@ -1378,6 +1538,18 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 		needles.text("contact", contact)
 		needles.text("reason", "spam, see")
+		sent := harness.sentSecretHeaders()
+		for i, header := range sent {
+			needles.text(fmt.Sprintf("%s as sent in request %d", header.name, i), header.value)
+		}
+		for _, name := range []string{
+			"Authorization", api.CreateHeaderName, api.RegistrationHeaderName, "registration response",
+			api.KE1HeaderName, "KE2", api.KE3HeaderName,
+		} {
+			if !slices.ContainsFunc(sent, func(header sentHeader) bool { return header.name == name }) {
+				t.Fatalf("no request carried %s, so the search for it proves nothing", name)
+			}
+		}
 		if logs := harness.logs.String(); logs != startupLogs {
 			t.Fatalf("a line was written before the hourly flush: %s", strings.TrimPrefix(logs, startupLogs))
 		}
@@ -1525,7 +1697,7 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 		harness.mustCreate(message)
 		response, _ := harness.metadata(message)
 		codes := []int{response.StatusCode}
-		response, _ = harness.claim(message, message.verifier, "")
+		response, _ = harness.claim(message, message.passphrase, "")
 		lease := response.Header.Get("X-Nylzo-Lease")
 		if lease == "" {
 			t.Fatalf("the claim gave no lease: %d", response.StatusCode)
@@ -1560,7 +1732,7 @@ func TestAK11LogsContainNoSecrets(t *testing.T) {
 		forbidden := map[string][]byte{
 			"S": message.secret[:],
 			"R": message.link.R[:],
-			"V": message.verifierKey[:],
+			"P": message.exportKey[:],
 			"M": message.manage[:],
 			"K": message.content.K[:],
 			"L": leaseBytes,

@@ -22,8 +22,8 @@ import (
 )
 
 var (
-	testNow = time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
-	testMAC = bytes.Repeat([]byte{7}, 32)
+	testNow          = time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
+	testRegistration = bytes.Repeat([]byte{7}, seal.SealedRegistrationLen)
 )
 
 func TestSQLiteStore(t *testing.T) {
@@ -78,17 +78,18 @@ func newRecord(opens uint16, passphrase bool) *store.Record {
 		Size:           64,
 	}
 	if passphrase {
-		message.KDF = 1
-		message.VerifierMAC = testMAC
-		message.VerifierPepperID = 7
+		message.KDF = 3
 	}
+	message.Registration = testRegistration
+	message.RegistrationPepperID = 7
 	record := store.NewRecord(
+		seal.NewKey(),
 		seal.LocatorOf(id[:]),
 		message,
 		core.NewSecret()[:],
 		core.NewSecret()[:],
 		reference.String(),
-		seal.NewKey(),
+		new(seal.NewBlobKey()),
 	)
 	return &record
 }
@@ -258,7 +259,7 @@ func TestAnAckFinishesItsEndingAfterTheClientLeft(t *testing.T) {
 		record.Row.BlobReference,
 		bytes.NewReader(make([]byte, 64)),
 		64,
-		time.Hour,
+		time.Now().Add(time.Hour),
 	); err != nil {
 		t.Fatal(err)
 	}

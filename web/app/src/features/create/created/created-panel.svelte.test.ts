@@ -4,6 +4,7 @@ import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { getTranslator, Translator } from '../../../shared/language/translator.svelte.ts';
+import type { Remembered } from '../composer/composer.svelte.ts';
 import type { Created } from '../create-message.ts';
 import CreatedPanel from './CreatedPanel.svelte';
 
@@ -17,21 +18,34 @@ describe('created message panel', () => {
   let created: Created;
   const translator = new Translator('en');
   const another = vi.fn<() => void>();
-  const remember = vi.fn<(label: string) => void>();
+  const remember = vi.fn<(label: string, keep: boolean) => void>();
   const writeText = vi.fn<(text: string) => Promise<void>>();
   const share = vi.fn<() => Promise<void>>();
   const canShare = vi.fn<() => boolean>();
   const coarsePointer = vi.fn<() => boolean>();
 
-  function show({ passphrase = '', opensMax = 1, canRemember = true } = {}): void {
+  function show({
+    passphrase = '',
+    opensMax = 1,
+    canKeep = true,
+    canTrackInTab = true,
+    remembered = 'off',
+  }: {
+    readonly passphrase?: string;
+    readonly opensMax?: number;
+    readonly canKeep?: boolean;
+    readonly canTrackInTab?: boolean;
+    readonly remembered?: Remembered;
+  } = {}): void {
     component = mount(CreatedPanel, {
       target,
       props: {
         created,
         opensMax,
         passphrase,
-        canRemember,
-        remembered: 'off',
+        canKeep,
+        canTrackInTab,
+        remembered,
         onremember: remember,
         onanother: another,
       },
@@ -144,22 +158,44 @@ describe('created message panel', () => {
     expect(writeText).toHaveBeenCalledExactlyOnceWith(passphrase);
   });
 
-  it('saves to Sent only when asked, with the typed label, and never in the local client', async () => {
+  it('saves to Sent only when asked, with the typed label, in this tab unless the sender keeps it', () => {
     show();
     const label = target.querySelector<HTMLInputElement>(
       `input[placeholder="${CSS.escape(translator.translate('created.track.placeholder'))}"]`,
     );
-    if (!label) {
-      throw new Error('missing label field');
+    const keep = target.querySelector<HTMLButtonElement>('button[role="switch"]');
+    const save = () => target.querySelector<HTMLButtonElement>('form button[type="submit"]')?.click();
+    if (!label || !keep) {
+      throw new Error('missing label field or keep switch');
     }
     expect(remember).not.toHaveBeenCalled();
+    const note = () => target.querySelector(`#${CSS.escape(keep.getAttribute('aria-describedby') ?? '')}`);
+    expect(keep.getAttribute('aria-checked')).toBe('false');
+    expect(note()?.textContent.trim()).toBe(translator.translate('created.track.note'));
+    expect(note()?.getAttribute('aria-hidden')).toBe('false');
     label.value = 'Password for Peter';
     label.dispatchEvent(new Event('input', { bubbles: true }));
+    save();
+    expect(remember).toHaveBeenLastCalledWith('Password for Peter', false);
+    keep.click();
+    flushSync();
+    expect(keep.getAttribute('aria-checked')).toBe('true');
+    expect(note()?.textContent.trim()).toBe(translator.translate('created.track.note.kept'));
+    expect(note()?.getAttribute('aria-hidden')).toBe('false');
+    save();
+    expect(remember).toHaveBeenLastCalledWith('Password for Peter', true);
+  });
+
+  it.each([
+    { name: 'the page cannot keep it in the browser', props: { canKeep: false }, keep: false },
+    { name: 'the browser lacks the Navigation API', props: { canTrackInTab: false }, keep: true },
+    { name: 'a browser save failed', props: { remembered: 'failed' as Remembered }, keep: false },
+  ])('offers one place to track when $name', ({ props, keep }) => {
+    show(props);
+    const toggle = target.querySelector<HTMLButtonElement>('button[role="switch"]');
+    expect(toggle === null || toggle.disabled).toBe(true);
     target.querySelector<HTMLButtonElement>('form button[type="submit"]')?.click();
-    expect(remember).toHaveBeenCalledExactlyOnceWith('Password for Peter');
-    await unmount(component);
-    show({ canRemember: false });
-    expect(target.textContent).not.toContain(translator.translate('created.track.title'));
+    expect(remember).toHaveBeenCalledExactlyOnceWith('', keep);
   });
 
   it.each([false, true])('handles native sharing and cancellation: cancelled=%s', async (cancelled) => {

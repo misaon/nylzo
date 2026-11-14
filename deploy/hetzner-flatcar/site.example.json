@@ -13,6 +13,14 @@
   "dailyCreates": 250,
   "initialRelease": "",
   "automaticUpdates": true,
+  "profile": "strict",
+  "tang": {
+    "threshold": 2,
+    "servers": [
+      { "url": "http://tang-a.example.net", "thumbprint": "" },
+      { "url": "http://tang-b.example.com", "thumbprint": "" }
+    ]
+  },
   "publicAccess": false,
   "dnsZone": "nylzo.example.org",
   "cloudflareAccountId": ""

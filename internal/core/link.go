@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -12,7 +13,7 @@ import (
 const linkFieldCount = 5
 
 const (
-	FragmentVersion = 2
+	FragmentVersion = 3
 	LinkPath        = "/r"
 )
 
@@ -21,7 +22,7 @@ var (
 	ErrLinkVersion    = fmt.Errorf("%w: a newer fragment version", ErrLink)
 	ErrLinkRetiredKDF = fmt.Errorf("%w: a retired passphrase profile", ErrLink)
 	ErrLinkReleased   = fmt.Errorf(
-		"%w: a link from before protocol version 2, whose message the upgrade erased",
+		"%w: a link from before protocol version 3, whose message the upgrade erased",
 		ErrLink,
 	)
 )
@@ -122,17 +123,27 @@ func (l *Link) setKDF(text string) error {
 	return nil
 }
 
-// releasedLink recognises a well-formed link of protocol version 1 only to say that its message is gone.
+// releasedLink recognises a well-formed link of protocol version 1 or 2 only to say that its message is gone.
 func releasedLink(path, fragment string) bool {
-	encodedID, ok := strings.CutPrefix(path, "/m/")
 	fields := strings.Split(fragment, ".")
-	if !ok || len(fields) != 3 || fields[0] != "1" || len(fields[1]) != 1 || fields[1] < "0" || fields[1] > "2" {
-		return false
+	if encodedID, ok := strings.CutPrefix(path, "/m/"); ok {
+		return len(fields) == 3 && fields[0] == "1" && slices.Contains([]string{"0", "1", "2"}, fields[1]) &&
+			validID(encodedID) && decodes(fields[2], SecretLen)
 	}
-	_, idErr := ParseID(encodedID)
-	secret, secretErr := DecodeExact(fields[2], SecretLen)
-	clear(secret)
-	return idErr == nil && secretErr == nil
+	return path == LinkPath && len(fields) == linkFieldCount && fields[0] == "2" &&
+		slices.Contains([]string{"0", "3"}, fields[1]) &&
+		validID(fields[2]) && decodes(fields[3], SecretLen) && decodes(fields[4], ObjectHashLen)
+}
+
+func validID(encoded string) bool {
+	_, err := ParseID(encoded)
+	return err == nil
+}
+
+func decodes(encoded string, length int) bool {
+	decoded, err := DecodeExact(encoded, length)
+	clear(decoded)
+	return err == nil
 }
 
 func newerFragment(fragment string) bool {

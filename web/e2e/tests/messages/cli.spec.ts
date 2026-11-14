@@ -22,13 +22,13 @@ function passphraseFile(): string {
 
 test('messages from the CLI, with and without a passphrase, open in the browser', async ({ page }) => {
   const plain = runCli(['create', '--server', BASE_URL], 'z příkazové řádky').trim();
-  expect(plain).toContain('#2.0.');
+  expect(plain).toContain('#3.0.');
   await showMessage(page, plain);
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('z příkazové řádky');
 
   const guarded = runCli(['create', '--server', BASE_URL, '--passphrase-file', passphraseFile()], 'chráněno').trim();
-  expect(guarded).toContain('#2.3.');
+  expect(guarded).toContain('#3.3.');
   await showMessage(page, guarded, PASSPHRASE);
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('chráněno');
@@ -63,8 +63,9 @@ test(
     const link = runCli(['create', '--server', BASE_URL, '--compress', '--from-file', file], '').trim();
     await showMessage(page, link);
     await expectMessageShown(page);
-    const downloading = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Download attachment' }).click();
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Download anyway' }).click();
     const download = await downloading;
     expect(download.suggestedFilename()).toBe('rows.csv');
     const saved = await download.path();

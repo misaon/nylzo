@@ -154,6 +154,7 @@ export const messages: Catalog = {
   'problem.opens.out_of_range': 'O número de aberturas deve ser de 1 a {max}.',
   'problem.passphrase.too_short': 'Adicione mais {missing} (o mínimo é {min}) ou escolha Gerar.',
   'problem.passphrase.malformed': 'A senha contém caracteres inválidos.',
+  'problem.passphrase.too_long': 'A senha é longa demais.',
   'problem.passphrase.repetitive': 'A senha tem poucos caracteres diferentes e os repete.',
   'problem.passphrase.sequential': 'A senha é uma sequência contínua de letras, números ou teclas.',
   'problem.passphrase.context': 'A senha é formada principalmente pela palavra Nylzo.',
@@ -180,13 +181,14 @@ export const messages: Catalog = {
   'clipboard.cleared': 'A área de transferência está vazia. As cópias que já estão no histórico dela continuam lá.',
   'created.another': 'Nova mensagem',
   'created.remembered': 'Este dispositivo guardou a mensagem.',
+  'created.remembered.session': 'Esta aba lembra da mensagem no máximo até você fechá-la ou recarregá-la.',
   'created.status_link': 'Abrir Enviadas',
   'created.not_remembered':
     'Não foi possível guardar a mensagem neste dispositivo, então não será possível cancelá-la daqui.',
 
   'sent.title': 'Enviadas',
   'sent.note':
-    'A lista fica salva só neste navegador e não contém os links das mensagens. Cada item some {days} depois que a mensagem termina.',
+    'A lista não contém os links das mensagens. A página apaga o item de uma mensagem encerrada assim que você vê aqui como ela terminou. Os outros itens ela apaga durante suas visitas ao Nylzo, não antes de {days} depois que expiram.',
   'sent.loading': 'Carregando as mensagens enviadas…',
   'sent.unavailable':
     'Este navegador não permite que a página armazene dados, então não guarda as mensagens enviadas. Permita o armazenamento de dados para este site ou use outro navegador.',
@@ -198,14 +200,16 @@ export const messages: Catalog = {
   'sent.state.expired': 'Expirada',
   'sent.state.cancelled': 'Cancelada',
   'sent.state.deleted': 'Apagada',
+  'sent.state.lost': 'Perdida',
   'sent.label.time': 'Validade',
   'sent.label.opens': 'Aberturas',
-  'sent.label.attempts': 'Senhas erradas',
+  'sent.label.attempts': 'Tentativas malsucedidas',
   'sent.label.first_opened': 'Primeira abertura',
   'sent.not_opened': 'ainda não',
   'sent.until': 'até {time}',
   'sent.opens': '{used} de {max}',
-  'sent.unknown': 'A mensagem já não está no servidor.',
+  'sent.unknown':
+    'O servidor não encontrou a mensagem. Ela pode já ter terminado. Se não precisar mais dela aqui, remova-a.',
   'sent.failed': 'Não foi possível carregar o status. Verifique a conexão e tente novamente.',
   'sent.cancel': 'Cancelar mensagem',
   'sent.cancel.confirm': 'Depois de cancelada, ninguém mais poderá abrir a mensagem.',
@@ -222,13 +226,16 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'Não é possível salvar aqui a lista de mensagens enviadas',
   'sent.empty.title': 'Ainda não há nada aqui',
   'sent.created': 'Criada em {time}',
-  'sent.state.unknown': 'Não existe mais',
+  'sent.created.session': 'Criada em {time}, só nesta aba',
+  'sent.state.unknown': 'Não encontrada',
   'sent.state.failed': 'Status desconhecido',
   'sent.state.loading': 'Carregando',
-  'sent.ended.opened': 'Aberta em {time}. Foi apagada do servidor; o item continua aqui por mais {days}.',
-  'sent.ended.expired': 'Expirou em {time}. Foi apagada do servidor; o item continua aqui por mais {days}.',
-  'sent.ended.cancelled': 'Cancelada em {time}. Foi apagada do servidor; o item continua aqui por mais {days}.',
-  'sent.ended.deleted': 'O destinatário a apagou ou o operador a removeu. O item continua aqui por mais {days}.',
+  'sent.ended.opened': 'Aberta em {time}. Foi apagada do servidor; o item some quando você sair desta página.',
+  'sent.ended.expired': 'Expirou em {time}. Foi apagada do servidor; o item some quando você sair desta página.',
+  'sent.ended.cancelled': 'Cancelada em {time}. Foi apagada do servidor; o item some quando você sair desta página.',
+  'sent.ended.deleted': 'O destinatário a apagou ou o operador a removeu. O item some quando você sair desta página.',
+  'sent.ended.lost':
+    'O servidor perdeu a chave dela, geralmente ao reiniciar, e ninguém mais pode abri-la. Envie de novo se ainda precisar. O item some quando você sair desta página.',
   'sent.cancel.title': 'Cancelar a mensagem “{label}”?',
   'sent.cancel.title.untitled': 'Cancelar a mensagem?',
   'sent.forget.label': 'Remover da lista',
@@ -238,10 +245,12 @@ export const messages: Catalog = {
   'read.title': 'Mensagem de uso único',
   'read.loading': 'Carregando a mensagem…',
   'read.retry_later': 'O serviço está sobrecarregado. Tente novamente em {time}.',
+  'read.wait': 'Depois de muitas tentativas malsucedidas, a abertura está pausada. Tente novamente em {time}.',
   'read.ended.opened': 'A mensagem já foi aberta.',
   'read.ended.expired': 'A mensagem expirou.',
   'read.ended.cancelled': 'O remetente cancelou a mensagem.',
   'read.ended.deleted': 'A mensagem foi apagada.',
+  'read.ended.lost': 'O servidor não consegue mais abrir a mensagem.',
   'read.passphrase': 'Senha',
   'read.reveal': 'Mostrar mensagem',
   'read.resumable':
@@ -254,8 +263,7 @@ export const messages: Catalog = {
     'Senha incorreta. A mensagem ainda não foi aberta. Você tem mais {attempts}; depois, será preciso esperar um pouco.',
   'read.rejected.wait': 'Senha incorreta. Você poderá tentar de novo em {time}.',
   'read.rejected.malformed': 'A senha contém caracteres inválidos.',
-  'read.rejected.wrong_or_changed':
-    'Não foi possível descriptografar a mensagem: a senha está incorreta ou os dados foram alterados. Digite a senha novamente.',
+  'read.rejected.long': 'A senha é longa demais.',
   'read.delete': 'Apagar sem abrir',
   'read.delete.rest': 'Apagar mensagem',
   'read.delete.rest.short': 'Apagar',
@@ -267,6 +275,11 @@ export const messages: Catalog = {
   'read.delete.no': 'Não apagar',
   'read.deleted_rest': 'As aberturas restantes foram apagadas.',
   'read.delete.failed': 'Não foi possível apagar a mensagem. Tente novamente.',
+  'read.delete.wait':
+    'Depois de muitas senhas erradas, não é possível apagar a mensagem agora. Tente novamente em {time}.',
+  'read.delete.locked':
+    'Depois de muitas senhas erradas, a mensagem fica bloqueada até o fim da validade. Ninguém pode abri-la, mas o remetente ainda pode cancelá-la.',
+  'read.delete.passphrase': 'Digite a senha enviada pelo remetente e depois escolha “Apagar sem abrir”.',
 
   'busy.deriving': 'Preparando a chave a partir da senha…',
   'busy.claiming': 'Abrindo a mensagem…',
@@ -281,8 +294,9 @@ export const messages: Catalog = {
     'Se houver um pedido de dinheiro, login ou instalação, confirme com o remetente por outro canal.',
   'revealed.file': 'Anexo',
   'revealed.file.unchecked':
-    'O anexo é criptografado, então o Nylzo não consegue verificá-lo com um antivírus. Abra apenas arquivos de pessoas que você conhece.',
-  'revealed.confirm.title': 'Este tipo de arquivo pode executar código. Abra-o apenas se você confiar no remetente.',
+    'O anexo é criptografado, então o Nylzo não consegue verificá-lo com um antivírus. Baixe apenas arquivos de remetentes em quem você confia.',
+  'revealed.confirm.title':
+    'Qualquer arquivo pode conter código malicioso, até um PDF, um documento ou uma imagem. Baixe-o apenas se você confiar no remetente.',
   'revealed.confirm.extension': 'Extensão do arquivo:',
   'revealed.confirm.none': 'O arquivo não tem extensão.',
   'revealed.confirm.download': 'Baixar mesmo assim',
@@ -335,7 +349,7 @@ export const messages: Catalog = {
     'Não os armazena. Mantém os limites por endereço apenas em uma memória que nunca é gravada no disco, e os esquece ao reiniciar.',
   'transparency.stores.enforced.title': 'A criptografia também controla a validade',
   'transparency.stores.enforced':
-    'O servidor controla a validade e o número de aberturas. Além disso, no máximo duas horas depois que a mensagem expira, ele apaga a parte da chave de que ela precisa, então nem uma cópia dos dados consegue mais abri-la. Uma cópia feita antes não lê a mensagem sem o link.',
+    'O servidor controla a validade e o número de aberturas. Além disso, no máximo um minuto depois que a mensagem expira, ele apaga a parte da chave de que ela precisa, então nem uma cópia dos dados consegue mais abri-la. Uma cópia feita antes não lê a mensagem sem o link.',
   'transparency.logs.title': 'O que o servidor registra nos logs',
   'transparency.logs.written': 'Registra',
   'transparency.logs.written.time': 'Horário com precisão de minuto',
@@ -389,7 +403,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Não usamos um serviço externo para analisar as visitas.',
   'transparency.personal.browser.title': 'No seu navegador',
   'transparency.personal.browser':
-    'O idioma escolhido, um dado temporário durante a abertura da mensagem e a lista Enviadas, se você acompanhar alguma mensagem. Isso é necessário para as funções que você solicita e, por isso, não exige consentimento.',
+    'O idioma escolhido, um dado temporário durante a abertura da mensagem e a lista Enviadas, se você mantiver uma mensagem acompanhada depois de fechar a aba. Isso é necessário para as funções que você solicita e, por isso, não exige consentimento.',
   'transparency.limits.title': 'Limites desta instância',
   'transparency.limits.short': 'Limites',
   'transparency.limits.file': 'Maior anexo',
@@ -493,7 +507,7 @@ export const messages: Catalog = {
   'step.derive.label': 'Derivação',
   'step.derive.title': 'Derivando as chaves',
   'step.derive.detail': 'o HKDF-SHA-256 deriva a chave do conteúdo e as chaves que assinam a abertura',
-  'step.derive.detail.passphrase': 'scrypt a partir da senha, depois HKDF-SHA-256',
+  'step.derive.detail.passphrase': 'OPAQUE e scrypt a partir da senha, depois HKDF-SHA-256',
   'step.encrypt.label': 'Criptografia',
   'step.encrypt.title': 'Criptografando o conteúdo',
   'step.encrypt.detail': 'AES-256-GCM, com preenchimento até blocos inteiros',
@@ -519,7 +533,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Copiar senha',
   'created.track.title': 'Acompanhar em Enviadas',
   'created.track.note':
-    'Você verá se alguém abriu a mensagem e poderá cancelá-la. O acompanhamento fica salvo só neste navegador, e qualquer pessoa com acesso a ele também poderá cancelar a mensagem.',
+    'Você verá se alguém abriu a mensagem e poderá cancelá-la. Só esta aba lembra dela, no máximo até você fechá-la ou recarregá-la.',
+  'created.track.note.kept':
+    'Você verá se alguém abriu a mensagem e poderá cancelá-la. O acompanhamento fica salvo neste navegador, e qualquer pessoa com acesso a ele também poderá cancelar a mensagem.',
+  'created.track.keep': 'Lembrar mesmo depois de fechar a aba',
   'created.track.label': 'Rótulo, visível só para você',
   'created.track.placeholder': 'Rótulo, por exemplo “Senha para o Pedro”',
   'created.track.save': 'Salvar',
@@ -569,6 +586,9 @@ export const messages: Catalog = {
     'Ninguém mais poderá abri-la. Se você ainda precisar dela, peça ao remetente um novo link.',
   'open.notice.deleted': 'A mensagem foi apagada',
   'open.notice.deleted.text': 'O destinatário a apagou ou o operador a removeu.',
+  'open.notice.lost': 'O servidor não consegue mais abrir esta mensagem',
+  'open.notice.lost.text':
+    'O servidor perdeu a chave dela, geralmente ao reiniciar. Ninguém mais poderá abrir esta mensagem. Peça ao remetente que a envie de novo.',
   'open.notice.unknown': 'Não encontramos a mensagem',
   'open.notice.unknown.text':
     'Talvez o link esteja incompleto, ou a validade da mensagem tenha terminado há muito tempo. Peça ao remetente um novo.',
@@ -640,7 +660,7 @@ export const messages: Catalog = {
   'how.link.meta.title': 'Versão',
   'how.link.meta.meta': 'só para compatibilidade',
   'how.link.meta.body':
-    'O 2 é a versão do formato do link, e o 0 indica uma mensagem sem senha. Pela versão, um Nylzo mais antigo reconhece um link de uma versão mais nova e avisa isso, em vez de dizer que o link está danificado. O servidor já conhece os dois valores pela própria mensagem, então esta parte não lhe diz nada de novo.',
+    'O 3 é a versão do formato do link, e o 0 indica uma mensagem sem senha. Pela versão, um Nylzo mais antigo reconhece um link de uma versão mais nova e avisa isso, em vez de dizer que o link está danificado. O servidor já conhece os dois valores pela própria mensagem, então esta parte não lhe diz nada de novo.',
   'how.link.id.title': 'ID da mensagem',
   'how.link.id.meta': 'com ele, o servidor encontra a mensagem',
   'how.link.id.body':

@@ -171,32 +171,41 @@ func TestIDTokensFollowTheSpec(t *testing.T) {
 	tokens := NewIDTokens(testRing(t))
 	now := time.Now()
 	id := core.NewID()
-	const shareEpoch = 493_000
-	ratchet := epoch.RatchetID{7}
-	ahead, _ := tokens.Issue(id, shareEpoch, ratchet, now.Add(5*time.Second))
-	if named, ok := tokens.Valid(id, shareEpoch, ahead, now); !ok || named != ratchet {
-		t.Fatal("a token from an instance 5 s ahead must pass and name its ratchet")
+	shareEpoch := epoch.Minute(now) + 60
+	const ttl = 3600
+	generation := epoch.GenerationID{7}
+	ahead, _ := tokens.Issue(id, shareEpoch, ttl, generation, now.Add(5*time.Second))
+	if named, ok := tokens.Valid(id, shareEpoch, ttl, ahead, now); !ok || named != generation {
+		t.Fatal("a token from an instance 5 s ahead must pass and name its generation")
 	}
-	future, _ := tokens.Issue(id, shareEpoch, ratchet, now.Add(time.Minute))
-	expired, _ := tokens.Issue(id, shareEpoch, ratchet, now.Add(-idTokenTTL-time.Second))
-	if valid(tokens, id, shareEpoch, future, now) || valid(tokens, id, shareEpoch, expired, now) ||
-		valid(tokens, core.NewID(), shareEpoch, ahead, now) {
+	future, _ := tokens.Issue(id, shareEpoch, ttl, generation, now.Add(time.Minute))
+	expired, _ := tokens.Issue(id, shareEpoch, ttl, generation, now.Add(-idTokenTTL-time.Second))
+	if valid(tokens, id, shareEpoch, ttl, future, now) || valid(tokens, id, shareEpoch, ttl, expired, now) ||
+		valid(tokens, core.NewID(), shareEpoch, ttl, ahead, now) {
 		t.Fatal("a token outside its window or for another id was accepted")
 	}
-	if valid(tokens, id, shareEpoch+1, ahead, now) {
+	if valid(tokens, id, shareEpoch+1, ttl, ahead, now) {
 		t.Fatal("F3: a token was accepted for another epoch than its share")
+	}
+	if valid(tokens, id, shareEpoch, ttl+60, ahead, now) {
+		t.Fatal("F13: a token was accepted for another TTL than its deadline came from")
+	}
+	passed := epoch.Minute(now)
+	late, _ := tokens.Issue(id, passed, ttl, generation, now)
+	if valid(tokens, id, passed, ttl, late, epoch.Deadline(passed)) {
+		t.Fatal("F13: a token was accepted at the deadline of its share")
 	}
 	raw, err := core.DecodeExact(ahead, idTokenLength)
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw[8] ^= 1
-	if valid(tokens, id, shareEpoch, core.Encode(raw), now) {
-		t.Fatal("a token whose ratchet was changed passed")
+	raw[12] ^= 1
+	if valid(tokens, id, shareEpoch, ttl, core.Encode(raw), now) {
+		t.Fatal("a token whose generation was changed passed")
 	}
 }
 
-func valid(tokens IDTokens, id core.ID, shareEpoch uint32, token string, now time.Time) bool {
-	_, ok := tokens.Valid(id, shareEpoch, token, now)
+func valid(tokens IDTokens, id core.ID, shareEpoch, ttl uint32, token string, now time.Time) bool {
+	_, ok := tokens.Valid(id, shareEpoch, ttl, token, now)
 	return ok
 }

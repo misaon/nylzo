@@ -156,6 +156,7 @@ export const messages: Catalog = {
   'problem.opens.out_of_range': 'Pesan hanya bisa diatur untuk dibuka 1 sampai {max} kali.',
   'problem.passphrase.too_short': 'Masih kurang {missing} (minimal {min}), atau pilih Buat otomatis.',
   'problem.passphrase.malformed': 'Kata sandi berisi karakter yang tidak valid.',
+  'problem.passphrase.too_long': 'Kata sandi terlalu panjang.',
   'problem.passphrase.repetitive': 'Kata sandi terdiri dari terlalu sedikit karakter berbeda yang diulang-ulang.',
   'problem.passphrase.sequential': 'Kata sandi berupa deretan huruf, angka, atau tombol keyboard yang berurutan.',
   'problem.passphrase.context': 'Kata sandi sebagian besar berisi kata Nylzo.',
@@ -182,13 +183,14 @@ export const messages: Catalog = {
   'clipboard.cleared': 'Papan klip sudah kosong. Salinan yang sudah ada di riwayat papan klip tetap tersimpan di sana.',
   'created.another': 'Pesan baru',
   'created.remembered': 'Perangkat ini sudah mengingat pesan tersebut.',
+  'created.remembered.session': 'Tab ini mengingat pesan tersebut paling lama sampai tab ditutup atau dimuat ulang.',
   'created.status_link': 'Buka Terkirim',
   'created.not_remembered':
     'Pesan tidak dapat diingat di perangkat ini, sehingga Anda tidak bisa membatalkannya dari sini.',
 
   'sent.title': 'Terkirim',
   'sent.note':
-    'Daftar ini hanya tersimpan di browser ini dan tidak berisi tautan ke pesan. Catatan akan hilang {days} setelah pesan berakhir.',
+    'Daftar ini tidak berisi tautan ke pesan. Halaman menghapus catatan pesan yang sudah berakhir begitu Anda melihat hasilnya di sini. Catatan lain dihapus saat Anda mengunjungi Nylzo, paling cepat {days} setelah masa berlakunya habis.',
   'sent.loading': 'Memuat pesan terkirim…',
   'sent.unavailable':
     'Browser ini tidak mengizinkan halaman menyimpan data, sehingga pesan terkirim tidak bisa diingat. Izinkan situs ini menyimpan data, atau gunakan browser lain.',
@@ -200,14 +202,16 @@ export const messages: Catalog = {
   'sent.state.expired': 'Kedaluwarsa',
   'sent.state.cancelled': 'Dibatalkan',
   'sent.state.deleted': 'Dihapus',
+  'sent.state.lost': 'Hilang',
   'sent.label.time': 'Masa berlaku',
   'sent.label.opens': 'Dibuka',
-  'sent.label.attempts': 'Kata sandi salah',
+  'sent.label.attempts': 'Percobaan gagal',
   'sent.label.first_opened': 'Pertama dibuka',
   'sent.not_opened': 'belum',
   'sent.until': 'hingga {time}',
   'sent.opens': '{used} dari {max}',
-  'sent.unknown': 'Pesan sudah tidak ada di server.',
+  'sent.unknown':
+    'Server tidak menemukan pesan ini. Mungkin pesan sudah berakhir. Jika tidak diperlukan lagi di sini, hapus dari daftar.',
   'sent.failed': 'Status tidak dapat dimuat. Periksa koneksi dan coba lagi.',
   'sent.cancel': 'Batalkan pesan',
   'sent.cancel.confirm': 'Setelah dibatalkan, tidak ada lagi yang bisa membuka pesan ini.',
@@ -224,16 +228,20 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'Daftar pesan terkirim tidak bisa disimpan di sini',
   'sent.empty.title': 'Belum ada apa-apa di sini',
   'sent.created': 'Dibuat {time}',
-  'sent.state.unknown': 'Sudah tidak ada',
+  'sent.created.session': 'Dibuat {time}, hanya di tab ini',
+  'sent.state.unknown': 'Tidak ditemukan',
   'sent.state.failed': 'Status tidak diketahui',
   'sent.state.loading': 'Memuat',
-  'sent.ended.opened': 'Dibuka {time}. Pesan sudah dihapus dari server, catatannya tetap di sini selama {days} lagi.',
+  'sent.ended.opened':
+    'Dibuka {time}. Pesan sudah dihapus dari server, catatannya hilang saat Anda meninggalkan halaman ini.',
   'sent.ended.expired':
-    'Masa berlaku berakhir {time}. Pesan sudah dihapus dari server, catatannya tetap di sini selama {days} lagi.',
+    'Masa berlaku berakhir {time}. Pesan sudah dihapus dari server, catatannya hilang saat Anda meninggalkan halaman ini.',
   'sent.ended.cancelled':
-    'Dibatalkan {time}. Pesan sudah dihapus dari server, catatannya tetap di sini selama {days} lagi.',
+    'Dibatalkan {time}. Pesan sudah dihapus dari server, catatannya hilang saat Anda meninggalkan halaman ini.',
   'sent.ended.deleted':
-    'Penerima menghapusnya, atau operator menurunkannya. Catatannya tetap di sini selama {days} lagi.',
+    'Penerima menghapusnya, atau operator menurunkannya. Catatannya hilang saat Anda meninggalkan halaman ini.',
+  'sent.ended.lost':
+    'Server kehilangan kuncinya, biasanya saat dimulai ulang, sehingga pesan ini tidak bisa dibuka lagi oleh siapa pun. Kirim lagi jika masih diperlukan. Catatannya hilang saat Anda meninggalkan halaman ini.',
   'sent.cancel.title': 'Batalkan pesan “{label}”?',
   'sent.cancel.title.untitled': 'Batalkan pesan?',
   'sent.forget.label': 'Keluarkan dari daftar',
@@ -243,10 +251,12 @@ export const messages: Catalog = {
   'read.title': 'Pesan sekali pakai',
   'read.loading': 'Memuat pesan…',
   'read.retry_later': 'Layanan sedang sibuk. Coba lagi dalam {time}.',
+  'read.wait': 'Pembukaan dijeda setelah terlalu banyak percobaan gagal. Coba lagi dalam {time}.',
   'read.ended.opened': 'Pesan ini sudah dibuka.',
   'read.ended.expired': 'Masa berlaku pesan ini sudah habis.',
   'read.ended.cancelled': 'Pengirim membatalkan pesan ini.',
   'read.ended.deleted': 'Pesan ini sudah dihapus.',
+  'read.ended.lost': 'Server tidak bisa lagi membuka pesan ini.',
   'read.passphrase': 'Kata sandi',
   'read.reveal': 'Tampilkan pesan',
   'read.resumable':
@@ -259,8 +269,7 @@ export const messages: Catalog = {
     'Kata sandi salah. Anda belum membuka pesan ini. Masih ada {attempts} lagi, setelah itu Anda perlu menunggu sebentar.',
   'read.rejected.wait': 'Kata sandi salah. Anda bisa mencoba lagi dalam {time}.',
   'read.rejected.malformed': 'Kata sandi berisi karakter yang tidak valid.',
-  'read.rejected.wrong_or_changed':
-    'Pesan tidak dapat didekripsi: kata sandi salah, atau datanya telah berubah. Masukkan kata sandi lagi.',
+  'read.rejected.long': 'Kata sandi terlalu panjang.',
   'read.delete': 'Hapus tanpa membuka',
   'read.delete.rest': 'Hapus pesan',
   'read.delete.rest.short': 'Hapus',
@@ -272,6 +281,11 @@ export const messages: Catalog = {
   'read.delete.no': 'Jangan hapus',
   'read.deleted_rest': 'Pesan sudah dihapus dan tidak bisa dibuka lagi.',
   'read.delete.failed': 'Pesan tidak dapat dihapus. Coba lagi.',
+  'read.delete.wait':
+    'Setelah terlalu banyak kata sandi salah dimasukkan, pesan ini belum bisa dihapus. Coba lagi dalam {time}.',
+  'read.delete.locked':
+    'Setelah terlalu banyak kata sandi salah dimasukkan, pesan ini terkunci sampai masa berlakunya habis. Tidak ada yang bisa membukanya, tetapi pengirim masih bisa membatalkannya.',
+  'read.delete.passphrase': 'Masukkan kata sandi dari pengirim, lalu pilih “Hapus tanpa membuka”.',
 
   'busy.deriving': 'Menyiapkan kunci dari kata sandi…',
   'busy.claiming': 'Membuka pesan…',
@@ -286,8 +300,9 @@ export const messages: Catalog = {
     'Jika ada permintaan uang, login, atau instalasi, pastikan dulu kepada pengirim melalui saluran lain.',
   'revealed.file': 'Lampiran',
   'revealed.file.unchecked':
-    'Lampiran ini terenkripsi, sehingga Nylzo tidak dapat memindainya dengan antivirus. Buka hanya file dari orang yang Anda kenal.',
-  'revealed.confirm.title': 'Jenis file ini dapat menjalankan kode. Buka hanya jika Anda memercayai pengirimnya.',
+    'Lampiran ini terenkripsi, sehingga Nylzo tidak dapat memindainya dengan antivirus. Unduh hanya file dari pengirim yang Anda percayai.',
+  'revealed.confirm.title':
+    'File apa pun bisa berisi kode berbahaya, termasuk PDF, dokumen, atau gambar. Unduh hanya jika Anda memercayai pengirimnya.',
   'revealed.confirm.extension': 'Ekstensi file:',
   'revealed.confirm.none': 'File ini tidak memiliki ekstensi.',
   'revealed.confirm.download': 'Tetap unduh',
@@ -340,7 +355,7 @@ export const messages: Catalog = {
     'Tidak disimpan. Batas per alamat hanya disimpan di memori yang tidak pernah dipindahkan ke disk, dan dilupakan saat server dimulai ulang.',
   'transparency.stores.enforced.title': 'Masa berlaku juga dijaga kriptografi',
   'transparency.stores.enforced':
-    'Masa berlaku dan jumlah kali dibuka diawasi server. Paling lambat dua jam setelah masa berlaku habis, server juga menghapus bagian kunci yang dibutuhkan pesan, sehingga salinan data pun tidak bisa lagi membukanya. Salinan yang dibuat lebih awal tidak dapat membaca pesan tanpa tautan.',
+    'Masa berlaku dan jumlah kali dibuka diawasi server. Paling lambat satu menit setelah masa berlaku habis, server juga menghapus bagian kunci yang dibutuhkan pesan, sehingga salinan data pun tidak bisa lagi membukanya. Salinan yang dibuat lebih awal tidak dapat membaca pesan tanpa tautan.',
   'transparency.logs.title': 'Apa yang dicatat server di log',
   'transparency.logs.written': 'Dicatat',
   'transparency.logs.written.time': 'Waktu hingga menit',
@@ -394,7 +409,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Kami tidak menggunakan layanan eksternal untuk analitik pengunjung.',
   'transparency.personal.browser.title': 'Di browser Anda',
   'transparency.personal.browser':
-    'Bahasa yang Anda pilih, data sementara selama pesan sedang dibuka, dan daftar Terkirim jika Anda memantau pesan. Semua itu diperlukan untuk fitur yang Anda minta, sehingga tidak memerlukan persetujuan.',
+    'Bahasa yang Anda pilih, data sementara selama pesan sedang dibuka, dan daftar Terkirim jika Anda tetap menyimpan pesan yang dipantau setelah tab ditutup. Semua itu diperlukan untuk fitur yang Anda minta, sehingga tidak memerlukan persetujuan.',
   'transparency.limits.title': 'Batas instans ini',
   'transparency.limits.short': 'Batas',
   'transparency.limits.file': 'Lampiran terbesar',
@@ -498,7 +513,7 @@ export const messages: Catalog = {
   'step.derive.label': 'Derivasi',
   'step.derive.title': 'Membuat kunci turunan',
   'step.derive.detail': 'HKDF-SHA-256 menghasilkan kunci isi dan kunci untuk menandatangani pembukaan pesan',
-  'step.derive.detail.passphrase': 'scrypt dari kata sandi, lalu HKDF-SHA-256',
+  'step.derive.detail.passphrase': 'OPAQUE dan scrypt dari kata sandi, lalu HKDF-SHA-256',
   'step.encrypt.label': 'Enkripsi',
   'step.encrypt.title': 'Mengenkripsi isi',
   'step.encrypt.detail': 'AES-256-GCM, diberi padding hingga blok penuh',
@@ -525,7 +540,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Salin kata sandi',
   'created.track.title': 'Pantau di Terkirim',
   'created.track.note':
-    'Anda akan melihat apakah pesan sudah dibuka seseorang, dan Anda bisa membatalkannya. Data hanya tersimpan di browser ini. Siapa pun yang bisa mengakses browser ini juga bisa membatalkannya.',
+    'Anda akan melihat apakah pesan sudah dibuka seseorang, dan Anda bisa membatalkannya. Hanya tab ini yang mengingatnya, paling lama sampai tab ditutup atau dimuat ulang.',
+  'created.track.note.kept':
+    'Anda akan melihat apakah pesan sudah dibuka seseorang, dan Anda bisa membatalkannya. Data tersimpan di browser ini, jadi siapa pun yang bisa mengaksesnya juga bisa membatalkan pesan.',
+  'created.track.keep': 'Tetap ingat setelah tab ditutup',
   'created.track.label': 'Label, hanya terlihat oleh Anda',
   'created.track.placeholder': 'Label, misalnya “Kata sandi untuk Budi”',
   'created.track.save': 'Simpan',
@@ -576,6 +594,9 @@ export const messages: Catalog = {
     'Pesan ini tidak bisa dibuka lagi oleh siapa pun. Jika Anda masih membutuhkannya, minta tautan baru kepada pengirim.',
   'open.notice.deleted': 'Pesan ini sudah dihapus',
   'open.notice.deleted.text': 'Penerima menghapusnya, atau operator menurunkannya.',
+  'open.notice.lost': 'Server tidak bisa lagi membuka pesan ini',
+  'open.notice.lost.text':
+    'Server kehilangan kuncinya, biasanya saat dimulai ulang. Pesan ini tidak bisa dibuka lagi oleh siapa pun. Minta pengirim untuk mengirimkannya lagi.',
   'open.notice.unknown': 'Pesan tidak ditemukan',
   'open.notice.unknown.text':
     'Tautan mungkin tidak lengkap, atau masa berlaku pesan sudah lama habis. Minta tautan baru kepada pengirim.',
@@ -647,7 +668,7 @@ export const messages: Catalog = {
   'how.link.meta.title': 'Versi',
   'how.link.meta.meta': 'hanya untuk kompatibilitas',
   'how.link.meta.body':
-    'Angka 2 adalah versi format tautan, angka 0 berarti pesan tanpa kata sandi. Dari versi ini, Nylzo versi lama mengenali tautan dari versi yang lebih baru dan memberitahukannya, alih-alih menganggapnya rusak. Server sudah mengetahui kedua nilai itu dari pesan, sehingga bagian ini tidak memberinya informasi baru.',
+    'Angka 3 adalah versi format tautan, angka 0 berarti pesan tanpa kata sandi. Dari versi ini, Nylzo versi lama mengenali tautan dari versi yang lebih baru dan memberitahukannya, alih-alih menganggapnya rusak. Server sudah mengetahui kedua nilai itu dari pesan, sehingga bagian ini tidak memberinya informasi baru.',
   'how.link.id.title': 'ID pesan',
   'how.link.id.meta': 'dipakai server untuk menemukan pesan',
   'how.link.id.body':

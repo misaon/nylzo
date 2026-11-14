@@ -39,9 +39,6 @@ func RunTakedown(ctx context.Context, environment *command.Environment, argument
 	if !serverSupported {
 		return command.Failf(environment, "%s", errServerUnsupported)
 	}
-	if err := hardenProcess(); err != nil {
-		return command.Failf(environment, "%s", err)
-	}
 	if environment.Terminal.StdinIsTerminal() {
 		fmt.Fprintln(
 			environment.Stderr,

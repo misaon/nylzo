@@ -159,6 +159,7 @@ export const messages: Catalog = {
   'problem.opens.out_of_range': 'Le nombre d’ouvertures doit être compris entre 1 et {max}.',
   'problem.passphrase.too_short': 'Il manque encore {missing} (au moins {min}), ou choisissez Générer.',
   'problem.passphrase.malformed': 'Le mot de passe contient des caractères non valides.',
+  'problem.passphrase.too_long': 'Le mot de passe est trop long.',
   'problem.passphrase.repetitive': 'Le mot de passe contient trop peu de caractères différents.',
   'problem.passphrase.sequential': 'Le mot de passe est une suite de lettres, de chiffres ou de touches du clavier.',
   'problem.passphrase.context': 'Le mot de passe se compose surtout du mot Nylzo.',
@@ -187,12 +188,14 @@ export const messages: Catalog = {
     'Le presse-papiers est vide. Les copies déjà présentes dans l’historique du presse-papiers y restent.',
   'created.another': 'Nouveau message',
   'created.remembered': 'Cet appareil a mémorisé le message.',
+  'created.remembered.session':
+    'Cet onglet mémorise le message, au plus tard jusqu’à sa fermeture ou son rechargement.',
   'created.status_link': 'Ouvrir Envoyés',
   'created.not_remembered': 'Cet appareil n’a pas pu mémoriser le message, vous ne pourrez donc pas l’annuler d’ici.',
 
   'sent.title': 'Envoyés',
   'sent.note':
-    'La liste est enregistrée uniquement dans ce navigateur et ne contient pas les liens vers les messages. Une entrée disparaît {days} après la fin du message.',
+    'La liste ne contient pas les liens vers les messages. La page supprime l’entrée d’un message terminé dès que vous voyez ici son issue. Elle supprime les autres entrées lors de vos visites sur Nylzo, au plus tôt {days} après leur expiration.',
   'sent.loading': 'Chargement des messages envoyés…',
   'sent.unavailable':
     'Ce navigateur ne permet pas à la page d’enregistrer des données, il ne peut donc pas mémoriser les messages envoyés. Autorisez l’enregistrement de données pour ce site ou utilisez un autre navigateur.',
@@ -204,14 +207,16 @@ export const messages: Catalog = {
   'sent.state.expired': 'Expiré',
   'sent.state.cancelled': 'Annulé',
   'sent.state.deleted': 'Supprimé',
+  'sent.state.lost': 'Perdu',
   'sent.label.time': 'Validité',
   'sent.label.opens': 'Ouvertures',
-  'sent.label.attempts': 'Mots de passe erronés',
+  'sent.label.attempts': 'Tentatives échouées',
   'sent.label.first_opened': 'Première ouverture',
   'sent.not_opened': 'pas encore',
   'sent.until': 'jusqu’au {time}',
   'sent.opens': '{used} sur {max}',
-  'sent.unknown': 'Le message a déjà disparu du serveur.',
+  'sent.unknown':
+    'Le serveur n’a pas trouvé le message. Il est peut-être déjà terminé. Si vous n’en avez plus besoin ici, retirez-le.',
   'sent.failed': 'Impossible de charger l’état. Vérifiez la connexion et réessayez.',
   'sent.cancel': 'Annuler le message',
   'sent.cancel.confirm': 'Une fois le message annulé, plus personne ne pourra l’ouvrir.',
@@ -228,13 +233,20 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'La liste des messages envoyés ne peut pas être enregistrée ici',
   'sent.empty.title': 'Rien pour l’instant',
   'sent.created': 'Créé le {time}',
-  'sent.state.unknown': 'N’existe plus',
+  'sent.created.session': 'Créé le {time}, dans cet onglet uniquement',
+  'sent.state.unknown': 'Introuvable',
   'sent.state.failed': 'État inconnu',
   'sent.state.loading': 'Chargement',
-  'sent.ended.opened': 'Ouvert le {time}. Il a été supprimé du serveur, l’entrée reste ici encore {days}.',
-  'sent.ended.expired': 'Expiré le {time}. Il a été supprimé du serveur, l’entrée reste ici encore {days}.',
-  'sent.ended.cancelled': 'Annulé le {time}. Il a été supprimé du serveur, l’entrée reste ici encore {days}.',
-  'sent.ended.deleted': 'Le destinataire l’a supprimé, ou l’exploitant l’a retiré. L’entrée reste ici encore {days}.',
+  'sent.ended.opened':
+    'Ouvert le {time}. Il a été supprimé du serveur, l’entrée disparaîtra quand vous quitterez cette page.',
+  'sent.ended.expired':
+    'Expiré le {time}. Il a été supprimé du serveur, l’entrée disparaîtra quand vous quitterez cette page.',
+  'sent.ended.cancelled':
+    'Annulé le {time}. Il a été supprimé du serveur, l’entrée disparaîtra quand vous quitterez cette page.',
+  'sent.ended.deleted':
+    'Le destinataire l’a supprimé, ou l’exploitant l’a retiré. L’entrée disparaîtra quand vous quitterez cette page.',
+  'sent.ended.lost':
+    'Le serveur a perdu sa clé, le plus souvent lors d’un redémarrage, et plus personne ne peut l’ouvrir. Renvoyez-le s’il est encore utile. L’entrée disparaîtra quand vous quitterez cette page.',
   'sent.cancel.title': 'Annuler le message «\u{A0}{label}\u{A0}»\u{A0}?',
   'sent.cancel.title.untitled': 'Annuler le message\u{A0}?',
   'sent.forget.label': 'Retirer de la liste',
@@ -244,10 +256,12 @@ export const messages: Catalog = {
   'read.title': 'Message à usage unique',
   'read.loading': 'Chargement du message…',
   'read.retry_later': 'Le service est surchargé. Réessayez dans {time}.',
+  'read.wait': 'Après trop de tentatives échouées, l’ouverture est suspendue. Réessayez dans {time}.',
   'read.ended.opened': 'Le message a déjà été ouvert.',
   'read.ended.expired': 'Le message a expiré.',
   'read.ended.cancelled': 'L’expéditeur a annulé le message.',
   'read.ended.deleted': 'Le message a été supprimé.',
+  'read.ended.lost': 'Le serveur ne peut plus ouvrir le message.',
   'read.passphrase': 'Mot de passe',
   'read.reveal': 'Afficher le message',
   'read.resumable':
@@ -260,8 +274,7 @@ export const messages: Catalog = {
     'Mot de passe incorrect. Vous n’avez pas encore ouvert le message. Il vous reste {attempts}, ensuite il faudra patienter un peu.',
   'read.rejected.wait': 'Mot de passe incorrect. Vous pourrez réessayer dans {time}.',
   'read.rejected.malformed': 'Le mot de passe contient des caractères non valides.',
-  'read.rejected.wrong_or_changed':
-    'Impossible de déchiffrer le message\u{A0}: le mot de passe est incorrect ou les données ont été modifiées. Saisissez de nouveau le mot de passe.',
+  'read.rejected.long': 'Le mot de passe est trop long.',
   'read.delete': 'Supprimer sans ouvrir',
   'read.delete.rest': 'Supprimer le message',
   'read.delete.rest.short': 'Supprimer',
@@ -273,6 +286,12 @@ export const messages: Catalog = {
   'read.delete.no': 'Ne pas supprimer',
   'read.deleted_rest': 'Les ouvertures restantes sont supprimées.',
   'read.delete.failed': 'Impossible de supprimer le message. Réessayez.',
+  'read.delete.wait':
+    'Après de nombreuses saisies d’un mot de passe erroné, le message ne peut pas être supprimé pour l’instant. Réessayez dans {time}.',
+  'read.delete.locked':
+    'Après de nombreuses saisies d’un mot de passe erroné, le message est verrouillé jusqu’à la fin de sa validité. Personne ne peut l’ouvrir, mais l’expéditeur peut encore l’annuler.',
+  'read.delete.passphrase':
+    'Saisissez le mot de passe de l’expéditeur, puis choisissez «\u{A0}Supprimer sans ouvrir\u{A0}».',
 
   'busy.deriving': 'Préparation de la clé à partir du mot de passe…',
   'busy.claiming': 'Ouverture du message…',
@@ -287,9 +306,9 @@ export const messages: Catalog = {
     'Vérifiez toute demande d’argent, de connexion ou d’installation auprès de l’expéditeur par un autre moyen.',
   'revealed.file': 'Pièce jointe',
   'revealed.file.unchecked':
-    'La pièce jointe est chiffrée, Nylzo ne peut donc pas l’analyser avec un antivirus. N’ouvrez que des fichiers venant de personnes que vous connaissez.',
+    'La pièce jointe est chiffrée, Nylzo ne peut donc pas l’analyser avec un antivirus. Ne téléchargez que des fichiers d’expéditeurs de confiance.',
   'revealed.confirm.title':
-    'Ce type de fichier peut exécuter du code. Ne l’ouvrez que si vous faites confiance à l’expéditeur.',
+    'Tout fichier peut contenir un logiciel malveillant, même un PDF, un document ou une image. Ne le téléchargez que si vous faites confiance à l’expéditeur.',
   'revealed.confirm.extension': 'Extension du fichier\u{A0}:',
   'revealed.confirm.none': 'Le fichier n’a pas d’extension.',
   'revealed.confirm.download': 'Télécharger quand même',
@@ -344,7 +363,7 @@ export const messages: Catalog = {
     'Il ne les stocke pas. Il conserve les limites par adresse uniquement dans une mémoire qui n’est jamais transférée sur le disque, et les oublie au redémarrage.',
   'transparency.stores.enforced.title': 'La cryptographie veille aussi à la validité',
   'transparency.stores.enforced':
-    'Le serveur contrôle la validité et le nombre d’ouvertures. Au plus tard deux heures après l’expiration, il efface en outre la partie de la clé dont le message a besoin\u{A0}; même une copie des données ne permet alors plus de l’ouvrir. Une copie faite plus tôt ne permet pas de lire le message sans le lien.',
+    'Le serveur contrôle la validité et le nombre d’ouvertures. Au plus tard une minute après l’expiration, il efface en outre la partie de la clé dont le message a besoin\u{A0}; même une copie des données ne permet alors plus de l’ouvrir. Une copie faite plus tôt ne permet pas de lire le message sans le lien.',
   'transparency.logs.title': 'Ce que le serveur journalise',
   'transparency.logs.written': 'Enregistre',
   'transparency.logs.written.time': 'Heure tronquée à la minute',
@@ -398,7 +417,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Nous ne faisons appel à aucun service externe pour analyser les visites.',
   'transparency.personal.browser.title': 'Dans votre navigateur',
   'transparency.personal.browser':
-    'La langue choisie, une donnée temporaire pendant l’ouverture d’un message et la liste Envoyés si vous suivez un message. Ces données sont nécessaires aux fonctions que vous demandez et ne requièrent donc pas de consentement.',
+    'La langue choisie, une donnée temporaire pendant l’ouverture d’un message et la liste Envoyés si vous gardez un message suivi après la fermeture de l’onglet. Ces données sont nécessaires aux fonctions que vous demandez et ne requièrent donc pas de consentement.',
   'transparency.limits.title': 'Limites de cette instance',
   'transparency.limits.short': 'Limites',
   'transparency.limits.file': 'Taille maximale des pièces jointes',
@@ -502,7 +521,7 @@ export const messages: Catalog = {
   'step.derive.label': 'Dérivation',
   'step.derive.title': 'Dérivation des clés',
   'step.derive.detail': 'HKDF-SHA-256 dérive la clé du contenu et les clés qui signent l’ouverture',
-  'step.derive.detail.passphrase': 'scrypt à partir du mot de passe, puis HKDF-SHA-256',
+  'step.derive.detail.passphrase': 'OPAQUE et scrypt à partir du mot de passe, puis HKDF-SHA-256',
   'step.encrypt.label': 'Chiffrement',
   'step.encrypt.title': 'Chiffrement du contenu',
   'step.encrypt.detail': 'AES-256-GCM, complété en blocs entiers',
@@ -528,7 +547,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Copier le mot de passe',
   'created.track.title': 'Suivre dans Envoyés',
   'created.track.note':
-    'Vous verrez si quelqu’un a ouvert le message, et vous pourrez l’annuler. Il est enregistré uniquement dans ce navigateur. Toute personne qui y a accès pourra alors aussi l’annuler.',
+    'Vous verrez si quelqu’un a ouvert le message, et vous pourrez l’annuler. Seul cet onglet le mémorise, au plus tard jusqu’à sa fermeture ou son rechargement.',
+  'created.track.note.kept':
+    'Vous verrez si quelqu’un a ouvert le message, et vous pourrez l’annuler. Il est enregistré dans ce navigateur, donc toute personne qui y a accès pourra aussi l’annuler.',
+  'created.track.keep': 'Garder après la fermeture de l’onglet',
   'created.track.label': 'Libellé, visible uniquement par vous',
   'created.track.placeholder': 'Libellé, p. ex. «\u{A0}Mot de passe pour Pierre\u{A0}»',
   'created.track.save': 'Enregistrer',
@@ -579,6 +601,9 @@ export const messages: Catalog = {
     'Plus personne ne peut l’ouvrir. Si vous en avez encore besoin, demandez un nouveau lien à l’expéditeur.',
   'open.notice.deleted': 'Le message a été supprimé',
   'open.notice.deleted.text': 'Le destinataire l’a supprimé, ou l’exploitant l’a retiré.',
+  'open.notice.lost': 'Le serveur ne peut plus ouvrir ce message',
+  'open.notice.lost.text':
+    'Le serveur a perdu sa clé, le plus souvent lors d’un redémarrage. Plus personne ne peut l’ouvrir. Demandez à l’expéditeur de vous le renvoyer.',
   'open.notice.unknown': 'Nous n’avons pas trouvé le message',
   'open.notice.unknown.text':
     'Le lien est peut-être incomplet, ou le message a expiré depuis longtemps. Demandez-en un nouveau à l’expéditeur.',
@@ -652,7 +677,7 @@ export const messages: Catalog = {
   'how.link.meta.title': 'Version',
   'how.link.meta.meta': 'uniquement pour la compatibilité',
   'how.link.meta.body':
-    'Le 2 est la version du format du lien, le 0 indique un message sans mot de passe. Grâce à la version, une ancienne version de Nylzo reconnaît un lien issu d’une version plus récente et le signale au lieu de le déclarer endommagé. Le serveur connaît déjà ces deux valeurs grâce au message, cette partie ne lui apprend donc rien de nouveau.',
+    'Le 3 est la version du format du lien, le 0 indique un message sans mot de passe. Grâce à la version, une ancienne version de Nylzo reconnaît un lien issu d’une version plus récente et le signale au lieu de le déclarer endommagé. Le serveur connaît déjà ces deux valeurs grâce au message, cette partie ne lui apprend donc rien de nouveau.',
   'how.link.id.title': 'ID du message',
   'how.link.id.meta': 'le serveur s’en sert pour trouver le message',
   'how.link.id.body':

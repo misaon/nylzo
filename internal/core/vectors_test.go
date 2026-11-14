@@ -3,7 +3,6 @@ package core_test
 import (
 	"bytes"
 	"context"
-	"crypto/ecdh"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -16,10 +15,12 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/core/report"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/vectors"
 )
 
@@ -95,37 +96,34 @@ func TestDeriveVectors(t *testing.T) {
 			if hsalt := keys.HSalt(id); hex.EncodeToString(hsalt[:]) != vector.HSalt {
 				t.Fatal("hsalt")
 			}
-			link, err := keys.DeriveLink(id, secret)
-			if err != nil || hex.EncodeToString(link.R[:]) != vector.R ||
-				hex.EncodeToString(link.PassphraseSalt[:]) != vector.PassphraseSalt {
-				t.Fatalf("link keys: %v", err)
+			read, err := keys.DeriveRead(id, secret)
+			if err != nil || hex.EncodeToString(read[:]) != vector.R {
+				t.Fatalf("R: %v", err)
 			}
-			passphraseKey, err := keys.DerivePassphraseKey(
-				core.KDF(vector.KDFID),
-				valueOf(vector.Passphrase),
-				&link.PassphraseSalt,
-			)
-			if err != nil || hex.EncodeToString(passphraseKey) != vector.P {
-				t.Fatalf("passphrase key: %v", err)
+			salt, err := keys.PassphraseSalt(secret)
+			if err != nil || hex.EncodeToString(salt[:]) != vector.PassphraseSalt {
+				t.Fatalf("salt_pw: %v", err)
 			}
-			content, err := keys.DeriveContent(id, secret, passphraseKey, decode32(t, vector.E))
+			content, err := keys.DeriveContent(id, secret, exportKeyOf(t, vector.P), decode32(t, vector.E))
 			if err != nil || hex.EncodeToString(content.K[:]) != vector.K ||
 				hex.EncodeToString(content.Commitment[:]) != vector.Commitment {
 				t.Fatalf("content keys: %v", err)
 			}
-			verifier, err := keys.DeriveVerifier(id, secret, passphraseKey)
-			if err != nil || hex.EncodeToString(verifier[:]) != vector.V {
-				t.Fatalf("verifier: %v", err)
-			}
-			readKey, manageKey := signing.PublicKey(&link.R), signing.PublicKey(decode32(t, vector.M))
+			readKey, manageKey := signing.PublicKey(&read), signing.PublicKey(decode32(t, vector.M))
 			if core.Encode(readKey[:]) != vector.ReadKey || core.Encode(manageKey[:]) != vector.ManageKey {
 				t.Fatal("public keys")
 			}
-			if verifierKey := signing.PublicKey(&verifier); core.Encode(verifierKey[:]) != vector.VerifierKey {
-				t.Fatal("verifier key")
-			}
 		})
 	}
+}
+
+func exportKeyOf(t *testing.T, text string) *keys.ExportKey {
+	t.Helper()
+	decoded := decodeHex(t, text)
+	if len(decoded) != len(keys.ExportKey{}) {
+		t.Fatalf("an export key of %d bytes", len(decoded))
+	}
+	return (*keys.ExportKey)(decoded)
 }
 
 func valueOf(text *string) string {
@@ -133,22 +131,6 @@ func valueOf(text *string) string {
 		return ""
 	}
 	return *text
-}
-
-func TestNFCPassphrasesAgree(t *testing.T) {
-	t.Parallel()
-	byName := map[string]vectors.Derive{}
-	for _, vector := range loadVectors(t).Derive {
-		byName[vector.Name] = vector
-	}
-	composed, decomposed := byName["scrypt-nfc-composed"], byName["scrypt-nfc-decomposed"]
-	if composed.Passphrase == nil || decomposed.Passphrase == nil || *composed.Passphrase == *decomposed.Passphrase {
-		t.Fatal("the NFC vectors must use different Unicode forms of one passphrase")
-	}
-	if composed.ID != decomposed.ID || composed.S != decomposed.S || composed.P != decomposed.P ||
-		composed.K != decomposed.K {
-		t.Fatal("both Unicode forms must derive identical keys")
-	}
 }
 
 func TestEnvelopeVectors(t *testing.T) {
@@ -168,13 +150,21 @@ func checkEnvelopeVector(t *testing.T, vector *vectors.Envelope) {
 		t.Fatal(err)
 	}
 	kdf := core.KDF(vector.KDFID)
-	derived, err := keys.DeriveAll(id, decode32(t, vector.S), kdf, valueOf(vector.Passphrase), decode32(t, vector.E))
+	content, err := keys.DeriveContent(id, decode32(t, vector.S), exportKeyOf(t, vector.P), decode32(t, vector.E))
 	if err != nil {
 		t.Fatal(err)
 	}
-	content := derived.Content
-	header := envelope.Header{Version: envelope.Version, KDF: kdf, IV: [envelope.IVLen]byte(decodeHex(t, vector.IV))}
-	policy := envelope.Policy{OpensMax: uint16(vector.OpensMax), TTLSeconds: uint32(vector.TTLSeconds)}
+	header := envelope.Header{
+		Version: envelope.Version,
+		KDF:     kdf,
+		Flags:   uint8(vector.Flags),
+		IV:      [envelope.IVLen]byte(decodeHex(t, vector.IV)),
+	}
+	policy := envelope.Policy{
+		OpensMax:   uint16(vector.OpensMax),
+		TTLSeconds: uint32(vector.TTLSeconds),
+		Deadline:   uint32(vector.Deadline),
+	}
 	payload := envelope.Payload{Meta: envelope.Meta{Text: vector.Text}, File: fileBytes(t, vector.File)}
 	if vector.File != nil {
 		payload.Meta.File = &envelope.FileMeta{
@@ -352,7 +342,11 @@ func openRejected(t *testing.T, envelopes map[string]vectors.Envelope, vector *v
 	if err != nil {
 		t.Fatal(err)
 	}
-	policy := envelope.Policy{OpensMax: uint16(base.OpensMax), TTLSeconds: uint32(base.TTLSeconds)}
+	policy := envelope.Policy{
+		OpensMax:   uint16(base.OpensMax),
+		TTLSeconds: uint32(base.TTLSeconds),
+		Deadline:   uint32(base.Deadline),
+	}
 	var object []byte
 	if vector.Object != nil {
 		if object, err = core.DecodeExact(*vector.Object, (len(*vector.Object)*6)/8); err != nil {
@@ -389,19 +383,20 @@ func openRejected(t *testing.T, envelopes map[string]vectors.Envelope, vector *v
 	if vector.TTLSeconds != nil {
 		policy.TTLSeconds = uint32(*vector.TTLSeconds)
 	}
+	if vector.Deadline != nil {
+		policy.Deadline = uint32(*vector.Deadline)
+	}
 	kdf := core.KDF(vector.KDFID)
-	derived, err := keys.DeriveAll(
-		id,
-		decode32(t, base.S),
-		kdf,
-		valueOf(vector.Passphrase),
-		decode32(t, vector.E),
-	)
+	exportKey := base.P
+	if vector.P != nil {
+		exportKey = *vector.P
+	}
+	content, err := keys.DeriveContent(id, decode32(t, base.S), exportKeyOf(t, exportKey), decode32(t, vector.E))
 	if err != nil {
 		t.Fatal(err)
 	}
 	expected := envelope.Expected{ID: id, Policy: policy, KDF: kdf, ObjectHash: hash}
-	_, _, err = envelope.Open(&derived.Content, &expected, object)
+	_, _, err = envelope.Open(&content, &expected, object)
 	return err
 }
 
@@ -412,14 +407,23 @@ func sealVector(t *testing.T, vector *vectors.Envelope) []byte {
 		t.Fatal(err)
 	}
 	kdf := core.KDF(vector.KDFID)
-	derived, err := keys.DeriveAll(id, decode32(t, vector.S), kdf, valueOf(vector.Passphrase), decode32(t, vector.E))
+	content, err := keys.DeriveContent(id, decode32(t, vector.S), exportKeyOf(t, vector.P), decode32(t, vector.E))
 	if err != nil {
 		t.Fatal(err)
 	}
-	header := envelope.Header{Version: envelope.Version, KDF: kdf, IV: [envelope.IVLen]byte(decodeHex(t, vector.IV))}
-	policy := envelope.Policy{OpensMax: uint16(vector.OpensMax), TTLSeconds: uint32(vector.TTLSeconds)}
+	header := envelope.Header{
+		Version: envelope.Version,
+		KDF:     kdf,
+		Flags:   uint8(vector.Flags),
+		IV:      [envelope.IVLen]byte(decodeHex(t, vector.IV)),
+	}
+	policy := envelope.Policy{
+		OpensMax:   uint16(vector.OpensMax),
+		TTLSeconds: uint32(vector.TTLSeconds),
+		Deadline:   uint32(vector.Deadline),
+	}
 	object, err := envelope.Seal(
-		&derived.Content,
+		&content,
 		header,
 		id,
 		policy,
@@ -454,11 +458,12 @@ func rejectionName(err error) string {
 	}
 }
 
-func TestShareKeysOfSmallOrderAreRefused(t *testing.T) {
+func TestRefusedShareKeys(t *testing.T) {
 	t.Parallel()
 	for _, vector := range loadVectors(t).ShareKeyRejected {
-		if _, err := share.ParseKey(vector.Key); err == nil {
-			t.Fatalf("%s: a share key of small order is accepted", vector.Name)
+		_, err := share.ParseKey(vector.Key)
+		if err == nil || errors.Is(err, share.ErrOutdated) != vector.Outdated {
+			t.Fatalf("%s: %v, want a refusal with outdated %t", vector.Name, err, vector.Outdated)
 		}
 	}
 }
@@ -466,9 +471,12 @@ func TestShareKeysOfSmallOrderAreRefused(t *testing.T) {
 func TestShareVectors(t *testing.T) {
 	t.Parallel()
 	for _, vector := range loadVectors(t).Share {
-		client, err := ecdh.X25519().NewPrivateKey(decodeHex(t, vector.ClientPrivate))
-		if err != nil || core.Encode(client.PublicKey().Bytes()) != vector.ClientPublic {
+		client, err := share.NewKeyFromSeed(decodeHex(t, vector.ClientSeed))
+		if err != nil || share.FormatKey(client.PublicKey()) != vector.ClientKey {
 			t.Fatalf("%s: client key: %v", vector.Name, err)
+		}
+		if _, err = share.ParseKey(vector.ClientKey); err != nil {
+			t.Fatalf("%s: the client key is refused: %v", vector.Name, err)
 		}
 		wrapped, err := core.DecodeExact(vector.Wrapped, share.WrappedLen)
 		if err != nil {
@@ -483,14 +491,6 @@ func TestShareVectors(t *testing.T) {
 		}
 		if err != nil || hex.EncodeToString(unwrapped[:]) != *vector.E {
 			t.Fatalf("%s: unwrap: %v", vector.Name, err)
-		}
-		server, err := ecdh.X25519().NewPrivateKey(decodeHex(t, *vector.ServerPrivate))
-		if err != nil {
-			t.Fatal(err)
-		}
-		again, err := share.WrapWith(server, &unwrapped, client.PublicKey())
-		if err != nil || core.Encode(again[:]) != vector.Wrapped {
-			t.Fatalf("%s: wrap: %v", vector.Name, err)
 		}
 	}
 }
@@ -525,18 +525,10 @@ func TestRequestVectors(t *testing.T) {
 			core.Encode(signature.Value[:]) != vector.Signature {
 			t.Fatalf("%s: message or signature differs", vector.Name)
 		}
-		var parsed signing.Signature
-		if vector.Purpose == signing.PurposeVerifier {
-			if vector.Authorization != "" || signature.VerifierHeader() != vector.Verifier {
-				t.Fatalf("%s: verifier header differs", vector.Name)
-			}
-			parsed, err = signing.ParseVerifierHeader(vector.Verifier, [signing.ChallengeLen]byte(challenge))
-		} else {
-			if vector.Verifier != "" || signature.Authorization() != vector.Authorization {
-				t.Fatalf("%s: authorization header differs", vector.Name)
-			}
-			parsed, err = signing.ParseAuthorization(vector.Authorization)
+		if signature.Authorization() != vector.Authorization {
+			t.Fatalf("%s: authorization header differs", vector.Name)
 		}
+		parsed, err := signing.ParseAuthorization(vector.Authorization)
 		if err != nil || parsed != *signature ||
 			!parsed.Verify(vector.Purpose, vector.Method, vector.Path, body, vector.Components) {
 			t.Fatalf("%s: the header does not parse back and verify: %v", vector.Name, err)
@@ -607,4 +599,103 @@ func TestRedactionVectors(t *testing.T) {
 			t.Errorf("ReasonTooLong(%.20q) must be %v after redaction, like the web client", reason, long)
 		}
 	}
+}
+
+func TestOPAQUEVectors(t *testing.T) {
+	t.Parallel()
+	for _, vector := range loadVectors(t).OPAQUE {
+		t.Run(vector.Name, func(t *testing.T) {
+			t.Parallel()
+			checkOPAQUEVector(t, &vector)
+		})
+	}
+}
+
+func checkOPAQUEVector(t *testing.T, vector *vectors.OPAQUE) {
+	t.Helper()
+	id, err := core.ParseID(vector.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kdf := core.KDF(vector.KDFID)
+	password, err := keys.Password(decode32(t, vector.S), kdf, valueOf(vector.Passphrase))
+	if err != nil || hex.EncodeToString(password) != vector.Password ||
+		!strings.HasPrefix(vector.Password, vector.PassphraseSalt) {
+		t.Fatalf("OPRF input: %v", err)
+	}
+	config, err := keys.OPAQUEConfig(id, kdf)
+	if err != nil || hex.EncodeToString(config.Context) != vector.Context {
+		t.Fatalf("context: %v", err)
+	}
+	ring, err := pepper.NewRing(decodeHex(t, vector.Pepper), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverKeys, known, err := ring.OPAQUEKeys(id[:], ring.CurrentID())
+	if err != nil || !known || hex.EncodeToString(serverKeys.OPRFSeed[:]) != vector.OPRFSeed ||
+		hex.EncodeToString(serverKeys.PublicKey[:]) != vector.ServerPublicKey {
+		t.Fatalf("server keys: %v", err)
+	}
+	request, state, err := opaque.CreateRegistrationRequestWith(password, scalarOf(t, vector.BlindRegistration))
+	if err != nil || core.Encode(request[:]) != vector.RegistrationRequest {
+		t.Fatalf("registration request: %v", err)
+	}
+	credential := keys.CredentialIdentifier(id, decode32(t, vector.E))
+	if hex.EncodeToString(credential) != vector.CredentialIdentifier {
+		t.Fatal("credential identifier")
+	}
+	response, err := opaque.CreateRegistrationResponse(request[:], &serverKeys, credential)
+	if err != nil || core.Encode(response[:]) != vector.RegistrationResponse {
+		t.Fatalf("registration response: %v", err)
+	}
+	envelopeNonce := [opaque.NonceLen]byte(decodeHex(t, vector.EnvelopeNonce))
+	finished, err := opaque.FinalizeRegistrationRequestWith(&state, response[:], &config, &envelopeNonce)
+	record := finished.Record
+	if err != nil || core.Encode(record[:]) != vector.Registration ||
+		hex.EncodeToString(finished.ExportKey[:]) != vector.P {
+		t.Fatalf("registration record: %v", err)
+	}
+	clientNonce := [opaque.NonceLen]byte(decodeHex(t, vector.ClientNonce))
+	clientSeed := [opaque.SeedLen]byte(decodeHex(t, vector.ClientKeyshareSeed))
+	ke1, login, err := opaque.GenerateKE1With(password, scalarOf(t, vector.BlindLogin), &clientNonce, &clientSeed)
+	if err != nil || core.Encode(ke1[:]) != vector.KE1 {
+		t.Fatalf("KE1: %v", err)
+	}
+	random := opaque.ServerRandomness{
+		MaskingNonce: [opaque.NonceLen]byte(decodeHex(t, vector.MaskingNonce)),
+		ServerNonce:  [opaque.NonceLen]byte(decodeHex(t, vector.ServerNonce)),
+		KeyshareSeed: [opaque.SeedLen]byte(decodeHex(t, vector.ServerKeyshareSeed)),
+	}
+	ke2, serverLogin, err := opaque.GenerateKE2With(&serverKeys, record[:], credential, ke1[:], &config, &random)
+	if err != nil || core.Encode(ke2[:]) != vector.KE2 {
+		t.Fatalf("KE2: %v", err)
+	}
+	result, err := login.GenerateKE3(ke2[:], &config)
+	if err != nil || core.Encode(result.KE3[:]) != vector.KE3 || hex.EncodeToString(result.ExportKey[:]) != vector.P {
+		t.Fatalf("KE3: %v", err)
+	}
+	if err = serverLogin.ServerFinish(result.KE3[:]); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func scalarOf(t *testing.T, text string) *[opaque.ScalarLen]byte {
+	t.Helper()
+	return (*[opaque.ScalarLen]byte)(decodeHex(t, text))
+}
+
+func TestOPAQUEVectorsNormalizeThePassphrase(t *testing.T) {
+	t.Parallel()
+	for _, vector := range loadVectors(t).OPAQUE {
+		if vector.Name != "scrypt-nfc-decomposed" {
+			continue
+		}
+		composed := hex.EncodeToString([]byte("h\u00e9slo s \u010de\u0161tinou"))
+		if *vector.Passphrase == "h\u00e9slo s \u010de\u0161tinou" ||
+			vector.Password != vector.PassphraseSalt+composed {
+			t.Fatal("the OPRF input must hold the passphrase in NFC")
+		}
+		return
+	}
+	t.Fatal("no vector with a decomposed passphrase")
 }

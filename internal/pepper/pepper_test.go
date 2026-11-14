@@ -29,7 +29,7 @@ func TestEveryPurposeHasItsOwnKey(t *testing.T) {
 	ring := newRing(t, secret(1), nil)
 	seen := map[[pepper.MACLen]byte]pepper.Purpose{}
 	purposes := []pepper.Purpose{
-		pepper.Read, pepper.Verifier, pepper.Manage, pepper.Lease, pepper.PoW, pepper.IDToken, pepper.Challenge,
+		pepper.Read, pepper.Manage, pepper.Lease, pepper.PoW, pepper.IDToken, pepper.Challenge, pepper.OPAQUEServer,
 	}
 	for _, purpose := range purposes {
 		mac := ring.MAC(purpose, []byte("same input")).MAC
@@ -56,7 +56,7 @@ func TestAK27RotationKeepsOldMacsValid(t *testing.T) {
 	tag := old.MAC(pepper.Read, input)
 	mac, id := tag.MAC, tag.PepperID
 	if !old.Verify(pepper.Read, input, mac[:], id) || old.Verify(pepper.Read, []byte("other"), mac[:], id) ||
-		old.Verify(pepper.Verifier, input, mac[:], id) {
+		old.Verify(pepper.Lease, input, mac[:], id) {
 		t.Fatal("a mac verifies only its own input and purpose")
 	}
 	rotated := newRing(t, secret(2), secret(1))
@@ -126,5 +126,21 @@ func TestServerVectors(t *testing.T) {
 		if hex.EncodeToString(mac[:]) != vector.MAC {
 			t.Fatalf("mac %s mismatch", vector.Purpose)
 		}
+	}
+}
+
+func TestTheRecordsKeyOfThePreviousPepperCanBeForgotten(t *testing.T) {
+	ring := newRing(t, secret(1), secret(2))
+	if _, ok := ring.PreviousRecordsKey(); !ok || ring.RecordsKey() == newRing(t, secret(2), nil).RecordsKey() {
+		t.Fatal("each pepper needs a records key of its own")
+	}
+	previous := newRing(t, secret(2), nil)
+	tag := previous.MAC(pepper.Lease, []byte("lease"))
+	ring.ForgetPreviousRecordsKey()
+	if _, ok := ring.PreviousRecordsKey(); ok {
+		t.Fatal("the forgotten records key is still there")
+	}
+	if !ring.Verify(pepper.Lease, []byte("lease"), tag.MAC[:], tag.PepperID) {
+		t.Fatal("forgetting the records key must keep the macs of the previous pepper")
 	}
 }

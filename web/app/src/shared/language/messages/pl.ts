@@ -188,6 +188,7 @@ export const messages: Catalog = {
   'problem.opens.out_of_range': 'Liczba otwarć musi wynosić od 1 do {max}.',
   'problem.passphrase.too_short': 'Dodaj jeszcze {missing} (minimum {min}) albo użyj przycisku Wygeneruj.',
   'problem.passphrase.malformed': 'Hasło zawiera niedozwolone znaki.',
+  'problem.passphrase.too_long': 'Hasło jest za długie.',
   'problem.passphrase.repetitive': 'W\u{A0}haśle powtarza się zbyt mało różnych znaków.',
   'problem.passphrase.sequential': 'Hasło to ciąg kolejnych liter, cyfr lub klawiszy.',
   'problem.passphrase.context': 'Hasło składa się głównie ze słowa Nylzo.',
@@ -213,12 +214,13 @@ export const messages: Catalog = {
   'clipboard.cleared': 'Schowek jest pusty. Kopie, które są już w\u{A0}historii schowka, tam pozostaną.',
   'created.another': 'Nowa wiadomość',
   'created.remembered': 'To urządzenie zapamiętało wiadomość.',
+  'created.remembered.session': 'Ta karta pamięta wiadomość najdłużej do jej zamknięcia lub odświeżenia.',
   'created.status_link': 'Otwórz Wysłane',
   'created.not_remembered': 'Nie udało się zapamiętać wiadomości na tym urządzeniu, więc nie można jej stąd anulować.',
 
   'sent.title': 'Wysłane',
   'sent.note':
-    'Lista jest zapisana tylko w\u{A0}tej przeglądarce i\u{A0}nie zawiera linków do wiadomości. Wpis znika {days} po zakończeniu wiadomości.',
+    'Lista nie zawiera linków do wiadomości. Wpis zakończonej wiadomości strona usuwa, gdy zobaczysz tu jej wynik. Pozostałe wpisy usuwa podczas twoich wizyt w\u{A0}Nylzo, najwcześniej {days} po upływie ważności.',
   'sent.loading': 'Wczytujemy wysłane wiadomości…',
   'sent.unavailable':
     'Ta przeglądarka nie pozwala stronie zapisywać danych, więc nie zapamięta wysłanych wiadomości. Zezwól tej witrynie na zapisywanie danych albo użyj innej przeglądarki.',
@@ -230,14 +232,15 @@ export const messages: Catalog = {
   'sent.state.expired': 'Wygasła',
   'sent.state.cancelled': 'Anulowana',
   'sent.state.deleted': 'Usunięta',
+  'sent.state.lost': 'Utracona',
   'sent.label.time': 'Ważność',
   'sent.label.opens': 'Otwarcia',
-  'sent.label.attempts': 'Błędne hasła',
+  'sent.label.attempts': 'Nieudane próby',
   'sent.label.first_opened': 'Pierwsze otwarcie',
   'sent.not_opened': 'jeszcze nie',
   'sent.until': 'do {time}',
   'sent.opens': '{used} z\u{A0}{max}',
-  'sent.unknown': 'Wiadomości nie ma już na serwerze.',
+  'sent.unknown': 'Serwer nie znalazł wiadomości. Mogła się już zakończyć. Jeśli nie jest ci tu potrzebna, usuń ją.',
   'sent.failed': 'Nie udało się wczytać stanu. Sprawdź połączenie i\u{A0}spróbuj ponownie.',
   'sent.cancel': 'Anuluj wiadomość',
   'sent.cancel.confirm': 'Po anulowaniu nikt już nie otworzy tej wiadomości.',
@@ -254,13 +257,17 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'Nie można tu zapisać listy wysłanych wiadomości',
   'sent.empty.title': 'Na razie nic tu nie ma',
   'sent.created': 'Utworzona {time}',
-  'sent.state.unknown': 'Już nie istnieje',
+  'sent.created.session': 'Utworzona {time}, tylko w\u{A0}tej karcie',
+  'sent.state.unknown': 'Nie znaleziono',
   'sent.state.failed': 'Stan nieznany',
   'sent.state.loading': 'Wczytujemy',
-  'sent.ended.opened': 'Otwarta {time}. Na serwerze już jej nie ma, wpis zostanie tu jeszcze przez {days}.',
-  'sent.ended.expired': 'Wygasła {time}. Na serwerze już jej nie ma, wpis zostanie tu jeszcze przez {days}.',
-  'sent.ended.cancelled': 'Anulowana {time}. Na serwerze już jej nie ma, wpis zostanie tu jeszcze przez {days}.',
-  'sent.ended.deleted': 'Usunął ją odbiorca albo zdjął ją operator. Wpis zostanie tu jeszcze przez {days}.',
+  'sent.ended.opened': 'Otwarta {time}. Na serwerze już jej nie ma, a\u{A0}z\u{A0}listy zniknie, gdy opuścisz stronę.',
+  'sent.ended.expired': 'Wygasła {time}. Na serwerze już jej nie ma, a\u{A0}z\u{A0}listy zniknie, gdy opuścisz stronę.',
+  'sent.ended.cancelled':
+    'Anulowana {time}. Na serwerze już jej nie ma, a\u{A0}z\u{A0}listy zniknie, gdy opuścisz stronę.',
+  'sent.ended.deleted': 'Usunął ją odbiorca albo zdjął ją operator. Z\u{A0}listy zniknie, gdy opuścisz stronę.',
+  'sent.ended.lost':
+    'Serwer utracił jej klucz, zwykle przy restarcie, więc nikt już jej nie otworzy. Jeśli jest jeszcze potrzebna, wyślij ją ponownie. Z\u{A0}listy zniknie, gdy opuścisz stronę.',
   'sent.cancel.title': 'Anulować wiadomość „{label}”?',
   'sent.cancel.title.untitled': 'Anulować wiadomość?',
   'sent.forget.label': 'Usuń z\u{A0}listy',
@@ -270,10 +277,12 @@ export const messages: Catalog = {
   'read.title': 'Jednorazowa wiadomość',
   'read.loading': 'Wczytujemy wiadomość…',
   'read.retry_later': 'Usługa jest przeciążona. Spróbuj ponownie za {time}.',
+  'read.wait': 'Po zbyt wielu nieudanych próbach otwieranie jest wstrzymane. Spróbuj ponownie za {time}.',
   'read.ended.opened': 'Wiadomość została już otwarta.',
   'read.ended.expired': 'Ważność wiadomości wygasła.',
   'read.ended.cancelled': 'Nadawca anulował wiadomość.',
   'read.ended.deleted': 'Wiadomość została usunięta.',
+  'read.ended.lost': 'Serwer nie może już otworzyć wiadomości.',
   'read.passphrase': 'Hasło',
   'read.reveal': 'Pokaż wiadomość',
   'read.resumable':
@@ -286,8 +295,7 @@ export const messages: Catalog = {
     'Nieprawidłowe hasło. Wiadomość pozostaje nieotwarta. Jeszcze {attempts}, potem trzeba będzie chwilę poczekać.',
   'read.rejected.wait': 'Nieprawidłowe hasło. Kolejna próba będzie możliwa za {time}.',
   'read.rejected.malformed': 'Hasło zawiera niedozwolone znaki.',
-  'read.rejected.wrong_or_changed':
-    'Nie udało się odszyfrować wiadomości: hasło jest nieprawidłowe albo dane zostały zmienione. Wpisz hasło ponownie.',
+  'read.rejected.long': 'Hasło jest za długie.',
   'read.delete': 'Usuń bez otwierania',
   'read.delete.rest': 'Usuń wiadomość',
   'read.delete.rest.short': 'Usuń',
@@ -300,6 +308,11 @@ export const messages: Catalog = {
   'read.delete.no': 'Nie usuwaj',
   'read.deleted_rest': 'Pozostałe otwarcia zostały usunięte.',
   'read.delete.failed': 'Nie udało się usunąć wiadomości. Spróbuj ponownie.',
+  'read.delete.wait':
+    'Po wielu próbach z\u{A0}błędnym hasłem nie można teraz usunąć wiadomości. Spróbuj ponownie za {time}.',
+  'read.delete.locked':
+    'Po wielu próbach z\u{A0}błędnym hasłem wiadomość jest zablokowana aż do końca ważności. Nikt jej nie otworzy, ale nadawca nadal może ją anulować.',
+  'read.delete.passphrase': 'Wpisz hasło od nadawcy, a\u{A0}potem wybierz „Usuń bez otwierania”.',
 
   'busy.deriving': 'Przygotowujemy klucz z\u{A0}hasła…',
   'busy.claiming': 'Otwieramy wiadomość…',
@@ -313,8 +326,9 @@ export const messages: Catalog = {
   'revealed.sender.text': 'Prośbę o\u{A0}pieniądze, logowanie lub instalację potwierdź u\u{A0}nadawcy inną drogą.',
   'revealed.file': 'Załącznik',
   'revealed.file.unchecked':
-    'Załącznik jest zaszyfrowany, więc Nylzo nie może sprawdzić go programem antywirusowym. Otwieraj tylko pliki od osób, które znasz.',
-  'revealed.confirm.title': 'Ten typ pliku może uruchomić kod. Otwórz go tylko wtedy, gdy ufasz nadawcy.',
+    'Załącznik jest zaszyfrowany, więc Nylzo nie może sprawdzić go programem antywirusowym. Pobieraj tylko pliki od nadawców, którym ufasz.',
+  'revealed.confirm.title':
+    'Każdy plik może zawierać złośliwy kod, także PDF, dokument czy obraz. Pobierz go tylko wtedy, gdy ufasz nadawcy.',
   'revealed.confirm.extension': 'Rozszerzenie pliku:',
   'revealed.confirm.none': 'Plik nie ma rozszerzenia.',
   'revealed.confirm.download': 'Pobierz mimo to',
@@ -367,7 +381,7 @@ export const messages: Catalog = {
     'Nie przechowuje ich. Limity dla poszczególnych adresów trzyma tylko w\u{A0}pamięci, która nigdy nie trafia na dysk, i\u{A0}po restarcie o\u{A0}nich zapomina.',
   'transparency.stores.enforced.title': 'Ważności pilnuje też kryptografia',
   'transparency.stores.enforced':
-    'Ważności i\u{A0}liczby otwarć pilnuje serwer. Najpóźniej dwie godziny po wygaśnięciu ważności usuwa też część klucza, której wiadomość potrzebuje, więc potem nie otworzy jej nawet kopia danych. Kopia wykonana wcześniej nie odczyta wiadomości bez linku.',
+    'Ważności i\u{A0}liczby otwarć pilnuje serwer. Najpóźniej minutę po wygaśnięciu ważności usuwa też część klucza, której wiadomość potrzebuje, więc potem nie otworzy jej nawet kopia danych. Kopia wykonana wcześniej nie odczyta wiadomości bez linku.',
   'transparency.logs.title': 'Co serwer zapisuje w\u{A0}logach',
   'transparency.logs.written': 'Zapisuje',
   'transparency.logs.written.time': 'Czas obcięty do minuty',
@@ -421,7 +435,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Nie korzystamy z zewnętrznej usługi do analizy odwiedzin.',
   'transparency.personal.browser.title': 'W\u{A0}twojej przeglądarce',
   'transparency.personal.browser':
-    'Wybrany język, tymczasowa informacja podczas otwierania wiadomości i\u{A0}lista na stronie Wysłane, jeśli śledzisz wiadomość. Są niezbędne do działania funkcji, o\u{A0}które prosisz, dlatego nie wymagają zgody.',
+    'Wybrany język, tymczasowa informacja podczas otwierania wiadomości i\u{A0}lista na stronie Wysłane, jeśli zachowasz śledzoną wiadomość także po zamknięciu karty. Są niezbędne do działania funkcji, o\u{A0}które prosisz, dlatego nie wymagają zgody.',
   'transparency.limits.title': 'Limity tej instancji',
   'transparency.limits.short': 'Limity',
   'transparency.limits.file': 'Największy załącznik',
@@ -531,7 +545,7 @@ export const messages: Catalog = {
   'step.derive.label': 'Wyprowadzenie',
   'step.derive.title': 'Wyprowadzamy klucze',
   'step.derive.detail': 'HKDF-SHA-256 wyprowadza klucz treści i\u{A0}klucze, którymi podpisywane jest otwarcie',
-  'step.derive.detail.passphrase': 'scrypt z\u{A0}hasła, potem HKDF-SHA-256',
+  'step.derive.detail.passphrase': 'OPAQUE i\u{A0}scrypt z\u{A0}hasła, potem HKDF-SHA-256',
   'step.encrypt.label': 'Szyfrowanie',
   'step.encrypt.title': 'Szyfrujemy treść',
   'step.encrypt.detail': 'AES-256-GCM, dopełnione do pełnych bloków',
@@ -557,7 +571,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Skopiuj hasło',
   'created.track.title': 'Śledź w\u{A0}Wysłanych',
   'created.track.note':
-    'Zobaczysz, czy ktoś otworzył wiadomość, i\u{A0}będzie można ją anulować. Zapisuje się tylko w\u{A0}tej przeglądarce. Anulować ją może wtedy każdy, kto ma dostęp do tej przeglądarki.',
+    'Zobaczysz, czy ktoś otworzył wiadomość, i\u{A0}będzie można ją anulować. Pamięta ją tylko ta karta, najdłużej do jej zamknięcia lub odświeżenia.',
+  'created.track.note.kept':
+    'Zobaczysz, czy ktoś otworzył wiadomość, i\u{A0}będzie można ją anulować. Zapisze się w\u{A0}tej przeglądarce, więc anulować ją może każdy, kto ma do niej dostęp.',
+  'created.track.keep': 'Pamiętaj także po zamknięciu karty',
   'created.track.label': 'Etykieta, widoczna tylko dla ciebie',
   'created.track.placeholder': 'Etykieta, np. „Hasło dla Piotra”',
   'created.track.save': 'Zapisz',
@@ -612,6 +629,9 @@ export const messages: Catalog = {
     'Nikt już jej nie otworzy. Jeśli nadal jej potrzebujesz, poproś nadawcę o\u{A0}nowy link.',
   'open.notice.deleted': 'Wiadomość została usunięta',
   'open.notice.deleted.text': 'Usunął ją odbiorca albo zdjął ją operator.',
+  'open.notice.lost': 'Serwer nie może już otworzyć tej wiadomości',
+  'open.notice.lost.text':
+    'Serwer utracił jej klucz, zwykle przy restarcie. Nikt już tej wiadomości nie otworzy. Poproś nadawcę o\u{A0}ponowne wysłanie.',
   'open.notice.unknown': 'Nie znaleźliśmy wiadomości',
   'open.notice.unknown.text':
     'Link może być niepełny albo ważność wiadomości wygasła dawno temu. Poproś nadawcę o\u{A0}nowy.',
@@ -682,7 +702,7 @@ export const messages: Catalog = {
   'how.link.meta.title': 'Wersja',
   'how.link.meta.meta': 'tylko dla kompatybilności',
   'how.link.meta.body':
-    'Dwójka to wersja formatu linku, a\u{A0}zero oznacza wiadomość bez hasła. Na tej podstawie starsza wersja Nylzo rozpozna link z\u{A0}nowszej wersji i\u{A0}poinformuje o\u{A0}tym, zamiast uznać go za uszkodzony. Serwer zna obie wartości także z\u{A0}wiadomości, więc ta część nie mówi mu nic nowego.',
+    'Trójka to wersja formatu linku, a\u{A0}zero oznacza wiadomość bez hasła. Na tej podstawie starsza wersja Nylzo rozpozna link z\u{A0}nowszej wersji i\u{A0}poinformuje o\u{A0}tym, zamiast uznać go za uszkodzony. Serwer zna obie wartości także z\u{A0}wiadomości, więc ta część nie mówi mu nic nowego.',
   'how.link.id.title': 'ID wiadomości',
   'how.link.id.meta': 'na jego podstawie serwer znajduje wiadomość',
   'how.link.id.body':

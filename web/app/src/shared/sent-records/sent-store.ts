@@ -1,16 +1,16 @@
 import { attempt } from '../attempt.ts';
 import { browserDatabases, committed, databaseExists, openDatabase, requestResult } from './indexed-database.ts';
-import { isRetained, recordFrom, storedForm } from './sent-record.ts';
+import { isRetained, recordFrom, retainedUntil, storedForm } from './sent-record.ts';
 import type { SentRecord } from './sent-record.ts';
 
 const DATABASE = 'nylzo';
 const RECORDS = 'sent';
 const LISTING_TIMEOUT_MS = 2000;
+const RECHECK_MS = 60 * 60 * 1000;
 
 export interface SentStore {
   list: () => Promise<SentRecord[]>;
   put: (record: SentRecord) => Promise<void>;
-  markEnded: (id: string, endedAt: number) => Promise<SentRecord | undefined>;
   remove: (id: string) => Promise<void>;
   clear: () => Promise<void>;
 }
@@ -26,23 +26,34 @@ function storedId(value: unknown): string | undefined {
   return typeof value.id === 'string' ? value.id : undefined;
 }
 
+// A listing that hangs counts as no database, so nothing creates it.
+async function databaseListed(factory: IDBFactory, ifListingFails: boolean): Promise<boolean> {
+  const timedOut = Promise.withResolvers<boolean>();
+  const timer = setTimeout(timedOut.resolve, LISTING_TIMEOUT_MS, false);
+  try {
+    return await Promise.race([databaseExists(factory, DATABASE), timedOut.promise]);
+  } catch {
+    return ifListingFails;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function openSentStore(factory: IDBFactory | undefined): SentStore & { readonly close: () => void } {
   let database: Promise<IDBDatabase> | undefined;
+  let closed = false;
+  let active = 0;
 
-  // Reading or deleting must not create the database for someone who never chose to remember a message.
+  // Reading or deleting must not create the database for someone who never chose to remember a message; a failed listing leaves the answer to opening.
   async function databaseCreated(): Promise<boolean> {
-    if (database !== undefined || factory === undefined) {
-      return true;
-    }
-    // A listing that fails leaves the answer to opening; one that hangs counts as no database, so no read creates it.
-    const timedOut = Promise.withResolvers<boolean>();
-    const timer = setTimeout(timedOut.resolve, LISTING_TIMEOUT_MS, false);
-    try {
-      return await Promise.race([databaseExists(factory, DATABASE), timedOut.promise]);
-    } catch {
-      return true;
-    } finally {
-      clearTimeout(timer);
+    return database !== undefined || factory === undefined || databaseListed(factory, true);
+  }
+
+  // After close(), a late operation still runs on its own connection, which closes when the last operation ends.
+  function release(): void {
+    if (closed && active === 0 && database) {
+      void attempt(database.then((opened) => opened.close()));
+      database = undefined;
     }
   }
 
@@ -75,20 +86,24 @@ function openSentStore(factory: IDBFactory | undefined): SentStore & { readonly 
     mode: IDBTransactionMode,
     action: (records: IDBObjectStore) => Promise<Result>,
   ): Promise<Result> {
-    const opened = await connected();
-    const transaction = opened.transaction(RECORDS, mode);
-    const done = committed(transaction);
-    const result = action(transaction.objectStore(RECORDS));
-    await Promise.all([result, done]);
-    return result;
+    active++;
+    try {
+      const opened = await connected();
+      const transaction = opened.transaction(RECORDS, mode);
+      const done = committed(transaction);
+      const result = action(transaction.objectStore(RECORDS));
+      await Promise.all([result, done]);
+      return await result;
+    } finally {
+      active--;
+      release();
+    }
   }
 
   return {
     close() {
-      if (database) {
-        void attempt(database.then((opened) => opened.close()));
-      }
-      database = undefined;
+      closed = true;
+      release();
     },
     async list() {
       if (!(await databaseCreated())) {
@@ -110,11 +125,6 @@ function openSentStore(factory: IDBFactory | undefined): SentStore & { readonly 
     async put(record) {
       const stored = storedForm(record);
       await withRecords('readwrite', async (records) => requestResult(records.put(stored)));
-    },
-    async markEnded(id, endedAt) {
-      return (await databaseCreated())
-        ? withRecords('readwrite', async (records) => endIfStored(records, id, endedAt))
-        : undefined;
     },
     async remove(id) {
       if (await databaseCreated()) {
@@ -172,29 +182,32 @@ export async function rememberSent(store: SentStore, record: SentRecord, timeout
   return false;
 }
 
-export function browserSentStore(factory = browserDatabases()): SentStore {
+export function browserSentStore(factory = browserDatabases()): SentStore & { readonly close: () => void } {
   return openSentStore(factory);
 }
 
-export async function purgeSentRecords(factory: IDBFactory | undefined, now: number): Promise<void> {
+function nextPurgeAt(records: readonly SentRecord[]): number | undefined {
+  const deadlines = records.map((record) => retainedUntil(record));
+  return deadlines.length === 0 ? undefined : Math.min(...deadlines);
+}
+
+export async function purgeSentRecords(factory: IDBFactory | undefined, now: number): Promise<number | undefined> {
   try {
-    if (await databaseExists(factory, DATABASE)) {
+    if (factory && (await databaseListed(factory, false))) {
       const store = openSentStore(factory);
       try {
-        await retainedRecords(store, now);
+        return nextPurgeAt(await retainedRecords(store, now));
       } finally {
         store.close();
       }
     }
   } catch {}
+  return undefined;
 }
 
-async function endIfStored(records: IDBObjectStore, id: string, endedAt: number): Promise<SentRecord | undefined> {
-  const record = recordFrom(await requestResult(records.get(id)));
-  if (!record || record.endedAt !== undefined) {
-    return record;
-  }
-  const ended = { ...record, endedAt };
-  await requestResult(records.put(storedForm(ended)));
-  return ended;
+// No page can delete anything while none is open, so an open page checks again when a record is due and at least hourly.
+export async function keepPurgingSentRecords(factory: IDBFactory | undefined, now: () => number): Promise<void> {
+  const next = await purgeSentRecords(factory, now());
+  const wait = Math.min((next ?? Infinity) - now(), RECHECK_MS);
+  setTimeout(() => void keepPurgingSentRecords(factory, now), Math.max(wait, 0));
 }

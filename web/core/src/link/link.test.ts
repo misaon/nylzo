@@ -76,21 +76,23 @@ describe('links and fragments (spec 4, 15)', () => {
   const fields = `${idToString(id)}.${encoded}.${encoded}`;
 
   it('formats a link under one trailing slash of the base, with no id in the path', () => {
-    const expected = `${base}/r#2.0.${fields}`;
+    const expected = `${base}/r#3.0.${fields}`;
     expect(formatLink(base, id, KDF_NONE, secret, secret)).toBe(expected);
     expect(formatLink(`${base}/`, id, KDF_NONE, secret, secret)).toBe(expected);
   });
 
-  it.each([`2.3.${fields}`, `#2.3.${fields}`])('parses the fragment %s', (text) => {
+  it.each([`3.3.${fields}`, `#3.3.${fields}`])('parses the fragment %s', (text) => {
     expect(parseFragment('/r', text)).toStrictEqual({ kdfId: KDF_SCRYPT, id, secret, objectHash: secret });
   });
 
-  it('tells a link of protocol version 1 apart only on its own page, and reads nothing of it', () => {
+  it('tells a link of protocol version 1 or 2 apart only on its own page, and reads nothing of it', () => {
     expect(thrownBy(() => parseFragment(`/m/${idToString(id)}`, `1.1.${encoded}`))).toStrictEqual(
       new LinkReleasedError(),
     );
+    expect(thrownBy(() => parseFragment('/r', `2.3.${fields}`))).toStrictEqual(new LinkReleasedError());
     expect(thrownBy(() => parseFragment('/r', `1.1.${encoded}`))).toStrictEqual(new LinkError());
     expect(thrownBy(() => parseFragment(`/m/${idToString(id)}`, `2.3.${fields}`))).toStrictEqual(new LinkError());
+    expect(thrownBy(() => parseFragment(`/m/${idToString(id)}`, `3.3.${fields}`))).toStrictEqual(new LinkError());
   });
 
   it('reads only the paths the server serves as read pages, so any other path is not found', () => {
@@ -103,14 +105,15 @@ describe('links and fragments (spec 4, 15)', () => {
 
   it.each<[string, new () => LinkError]>([
     ['', LinkError],
-    [`##2.3.${fields}`, LinkError],
-    ['3', LinkVersionError],
-    [`3.3.${fields}`, LinkVersionError],
-    [`#2.2.${fields}`, LinkRetiredKdfError],
+    [`##3.3.${fields}`, LinkError],
+    ['4', LinkVersionError],
+    [`4.3.${fields}`, LinkVersionError],
+    [`#3.2.${fields}`, LinkRetiredKdfError],
     [`#1.2.${encoded}`, LinkError],
-    [`#2.1.${fields}`, LinkError],
+    [`#3.1.${fields}`, LinkError],
+    [`#2.2.${fields}`, LinkError],
     [`#1.3.${encoded}`, LinkError],
-    [`#2.2.${fields.slice(0, -1)}`, LinkError],
+    [`#3.2.${fields.slice(0, -1)}`, LinkError],
   ])('rejects the fragment %j', (text, expected) => {
     expect(thrownBy(() => parseFragment('/r', text))).toStrictEqual(new expected());
   });

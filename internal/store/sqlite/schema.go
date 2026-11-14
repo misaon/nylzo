@@ -59,15 +59,14 @@ var schema = messagesTable.definition + ";\n" + messagesTable.index + ";\n" +
 	countersTable.definition + ";\n" + countersTable.index + ";\n" +
 	scrubTable + ";\n"
 
-// schemaVersion stays 7 with the index on rate_counters(purge_at), which nylzo 0.3 to 0.8 ignore, so they still open
-// the database after this build added it.
-const schemaVersion = 7
+// schemaVersion 8 holds the 1024-byte records of protocol v3 with their OPAQUE registration.
+const schemaVersion = 8
 
 var (
 	ErrNewerSchema    = errors.New("sqlite: the database was written by a newer nylzo")
 	ErrReleasedSchema = errors.New(
-		"sqlite: the database was written by nylzo 0.1 or 0.2; nylzo serve upgrades it once, " +
-			"which erases the messages stored in it",
+		"sqlite: the database was written by a release of an earlier protocol version; nylzo serve upgrades it " +
+			"once, which erases the messages stored in it",
 	)
 	ErrOlderSchema = errors.New(
 		"sqlite: the database comes from a development build that no release used; " +
@@ -129,7 +128,7 @@ func checkVersion(version int) error {
 	switch {
 	case version > schemaVersion:
 		return fmt.Errorf("%w: version %d, this build knows %d", ErrNewerSchema, version, schemaVersion)
-	case version == releasedSchema:
+	case isReleased(version):
 		return fmt.Errorf("%w: version %d, this build reads only %d", ErrReleasedSchema, version, schemaVersion)
 	case version < schemaVersion:
 		return fmt.Errorf("%w: version %d, this build reads only %d", ErrOlderSchema, version, schemaVersion)

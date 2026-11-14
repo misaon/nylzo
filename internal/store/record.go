@@ -5,40 +5,73 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"slices"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 )
 
 const (
-	recordFormat = 2
+	recordFormat = 3
 	macLen       = 32
-	fieldsLen    = 123
+	fieldsLen    = 310
 	leaseLen     = 42
 )
 
 // BlobReferenceLen is the number of random bytes in a blob reference.
 const BlobReferenceLen = 16
 
-var endings = []State{"", StateDeleted, StateCancelled}
+var endings = []State{"", StateDeleted, StateCancelled, StateLost}
 
 // DummyLocator keys the row that a lookup of an unknown id reads; finding an id that hashes to it is a preimage.
 var DummyLocator seal.Locator = sha256.Sum256([]byte("nylzo/v1/dummy-row"))
 
-// NewDummyRow has the shape of a live row and random keys, so no public key opens it.
+// NewDummyRow has the shape of a live row and random keys, so no public key opens it. No pepper opens its wraps either
+// until serve seals them under its own when it starts (ResealRow).
 func NewDummyRow() Row {
 	var readKey, manageKey, reference [seal.KeyLen]byte
 	rand.Read(readKey[:])
 	rand.Read(manageKey[:])
 	rand.Read(reference[:])
 	far := time.Date(2200, 1, 1, 0, 0, 0, 0, time.UTC)
-	message := &Message{Version: 2, OpensMax: 1, OpensRemaining: 1, CreatedAt: far, ExpiresAt: far}
+	message := &Message{
+		Version:        envelope.Version,
+		OpensMax:       1,
+		OpensRemaining: 1,
+		CreatedAt:      far,
+		ExpiresAt:      far,
+		Registration: seal.WrapRegistration(
+			new(seal.NewEraseSalt()),
+			DummyLocator,
+			make([]byte, seal.RegistrationLen),
+		),
+	}
 	blobReference := base64.RawURLEncoding.EncodeToString(reference[:BlobReferenceLen])
-	return NewRecord(DummyLocator, message, readKey[:], manageKey[:], blobReference, seal.NewKey()).Row
+	blob := seal.NewBlobKey()
+	return NewRecord(seal.NewKey(), DummyLocator, message, readKey[:], manageKey[:], blobReference, &blob).Row
+}
+
+// ResealRow puts both wraps of a row under the current pepper key (seal.ResealWrap). The dummy row gets new wraps when
+// no key opens it, so it costs what a live row does.
+func ResealRow(row *Row, current seal.Key, earlier []seal.Key) (bool, error) {
+	readChanged, readErr := seal.ResealWrap(current, earlier, &row.ReadWrap, row.Locator, seal.Read)
+	manageChanged, manageErr := seal.ResealWrap(current, earlier, &row.ManageWrap, row.Locator, seal.Manage)
+	err := errors.Join(readErr, manageErr)
+	if err != nil && row.Locator == DummyLocator {
+		row.ReadWrap, row.ManageWrap = dummyWrap(current, seal.Read), dummyWrap(current, seal.Manage)
+		return true, nil
+	}
+	return readChanged || manageChanged, err
+}
+
+func dummyWrap(pepperKey seal.Key, purpose seal.Purpose) []byte {
+	publicKey := seal.NewKey()
+	return seal.WrapRecordKey(pepperKey, publicKey[:], seal.NewKey(), DummyLocator, purpose)
 }
 
 // Record is a row opened with its record key, for the length of one request.
@@ -48,22 +81,24 @@ type Record struct {
 	Message *Message
 }
 
-// NewRecord seals a new message; the public keys only derive the wrapping keys and are never kept.
+// NewRecord seals a new message; the public keys only derive the wrapping keys and are never kept, and the pepper key
+// seals both wraps.
 func NewRecord(
+	pepperKey seal.Key,
 	locator seal.Locator,
 	message *Message,
 	readKey, manageKey []byte,
 	blobReference string,
-	blobKey seal.Key,
+	blob *seal.BlobKey,
 ) Record {
 	key := seal.NewKey()
 	record := Record{
 		Row: Row{
 			Locator:       locator,
-			ReadWrap:      seal.Wrap(seal.KeyFor(readKey, locator, seal.Read), key, locator, seal.Read),
-			ManageWrap:    seal.Wrap(seal.KeyFor(manageKey, locator, seal.Manage), key, locator, seal.Manage),
+			ReadWrap:      seal.WrapRecordKey(pepperKey, readKey, key, locator, seal.Read),
+			ManageWrap:    seal.WrapRecordKey(pepperKey, manageKey, key, locator, seal.Manage),
 			BlobReference: blobReference,
-			BlobWrap:      seal.WrapBlobKey(key, blobKey, locator),
+			BlobWrap:      seal.WrapBlobKey(key, blob, locator),
 			BlobPurgeAt:   BlobPurgeAt(message.ExpiresAt),
 			PurgeAt:       ceil(message.ExpiresAt.Add(TombstoneTTL), RowPurgeStep),
 		},
@@ -90,9 +125,9 @@ func (r *Record) HasBlob() bool {
 	return r.Row.BlobWrap != nil
 }
 
-func (r *Record) BlobKey() (seal.Key, error) {
+func (r *Record) BlobKey() (seal.BlobKey, error) {
 	if !r.HasBlob() {
-		return seal.Key{}, ErrBlobMissing
+		return seal.BlobKey{}, ErrBlobMissing
 	}
 	return seal.UnwrapBlobKey(r.Key, r.Row.BlobWrap, r.Row.Locator)
 }
@@ -200,8 +235,8 @@ func encodeMessage(message *Message) []byte {
 	data = binary.BigEndian.AppendUint16(data, message.OpensMax)
 	data = binary.BigEndian.AppendUint16(data, message.OpensRemaining)
 	data = binary.BigEndian.AppendUint64(data, narrow64(message.Size))
-	data = append(data, message.VerifierPepperID, boolByte(message.PassphraseRequired()))
-	data = append(data, fixedMAC(message.VerifierMAC)...)
+	data = append(data, message.RegistrationPepperID)
+	data = append(data, fixed(message.Registration, seal.SealedRegistrationLen)...)
 	data = binary.BigEndian.AppendUint16(data, saturate[uint16](int64(message.FailCountTotal)))
 	data = appendTime(data, message.NextAttemptAt)
 	data = appendTime(data, optional(message.FirstOpenedAt))
@@ -210,7 +245,7 @@ func encodeMessage(message *Message) []byte {
 	data = binary.BigEndian.AppendUint32(data, saturate[uint32](message.ReportDay))
 	data = append(data, saturate[uint8](int64(message.Reports)))
 	data = binary.BigEndian.AppendUint32(data, message.Epoch)
-	data = append(data, message.RatchetID[:]...)
+	data = append(data, message.Generation[:]...)
 	data = append(data, saturate[uint8](int64(len(message.Leases))))
 	for _, lease := range message.Leases {
 		data = append(data, lease.PepperID)
@@ -265,11 +300,8 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.OpensMax = fields.readUint16()
 	message.OpensRemaining = fields.readUint16()
 	message.Size = signed(fields.readUint64())
-	message.VerifierPepperID = fields.readByte()
-	hasVerifier, verifierMAC := fields.readByte(), fields.readMAC()
-	if hasVerifier == 1 {
-		message.VerifierMAC = verifierMAC
-	}
+	message.RegistrationPepperID = fields.readByte()
+	message.Registration = slices.Clone(fields.next(seal.SealedRegistrationLen))
 	message.FailCountTotal = int(fields.readUint16())
 	message.NextAttemptAt = fields.readTime()
 	if firstOpened := fields.readTime(); !firstOpened.IsZero() {
@@ -280,9 +312,9 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.ReportDay = int64(fields.readUint32())
 	message.Reports = int(fields.readByte())
 	message.Epoch = fields.readUint32()
-	copy(message.RatchetID[:], fields.next(epoch.RatchetIDLen))
+	copy(message.Generation[:], fields.next(epoch.GenerationIDLen))
 	leases := int(fields.readByte())
-	if fields.truncated() || ending >= len(endings) || hasVerifier > 1 || !fields.remaining(leases*leaseLen) {
+	if fields.truncated() || ending >= len(endings) || !fields.remaining(leases*leaseLen) {
 		return nil, fmt.Errorf("%w: truncated or unknown field", ErrCorrupt)
 	}
 	message.Ending = endings[ending]
@@ -346,14 +378,11 @@ func optional(moment *time.Time) time.Time {
 }
 
 func fixedMAC(mac []byte) []byte {
-	fixed := make([]byte, macLen)
-	copy(fixed, mac)
-	return fixed
+	return fixed(mac, macLen)
 }
 
-func boolByte(value bool) byte {
-	if value {
-		return 1
-	}
-	return 0
+func fixed(value []byte, length int) []byte {
+	padded := make([]byte, length)
+	copy(padded, value)
+	return padded
 }

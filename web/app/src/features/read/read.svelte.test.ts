@@ -103,7 +103,7 @@ describe('read interface', () => {
 
   it.each([
     { reason: 'malformed' },
-    { reason: 'wrong_or_changed' },
+    { reason: 'long' },
     { reason: 'wrong', attemptsLeft: 2, retryAfter: 0, locked: false },
     { reason: 'wrong', attemptsLeft: 2, retryAfter: 30, locked: false },
   ] as const)('renders passphrase rejection $reason and removes it when typing again', (rejected) => {
@@ -118,6 +118,15 @@ describe('read interface', () => {
     input.dispatchEvent(new Event('input', { bubbles: true }));
     flushSync();
     expect(input.getAttribute('aria-invalid')).toBe('false');
+  });
+
+  it('tells the reader of a message without a passphrase how long its opening is paused', () => {
+    show();
+    ready({ metadata, rejected: { reason: 'wrong', attemptsLeft: 0, retryAfter: 120, locked: false } });
+    const [before = ''] = translator.translate('read.wait', { time: '|' }).split('|');
+    expect(target.querySelector('input[type="password"]')).toBeNull();
+    expect(before).not.toBe('');
+    expect(target.querySelector('[role="alert"]')?.textContent).toContain(before);
   });
 
   it('validates an empty passphrase, toggles its visibility and sends it once', async () => {
@@ -178,29 +187,46 @@ describe('read interface', () => {
     expect(target.querySelector('pre')).toBeNull();
   });
 
-  it('requires explicit confirmation to download a potentially executable attachment', async () => {
+  it('requires explicit confirmation to download an attachment, also one named like a PDF', async () => {
     show();
     view({
       view: 'revealed',
-      file: { name: 'script.sh', mime: 'text/plain', bytes: new Uint8Array([1]) },
+      file: { name: 'report.pdf', mime: 'application/pdf', bytes: new Uint8Array([1]) },
       burnable: false,
       opensRemaining: 0,
     });
     const download = [...target.querySelectorAll('button')].find(
       (element) => element.getAttribute('aria-label') === translator.translate('open.download.file'),
     );
+    const warning = [...target.querySelectorAll('[role="alertdialog"]')].find((element) =>
+      element.textContent.includes(translator.translate('revealed.confirm.title')),
+    );
+    expect(warning?.hasAttribute('inert')).toBe(true);
     download?.click();
     await tick();
     expect(saveFile).not.toHaveBeenCalled();
-    expect(target.textContent).toContain(translator.translate('revealed.confirm.title'));
+    expect(warning?.hasAttribute('inert')).toBe(false);
+    warning?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await tick();
+    expect(warning?.hasAttribute('inert')).toBe(true);
+    download?.click();
+    await tick();
     button(translator.translate('revealed.confirm.cancel')).click();
     await tick();
     expect(saveFile).not.toHaveBeenCalled();
     download?.click();
     await tick();
-    button(translator.translate('revealed.confirm.download')).click();
+    const confirm = button(translator.translate('revealed.confirm.download'));
+    expect(confirm.disabled).toBe(false);
+    expect(confirm.getAttribute('aria-disabled')).toBe('true');
+    confirm.click();
     await tick();
-    expect(saveFile).toHaveBeenCalledExactlyOnceWith(new Uint8Array([1]), 'script.sh');
+    expect(saveFile).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(confirm.getAttribute('aria-disabled')).toBe('false');
+    confirm.click();
+    await tick();
+    expect(saveFile).toHaveBeenCalledExactlyOnceWith(new Uint8Array([1]), 'report.pdf');
   });
 
   it('asks before deleting, supports Escape, then reports a successful deletion', async () => {

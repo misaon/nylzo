@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/logging"
@@ -167,7 +169,7 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 		for j := range 4 {
 			ip := fmt.Sprintf("10.%d.%d.1", i, j)
 			requests.Go(limit(func() {
-				response, _, err := harness.tryDo(claimRequestFor(message, "", ip))
+				response, _, err := harness.tryClaim(message, "", ip)
 				if err != nil {
 					t.Error(err)
 					return
@@ -210,14 +212,22 @@ func TestStressEndingsRaceSweepsInTwoProcesses(t *testing.T) {
 				continue
 			}
 			requests.Go(limit(func() {
-				code := harness.statusFrom(
-					&testRequest{
+				address := fmt.Sprintf("10.%d.%d.1", i, ending.octet)
+				var code int
+				if ending.action == "burn" {
+					response, _, err := harness.tryBurn(message, "", address)
+					if err != nil {
+						t.Error(err)
+					}
+					code = response.StatusCode
+				} else {
+					code = harness.statusFrom(&testRequest{
 						method:  http.MethodPost,
 						path:    "/api/v1/messages/" + message.id.String() + "/" + ending.action,
-						address: fmt.Sprintf("10.%d.%d.1", i, ending.octet),
+						address: address,
 						token:   ending.token,
-					},
-				)
+					})
+				}
 				expect(ending.action, code, http.StatusNoContent, http.StatusGone)
 				if code == http.StatusNoContent {
 					ending.counter.Add(1)
@@ -329,9 +339,10 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 		harness.mustCreate(cancel)
 		unknown, unknownBody := harness.do(
 			&testRequest{
-				method: http.MethodPost,
-				path:   "/api/v1/messages/" + core.NewID().String() + "/burn",
-				token:  burn.readToken,
+				method:  http.MethodPost,
+				path:    "/api/v1/messages/" + core.NewID().String() + "/burn",
+				token:   burn.readToken,
+				headers: map[string]string{api.KE3HeaderName: core.Encode(make([]byte, 64))},
 			},
 		)
 		if unknown.StatusCode != http.StatusNotFound {
@@ -384,17 +395,92 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 	})
 }
 
+func TestF05BurnNeedsThePassphrase(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFScrypt, "correct", 2, 3600, "guarded")
+		harness.mustCreate(message)
+		burnPath := "/api/v1/messages/" + message.id.String() + "/burn"
+		expectRefusal := func(response testResponse, body responseBody, attemptsLeft float64) {
+			t.Helper()
+			fields := decodeJSON(t, body)
+			if response.StatusCode != http.StatusForbidden || fields["error"] != "passphrase" ||
+				fields["retry_after"].(float64) != 0 || fields["attempts_left"].(float64) != attemptsLeft {
+				t.Fatalf("got %d %s, want a refusal with %v attempts left", response.StatusCode, body, attemptsLeft)
+			}
+			if !harness.blobExists(message) {
+				t.Fatal("a refused burn deleted the blob")
+			}
+		}
+		response, body := harness.do(&testRequest{method: http.MethodPost, path: burnPath, token: message.readToken})
+		if response.StatusCode != http.StatusBadRequest || !harness.blobExists(message) {
+			t.Fatalf("a burn without KE3 must be refused uncounted: %d %s", response.StatusCode, body)
+		}
+		response, body = harness.burn(message, "wrong", "")
+		expectRefusal(response, body, 4)
+		response, body = harness.claim(message, "wrong", "")
+		expectRefusal(response, body, 3)
+		login, _, _ := harness.handshake(message, message.passphrase, "")
+		malformed := login.request(message, "/burn", "")
+		malformed.headers[api.KE3HeaderName] = "not-a-ke3"
+		if response, _ = harness.do(malformed); response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("a malformed KE3: %d", response.StatusCode)
+		}
+		if _, status := harness.status(message); status["state"] != "available" ||
+			status["failed_passphrase_attempts"].(float64) != 3 {
+			t.Fatalf("claims and burns share the counters, and a handshake counts until its KE3: %v", status)
+		}
+		path := harness.blobFile(message)
+		original, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		changedSalt := bytes.Clone(original)
+		changedSalt[0] ^= 1
+		if err = os.WriteFile(path, changedSalt, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		response, _ = harness.burn(message, message.passphrase, "")
+		if err = os.WriteFile(path, original, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if _, status := harness.status(message); response.StatusCode != http.StatusInternalServerError ||
+			status["failed_passphrase_attempts"].(float64) != 3 {
+			t.Fatalf("F14: a changed salt must be refused before it costs a passphrase attempt: %d %v",
+				response.StatusCode, status)
+		}
+		changedBody := bytes.Clone(original)
+		changedBody[len(changedBody)-1] ^= 1
+		if err = os.WriteFile(path, changedBody, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if response, body = harness.burn(
+			message,
+			message.passphrase,
+			"",
+		); response.StatusCode != http.StatusNoContent ||
+			harness.blobExists(message) {
+			t.Fatalf("burn with the passphrase: %d %s", response.StatusCode, body)
+		}
+		if _, metadata := harness.metadata(message); metadata["state"] != "deleted" {
+			t.Fatalf("metadata after the burn: %v", metadata)
+		}
+	})
+}
+
 type racingStore struct {
 	store.Store
 
 	once sync.Once
+	skip atomic.Int32
 	race func()
 }
 
 func (s *racingStore) Load(ctx context.Context, locator seal.Locator) (store.Row, error) {
 	row, err := s.Store.Load(ctx, locator)
 	if err == nil {
-		s.once.Do(s.race)
+		s.raceOnce()
 	}
 	return row, err
 }
@@ -402,30 +488,39 @@ func (s *racingStore) Load(ctx context.Context, locator seal.Locator) (store.Row
 func (s *racingStore) Lookup(ctx context.Context, locator seal.Locator) (store.Row, bool, error) {
 	row, known, err := s.Store.Lookup(ctx, locator)
 	if err == nil && known {
-		s.once.Do(s.race)
+		s.raceOnce()
 	}
 	return row, known, err
+}
+
+func (s *racingStore) raceOnce() {
+	if s.skip.Add(-1) < 0 {
+		s.once.Do(s.race)
+	}
 }
 
 func TestBurnRacingACancelReportsTheCancel(t *testing.T) {
 	t.Parallel()
 	for name, finished := range map[string]bool{"recorded cancel": false, "finished cancel": true} {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			synctest.Test(t, func(t *testing.T) {
-				harness := newHarness(t, baseSettings(pepperA, nil))
-				message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-				harness.mustCreate(message)
-				harness.endOnFirstLoad(message, store.StateCancelled, finished)
-				response, body := harness.post(message, "burn", message.readToken)
-				if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
-					t.Fatalf("burn that lost the race: %d %s", response.StatusCode, body)
-				}
-				if _, status := harness.status(message); status["state"] != "cancelled" {
-					t.Fatalf("status: %v", status)
-				}
+		for _, kdf := range []core.KDF{core.KDFNone, core.KDFScrypt} {
+			t.Run(fmt.Sprintf("%s, kdf %d", name, kdf), func(t *testing.T) {
+				t.Parallel()
+				synctest.Test(t, func(t *testing.T) {
+					harness := newHarness(t, baseSettings(pepperA, nil))
+					message := newMessage(t, kdf, "correct", 1, 3600, "x")
+					harness.mustCreate(message)
+					harness.endOnLoad(message, store.StateCancelled, finished, 1)
+					login, _, _ := harness.handshake(message, message.passphrase, "")
+					response, body := harness.do(login.request(message, "/burn", ""))
+					if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
+						t.Fatalf("burn that lost the race: %d %s", response.StatusCode, body)
+					}
+					if _, status := harness.status(message); status["state"] != "cancelled" {
+						t.Fatalf("status: %v", status)
+					}
+				})
 			})
-		})
+		}
 	}
 }
 
@@ -471,13 +566,18 @@ func TestUnfinishableEndingReportsRecordedState(t *testing.T) {
 	})
 }
 
+// vanishingStore lets the handshake count and the burn take its attempt back, then loses the row.
 type vanishingStore struct {
 	store.Store
 
-	armed atomic.Bool
+	armed   atomic.Bool
+	updates atomic.Int32
 }
 
-func (s *vanishingStore) Update(context.Context, seal.Locator, func(*store.Row) error) error {
+func (s *vanishingStore) Update(ctx context.Context, locator seal.Locator, change func(*store.Row) error) error {
+	if s.updates.Add(1) <= 2 {
+		return s.Store.Update(ctx, locator, change)
+	}
 	s.armed.Store(true)
 	return store.ErrNotFound
 }

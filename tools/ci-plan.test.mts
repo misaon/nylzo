@@ -31,6 +31,7 @@ test("Go and web changes retain integration coverage and their language security
   assert.equal(go.jobs.go, true);
   assert.equal(go.jobs["windows-build"], true);
   assert.equal(go.jobs.windows, true);
+  assert.equal(go.jobs.macos, true);
   assert.equal(go.jobs["codeql-go"], true);
   assert.equal(go.jobs.e2e, true);
   assert.equal(go.jobs.web, false);
@@ -38,6 +39,7 @@ test("Go and web changes retain integration coverage and their language security
   assert.equal(web.jobs.web, true);
   assert.equal(web.jobs["codeql-web"], true);
   assert.equal(web.jobs.build, true);
+  assert.equal(web.jobs["macos-release"], true);
   assert.equal(web.jobs.go, false);
   assert.equal(planChecks(["web/package.json"], "pull_request").dependencies, true);
 });
@@ -93,6 +95,19 @@ test("the isolated Flatcar profile runs provisioning checks without unrelated ap
     assert.equal(plan.jobs.repository, true);
     assert.equal(plan.jobs.go, false);
     assert.equal(plan.jobs.e2e, false);
+  }
+});
+
+test("a profile Caddyfile runs the Go job, which tests what Caddy logs and lets through (F11)", () => {
+  for (const [file, profileJob] of [
+    ["deploy/compose/Caddyfile", "compose"],
+    ["deploy/hetzner-flatcar/host/proxy/Caddyfile", "deployment"],
+    ["deploy/hetzner-flatcar/host/proxy/www.Caddyfile", "deployment"],
+    ["deploy/hetzner-flatcar/host/proxy/monitor.Caddyfile", "deployment"],
+  ] as const) {
+    const plan = planChecks([file], "pull_request");
+    assert.equal(plan.jobs.go, true, file);
+    assert.equal(plan.jobs[profileJob], true, file);
   }
 });
 

@@ -182,6 +182,9 @@ func (s *session) run(ctx context.Context, served <-chan error, timers deadlines
 	for {
 		select {
 		case <-ctx.Done():
+			if s.options.Link != nil && !s.taken {
+				return command.Failf(s.environment, "stopped before a browser took the link, which still works")
+			}
 			return command.ExitOK
 		case err := <-served:
 			return command.Failf(s.environment, "the verified client stopped: %s", err)
@@ -252,8 +255,9 @@ func (s *session) report(notice localclient.Notice) {
 	case localclient.HandoffRefused:
 		if s.taken {
 			s.notef("warning: something asked for the link again after a browser took it. If your browser " +
-				"did not show the message, another program has the link: delete the message with nylzo burn " +
-				"and ask the sender for a new one")
+				"did not show the message, another program has the link: delete the message with nylzo burn, " +
+				"which needs the passphrase when the message has one, or ask the sender to cancel it, " +
+				"and ask the sender for a new link")
 		}
 	default:
 	}

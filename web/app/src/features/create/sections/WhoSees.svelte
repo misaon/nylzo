@@ -68,7 +68,7 @@
           <p class={LABEL}>{translate('who.label.key')}</p>
           <p class="mt-2 text-body text-ink">{translate('who.you.key')}</p>
           <p class="mt-1 truncate text-caption text-ink-mute">
-            nylzo.example/r#2.0.Q3tN0xvR8kLp2WcY5aHf1g<span class="rounded-xs bg-aegis-500/12 px-1 text-aegis-200"
+            nylzo.example/r#3.0.Q3tN0xvR8kLp2WcY5aHf1g<span class="rounded-xs bg-aegis-500/12 px-1 text-aegis-200"
               >.Vh2sXq9LmB4tRk7PzW1eNc…</span
             >
           </p>

@@ -83,6 +83,7 @@ func TestExplainAPIFailuresAndRetryAdvice(t *testing.T) {
 		{"gone", "expired", 0, 0, "the message has expired"},
 		{"gone", "cancelled", 0, 0, "the sender cancelled the message"},
 		{"gone", "deleted", 0, 0, "the message was deleted"},
+		{"gone", "lost", 0, 0, "the server lost the key to the message, usually in a restart; it has to be sent again"},
 		{"gone", "untrusted state", 0, 0, "the message is no longer available"},
 		{"not_found", "", 0, 0, "no such message: the link or token is wrong, or the message is gone"},
 		{"passphrase", "", 2, 0, "wrong passphrase; 2 attempts left before the message makes every reader wait"},
@@ -94,6 +95,7 @@ func TestExplainAPIFailuresAndRetryAdvice(t *testing.T) {
 		{"id_token", "", 0, 0, "the server refused the new message id; try again"},
 		{"conflict", "", 0, 0, "the server refused the new message id; try again"},
 		{"internal", "", 0, 0, "the server failed; try again later"},
+		{"client_outdated", "", 0, 0, "this nylzo is older than the server; update it"},
 		{"untrusted error", "", 0, 0, "the server answered with status 599"},
 	} {
 		t.Run(test.kind+test.state, func(t *testing.T) {

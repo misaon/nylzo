@@ -28,7 +28,6 @@ import {
 } from '../limits.ts';
 import { decodeBase64url, encodeBase64url } from '../primitives/base64url.ts';
 import { newSecret, parseId } from '../primitives/identifiers.ts';
-import { deriveAll } from '../scrypt.ts';
 import { objectHash, open, seal } from './envelope.ts';
 import type { Expected, Payload } from './envelope.ts';
 import { aad, newHeader } from './header.ts';
@@ -44,9 +43,14 @@ interface Sealed {
   readonly object: Uint8Array<ArrayBuffer>;
 }
 
-const policy: Policy = { opensMax: 1, ttlSeconds: 86_400 };
+const policy: Policy = { opensMax: 1, ttlSeconds: 86_400, deadline: 1_797_000_000 };
+
+// policyOf reads a policy of the vectors, where a deadline of 0 is a policy without one.
+function policyOf(opensMax: number, ttlSeconds: number, deadline: number): Policy {
+  return deadline === 0 ? { opensMax, ttlSeconds } : { opensMax, ttlSeconds, deadline };
+}
 const textPayload: Payload = { meta: { text: 'integrity' } };
-const passphraseKey = new Uint8Array(32).fill(1);
+const exportKey = new Uint8Array(64).fill(1);
 const prefix = PREFIX_LENGTH;
 
 async function keysOf(id: Uint8Array, secret: Uint8Array, key: Uint8Array, share: Uint8Array): Promise<ContentKeys> {
@@ -57,7 +61,7 @@ async function sealed(kdfId: KdfId, payload = textPayload): Promise<Sealed> {
   const id = randomId();
   const secret = newSecret();
   const share = newSecret();
-  const keys = await keysOf(id, secret, kdfId === KDF_NONE ? new Uint8Array(0) : passphraseKey, share);
+  const keys = await keysOf(id, secret, exportKey, share);
   const object = await seal(keys, newHeader(kdfId), id, policy, payload);
   return { id, secret, share, keys, object };
 }
@@ -93,25 +97,22 @@ async function sealVector(vector: EnvelopeVector): Promise<{
   const id = parseId(vector.id);
   const kdfId = kdfIdOf(vector.kdf_id);
   const share = hexToBytes(vector.e_hex);
-  const { content } = await deriveAll(id, hexToBytes(vector.s), kdfId, vector.passphrase ?? '', share);
-  const header: Header = { version: 2, kdfId, flags: vector.flags, iv: hexToBytes(vector.iv_hex) };
+  const content = await deriveContent(id, hexToBytes(vector.s), hexToBytes(vector.p_hex), share);
+  const header: Header = { version: 3, kdfId, flags: vector.flags, iv: hexToBytes(vector.iv_hex) };
   const file = vector.file && fileBytes(vector.file);
   const fileMeta = vector.file && { name: vector.file.name, mime: vector.file.mime, size: vector.file.size };
   const meta: Meta = { text: vector.text, file: fileMeta };
-  const object = await seal(
-    content,
-    header,
-    id,
-    { opensMax: vector.opens_max, ttlSeconds: vector.ttl_s },
-    { meta, file },
-  );
+  const object = await seal(content, header, id, policyOf(vector.opens_max, vector.ttl_s, vector.deadline), {
+    meta,
+    file,
+  });
   return { object, keys: content, header, meta, file };
 }
 
 describe('AK9: envelope vectors', () => {
   it.each(vectors.envelope)('$name', { timeout: 120_000 }, async (vector) => {
     const id = parseId(vector.id);
-    const vectorPolicy: Policy = { opensMax: vector.opens_max, ttlSeconds: vector.ttl_s };
+    const vectorPolicy = policyOf(vector.opens_max, vector.ttl_s, vector.deadline);
     const { object, keys, header, meta, file } = await sealVector(vector);
 
     expect(new TextDecoder().decode(encodeMeta(meta))).toBe(vector.meta_json);
@@ -174,16 +175,19 @@ describe('AK9, F1, F3, F4: a reader refuses every object its link does not open'
     }
     const id = parseId(vector.reader_id ?? base.id);
     const kdfId = kdfIdOf(vector.kdf_id);
-    const { content } = await deriveAll(
+    const content = await deriveContent(
       id,
       hexToBytes(base.s),
-      kdfId,
-      vector.passphrase ?? '',
+      hexToBytes(vector.p_hex ?? base.p_hex),
       hexToBytes(vector.e_hex),
     );
     const expected: Expected = {
       id,
-      policy: { opensMax: vector.opens_max ?? base.opens_max, ttlSeconds: vector.ttl_s ?? base.ttl_s },
+      policy: policyOf(
+        vector.opens_max ?? base.opens_max,
+        vector.ttl_s ?? base.ttl_s,
+        vector.deadline ?? base.deadline,
+      ),
       kdfId,
       objectHash: decodeBase64url(vector.h),
     };
@@ -212,19 +216,21 @@ describe('AK8: a changed envelope, policy or key fails integrity', () => {
     ['a flipped commitment bit', () => reopen(flipped(message.object, HEADER_LENGTH))],
     ['a raised opens_max', () => reopen(message.object, { policy: { ...policy, opensMax: 2 } })],
     ['a longer TTL', () => reopen(message.object, { policy: { ...policy, ttlSeconds: policy.ttlSeconds + 1 } })],
+    ['F13: a later deadline', () => reopen(message.object, { policy: { ...policy, deadline: 1_797_000_060 } })],
+    ['F13: no deadline', () => reopen(message.object, { policy: { opensMax: 1, ttlSeconds: 86_400 } })],
     ['another id', () => reopen(message.object, { id: randomId() })],
     [
       'another secret',
-      async () => reopen(message.object, {}, await keysOf(message.id, newSecret(), passphraseKey, message.share)),
+      async () => reopen(message.object, {}, await keysOf(message.id, newSecret(), exportKey, message.share)),
     ],
     [
-      'a wrong passphrase',
+      'another export key',
       async () =>
-        reopen(message.object, {}, await keysOf(message.id, message.secret, new Uint8Array(32), message.share)),
+        reopen(message.object, {}, await keysOf(message.id, message.secret, new Uint8Array(64), message.share)),
     ],
     [
       'F3: another share',
-      async () => reopen(message.object, {}, await keysOf(message.id, message.secret, passphraseKey, newSecret())),
+      async () => reopen(message.object, {}, await keysOf(message.id, message.secret, exportKey, newSecret())),
     ],
     [
       'F1: an object other than the link pins',
@@ -256,9 +262,10 @@ describe('open rejects a malformed header before decrypting (spec 3)', () => {
   });
 
   it.each<[string, (object: Uint8Array) => Uint8Array, KdfId, new () => Error]>([
-    ['version 3', (object) => flipped(object, 0, 1), KDF_NONE, VersionError],
-    ['version 1', (object) => flipped(object, 0, 3), KDF_NONE, VersionError],
-    ['flags 1', (object) => flipped(object, 2), KDF_NONE, FlagsError],
+    ['version 2', (object) => flipped(object, 0, 1), KDF_NONE, VersionError],
+    ['version 0', (object) => flipped(object, 0, 3), KDF_NONE, VersionError],
+    ['flags 3', (object) => flipped(object, 2), KDF_NONE, FlagsError],
+    ['F13: a cleared deadline flag', (object) => flipped(object, 2, 2), KDF_NONE, IntegrityError],
     ['the retired profile 2', (object) => flipped(object, 1, KDF_RETIRED), KDF_RETIRED as KdfId, KdfError],
     ['a profile other than the fragment', (object) => object, KDF_SCRYPT, KdfMismatchError],
     ['an object without a whole tag', (object) => object.subarray(0, prefix + 3), KDF_NONE, IntegrityError],
@@ -277,7 +284,7 @@ describe('seal rejects what the spec forbids (spec 3 and 3.1)', () => {
   const oversizedFile = new Uint8Array(MAX_FILE_BYTES + 1);
   let keys: ContentKeys;
   beforeAll(async () => {
-    keys = await keysOf(randomId(), newSecret(), new Uint8Array(0), newSecret());
+    keys = await keysOf(randomId(), newSecret(), exportKey, newSecret());
   });
 
   it.each<[string, Header, Policy, Payload, new () => Error]>([
@@ -302,6 +309,8 @@ describe('seal rejects what the spec forbids (spec 3 and 3.1)', () => {
     ['opens_max over 16 bits', header, { opensMax: 65_536, ttlSeconds: 60 }, textPayload, PolicyError],
     ['a fractional opens_max', header, { opensMax: 1.5, ttlSeconds: 60 }, textPayload, PolicyError],
     ['flags 1', { ...header, flags: 1 }, policy, textPayload, FlagsError],
+    ['F13: a deadline without its flag', { ...header, flags: 0 }, policy, textPayload, PolicyError],
+    ['F13: the flag without a deadline', header, { opensMax: 1, ttlSeconds: 60 }, textPayload, PolicyError],
     ['the retired profile 2', { ...header, kdfId: KDF_RETIRED as KdfId }, policy, textPayload, KdfError],
     ['an 11-byte iv', { ...header, iv: new Uint8Array(11) }, policy, textPayload, HeaderError],
   ])('%s', async (_, invalidHeader, invalidPolicy, payload, expected) => {

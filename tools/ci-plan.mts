@@ -28,6 +28,7 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
   let full = event === "schedule" || event === "workflow_dispatch" || files.length === 0;
   const releasePullRequest = event === "pull_request" && files.every((file) => releasePullRequestFiles.has(file));
   for (const file of releasePullRequest ? [] : files) {
+    if (/^deploy\/(compose\/Caddyfile|hetzner-flatcar\/host\/proxy\/[^/]*Caddyfile)$/u.test(file)) groups.go = true;
     if (
       file === "docs/wiki/reference/Protocol.md" ||
       /^(internal\/(core|pepper)\/|cmd\/nylzo-vectors\/|spec\/|web\/core\/)/u.test(file)
@@ -67,6 +68,7 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
     go: groups.go,
     "windows-build": groups.go,
     windows: groups.go,
+    macos: groups.go,
     fuzz: groups.go,
     web: groups.web,
     coverage: (groups.go || groups.web) && trustedCoverage,
@@ -76,6 +78,7 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
     "dev-setup": groups.integration,
     compose: groups.integration,
     build: groups.integration,
+    "macos-release": groups.integration,
     "codeql-go": event === "pull_request" || groups.go,
     "codeql-web": event === "pull_request" || groups.web,
     "codeql-actions": event === "pull_request" || groups.actions,

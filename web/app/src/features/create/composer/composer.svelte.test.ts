@@ -45,8 +45,11 @@ describe('message composer interactions', () => {
   let created: Created;
   let composers: Composer[];
 
+  const session = memoryStore();
+  let browser: ReturnType<typeof memoryStore> & { readonly close: () => void };
+
   function composer(): Composer {
-    const form = new Composer(new Translator('en'));
+    const form = new Composer(new Translator('en'), session);
     form.limits = limits;
     composers.push(form);
     return form;
@@ -68,7 +71,8 @@ describe('message composer interactions', () => {
       manageKey: await requestKey(new Uint8Array(32).fill(7)),
     };
     vi.mocked(createMessage).mockResolvedValue(created);
-    vi.mocked(browserSentStore).mockReturnValue(memoryStore());
+    browser = Object.assign(memoryStore(), { close: vi.fn<() => void>() });
+    vi.mocked(browserSentStore).mockReturnValue(browser);
     vi.mocked(rememberSent).mockResolvedValue(true);
     vi.stubGlobal('document', { querySelector });
     vi.stubGlobal('location', { origin: 'https://nylzo.test', reload });
@@ -103,14 +107,16 @@ describe('message composer interactions', () => {
     expect(form.fileLimit).toBe(16);
   });
 
-  it('disables persistent records when served from the verified local client', () => {
+  it('tracks only in the tab, never in browser storage, when served from the verified local client', () => {
     querySelector.mockReturnValue({ content: 'https://instance.test' });
     const form = composer();
     const stop = form.start({} as HTMLElement);
-    expect(form.canRemember).toBe(false);
+    expect(form.canKeep).toBe(false);
+    form.text = 'secret';
     if (typeof stop === 'function') {
       stop();
     }
+    expect([form.text, form.left]).toEqual(['', true]);
   });
 
   it('does not submit before limits load, and focuses empty content instead of sending it', async () => {
@@ -232,30 +238,55 @@ describe('message composer interactions', () => {
     expect(focus).toHaveBeenCalledOnce();
   });
 
-  it.each([true, false])('saves the manage key only when the sender asks and shows the result: %s', async (stored) => {
+  it.each([
+    [true, true],
+    [true, false],
+    [false, true],
+  ])(
+    'saves the manage key only when the sender asks, in the browser only when kept, and shows the result: kept=%s stored=%s',
+    async (keep, stored) => {
+      const form = composer();
+      form.text = 'remember this message';
+      const gate = Promise.withResolvers<boolean>();
+      vi.mocked(rememberSent).mockReturnValueOnce(gate.promise);
+      await submit(form);
+      vi.advanceTimersByTime(5100);
+      expect(rememberSent).not.toHaveBeenCalled();
+      const remembering = form.remember('  Heslo pro Petra ', keep);
+      expect(rememberSent).toHaveBeenCalledWith(
+        keep ? browser : session,
+        {
+          id: created.id,
+          createdAt: Date.now(),
+          expiresAt: Date.parse(created.expiresAt),
+          label: 'Heslo pro Petra',
+          manageKey: created.manageKey,
+        },
+        5000,
+      );
+      expect(browserSentStore).toHaveBeenCalledTimes(keep ? 1 : 0);
+      expect(form.remembered).toBe('saving');
+      gate.resolve(stored);
+      await remembering;
+      expect(form.remembered).toBe(stored ? 'remembered' : 'failed');
+      expect(form.kept).toBe(keep);
+      await form.remember('', true);
+      expect(vi.mocked(rememberSent).mock.calls).toHaveLength(1);
+      await form.remember('', false);
+      expect(vi.mocked(rememberSent).mock.calls).toHaveLength(keep && !stored ? 2 : 1);
+    },
+  );
+
+  it('keeps a message only in this tab when the page cannot keep it in the browser', async () => {
     const form = composer();
-    form.text = 'remember this message';
-    const gate = Promise.withResolvers<boolean>();
-    vi.mocked(rememberSent).mockReturnValueOnce(gate.promise);
+    form.canKeep = false;
+    form.text = 'local client';
     await submit(form);
     vi.advanceTimersByTime(5100);
+    await form.remember('', true);
     expect(rememberSent).not.toHaveBeenCalled();
-    const remembering = form.remember('  Heslo pro Petra ');
-    expect(rememberSent).toHaveBeenCalledWith(
-      expect.anything(),
-      {
-        id: created.id,
-        createdAt: Date.now(),
-        expiresAt: Date.parse(created.expiresAt),
-        label: 'Heslo pro Petra',
-        manageKey: created.manageKey,
-      },
-      5000,
-    );
-    expect(form.remembered).toBe('saving');
-    gate.resolve(stored);
-    await remembering;
-    expect(form.remembered).toBe(stored ? 'remembered' : 'failed');
+    await form.remember('', false);
+    expect(rememberSent).toHaveBeenCalledWith(session, expect.objectContaining({ id: created.id }), 5000);
   });
 
   it('does not update a reset form when saving a previous record finishes late', async () => {
@@ -265,7 +296,7 @@ describe('message composer interactions', () => {
     vi.mocked(rememberSent).mockReturnValueOnce(gate.promise);
     await submit(form);
     vi.advanceTimersByTime(5100);
-    const remembering = form.remember('');
+    const remembering = form.remember('', true);
     await form.another();
     gate.resolve(true);
     await remembering;
@@ -353,8 +384,8 @@ describe('message composer interactions', () => {
     form.protect = true;
     form.passphrase = 'correct horse battery staple';
     let derivation: Promise<Uint8Array<ArrayBuffer>> | undefined;
-    vi.mocked(createMessage).mockImplementationOnce(async (input, dependencies) => {
-      derivation = dependencies.scrypt(input.passphrase ?? '', new Uint8Array(16), vi.fn<(fraction: number) => void>());
+    vi.mocked(createMessage).mockImplementationOnce(async (_input, dependencies) => {
+      derivation = dependencies.stretch(new Uint8Array(64), vi.fn<(fraction: number) => void>());
       return derivation.then(() => created);
     });
     const sending = submit(form);

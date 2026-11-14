@@ -31,32 +31,52 @@ type abuseRequest struct {
 	GoodFaith bool   `json:"good_faith"`
 }
 
+// handleBurn deletes a message only after a handshake whose KE3 matches, checked and counted as for a claim (F05).
 func (s *Server) handleBurn(w http.ResponseWriter, r *http.Request) {
-	s.end(w, r, seal.Read, store.StateDeleted)
-}
-
-func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
-	s.end(w, r, seal.Manage, store.StateCancelled)
-}
-
-// end answers 204 to the request that recorded the first ending, even when a concurrent release finishes it.
-func (s *Server) end(w http.ResponseWriter, r *http.Request, purpose seal.Purpose, state store.State) {
 	if !validPathID(w, r) || !s.allowRead(w, r) {
 		return
 	}
-	granted, ok := s.authorizedLive(w, r, purpose)
+	ke3, ok := parseKE3(w, r)
+	if !ok {
+		return
+	}
+	granted, ok := s.authorizedOpenable(w, r, seal.Read)
+	defer granted.forget()
+	if !ok || !s.finishHandshake(w, r, &granted.record, ke3) {
+		return
+	}
+	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, store.StateDeleted, time.Now())
+	s.answerEnding(w, r, &granted.record, store.StateDeleted, final, err)
+}
+
+func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
+	if !validPathID(w, r) || !s.allowRead(w, r) {
+		return
+	}
+	granted, ok := s.authorizedOpenable(w, r, seal.Manage)
 	defer granted.forget()
 	if !ok {
 		return
 	}
-	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, state, time.Now())
-	s.leaseTimers.Cancel(granted.record.Row.Locator)
+	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, store.StateCancelled, time.Now())
+	s.answerEnding(w, r, &granted.record, store.StateCancelled, final, err)
+}
+
+// answerEnding answers 204 to the request that recorded the first ending, even when a concurrent release finishes it.
+func (s *Server) answerEnding(
+	w http.ResponseWriter,
+	r *http.Request,
+	record *store.Record,
+	requested, final store.State,
+	err error,
+) {
+	s.leaseTimers.Cancel(record.Row.Locator)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		s.writeCurrentGone(w, r, &granted.record)
+		s.writeCurrentGone(w, r, record)
 	case err != nil:
 		s.writeInternal(w, r, err)
-	case final != state:
+	case final != requested:
 		writeGone(w, string(final))
 	default:
 		w.WriteHeader(http.StatusNoContent)
@@ -74,6 +94,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	now := time.Now()
 	record := &granted.record
+	s.endLostMessage(r.Context(), record, now)
 	message := record.Message
 	if !record.HasBlob() {
 		writeJSON(w, http.StatusOK, api.Status{
@@ -126,6 +147,9 @@ func (s *Server) handleAbuse(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.writeInternal(w, r, err)
 		return
+	}
+	if ok {
+		s.endLostMessage(r.Context(), &granted.record, now)
 	}
 	if !ok || granted.record.Ended(now) {
 		waitForTheFloor(r, now)

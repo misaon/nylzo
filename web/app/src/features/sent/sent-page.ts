@@ -21,12 +21,13 @@ export interface SentItem {
   readonly state: ItemState;
   readonly ended: boolean;
   readonly cancellable: boolean;
+  readonly session: boolean;
 }
 
 export type SentView =
   | { readonly view: 'loading' }
   | { readonly view: 'unavailable' }
-  | { readonly view: 'list'; readonly items: readonly SentItem[] };
+  | { readonly view: 'list'; readonly items: readonly SentItem[]; readonly storageFailed: boolean };
 
 export type CancelOutcome =
   | { readonly outcome: 'cancelled' }
@@ -38,7 +39,8 @@ export type CancelOutcome =
 
 export interface SentDependencies {
   readonly api: Api;
-  readonly store: SentStore;
+  readonly session: SentStore;
+  readonly browser?: SentStore | undefined;
   readonly now: () => number;
 }
 
@@ -48,6 +50,12 @@ export interface SentPage {
   cancel(id: string): Promise<CancelOutcome>;
   forget(id: string): Promise<void>;
   forgetAll(): Promise<void>;
+  stop(): void;
+}
+
+// Only the server's own clock ends a message; a skewed local clock must not cost the sender the key or the cancel button.
+function endedOnServer(status: Status): boolean {
+  return status.endedAt !== undefined || (status.state !== 'available' && status.state !== 'opened');
 }
 
 export function assess(state: ItemState, expiresAt: number, now: number): Pick<SentItem, 'ended' | 'cancellable'> {
@@ -57,10 +65,7 @@ export function assess(state: ItemState, expiresAt: number, now: number): Pick<S
   if (state.kind !== 'loaded') {
     return { ended: false, cancellable: false };
   }
-  const { status } = state;
-  const expires = status.expiresAt === undefined ? expiresAt : Date.parse(status.expiresAt);
-  const ended =
-    status.endedAt !== undefined || (status.state !== 'available' && status.state !== 'opened') || expires <= now;
+  const ended = endedOnServer(state.status);
   return { ended, cancellable: !ended };
 }
 
@@ -87,14 +92,22 @@ function cancelOutcome(error: unknown): CancelOutcome {
   return { outcome: 'failed' };
 }
 
+async function retained(store: SentStore | undefined, now: number): Promise<SentRecord[]> {
+  return store ? retainedRecords(store, now) : [];
+}
+
 export function createSentPage(dependencies: SentDependencies, notify: (view: SentView) => void): SentPage {
+  const { api, session, browser, now } = dependencies;
   let records: SentRecord[] = [];
+  let homes = new Map<string, SentStore>();
   let states = new Map<string, ItemState>();
   let generation = 0;
+  let storageFailed = false;
+  let concluded = new Set<string>();
   const cancelling = new Set<string>();
 
   function show(): void {
-    const now = dependencies.now();
+    const moment = now();
     notify({
       view: 'list',
       items: records.map((record) => {
@@ -105,9 +118,11 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
           createdAt: record.createdAt,
           expiresAt: record.expiresAt,
           state,
-          ...assess(state, record.expiresAt, now),
+          ...(concluded.has(record.id) ? { ended: true, cancellable: false } : assess(state, record.expiresAt, moment)),
+          session: homes.get(record.id) === session,
         };
       }),
+      storageFailed,
     });
   }
 
@@ -127,11 +142,12 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
   function drop(id: string): void {
     records = records.filter((record) => record.id !== id);
     states.delete(id);
+    homes.delete(id);
     show();
   }
 
   async function stored(id: string): Promise<SentRecord | undefined> {
-    const saved = await dependencies.store.list();
+    const saved = (await homes.get(id)?.list()) ?? [];
     const found = saved.find((record) => record.id === id);
     if (!found) {
       drop(id);
@@ -139,51 +155,69 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
     return found;
   }
 
-  async function markEnded(id: string, endedAt: number): Promise<SentRecord | undefined> {
+  // The page keeps showing an ended message, but its key and label leave storage at once; a failed removal waits for the retention purge.
+  async function forgetEnded(id: string, home: SentStore | undefined): Promise<void> {
     try {
-      return await dependencies.store.markEnded(id, endedAt);
+      await home?.remove(id);
     } catch {
-      return undefined;
+      storageFailed = true;
     }
   }
 
-  async function rememberEnd(record: SentRecord, status: Status): Promise<void> {
-    if (status.endedAt === undefined || record.endedAt !== undefined) {
-      return;
-    }
-    const ended = await markEnded(record.id, Date.parse(status.endedAt));
-    if (ended) {
-      records = records.map((candidate) => (candidate.id === record.id ? ended : candidate));
-    }
-  }
-
-  async function fetchStatus(id: string): Promise<ItemState | undefined> {
+  async function statusOf(record: SentRecord, home: SentStore | undefined): Promise<ItemState> {
     try {
-      const record = await stored(id);
-      if (!record) {
-        return undefined;
+      const status = await api.status(parseId(record.id), record.manageKey);
+      if (endedOnServer(status)) {
+        await forgetEnded(record.id, home);
       }
-      const status = await dependencies.api.status(parseId(id), record.manageKey);
-      await rememberEnd(record, status);
       return { kind: 'loaded', status };
     } catch (error) {
       return failedState(error);
     }
   }
 
+  async function fetchStatus(id: string): Promise<ItemState | undefined> {
+    const home = homes.get(id);
+    let record: SentRecord | undefined;
+    try {
+      record = await stored(id);
+    } catch (error) {
+      return failedState(error);
+    }
+    return record && statusOf(record, home);
+  }
+
   async function load(): Promise<void> {
     const current = ++generation;
     notify({ view: 'loading' });
-    try {
-      records = await retainedRecords(dependencies.store, dependencies.now());
-    } catch {
+    const moment = now();
+    const [inSession, inBrowser] = await Promise.allSettled([retained(session, moment), retained(browser, moment)]);
+    if (current !== generation) {
+      return;
+    }
+    const kept = inSession.status === 'fulfilled' ? inSession.value : [];
+    storageFailed = inBrowser.status === 'rejected';
+    if (inBrowser.status === 'rejected' && kept.length === 0) {
       records = [];
+      homes = new Map();
       notify({ view: 'unavailable' });
       return;
     }
+    const saved = inBrowser.status === 'fulfilled' ? inBrowser.value : [];
+    homes = new Map<string, SentStore>(kept.map((record) => [record.id, session]));
+    const fromBrowser = saved.filter((record) => !homes.has(record.id));
+    if (browser) {
+      for (const record of fromBrowser) {
+        homes.set(record.id, browser);
+      }
+    }
+    records = [...kept, ...fromBrowser].toSorted((first, second) => second.createdAt - first.createdAt);
     states = new Map();
+    concluded = new Set();
     show();
-    for (const { id } of records) {
+    // The loop holds ids only, so a page that stops keeps no key alive while a request waits.
+    const ids = records.map((record) => record.id);
+    for (const id of ids) {
       if (current !== generation) {
         return;
       }
@@ -220,13 +254,15 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
       return { outcome: 'ignored' };
     }
     cancelling.add(id);
+    const home = homes.get(id);
     let outcome: CancelOutcome;
+    let record: SentRecord | undefined;
     try {
-      const record = await stored(id);
+      record = await stored(id);
       if (!record) {
         return { outcome: 'ignored' };
       }
-      await dependencies.api.cancel(parseId(id), record.manageKey);
+      await api.cancel(parseId(id), record.manageKey);
       outcome = { outcome: 'cancelled' };
     } catch (error) {
       outcome = cancelOutcome(error);
@@ -235,24 +271,42 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
     }
     if (outcome.outcome === 'unknown') {
       setState(id, { kind: 'unknown' });
-    } else if (outcome.outcome !== 'retry_later' && outcome.outcome !== 'failed') {
-      await refresh(id);
+    } else if (record && (outcome.outcome === 'cancelled' || outcome.outcome === 'ended')) {
+      concluded.add(id);
+      await forgetEnded(id, home);
+      setState(id, { kind: 'loading' });
+      setState(id, await statusOf(record, home));
     }
     return outcome;
   }
 
   async function forget(id: string): Promise<void> {
-    await dependencies.store.remove(id);
+    const home = homes.get(id);
+    await (home ? home.remove(id) : Promise.all([session.remove(id), browser?.remove(id)]));
     drop(id);
+  }
+
+  function stop(): void {
+    generation++;
+    storageFailed = false;
+    concluded = new Set();
+    records = [];
+    states = new Map();
+    homes = new Map();
+    notify({ view: 'loading' });
   }
 
   async function forgetAll(): Promise<void> {
     generation++;
-    await dependencies.store.clear();
+    await session.clear();
+    records = records.filter((record) => homes.get(record.id) !== session);
+    show();
+    await browser?.clear();
     records = [];
     states = new Map();
+    homes = new Map();
     show();
   }
 
-  return { load, refresh, cancel, forget, forgetAll };
+  return { load, refresh, cancel, forget, forgetAll, stop };
 }

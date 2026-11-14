@@ -1,7 +1,8 @@
 package server
 
 import (
-	"crypto/ecdh"
+	"crypto/hpke"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -10,21 +11,23 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	corekeys "github.com/misaon/nylzo/internal/core/keys"
+	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
-	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
 
 const (
-	// storeSlack covers rounding expires_at up to the minute and writing the arrived upload (spec section 5.6).
-	storeSlack = 2 * time.Minute
 	// challengesFullRetry waits for the minute purge, which frees the challenges that expired.
 	challengesFullRetry = time.Minute
+	// clockBehindRetry waits for a clock that stepped back behind the epoch ratchet, which never goes back.
+	clockBehindRetry = time.Minute
 )
 
 type instanceResponse struct {
@@ -39,6 +42,7 @@ type instanceVersions struct {
 	API      int    `json:"api"`
 	Envelope int    `json:"envelope"`
 	Fragment int    `json:"fragment"`
+	Share    int    `json:"share"`
 	Server   string `json:"server"`
 }
 
@@ -71,9 +75,9 @@ type transparencyRetention struct {
 
 func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 	now := time.Now()
-	creation, ok := s.parseCreation(r.Header)
-	if !ok {
-		writeError(w, http.StatusBadRequest, errBadRequest)
+	creation, refusal := s.parseCreation(r.Header)
+	if refusal != nil {
+		writeError(w, http.StatusBadRequest, *refusal)
 		return
 	}
 	response := instanceResponse{
@@ -84,11 +88,18 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 			API:      1,
 			Envelope: int(envelope.Version),
 			Fragment: int(core.FragmentVersion),
+			Share:    share.Suite,
 			Server:   s.settings.Version,
 		},
 	}
 	if creation.requested {
 		created, err := s.issueID(&creation, now)
+		if errors.Is(err, epoch.ErrClockBehind) {
+			s.events.WarnContext(r.Context(), "epoch-clock-behind")
+			setRetryAfter(w, clockBehindRetry)
+			writeError(w, http.StatusServiceUnavailable, errUnavailable)
+			return
+		}
 		if err != nil {
 			s.writeInternal(w, r, err)
 			return
@@ -109,55 +120,115 @@ func (s *Server) handleInstance(w http.ResponseWriter, r *http.Request) {
 }
 
 type creationRequest struct {
-	requested bool
-	ttl       time.Duration
-	shareKey  *ecdh.PublicKey
+	requested    bool
+	ttlSeconds   uint32
+	shareKey     hpke.PublicKey
+	registration [opaque.RegistrationRequestLen]byte
 }
 
-// parseCreation reads the TTL and share key headers, which a client sends together when it is about to create a message.
-func (s *Server) parseCreation(header http.Header) (creationRequest, bool) {
-	ttlValues, keyValues := header.Values(api.TTLHeaderName), header.Values(api.ShareKeyHeaderName)
-	if len(ttlValues) == 0 && len(keyValues) == 0 {
-		return creationRequest{}, true
+// parseCreation reads the TTL, share key and registration headers, which a client sends together when it is about to
+// create a message; a client of protocol v2 sends the first two only.
+func (s *Server) parseCreation(header http.Header) (creationRequest, *api.ErrorResponse) {
+	values, refusal := creationHeaders(header)
+	if refusal != nil || values == nil {
+		return creationRequest{}, refusal
 	}
-	if len(ttlValues) != 1 || len(keyValues) != 1 {
-		return creationRequest{}, false
+	parsed, err := strconv.ParseUint(values.ttl, 10, 32)
+	seconds := uint32(parsed)
+	if err != nil || seconds < envelope.MinTTLSeconds ||
+		time.Duration(seconds)*time.Second > s.settings.Limits.MaxTTL ||
+		strconv.FormatUint(parsed, 10) != values.ttl {
+		return creationRequest{}, &errBadRequest
 	}
-	seconds, err := strconv.ParseInt(ttlValues[0], 10, 64)
-	if err != nil || seconds < envelope.MinTTLSeconds || seconds > int64(s.settings.Limits.MaxTTL/time.Second) ||
-		strconv.FormatInt(seconds, 10) != ttlValues[0] {
-		return creationRequest{}, false
-	}
-	key, err := share.ParseKey(keyValues[0])
+	key, err := share.ParseKey(values.shareKey)
 	if err != nil {
-		return creationRequest{}, false
+		if errors.Is(err, share.ErrOutdated) {
+			return creationRequest{}, &errClientOutdated
+		}
+		return creationRequest{}, &errBadRequest
 	}
-	return creationRequest{requested: true, ttl: time.Duration(seconds) * time.Second, shareKey: key}, true
+	creation := creationRequest{requested: true, ttlSeconds: seconds, shareKey: key}
+	if !parseElement(creation.registration[:], values.registration) {
+		return creationRequest{}, &errBadRequest
+	}
+	return creation, nil
 }
 
-// issueID hands out an id with the share of the hour in which a message made with it can expire at the latest.
+type creationValues struct {
+	ttl, shareKey, registration string
+}
+
+// creationHeaders accepts all three headers once or none of them; a request with the first two only comes from a
+// client of protocol v2.
+func creationHeaders(header http.Header) (*creationValues, *api.ErrorResponse) {
+	ttlValues, keyValues := header.Values(api.TTLHeaderName), header.Values(api.ShareKeyHeaderName)
+	registrationValues := header.Values(api.RegistrationHeaderName)
+	switch {
+	case len(ttlValues) == 0 && len(keyValues) == 0 && len(registrationValues) == 0:
+		return nil, nil
+	case len(ttlValues) == 1 && len(keyValues) == 1 && len(registrationValues) == 0:
+		return nil, &errClientOutdated
+	case len(ttlValues) != 1 || len(keyValues) != 1 || len(registrationValues) != 1:
+		return nil, &errBadRequest
+	default:
+		return &creationValues{ttl: ttlValues[0], shareKey: keyValues[0], registration: registrationValues[0]}, nil
+	}
+}
+
+// parseElement accepts the canonical encoding of a ristretto255 element other than the identity.
+func parseElement(target []byte, encoded string) bool {
+	if !core.DecodeInto(target, encoded) {
+		return false
+	}
+	_, err := opaque.DeserializeElement(target)
+	return err == nil
+}
+
+// issueID fixes the deadline of a message made with the new id, the TTL from now rounded up to the minute, and hands
+// out the share of the epoch that the deadline ends, made by the generation of the current hour (spec section 5.6).
 func (s *Server) issueID(creation *creationRequest, now time.Time) (api.InstanceCreate, error) {
 	id := core.NewID()
-	upload := max(createBodyTimeout, store.TransferTime(s.settings.Limits.MaxObjectBytes))
-	latestExpiry := now.Add(proof.IDTokenTTL() + upload + storeSlack + creation.ttl)
-	shareEpoch := epoch.Hour(latestExpiry)
-	ratchetID := s.epochs.ID()
-	token, expires := s.idTokens.Issue(id, shareEpoch, ratchetID, now)
-	expiryShare, err := s.epochs.Share(ratchetID, shareEpoch, seal.LocatorOf(id[:]), now)
+	deadline := store.ExpiresAt(now, time.Duration(creation.ttlSeconds)*time.Second)
+	shareEpoch := epoch.Of(deadline)
+	var (
+		generation  epoch.GenerationID
+		expiryShare [core.ShareLen]byte
+		err         error
+	)
+	secretmode.Do(func() {
+		generation, expiryShare, err = s.epochs.Issue(shareEpoch, seal.LocatorOf(id[:]), now)
+	})
+	defer clear(expiryShare[:])
 	if err != nil {
 		return api.InstanceCreate{}, err
 	}
-	defer clear(expiryShare[:])
+	token, expires := s.idTokens.Issue(id, shareEpoch, creation.ttlSeconds, generation, now)
 	wrapped, err := share.Wrap(&expiryShare, creation.shareKey)
 	if err != nil {
 		return api.InstanceCreate{}, err
 	}
+	var response [opaque.RegistrationResponseLen]byte
+	secretmode.Do(func() {
+		var keys opaque.ServerKeys
+		keys, _, err = s.ring.OPAQUEKeys(id[:], s.ring.CurrentID())
+		if err == nil {
+			credential := corekeys.CredentialIdentifier(id, &expiryShare)
+			defer clear(credential)
+			response, err = opaque.CreateRegistrationResponse(creation.registration[:], &keys, credential)
+		}
+		keys.Wipe()
+	})
+	if err != nil {
+		return api.InstanceCreate{}, err
+	}
 	return api.InstanceCreate{
-		ID:        id.String(),
-		IDToken:   token,
-		ExpiresAt: formatTime(expires),
-		Epoch:     &shareEpoch,
-		Share:     core.Encode(wrapped[:]),
+		ID:           id.String(),
+		IDToken:      token,
+		ExpiresAt:    formatTime(expires),
+		Epoch:        &shareEpoch,
+		Deadline:     formatTime(deadline),
+		Share:        core.Encode(wrapped[:]),
+		Registration: core.Encode(response[:]),
 	}, nil
 }
 

@@ -99,12 +99,20 @@ describe('stored records of sent messages (D39)', () => {
       { ...good, expiresAt: '2026-10-23' },
       { ...good, createdAt: 1e300, expiresAt: 1e300 },
       { ...good, expiresAt: NOW - 1 },
-      { ...good, endedAt: -5 },
+      { ...good, endedAt: NOW + 1 },
       null,
       'record',
     ]) {
       expect(recordFrom(malformed)).toBeUndefined();
     }
+  });
+
+  it('stores a record in tab memory in the same form as in IndexedDB, without an empty label', async () => {
+    const store = memoryStore();
+    await store.put({ ...(await newRecord()), label: '' });
+    const [listed] = await store.list();
+    expect(listed).toBeDefined();
+    expect(listed).not.toHaveProperty('label');
   });
 
   it('keeps a short label the sender typed and drops one that is not plain text', async () => {

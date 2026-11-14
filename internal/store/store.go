@@ -20,6 +20,7 @@ const (
 	StateExpired   State = api.StateExpired
 	StateCancelled State = api.StateCancelled
 	StateDeleted   State = api.StateDeleted
+	StateLost      State = api.StateLost
 )
 
 const (
@@ -44,9 +45,9 @@ func CeilMinute(moment time.Time) time.Time {
 	return ceil(moment, time.Minute)
 }
 
-// ExpiresAt is when a message whose upload was stored at uploaded expires: ttl later, rounded up to the minute.
-func ExpiresAt(uploaded time.Time, ttl time.Duration) time.Time {
-	return CeilMinute(uploaded.UTC().Add(ttl))
+// ExpiresAt is when a message whose TTL starts at the moment expires: ttl later, rounded up to the minute.
+func ExpiresAt(moment time.Time, ttl time.Duration) time.Time {
+	return CeilMinute(moment.UTC().Add(ttl))
 }
 
 // BlobPurgeAt is when the sweep deletes the blob of a message that expires at expiresAt.
@@ -109,32 +110,29 @@ func (e *PassphraseError) Error() string {
 
 // Message holds the fields of a sealed record; only a request that brings pk_R or pk_M can read them.
 type Message struct {
-	Version          uint8
-	KDF              uint8
-	Flags            uint8
-	CreatedAt        time.Time
-	ExpiresAt        time.Time
-	TTLSeconds       uint32
-	OpensMax         uint16
-	OpensRemaining   uint16
-	Size             int64
-	VerifierPepperID byte
-	VerifierMAC      []byte
-	FailCountTotal   int
-	NextAttemptAt    time.Time
-	FirstOpenedAt    *time.Time
-	Ending           State
-	EndedAt          time.Time
-	Leases           []Lease
-	ReportDay        int64
-	Reports          int
-	// Epoch and RatchetID name the expiry share of the message (spec section 5.6).
-	Epoch     uint32
-	RatchetID epoch.RatchetID
-}
-
-func (m *Message) PassphraseRequired() bool {
-	return len(m.VerifierMAC) > 0
+	Version        uint8
+	KDF            uint8
+	Flags          uint8
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+	TTLSeconds     uint32
+	OpensMax       uint16
+	OpensRemaining uint16
+	Size           int64
+	// Registration is the OPAQUE registration sealed under the erase salt; its pepper made the OPAQUE keys.
+	RegistrationPepperID byte
+	Registration         []byte
+	FailCountTotal       int
+	NextAttemptAt        time.Time
+	FirstOpenedAt        *time.Time
+	Ending               State
+	EndedAt              time.Time
+	Leases               []Lease
+	ReportDay            int64
+	Reports              int
+	// Epoch and Generation name the expiry share of the message (spec section 5.6).
+	Epoch      uint32
+	Generation epoch.GenerationID
 }
 
 type Lease struct {
@@ -165,10 +163,15 @@ type DueBlob struct {
 	Reference string
 }
 
+// Attempt is the passphrase attempt that a handshake counted; a matching KE3 takes it back (spec section 6.4).
+type Attempt struct {
+	// Previous is next_attempt_at before the handshake, Set the value the handshake left.
+	Previous time.Time
+	Set      time.Time
+}
+
 type ClaimParameters struct {
 	Clock         func() time.Time
-	VerifierSent  bool
-	VerifyMAC     func(pepperID byte, storedMAC []byte) bool
 	LeaseMAC      []byte
 	LeasePepperID byte
 }
@@ -199,6 +202,9 @@ type Messages interface {
 	ForgetBlobs(ctx context.Context, due []DueBlob) error
 	PurgeRows(ctx context.Context, now time.Time, limit int) (int, error)
 	KnownBlobReferences(ctx context.Context) (map[string]struct{}, error)
+	// ResealWraps hands the locator and wraps of every row to reseal, stores the wraps it changed and leaves no older
+	// copy of a row behind.
+	ResealWraps(ctx context.Context, reseal func(row *Row) bool) error
 }
 
 type Counters interface {
@@ -224,15 +230,16 @@ type BlobInfo struct {
 
 type Blobs interface {
 	// PutExpiring stores the content and reports when it was stored; the blob carries the BlobPurgeAt of a message
-	// stored then with ttl.
+	// that expires at expiresAt.
 	PutExpiring(
 		ctx context.Context,
 		reference string,
 		content io.Reader,
 		size int64,
-		ttl time.Duration,
+		expiresAt time.Time,
 	) (time.Time, error)
-	Open(ctx context.Context, reference string) (io.ReadCloser, int64, error)
+	// Open gives a reader that can seek, so the server can check a blob and then stream it from the same file.
+	Open(ctx context.Context, reference string) (io.ReadSeekCloser, int64, error)
 	Delete(ctx context.Context, reference string) error
 	DeleteBatch(ctx context.Context, references []string) []error
 	List(ctx context.Context) ([]BlobInfo, error)

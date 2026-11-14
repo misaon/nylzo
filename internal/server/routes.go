@@ -16,6 +16,7 @@ import (
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/crossorigin"
 	"github.com/misaon/nylzo/internal/server/logging"
+	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -40,6 +41,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST "+api.MessagesPath, s.handleCreate)
 	onMessage("GET "+message, s.handleMetadata)
 	onMessage("HEAD "+message, handleAPINotFound)
+	onMessage("POST "+message+api.HandshakeAction, s.handleHandshake)
 	onMessage("POST "+message+api.ClaimAction, s.handleClaim)
 	onMessage("GET "+message+api.BlobAction, s.handleBlob)
 	onMessage("HEAD "+message+api.BlobAction, handleAPINotFound)
@@ -114,21 +116,46 @@ func (s *Server) noticeForwarded(next http.Handler) http.Handler {
 
 type spentKey struct{}
 
+type spentChallenge struct {
+	challenge [signing.ChallengeLen]byte
+	login     *proof.Login
+	checked   bool
+}
+
 // seeChallenges uses up a signed request's challenge after the cross-origin gate and before any other check, so no
-// answer leaves it usable.
+// answer leaves it usable; the login state of a handshake goes with the request, a refusal before its KE3 is checked
+// takes the attempt back, and the state is wiped when the request ends.
 func (s *Server) seeChallenges(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
-		if isAPI(r) && err == nil && s.challenges.See(signature.Challenge, time.Now()) {
-			r = r.WithContext(context.WithValue(r.Context(), spentKey{}, &signature.Challenge))
+		if isAPI(r) && err == nil {
+			if accepted, login := s.challenges.Take(signature.Challenge, time.Now()); accepted {
+				spent := &spentChallenge{challenge: signature.Challenge, login: login}
+				r = r.WithContext(context.WithValue(r.Context(), spentKey{}, spent))
+				if login != nil {
+					defer login.Wipe()
+					defer s.takeBackUnchecked(r)
+				}
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
 func spentBy(r *http.Request, challenge [signing.ChallengeLen]byte) bool {
-	spent, ok := r.Context().Value(spentKey{}).(*[signing.ChallengeLen]byte)
-	return ok && *spent == challenge
+	spent, ok := r.Context().Value(spentKey{}).(*spentChallenge)
+	return ok && spent.challenge == challenge
+}
+
+// takeLogin hands the login state of the handshake that issued the request's challenge, if one did, to the one check
+// of the request's KE3.
+func takeLogin(r *http.Request) *proof.Login {
+	spent, ok := r.Context().Value(spentKey{}).(*spentChallenge)
+	if !ok || spent.checked {
+		return nil
+	}
+	spent.checked = true
+	return spent.login
 }
 
 func prefetchGuard(next http.Handler) http.Handler {

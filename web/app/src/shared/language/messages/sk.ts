@@ -150,6 +150,7 @@ export const messages: Catalog = {
   'problem.opens.out_of_range': 'Počet otvorení musí byť 1 až {max}.',
   'problem.passphrase.too_short': 'Pridajte ešte {missing} (najmenej {min}) alebo zvoľte Vygenerovať.',
   'problem.passphrase.malformed': 'Heslo obsahuje neplatné znaky.',
+  'problem.passphrase.too_long': 'Heslo je príliš dlhé.',
   'problem.passphrase.repetitive': 'Heslo opakuje príliš málo rôznych znakov.',
   'problem.passphrase.sequential': 'Heslo je súvislá postupnosť písmen, číslic alebo klávesov.',
   'problem.passphrase.context': 'Heslo tvorí hlavne slovo Nylzo.',
@@ -174,13 +175,14 @@ export const messages: Catalog = {
   'clipboard.cleared': 'Schránka je prázdna. Kópie, ktoré už sú v\u{A0}histórii schránky, tam zostanú.',
   'created.another': 'Nová správa',
   'created.remembered': 'Toto zariadenie si správu zapamätalo.',
+  'created.remembered.session': 'Táto karta si správu pamätá najdlhšie do zatvorenia alebo obnovenia.',
   'created.status_link': 'Otvoriť Odoslané',
   'created.not_remembered':
     'Správu sa v\u{A0}tomto zariadení nepodarilo zapamätať, takže ju odtiaľto nebude možné zrušiť.',
 
   'sent.title': 'Odoslané',
   'sent.note':
-    'Zoznam je uložený len v\u{A0}tomto prehliadači a\u{A0}odkazy na správy neobsahuje. Záznam zmizne {days} po skončení správy.',
+    'Odkazy na správy tu nie sú. Záznam o\u{A0}skončenej správe stránka vymaže, hneď ako tu uvidíte, ako dopadla. Ostatné záznamy maže pri návštevách Nylzo, najskôr {days} po skončení platnosti.',
   'sent.loading': 'Načítavame odoslané správy…',
   'sent.unavailable':
     'Tento prehliadač stránke nedovolí ukladať dáta, takže si odoslané správy nepamätá. Povoľte pre tento web ukladanie dát alebo použite iný prehliadač.',
@@ -192,14 +194,15 @@ export const messages: Catalog = {
   'sent.state.expired': 'Vypršala',
   'sent.state.cancelled': 'Zrušená',
   'sent.state.deleted': 'Vymazaná',
+  'sent.state.lost': 'Stratená',
   'sent.label.time': 'Platnosť',
   'sent.label.opens': 'Otvorenia',
-  'sent.label.attempts': 'Chybné heslá',
+  'sent.label.attempts': 'Neúspešné pokusy',
   'sent.label.first_opened': 'Prvé otvorenie',
   'sent.not_opened': 'zatiaľ nie',
   'sent.until': 'do {time}',
   'sent.opens': '{used} z\u{A0}{max}',
-  'sent.unknown': 'Správa už zo servera zmizla.',
+  'sent.unknown': 'Server správu nenašiel. Možno už skončila. Ak ju tu nepotrebujete, odoberte ju.',
   'sent.failed': 'Stav sa nepodarilo načítať. Skontrolujte pripojenie a\u{A0}skúste to znova.',
   'sent.cancel': 'Zrušiť správu',
   'sent.cancel.confirm': 'Po zrušení už správu nikto neotvorí.',
@@ -216,13 +219,18 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'Zoznam odoslaných správ sa tu nedá uložiť',
   'sent.empty.title': 'Zatiaľ tu nič nie je',
   'sent.created': 'Vytvorená {time}',
-  'sent.state.unknown': 'Už neexistuje',
+  'sent.created.session': 'Vytvorená {time}, len v\u{A0}tejto karte',
+  'sent.state.unknown': 'Nenájdená',
   'sent.state.failed': 'Neznámy stav',
   'sent.state.loading': 'Načítavame',
-  'sent.ended.opened': 'Otvorená {time}. Zo servera je vymazaná, záznam tu zostane ešte {days}.',
-  'sent.ended.expired': 'Platnosť skončila {time}. Zo servera je vymazaná, záznam tu zostane ešte {days}.',
-  'sent.ended.cancelled': 'Zrušená {time}. Zo servera je vymazaná, záznam tu zostane ešte {days}.',
-  'sent.ended.deleted': 'Vymazal ju príjemca alebo ju odstránil prevádzkovateľ. Záznam tu zostane ešte {days}.',
+  'sent.ended.opened': 'Otvorená {time}. Zo servera je vymazaná a\u{A0}zo zoznamu zmizne, keď stránku opustíte.',
+  'sent.ended.expired':
+    'Platnosť skončila {time}. Zo servera je vymazaná a\u{A0}zo zoznamu zmizne, keď stránku opustíte.',
+  'sent.ended.cancelled': 'Zrušená {time}. Zo servera je vymazaná a\u{A0}zo zoznamu zmizne, keď stránku opustíte.',
+  'sent.ended.deleted':
+    'Vymazal ju príjemca alebo ju odstránil prevádzkovateľ. Zo zoznamu zmizne, keď stránku opustíte.',
+  'sent.ended.lost':
+    'Server stratil jej kľúč, najčastejšie pri reštarte, takže ju už nikto neotvorí. Ak ju ešte potrebujete, pošlite ju znova. Zo zoznamu zmizne, keď stránku opustíte.',
   'sent.cancel.title': 'Zrušiť správu „{label}“?',
   'sent.cancel.title.untitled': 'Zrušiť správu?',
   'sent.forget.label': 'Odobrať zo zoznamu',
@@ -232,10 +240,12 @@ export const messages: Catalog = {
   'read.title': 'Jednorazová správa',
   'read.loading': 'Načítavame správu…',
   'read.retry_later': 'Služba je preťažená. Skúste to znova o\u{A0}{time}.',
+  'read.wait': 'Po mnohých neúspešných pokusoch je otvorenie pozastavené. Skúste to znova o\u{A0}{time}.',
   'read.ended.opened': 'Správa už bola otvorená.',
   'read.ended.expired': 'Platnosť správy vypršala.',
   'read.ended.cancelled': 'Odosielateľ správu zrušil.',
   'read.ended.deleted': 'Správa bola vymazaná.',
+  'read.ended.lost': 'Server už správu neotvorí.',
   'read.passphrase': 'Heslo',
   'read.reveal': 'Zobraziť správu',
   'read.resumable':
@@ -248,8 +258,7 @@ export const messages: Catalog = {
     'Heslo nie je správne. Správu ste zatiaľ neotvorili. Máte ešte {attempts}, potom bude treba chvíľu počkať.',
   'read.rejected.wait': 'Heslo nie je správne. Ďalší pokus bude možný o\u{A0}{time}.',
   'read.rejected.malformed': 'Heslo obsahuje neplatné znaky.',
-  'read.rejected.wrong_or_changed':
-    'Správu sa nepodarilo dešifrovať: heslo nie je správne alebo sa dáta zmenili. Zadajte heslo znova.',
+  'read.rejected.long': 'Heslo je príliš dlhé.',
   'read.delete': 'Vymazať bez otvorenia',
   'read.delete.rest': 'Vymazať správu',
   'read.delete.rest.short': 'Vymazať',
@@ -261,6 +270,10 @@ export const messages: Catalog = {
   'read.delete.no': 'Nevymazať',
   'read.deleted_rest': 'Zostávajúce otvorenia sú vymazané.',
   'read.delete.failed': 'Správu sa nepodarilo vymazať. Skúste to znova.',
+  'read.delete.wait': 'Po mnohých zadaniach chybného hesla teraz správu vymazať nejde. Skúste to znova o\u{A0}{time}.',
+  'read.delete.locked':
+    'Po mnohých zadaniach chybného hesla je správa do konca platnosti zamknutá. Nikto ju neotvorí, ale odosielateľ ju ešte môže zrušiť.',
+  'read.delete.passphrase': 'Zadajte heslo od odosielateľa a\u{A0}potom zvoľte „Vymazať bez otvorenia“.',
 
   'busy.deriving': 'Pripravujeme kľúč z\u{A0}hesla…',
   'busy.claiming': 'Otvárame správu…',
@@ -275,8 +288,9 @@ export const messages: Catalog = {
     'Žiadosť o\u{A0}peniaze, prihlásenie alebo inštaláciu si overte u\u{A0}odosielateľa inou cestou.',
   'revealed.file': 'Príloha',
   'revealed.file.unchecked':
-    'Príloha je šifrovaná, takže ju Nylzo nemôže preveriť antivírusom. Otvárajte len súbory od ľudí, ktorých poznáte.',
-  'revealed.confirm.title': 'Tento typ súboru môže spustiť kód. Otvorte ho, len ak odosielateľovi dôverujete.',
+    'Príloha je šifrovaná, takže ju Nylzo nemôže preveriť antivírusom. Sťahujte len súbory od odosielateľov, ktorým dôverujete.',
+  'revealed.confirm.title':
+    'Škodlivý kód môže niesť každý súbor, aj PDF, dokument alebo obrázok. Stiahnite ho, len ak odosielateľovi dôverujete.',
   'revealed.confirm.extension': 'Prípona súboru:',
   'revealed.confirm.none': 'Súbor nemá príponu.',
   'revealed.confirm.download': 'Napriek tomu stiahnuť',
@@ -329,7 +343,7 @@ export const messages: Catalog = {
     'Neukladá ich. Limity na adresu uchováva len v\u{A0}pamäti, ktorá sa nikdy neodkladá na disk, a\u{A0}po reštarte ich zabudne.',
   'transparency.stores.enforced.title': 'Platnosť stráži aj kryptografia',
   'transparency.stores.enforced':
-    'Platnosť a\u{A0}počet otvorení stráži server. Najneskôr dve hodiny po skončení platnosti navyše vymaže časť kľúča, ktorú správa potrebuje, takže ju potom neotvorí ani kópia dát. Kópia vytvorená skôr správu bez odkazu neprečíta.',
+    'Platnosť a\u{A0}počet otvorení stráži server. Najneskôr minútu po skončení platnosti navyše vymaže časť kľúča, ktorú správa potrebuje, takže ju potom neotvorí ani kópia dát. Kópia vytvorená skôr správu bez odkazu neprečíta.',
   'transparency.logs.title': 'Čo server loguje',
   'transparency.logs.written': 'Zapisuje',
   'transparency.logs.written.time': 'Čas skrátený na minútu',
@@ -384,7 +398,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Na meranie návštevnosti nepoužívame externú službu.',
   'transparency.personal.browser.title': 'Vo vašom prehliadači',
   'transparency.personal.browser':
-    'Zvolený jazyk, dočasný údaj počas otvárania správy a\u{A0}zoznam Odoslaných, ak správu sledujete. Je to nevyhnutné pre funkcie, o\u{A0}ktoré žiadate, a\u{A0}preto to nevyžaduje súhlas.',
+    'Zvolený jazyk, dočasný údaj počas otvárania správy a\u{A0}zoznam Odoslaných, ak si sledovanú správu necháte aj po zatvorení karty. Je to nevyhnutné pre funkcie, o\u{A0}ktoré žiadate, a\u{A0}preto to nevyžaduje súhlas.',
   'transparency.limits.title': 'Limity tejto inštancie',
   'transparency.limits.short': 'Limity',
   'transparency.limits.file': 'Najväčšia príloha',
@@ -489,7 +503,7 @@ export const messages: Catalog = {
   'step.derive.label': 'Odvodenie',
   'step.derive.title': 'Odvodzujeme kľúče',
   'step.derive.detail': 'HKDF-SHA-256 odvodí kľúč obsahu a\u{A0}kľúče, ktorými sa podpisuje otvorenie',
-  'step.derive.detail.passphrase': 'scrypt z\u{A0}hesla, potom HKDF-SHA-256',
+  'step.derive.detail.passphrase': 'OPAQUE a\u{A0}scrypt z\u{A0}hesla, potom HKDF-SHA-256',
   'step.encrypt.label': 'Šifrovanie',
   'step.encrypt.title': 'Šifrujeme obsah',
   'step.encrypt.detail': 'AES-256-GCM, doplnené na celé bloky',
@@ -515,7 +529,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Skopírovať heslo',
   'created.track.title': 'Sledovať v\u{A0}Odoslaných',
   'created.track.note':
-    'Uvidíte, či správu niekto otvoril, a\u{A0}budete ju môcť zrušiť. Uloží sa len v\u{A0}tomto prehliadači. Zrušiť ju potom môže každý, kto sa k\u{A0}nemu dostane.',
+    'Uvidíte, či správu niekto otvoril, a\u{A0}budete ju môcť zrušiť. Pamätá si ju len táto karta a\u{A0}zabudne ju najneskôr po zatvorení alebo obnovení.',
+  'created.track.note.kept':
+    'Uvidíte, či správu niekto otvoril, a\u{A0}budete ju môcť zrušiť. Uloží sa v\u{A0}tomto prehliadači, takže ju potom môže zrušiť každý, kto sa k\u{A0}nemu dostane.',
+  'created.track.keep': 'Pamätať si aj po zatvorení karty',
   'created.track.label': 'Popis, vidíte ho len vy',
   'created.track.placeholder': 'Popis, napríklad „Heslo pre Petra“',
   'created.track.save': 'Uložiť',
@@ -569,6 +586,9 @@ export const messages: Catalog = {
     'Správu už nikto neotvorí. Ak ju stále potrebujete, požiadajte odosielateľa o\u{A0}nový odkaz.',
   'open.notice.deleted': 'Správa bola vymazaná',
   'open.notice.deleted.text': 'Vymazal ju príjemca alebo ju odstránil prevádzkovateľ.',
+  'open.notice.lost': 'Server už túto správu neotvorí',
+  'open.notice.lost.text':
+    'Server stratil jej kľúč, najčastejšie pri reštarte. Správu už nikto neotvorí. Požiadajte odosielateľa, aby ju poslal znova.',
   'open.notice.unknown': 'Správu sme nenašli',
   'open.notice.unknown.text':
     'Odkaz možno nie je celý alebo správe už dávno skončila platnosť. Požiadajte odosielateľa o\u{A0}nový.',
@@ -639,7 +659,7 @@ export const messages: Catalog = {
   'how.link.meta.title': 'Verzia',
   'how.link.meta.meta': 'len pre kompatibilitu',
   'how.link.meta.body':
-    'Dvojka je verzia formátu odkazu, nula znamená správu bez hesla. Staršia verzia Nylzo podľa nej rozpozná odkaz z\u{A0}novšej verzie a\u{A0}oznámi to namiesto toho, aby ho označila za poškodený. Server obe hodnoty pozná aj zo správy, takže mu táto časť nič nové nepovie.',
+    'Trojka je verzia formátu odkazu, nula znamená správu bez hesla. Staršia verzia Nylzo podľa nej rozpozná odkaz z\u{A0}novšej verzie a\u{A0}oznámi to namiesto toho, aby ho označila za poškodený. Server obe hodnoty pozná aj zo správy, takže mu táto časť nič nové nepovie.',
   'how.link.id.title': 'ID správy',
   'how.link.id.meta': 'podľa neho server správu nájde',
   'how.link.id.body':

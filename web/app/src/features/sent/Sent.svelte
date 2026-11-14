@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { flushSync, onDestroy, tick } from 'svelte';
   import { flip } from 'svelte/animate';
   import { cubicOut } from 'svelte/easing';
   import { fade } from 'svelte/transition';
@@ -8,11 +8,12 @@
   import { createApi } from '../../shared/api/api.ts';
   import type { MessageKey } from '../../shared/language/catalog.ts';
   import { formatMoment, formatWait } from '../../shared/language/format.ts';
+  import { homePath } from '../../shared/language/language.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { servedByLocalClient } from '../../shared/local-client/instance-origin.ts';
-  import { memoryStore } from '../../shared/sent-records/memory-sent-store.ts';
   import { RETENTION_DAYS } from '../../shared/sent-records/sent-record.ts';
   import { browserSentStore } from '../../shared/sent-records/sent-store.ts';
+  import { getSessionSentStore } from '../../shared/sent-records/session-sent-store.ts';
   import Button from '../../shared/ui/button/Button.svelte';
   import ConfirmDialog from '../../shared/ui/dialog/ConfirmDialog.svelte';
   import { FocusTargets, keepFocus } from '../../shared/ui/focus/focus.ts';
@@ -36,13 +37,16 @@
   const items = $derived(view.view === 'list' ? view.items : []);
 
   // A session of the local client has an origin nobody purges later, so it opens no storage (Protocol §14.1).
-  const store = servedByLocalClient() ? memoryStore() : browserSentStore();
-  const sent = createSentPage({ api: createApi(), store, now: () => Date.now() }, (next) => {
-    view = next;
-  });
+  const browser = servedByLocalClient() ? undefined : browserSentStore();
+  const sent = createSentPage(
+    { api: createApi(), session: getSessionSentStore(), browser, now: () => Date.now() },
+    (next) => {
+      view = next;
+    },
+  );
 
   const status = $derived.by(() => {
-    if (storageFailed) {
+    if (storageFailed || (view.view === 'list' && view.storageFailed)) {
       return translate('sent.unavailable');
     }
     if (cancelled?.outcome === 'cancelled') {
@@ -78,9 +82,26 @@
   });
 
   void sent.load();
+  onDestroy(() => {
+    sent.stop();
+    browser?.close();
+  });
+
+  // A page kept for the back button must not hold the keys or labels it showed.
+  function leave() {
+    sent.stop();
+    browser?.close();
+    confirming = undefined;
+    cancelled = undefined;
+    flushSync();
+  }
 
   const time = (moment: number | string) => formatMoment(moment, translator.language);
   const headingId = (id: string) => `sent-item-${id}`;
+
+  function createdText(item: SentItem): string {
+    return translate(item.session ? 'sent.created.session' : 'sent.created', { time: time(item.createdAt) });
+  }
 
   function endedState(state: MessageState): Exclude<MessageState, 'available'> {
     return state === 'available' ? 'expired' : state;
@@ -120,7 +141,6 @@
       case 'loaded': {
         return translate(`sent.ended.${endedState(state.status.state)}`, {
           time: time(state.status.endedAt ?? item.expiresAt),
-          days: retention,
         });
       }
     }
@@ -174,6 +194,8 @@
   }
 </script>
 
+<svelte:window onpagehide={leave} onpageshow={(event) => event.persisted && void sent.load()} />
+
 <svelte:head>
   <title>{translate('title.sent')}</title>
 </svelte:head>
@@ -186,7 +208,7 @@
   <p role={icon === 'alert' ? 'alert' : undefined} class="mt-1.5 max-w-[380px] text-body-sm text-pretty text-ink-mute">
     {text}
   </p>
-  <Button variant="primary" href="/" class="mt-6">
+  <Button variant="primary" href={homePath(translator.language)} class="mt-6">
     <Icon name="pen" class="size-4 shrink-0" animated />
     <span class="relative">{translate('nav.write')}</span>
   </Button>
@@ -279,13 +301,9 @@
                 {/if}
                 {#if !pending}{translate(badge.key)}{/if}
               </span>
-              <span class="text-caption text-ink-mute sm:hidden">
-                {translate('sent.created', { time: time(item.createdAt) })}
-              </span>
+              <span class="text-caption text-ink-mute sm:hidden">{createdText(item)}</span>
             </div>
-            <p class="col-start-2 mt-0.5 text-caption text-ink-mute max-sm:hidden">
-              {translate('sent.created', { time: time(item.createdAt) })}
-            </p>
+            <p class="col-start-2 mt-0.5 text-caption text-ink-mute max-sm:hidden">{createdText(item)}</p>
             {#if live}
               {const known = $derived(item.state.kind === 'loaded' ? item.state.status : undefined)}
               {const facts = $derived([
@@ -323,7 +341,7 @@
             <div
               class="col-span-2 mt-4 flex flex-wrap items-center gap-2 border-t border-white/8 pt-3 sm:col-span-1 sm:col-start-3 sm:row-span-2 sm:row-start-1 sm:mt-0 sm:justify-end sm:self-center sm:border-0 sm:pt-0"
             >
-              {#if item.state.kind === 'retry_later' || item.state.kind === 'failed'}
+              {#if item.state.kind === 'retry_later' || item.state.kind === 'failed' || item.state.kind === 'unknown'}
                 <Button
                   variant="tint"
                   size="compact"

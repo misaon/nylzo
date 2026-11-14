@@ -52,7 +52,7 @@ func (f *fixture) blobsPutOpenDelete() {
 }
 
 func (f *fixture) put(reference, content string, size int64) error {
-	_, err := f.blobs.PutExpiring(f.t.Context(), reference, strings.NewReader(content), size, time.Hour)
+	_, err := f.blobs.PutExpiring(f.t.Context(), reference, strings.NewReader(content), size, time.Now().Add(time.Hour))
 	return err
 }
 

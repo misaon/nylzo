@@ -189,11 +189,11 @@ func (f *fixture) putOrphans(references ...string) time.Time {
 	f.t.Helper()
 	var purgeAt time.Time
 	for _, reference := range references {
-		stored, err := f.blobs.PutExpiring(f.t.Context(), reference, strings.NewReader("x"), 1, time.Hour)
-		if err != nil {
+		expiresAt := time.Now().Add(time.Hour)
+		if _, err := f.blobs.PutExpiring(f.t.Context(), reference, strings.NewReader("x"), 1, expiresAt); err != nil {
 			f.t.Fatal(err)
 		}
-		if blobPurgeAt := store.BlobPurgeAt(store.ExpiresAt(stored, time.Hour)); blobPurgeAt.After(purgeAt) {
+		if blobPurgeAt := store.BlobPurgeAt(expiresAt); blobPurgeAt.After(purgeAt) {
 			purgeAt = blobPurgeAt
 		}
 	}

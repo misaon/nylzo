@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         For vulnerabilities, use [private reporting](https://github.com/misaon/nylzo/security/advisories/new).
-        Use synthetic data only. Never include real message links, passphrases, keys, credentials, or personal data.
+        Use synthetic data only. Never include real message links, passphrases, keys, credentials, HAR files or request dumps of a real message, or personal data.
   - type: input
     id: version
     attributes:

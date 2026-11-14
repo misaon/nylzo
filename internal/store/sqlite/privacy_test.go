@@ -31,17 +31,14 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 		record.Row.BlobReference,
 		bytes.NewReader(make([]byte, 64)),
 		64,
-		time.Hour,
+		time.Now().Add(time.Hour),
 	); err != nil {
 		t.Fatal(err)
 	}
 	create(t, storage, record)
 	locator, sealed := record.Row.Locator, slices.Clone(record.Row.Record)
 	claimedAt := testNow.Add(time.Minute)
-	parameters := claimParameters(claimedAt)
-	parameters.VerifierSent = true
-	parameters.VerifyMAC = func(byte, []byte) bool { return true }
-	claimed, err := store.Claim(t.Context(), storage, record, parameters)
+	claimed, err := store.Claim(t.Context(), storage, record, claimParameters(claimedAt))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,11 +71,13 @@ func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 	locked := newRecord(1, true)
 	create(t, storage, locked)
 	attemptAt := testNow.Add(17*time.Second + 123*time.Millisecond)
-	parameters := claimParameters(attemptAt)
-	parameters.VerifierSent = true
-	parameters.VerifyMAC = func(byte, []byte) bool { return false }
 	for attempt := 1; attempt <= store.FreeAttempts+1; attempt++ {
-		if _, err := store.Claim(t.Context(), storage, locked, parameters); !isPassphraseError(err) {
+		if _, _, err := store.CountAttempt(
+			t.Context(),
+			storage,
+			locked,
+			func() time.Time { return attemptAt },
+		); err != nil {
 			t.Fatalf("attempt %d: %v", attempt, err)
 		}
 	}
@@ -94,7 +93,7 @@ func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 		t.Fatal(err)
 	}
 	for name, secret := range map[string][]byte{
-		"a verifier mac":       testMAC,
+		"the registration":     testRegistration,
 		"a lease mac":          leaseMACs[0],
 		"the record key":       shared.Key[:],
 		"a time to the second": binary.BigEndian.AppendUint64(nil, uint64(testNow.UnixMilli())),
@@ -159,11 +158,6 @@ func TestLookupDoesTheSameWorkForEveryLocator(t *testing.T) {
 	if spread > driverNoise || lengths["live"] != lengths["unknown"] || lengths["ended"] != lengths["unknown"] {
 		t.Fatalf("a lookup must do the same work for every locator: allocations %v, sealed bytes %v", work, lengths)
 	}
-}
-
-func isPassphraseError(err error) bool {
-	_, ok := errors.AsType[*store.PassphraseError](err)
-	return ok
 }
 
 // TestTheLogKeepsNoOlderRowVersionAfterAWrite reproduces the audit probe: a write that fills fewer frames than an
@@ -409,6 +403,28 @@ func TestChurnAndPurgeLeaveNoCopyOfARow(t *testing.T) {
 	})
 }
 
+// TestResealingLeavesNoOlderWrap covers the start of serve: once the wraps are sealed again, neither free space nor
+// the log keeps a wrap they replaced, or any other row version that churn left behind.
+func TestResealingLeavesNoOlderWrap(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	storage := openStore(t, path)
+	checkpoint(t, storage)
+	churned := churn(t, storage)
+	err := storage.ResealWraps(t.Context(), func(row *store.Row) bool {
+		if row.Locator == store.DummyLocator {
+			return false
+		}
+		row.ReadWrap = churned.written.value("RWR:", seal.SealedWrapLen)
+		row.ManageWrap = churned.written.value("MWR:", seal.SealedWrapLen)
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	churned.requireNoCopy(t, storage, path)
+}
+
 // checkpoint retries while the scrubber of another store holds the log.
 func checkpoint(t *testing.T, storage *sqlite.Store) {
 	t.Helper()
@@ -538,11 +554,11 @@ func (tr *traces) value(tag string, length int) []byte {
 func (tr *traces) row() store.Row {
 	return store.Row{
 		Locator:       seal.Locator(tr.value("LOC:", seal.LocatorLen)),
-		ReadWrap:      tr.value("RWR:", seal.WrapLen),
-		ManageWrap:    tr.value("MWR:", seal.WrapLen),
+		ReadWrap:      tr.value("RWR:", seal.SealedWrapLen),
+		ManageWrap:    tr.value("MWR:", seal.SealedWrapLen),
 		Record:        tr.value("REC:", seal.RecordBlock),
 		BlobReference: string(tr.value("REF-", 22)),
-		BlobWrap:      tr.value("BWR:", seal.WrapLen),
+		BlobWrap:      tr.value("BWR:", seal.BlobWrapLen),
 		BlobPurgeAt:   testNow.Add(1000 * time.Hour),
 		PurgeAt:       testNow.Add(1000 * time.Hour),
 	}

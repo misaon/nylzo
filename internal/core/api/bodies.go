@@ -1,24 +1,27 @@
 package api
 
-// CreateHeader and PolicyHeader keep pointers for the members whose absence a reader must tell from a zero.
+// CreateHeader and PolicyHeader keep pointers for the members whose absence a reader must tell from a zero. Only a
+// client of protocol v2 sends VerifierKey, which the server answers with client_outdated.
 type CreateHeader struct {
-	ID          string  `json:"id"`
-	IDToken     string  `json:"id_token"`
-	Epoch       *uint32 `json:"epoch"`
-	ReadKey     string  `json:"read_key"`
-	VerifierKey *string `json:"verifier_key"`
-	ManageKey   string  `json:"manage_key"`
-	KDFID       int     `json:"kdf_id"`
-	OpensMax    int     `json:"opens_max"`
-	TTLSeconds  int64   `json:"ttl_s"`
-	Size        int64   `json:"size"`
+	ID           string  `json:"id"`
+	IDToken      string  `json:"id_token"`
+	Epoch        *uint32 `json:"epoch"`
+	ReadKey      string  `json:"read_key"`
+	Registration *string `json:"registration"`
+	VerifierKey  *string `json:"verifier_key,omitempty"`
+	ManageKey    string  `json:"manage_key"`
+	KDFID        int     `json:"kdf_id"`
+	OpensMax     int     `json:"opens_max"`
+	TTLSeconds   int64   `json:"ttl_s"`
+	Size         int64   `json:"size"`
 }
 
 type PolicyHeader struct {
-	OpensMax   *int `json:"opens_max"`
-	TTLSeconds *int `json:"ttl_s"`
-	KDFID      *int `json:"kdf_id"`
-	Flags      *int `json:"flags"`
+	OpensMax   *int   `json:"opens_max"`
+	TTLSeconds *int   `json:"ttl_s"`
+	KDFID      *int   `json:"kdf_id"`
+	Flags      *int   `json:"flags"`
+	Deadline   *int64 `json:"deadline,omitempty"`
 }
 
 type InstanceLimits struct {
@@ -37,11 +40,22 @@ type Work struct {
 }
 
 type InstanceCreate struct {
-	ID        string  `json:"id"`
-	IDToken   string  `json:"id_token"`
-	ExpiresAt string  `json:"expires_at"`
-	Epoch     *uint32 `json:"epoch"`
-	Share     string  `json:"share"`
+	ID           string  `json:"id"`
+	IDToken      string  `json:"id_token"`
+	ExpiresAt    string  `json:"expires_at"`
+	Epoch        *uint32 `json:"epoch"`
+	Deadline     string  `json:"deadline"`
+	Share        string  `json:"share"`
+	Registration string  `json:"registration"`
+}
+
+// Handshake answers a handshake with KE2 and the challenge that its claim or burn signs (spec section 6.4).
+type Handshake struct {
+	KE2          string `json:"ke2"`
+	Challenge    string `json:"challenge"`
+	ExpiresAt    string `json:"expires_at"`
+	AttemptsLeft int    `json:"attempts_left"`
+	RetryAfter   int64  `json:"retry_after"`
 }
 
 type Challenge struct {

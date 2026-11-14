@@ -152,6 +152,7 @@ export const messages: Catalog = {
   'problem.opens.out_of_range': 'The number of opens must be 1 to {max}.',
   'problem.passphrase.too_short': 'Still {missing} short (at least {min}), or choose Generate.',
   'problem.passphrase.malformed': 'The passphrase contains invalid characters.',
+  'problem.passphrase.too_long': 'The passphrase is too long.',
   'problem.passphrase.repetitive': 'The passphrase repeats too few different characters.',
   'problem.passphrase.sequential': 'The passphrase is a run of letters, digits or keyboard keys.',
   'problem.passphrase.context': 'The passphrase is mostly the word Nylzo.',
@@ -177,12 +178,13 @@ export const messages: Catalog = {
   'clipboard.cleared': 'The clipboard is empty. Copies already in clipboard history stay there.',
   'created.another': 'New message',
   'created.remembered': 'This device remembered the message.',
+  'created.remembered.session': 'This tab remembers the message, at most until you close or reload it.',
   'created.status_link': 'Open Sent',
   'created.not_remembered': 'This device could not remember the message, so you cannot cancel it from here.',
 
   'sent.title': 'Sent',
   'sent.note':
-    'The list is saved only in this browser and holds no links to the messages. An entry disappears {days} after its message ends.',
+    'The list holds no links to the messages. The page deletes the entry of an ended message once you have seen its outcome here. It deletes other entries during your Nylzo visits, no sooner than {days} after they expire.',
   'sent.loading': 'Loading sent messages…',
   'sent.unavailable':
     'This browser does not let the page store data, so it cannot remember sent messages. Allow this site to store data, or use another browser.',
@@ -194,14 +196,15 @@ export const messages: Catalog = {
   'sent.state.expired': 'Expired',
   'sent.state.cancelled': 'Cancelled',
   'sent.state.deleted': 'Deleted',
+  'sent.state.lost': 'Lost',
   'sent.label.time': 'Validity',
   'sent.label.opens': 'Opens',
-  'sent.label.attempts': 'Wrong passphrases',
+  'sent.label.attempts': 'Failed attempts',
   'sent.label.first_opened': 'First opened',
   'sent.not_opened': 'not yet',
   'sent.until': 'until {time}',
   'sent.opens': '{used} of {max}',
-  'sent.unknown': 'The message is gone from the server.',
+  'sent.unknown': 'The server did not find the message. It may have ended. If you no longer need it here, remove it.',
   'sent.failed': 'The status could not be loaded. Check the connection and try again.',
   'sent.cancel': 'Cancel message',
   'sent.cancel.confirm': 'Once cancelled, nobody can open the message.',
@@ -218,13 +221,17 @@ export const messages: Catalog = {
   'sent.unavailable.title': 'The sent list cannot be saved here',
   'sent.empty.title': 'Nothing here yet',
   'sent.created': 'Created {time}',
-  'sent.state.unknown': 'No longer exists',
+  'sent.created.session': 'Created {time}, in this tab only',
+  'sent.state.unknown': 'Not found',
   'sent.state.failed': 'Status unknown',
   'sent.state.loading': 'Loading',
-  'sent.ended.opened': 'Opened {time}. It is deleted from the server; the entry stays here for {days}.',
-  'sent.ended.expired': 'Expired {time}. It is deleted from the server; the entry stays here for {days}.',
-  'sent.ended.cancelled': 'Cancelled {time}. It is deleted from the server; the entry stays here for {days}.',
-  'sent.ended.deleted': 'The recipient deleted it, or the operator removed it. The entry stays here for {days}.',
+  'sent.ended.opened': 'Opened {time}. It is deleted from the server; the entry goes when you leave this page.',
+  'sent.ended.expired': 'Expired {time}. It is deleted from the server; the entry goes when you leave this page.',
+  'sent.ended.cancelled': 'Cancelled {time}. It is deleted from the server; the entry goes when you leave this page.',
+  'sent.ended.deleted':
+    'The recipient deleted it, or the operator removed it. The entry goes when you leave this page.',
+  'sent.ended.lost':
+    'The server lost the key to it, usually in a restart, so nobody can open it now. Send it again if it is still needed. The entry goes when you leave this page.',
   'sent.cancel.title': 'Cancel the message “{label}”?',
   'sent.cancel.title.untitled': 'Cancel the message?',
   'sent.forget.label': 'Remove from the list',
@@ -234,10 +241,12 @@ export const messages: Catalog = {
   'read.title': 'One-time message',
   'read.loading': 'Loading the message…',
   'read.retry_later': 'The service is busy. Try again in {time}.',
+  'read.wait': 'Opening is paused after too many failed attempts. Try again in {time}.',
   'read.ended.opened': 'The message has already been opened.',
   'read.ended.expired': 'The message has expired.',
   'read.ended.cancelled': 'The sender cancelled the message.',
   'read.ended.deleted': 'The message was deleted.',
+  'read.ended.lost': 'The server can no longer open the message.',
   'read.passphrase': 'Passphrase',
   'read.reveal': 'Show message',
   'read.resumable':
@@ -248,8 +257,7 @@ export const messages: Catalog = {
   'read.rejected.wrong': 'Wrong passphrase. The message stays unopened. {attempts} left before a short wait.',
   'read.rejected.wait': 'Wrong passphrase. You can try again in {time}.',
   'read.rejected.malformed': 'The passphrase contains invalid characters.',
-  'read.rejected.wrong_or_changed':
-    'The message could not be decrypted: the passphrase does not match or the data changed. Enter the passphrase again.',
+  'read.rejected.long': 'The passphrase is too long.',
   'read.delete': 'Delete without opening',
   'read.delete.rest': 'Delete message',
   'read.delete.rest.short': 'Delete',
@@ -261,6 +269,10 @@ export const messages: Catalog = {
   'read.delete.no': 'Do not delete',
   'read.deleted_rest': 'The remaining opens are deleted.',
   'read.delete.failed': 'The message could not be deleted. Try again.',
+  'read.delete.wait': 'After too many wrong passphrases, the message cannot be deleted right now. Try again in {time}.',
+  'read.delete.locked':
+    'After too many wrong passphrases, the message is locked until it expires. Nobody can open it, but the sender can still cancel it.',
+  'read.delete.passphrase': 'Enter the passphrase from the sender, then choose “Delete without opening”.',
 
   'busy.deriving': 'Preparing the key from the passphrase…',
   'busy.claiming': 'Opening the message…',
@@ -274,8 +286,9 @@ export const messages: Catalog = {
   'revealed.sender.text': 'Check any request for money, a sign-in or an installation with the sender another way.',
   'revealed.file': 'Attachment',
   'revealed.file.unchecked':
-    'The attachment is encrypted, so Nylzo cannot scan it for viruses. Open only files from people you know.',
-  'revealed.confirm.title': 'This type of file can run code. Open it only if you trust the sender.',
+    'The attachment is encrypted, so Nylzo cannot scan it for viruses. Download files only from senders you trust.',
+  'revealed.confirm.title':
+    'Any file can carry malware, even a PDF, a document or an image. Download it only if you trust the sender.',
   'revealed.confirm.extension': 'File extension:',
   'revealed.confirm.none': 'The file has no extension.',
   'revealed.confirm.download': 'Download anyway',
@@ -328,7 +341,7 @@ export const messages: Catalog = {
     'It does not store them. Per-address limits live only in memory that is never swapped to disk, and are forgotten on restart.',
   'transparency.stores.enforced.title': 'Cryptography enforces expiry too',
   'transparency.stores.enforced':
-    'The server enforces expiry and the open limit. No later than two hours after a message expires it also erases the part of the key the message needs, so even a copy of the data can no longer open it. A copy taken earlier cannot read the message without the link.',
+    'The server enforces expiry and the open limit. No later than a minute after a message expires it also erases the part of the key the message needs, so even a copy of the data can no longer open it. A copy taken earlier cannot read the message without the link.',
   'transparency.logs.title': 'What the server logs',
   'transparency.logs.written': 'Writes',
   'transparency.logs.written.time': 'Time to the minute',
@@ -381,7 +394,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'We do not use an external service for visitor analytics.',
   'transparency.personal.browser.title': 'In your browser',
   'transparency.personal.browser':
-    'The language you chose, a temporary item while a message opens, and the Sent list if you track a message. They are needed for features you ask for, so they need no consent.',
+    'The language you chose, a temporary item while a message opens, and the Sent list if you keep a tracked message after closing the tab. They are needed for features you ask for, so they need no consent.',
   'transparency.limits.title': 'Limits of this instance',
   'transparency.limits.short': 'Limits',
   'transparency.limits.file': 'Largest attachment',
@@ -485,7 +498,7 @@ export const messages: Catalog = {
   'step.derive.label': 'Derivation',
   'step.derive.title': 'Deriving the keys',
   'step.derive.detail': 'HKDF-SHA-256 derives the content key and the keys that sign opening',
-  'step.derive.detail.passphrase': 'scrypt from the passphrase, then HKDF-SHA-256',
+  'step.derive.detail.passphrase': 'OPAQUE and scrypt from the passphrase, then HKDF-SHA-256',
   'step.encrypt.label': 'Encryption',
   'step.encrypt.title': 'Encrypting the content',
   'step.encrypt.detail': 'AES-256-GCM, padded to whole blocks',
@@ -511,7 +524,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'Copy passphrase',
   'created.track.title': 'Track in Sent',
   'created.track.note':
-    'You will see whether someone opened the message, and you can cancel it. It is saved only in this browser. Anyone who gets into this browser can cancel it too.',
+    'You will see whether someone opened the message, and you can cancel it. Only this tab remembers it, at most until you close or reload the tab.',
+  'created.track.note.kept':
+    'You will see whether someone opened the message, and you can cancel it. It is saved in this browser, so anyone who gets into it can cancel the message too.',
+  'created.track.keep': 'Keep after closing this tab',
   'created.track.label': 'Label, only you see it',
   'created.track.placeholder': 'Label, e.g. “Password for Peter”',
   'created.track.save': 'Save',
@@ -559,6 +575,9 @@ export const messages: Catalog = {
   'open.notice.cancelled.text': 'Nobody can open it now. If you still need it, ask the sender for a new link.',
   'open.notice.deleted': 'The message was deleted',
   'open.notice.deleted.text': 'The recipient deleted it, or the operator removed it.',
+  'open.notice.lost': 'The server can no longer open this message',
+  'open.notice.lost.text':
+    'The server lost the key to it, usually in a restart. Nobody can open it now. Ask the sender to send it again.',
   'open.notice.unknown': 'We could not find the message',
   'open.notice.unknown.text':
     'The link may be incomplete, or the message expired long ago. Ask the sender for a new one.',
@@ -628,7 +647,7 @@ export const messages: Catalog = {
   'how.link.meta.title': 'Version',
   'how.link.meta.meta': 'only for compatibility',
   'how.link.meta.body':
-    'The 2 is the version of the link format, and 0 means a message without a passphrase. An older Nylzo uses the version to recognise a link from a newer one and says so instead of calling it broken. The server already knows both values from the message, so this part tells it nothing new.',
+    'The 3 is the version of the link format, and 0 means a message without a passphrase. An older Nylzo uses the version to recognise a link from a newer one and says so instead of calling it broken. The server already knows both values from the message, so this part tells it nothing new.',
   'how.link.id.title': 'Message ID',
   'how.link.id.meta': 'the server finds the message by it',
   'how.link.id.body':

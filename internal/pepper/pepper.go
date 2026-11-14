@@ -10,29 +10,33 @@ import (
 	"errors"
 	"strconv"
 	"strings"
+
+	"github.com/misaon/nylzo/internal/core/opaque"
 )
 
 type Purpose string
 
 const (
-	Read      Purpose = "read"
-	Verifier  Purpose = "verifier"
-	Manage    Purpose = "manage"
-	Lease     Purpose = "lease"
-	PoW       Purpose = "pow"
-	IDToken   Purpose = "id"
-	Challenge Purpose = "challenge"
+	Read         Purpose = "read"
+	Manage       Purpose = "manage"
+	Lease        Purpose = "lease"
+	PoW          Purpose = "pow"
+	IDToken      Purpose = "id"
+	Challenge    Purpose = "challenge"
+	OPAQUEServer Purpose = "opaque-server"
 )
 
 const (
 	SecretLen = 32
 	MACLen    = 32
 
-	labelID  = "nylzo/v1/pepper-id"
-	infoBase = "nylzo/v1/mac/"
+	labelID      = "nylzo/v1/pepper-id"
+	infoBase     = "nylzo/v1/mac/"
+	infoRecords  = "nylzo/v1/records"
+	infoOPRFSeed = "nylzo/v3/opaque/oprf-seed"
 )
 
-var purposes = []Purpose{Read, Verifier, Manage, Lease, PoW, IDToken, Challenge}
+var purposes = []Purpose{Read, Manage, Lease, PoW, IDToken, Challenge, OPAQUEServer}
 
 var (
 	ErrSecret    = errors.New("pepper: secret must be 32 bytes in hex or base64url")
@@ -64,8 +68,10 @@ func decodeSecret(text string) ([]byte, error) {
 }
 
 type key struct {
-	id      byte
-	macKeys map[Purpose][32]byte
+	id         byte
+	macKeys    map[Purpose][32]byte
+	recordsKey [SecretLen]byte
+	oprfSeed   [opaque.OPRFSeedLen]byte
 }
 
 func newKey(secret []byte) (*key, error) {
@@ -83,6 +89,18 @@ func newKey(secret []byte) (*key, error) {
 		}
 		derived.macKeys[purpose] = [32]byte(macKey)
 	}
+	recordsKey, err := hkdf.Key(sha256.New, secret, nil, infoRecords, SecretLen)
+	if err != nil {
+		return nil, err
+	}
+	derived.recordsKey = [SecretLen]byte(recordsKey)
+	clear(recordsKey)
+	oprfSeed, err := hkdf.Key(sha256.New, secret, nil, infoOPRFSeed, opaque.OPRFSeedLen)
+	if err != nil {
+		return nil, err
+	}
+	derived.oprfSeed = [opaque.OPRFSeedLen]byte(oprfSeed)
+	clear(oprfSeed)
 	return derived, nil
 }
 
@@ -121,6 +139,27 @@ func NewRing(current, previous []byte) (*Ring, error) {
 	return ring, nil
 }
 
+// RecordsKey seals the record key wraps (spec §5.2).
+func (r *Ring) RecordsKey() [SecretLen]byte {
+	return r.current.recordsKey
+}
+
+// PreviousRecordsKey is the records key of the previous pepper, until ForgetPreviousRecordsKey erases it.
+func (r *Ring) PreviousRecordsKey() ([SecretLen]byte, bool) {
+	if r.previous == nil || r.previous.recordsKey == [SecretLen]byte{} {
+		return [SecretLen]byte{}, false
+	}
+	return r.previous.recordsKey, true
+}
+
+// ForgetPreviousRecordsKey erases the records key of the previous pepper once serve has sealed every row again; the
+// macs of the previous pepper still verify.
+func (r *Ring) ForgetPreviousRecordsKey() {
+	if r.previous != nil {
+		clear(r.previous.recordsKey[:])
+	}
+}
+
 func (r *Ring) CurrentID() byte {
 	return r.current.id
 }
@@ -143,6 +182,25 @@ func (r *Ring) Verify(purpose Purpose, input, expected []byte, id byte) bool {
 	}
 	computed := verifying.mac(purpose, input)
 	return hmac.Equal(computed[:], expected) && known
+}
+
+// OPAQUEKeys derives the OPAQUE keys of one message from the pepper that pepperID names (spec section 5.1). With an
+// unknown pepperID it derives them from the current pepper and reports false, so the work is the same.
+func (r *Ring) OPAQUEKeys(messageID []byte, pepperID byte) (opaque.ServerKeys, bool, error) {
+	deriving := r.keyFor(pepperID)
+	known := deriving != nil
+	if !known {
+		deriving = r.current
+	}
+	seed := deriving.mac(OPAQUEServer, messageID)
+	defer clear(seed[:])
+	keys, err := opaque.DeriveServerKeys(seed[:], &deriving.oprfSeed)
+	return keys, known, err
+}
+
+// Holds reports whether the ring still has the pepper that id names.
+func (r *Ring) Holds(id byte) bool {
+	return r.keyFor(id) != nil
 }
 
 func (r *Ring) keyFor(id byte) *key {

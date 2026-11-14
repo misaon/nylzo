@@ -22,15 +22,24 @@ import (
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
+const (
+	frontendHandler     = "nylzo_frontend"
+	loggingCheckedField = "logging_checked"
+)
+
 var (
 	errNotAbsolute         = errors.New("is not an absolute path")
 	errBuildWithoutVersion = errors.New("frontend build identity has no version")
+	errLoggingUnchecked    = errors.New(
+		frontendHandler + " needs the Caddyfile loaded with --adapter " + adapterName +
+			", which refuses a configuration that records request headers",
+	)
 )
 
 func init() {
 	caddy.RegisterModule(&Frontend{})
 	httpcaddyfile.RegisterHandlerDirective(
-		"nylzo_frontend",
+		frontendHandler,
 		func(helper httpcaddyfile.Helper) (caddyhttp.MiddlewareHandler, error) {
 			var frontend Frontend
 			return &frontend, frontend.UnmarshalCaddyfile(helper.Dispenser)
@@ -42,7 +51,9 @@ type Frontend struct {
 	PublicURL   string `json:"public_url"`
 	Maintenance string `json:"maintenance,omitempty"`
 	// The operator's contact, the same as NYLZO_CONTACT of the server, so its link is the one the pages may reach.
-	Contact         string `json:"contact,omitempty"`
+	Contact string `json:"contact,omitempty"`
+	// LoggingChecked is set by the nylzo adapter after refuseRequestRecording passed (F11).
+	LoggingChecked  bool `json:"logging_checked,omitempty"`
 	handler         http.Handler
 	pages           webclient.Pages
 	classicalPolicy string
@@ -53,6 +64,12 @@ func (*Frontend) CaddyModule() caddy.ModuleInfo {
 }
 
 func (f *Frontend) Provision(_ caddy.Context) error {
+	if err := refuseHeaderDumps(); err != nil {
+		return err
+	}
+	if !f.LoggingChecked {
+		return errLoggingUnchecked
+	}
 	if err := operatoraddress.CheckPublicURL(f.PublicURL); err != nil {
 		return err
 	}

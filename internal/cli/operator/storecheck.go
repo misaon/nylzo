@@ -12,6 +12,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/epoch"
+	"github.com/misaon/nylzo/internal/server"
 	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
@@ -19,7 +20,10 @@ import (
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
-var errUnknownReadiness = errors.New("store-check: readiness")
+var (
+	errUnknownReadiness  = errors.New("store-check: readiness")
+	errUnknownEpochState = errors.New("store-check: epoch state")
+)
 
 // RunStoreCheck tells, without writing anything, whether serve of this build can open the data directory, so an
 // updater can refuse a build before it stops the running one.
@@ -86,13 +90,16 @@ func checkDataDirectory(ctx context.Context, settings *config.Server, output io.
 
 func checkEpochDirectory(settings *config.Server, output io.Writer, logger *slog.Logger) error {
 	directory := settings.EpochDirectory()
-	state, err := epoch.Inspect(directory)
+	state, err := inspectEpoch(directory)
 	switch {
 	case errors.Is(err, epoch.ErrNoDirectory) && settings.EpochDirectoryOverride == "":
 		fmt.Fprintln(output, "epoch: no directory yet; serve creates it in the data directory")
 		return nil
 	case err != nil:
 		return err
+	}
+	if leftoverErr := server.RefuseEpochInDataDirectory(settings); leftoverErr != nil {
+		return leftoverErr
 	}
 	if erasableErr := requireErasable(
 		epoch.ErasablePaths(directory),
@@ -101,10 +108,19 @@ func checkEpochDirectory(settings *config.Server, output io.Writer, logger *slog
 	); erasableErr != nil {
 		return erasableErr
 	}
-	if state == epoch.StateSeed {
+	switch state {
+	case epoch.StateSeed:
 		fmt.Fprintln(output, "epoch: a seed; serve goes on with it")
-	} else {
+	case epoch.StateLegacySeed:
+		fmt.Fprintln(
+			output,
+			"epoch: a seed of an earlier release; serve converts it and keeps every live message, "+
+				"after which releases before 0.14.0 cannot read it",
+		)
+	case epoch.StateNoSeed:
 		fmt.Fprintln(output, "epoch: no seed; serve starts a new one, which ends every live message")
+	default:
+		return fmt.Errorf("%w %d is unknown", errUnknownEpochState, state)
 	}
 	return nil
 }

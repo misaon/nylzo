@@ -59,7 +59,7 @@ func adaptHetzner(t *testing.T) map[string]any {
 		}
 		source = append(append(source, part...), '\n')
 	}
-	adapted, _, err := caddyconfig.GetAdapter(crawlerAdapterKey).Adapt(source, map[string]any{"filename": "Caddyfile"})
+	adapted, _, err := caddyconfig.GetAdapter(adapterName).Adapt(source, map[string]any{"filename": "Caddyfile"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestCrawlerOptionNeverWidensOrRunsWithoutTheAdapter(t *testing.T) {
 			errNoCrawlerSite,
 		},
 	} {
-		if _, _, err := (crawlerAdapter{}).Adapt([]byte(test.source), nil); !errors.Is(err, test.want) {
+		if _, _, err := (nylzoAdapter{}).Adapt([]byte(test.source), nil); !errors.Is(err, test.want) {
 			t.Errorf("%s: %v, want %v", name, err, test.want)
 		}
 	}

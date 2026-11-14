@@ -2,17 +2,42 @@ export { type Expected, objectHash, open, seal, sealWithCompression } from './en
 export { type Header, newHeader, type Policy } from './envelope/header.ts';
 export type { Meta } from './envelope/meta.ts';
 export {
+  EnvelopeRecoveryError,
   IntegrityError,
   KdfMismatchError,
   LinkReleasedError,
   LinkRetiredKdfError,
   LinkVersionError,
+  LongPassphraseError,
   MalformedPassphraseError,
+  OpaqueMessageError,
   PowTimeoutError,
+  ServerAuthenticationError,
   TooLargeError,
 } from './errors.ts';
-export { type ContentKeys, deriveContent, deriveLink, deriveVerifier, type LinkKeys } from './keys/derive.ts';
-export { assertWellFormedPassphrase, KDF_NONE, KDF_SCRYPT, type KdfId } from './keys/kdf.ts';
+export { type ContentKeys, deriveContent, deriveLink, derivePassphraseSalt, type LinkKeys } from './keys/derive.ts';
+export {
+  assertWellFormedPassphrase,
+  KDF_NONE,
+  KDF_SCRYPT,
+  type KdfId,
+  opaqueContext,
+  opaquePassword,
+} from './keys/kdf.ts';
+export {
+  type ClientLogin,
+  createRegistrationRequest,
+  finalizeRegistrationRequest,
+  generateKE1,
+  generateKE3,
+  identityStretch,
+  KE2_LENGTH,
+  type OpaqueConfig,
+  REGISTRATION_RESPONSE_LENGTH,
+  type RegistrationState,
+  type Stretch,
+  wipeLogin,
+} from './keys/opaque.ts';
 export {
   ASSIGNED_UNICODE_VERSION,
   generatePassphrase,
@@ -20,6 +45,7 @@ export {
   passphraseProblem,
 } from './keys/passphrase.ts';
 export {
+  FLAG_DEADLINE,
   HEADER_LENGTH,
   ID_LENGTH,
   MAX_FILE_BYTES,
@@ -34,7 +60,14 @@ export { decodeBase64url, encodeBase64url, encodedLength } from './primitives/ba
 export { utf8 } from './primitives/bytes.ts';
 export { idToString, newSecret, parseId } from './primitives/identifiers.ts';
 export { MAX_POW_DIFFICULTY, solvePow } from './request/proof-of-work.ts';
-export { newShareKey, parseWrappedShare, type ShareKey, unwrapShare } from './request/share.ts';
+export {
+  formatShareKey,
+  newShareKey,
+  parseWrappedShare,
+  type ShareKey,
+  unwrapShare,
+  wrapShare,
+} from './request/share.ts';
 export {
   authorizationHeader,
   CHALLENGE_LENGTH,
@@ -44,12 +77,10 @@ export {
   type Purpose,
   PURPOSE_MANAGE,
   PURPOSE_READ,
-  PURPOSE_VERIFIER,
   type RequestComponents,
   type RequestKey,
   requestKey,
   requestMessage,
   signRequest,
-  verifierHeader,
   wipeRequestKey,
 } from './request/signature.ts';

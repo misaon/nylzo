@@ -22,13 +22,13 @@
     "@types/node": "26.6.6",
     "eslint-plugin-perfectionist": "5.13.0",
     "eslint-plugin-regexp": "3.3.3",
-    "oxfmt": "0.77.0",
-    "oxlint": "1.92.0",
+    "oxfmt": "0.78.0",
+    "oxlint": "1.93.0",
     "oxlint-tsgolint": "7.0.2006",
     "typescript": "7.0.2"
   },
   "overrides": {
-    "minimatch": "11.0.5"
+    "minimatch": "11.0.6"
   },
   "engines": {
     "bun": "1.4.4"

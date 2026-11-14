@@ -11,6 +11,7 @@
   import { FocusTargets, keepFocus } from '../../../shared/ui/focus/focus.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
+  import Switch from '../../../shared/ui/switch/Switch.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
   import { Flash } from '../../../shared/ui/transition/flash.svelte.ts';
   import { motionMs } from '../../../shared/ui/transition/motion.ts';
@@ -22,13 +23,14 @@
     readonly created: Created;
     readonly opensMax: number;
     readonly passphrase: string;
-    readonly canRemember: boolean;
+    readonly canKeep: boolean;
+    readonly canTrackInTab: boolean;
     readonly remembered: Remembered;
-    readonly onremember: (label: string) => void;
+    readonly onremember: (label: string, keep: boolean) => void;
     readonly onanother: () => void;
   }
 
-  const { created, opensMax, passphrase, canRemember, remembered, onremember, onanother }: Props = $props();
+  const { created, opensMax, passphrase, canKeep, canTrackInTab, remembered, onremember, onanother }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
   const id = $props.id();
@@ -46,6 +48,7 @@
   let clipboard = $state<'cleared' | 'copied' | 'failed' | 'untouched'>('untouched');
   let passphraseShown = $state(false);
   let label = $state('');
+  let keep = $state(false);
 
   const segments = $derived(linkSegments(created.link));
   const shareable = $derived(
@@ -53,7 +56,10 @@
       typeof navigator.share === 'function' &&
       navigator.canShare({ url: created.link }),
   );
-  const trackingShown = $derived(canRemember && (remembered !== 'remembered' || justSaved.shown));
+  const trackingShown = $derived((canKeep || canTrackInTab) && (remembered !== 'remembered' || justSaved.shown));
+  const trackingLocked = $derived(remembered === 'saving' || remembered === 'remembered');
+  // After a failed browser save only the tab may take a second try.
+  const keepChosen = $derived(canKeep && (!canTrackInTab || (keep && remembered === 'off')));
   const clipboardText = $derived.by(() => {
     if (clipboard === 'failed') {
       return translate('created.copy_failed');
@@ -345,7 +351,32 @@
         <IconTile icon="eye" tone="neutral" size="medium" />
         <div class="min-w-0">
           <p class="text-ui font-medium text-ink">{translate('created.track.title')}</p>
-          <p class="text-caption text-pretty text-ink-mute">{translate('created.track.note')}</p>
+          <p class="stack text-caption text-pretty text-ink-mute">
+            {#if canTrackInTab}
+              <span id="{id}-track-note" class={[keepChosen && 'invisible']} aria-hidden={keepChosen}>
+                {translate('created.track.note')}
+              </span>
+            {/if}
+            {#if canKeep}
+              <span id="{id}-track-note-kept" class={[!keepChosen && 'invisible']} aria-hidden={!keepChosen}>
+                {translate('created.track.note.kept')}
+              </span>
+            {/if}
+          </p>
+          {#if canKeep && canTrackInTab}
+            <button
+              type="button"
+              role="switch"
+              aria-checked={keepChosen}
+              aria-describedby={keepChosen ? `${id}-track-note-kept` : `${id}-track-note`}
+              disabled={remembered !== 'off'}
+              onclick={() => (keep = !keep)}
+              class="-mx-1.5 mt-1.5 flex min-h-11 items-center gap-2.5 rounded-control px-1.5 py-2 text-left text-caption text-ink-soft transition hover:bg-white/4 disabled:opacity-40 md:min-h-0 md:py-1"
+            >
+              <Switch on={keepChosen} />
+              {translate('created.track.keep')}
+            </button>
+          {/if}
         </div>
       </div>
       <form
@@ -353,7 +384,7 @@
         onsubmit={(event) => {
           event.preventDefault();
           justSaved.show();
-          onremember(label);
+          onremember(label, keepChosen);
         }}
       >
         <label class="flex h-11 min-w-0 flex-1 items-center rounded-control px-3.5 well sm:w-56 sm:flex-none md:h-9">
@@ -363,17 +394,12 @@
             bind:value={label}
             maxlength={MAX_LABEL_CHARACTERS}
             {...PRIVATE_TEXT}
-            readonly={remembered === 'saving' || remembered === 'remembered'}
+            readonly={trackingLocked}
             placeholder={translate('created.track.placeholder')}
             class="h-full min-w-0 flex-1 bg-transparent text-caption text-ink outline-none placeholder:text-ink-mute"
           />
         </label>
-        <Button
-          variant="tint"
-          size="field"
-          type="submit"
-          disabled={remembered === 'saving' || remembered === 'remembered'}
-        >
+        <Button variant="tint" size="field" type="submit" disabled={trackingLocked}>
           <span class="stack place-items-center">
             <span
               class={['transition-opacity', remembered === 'remembered' && 'opacity-0']}

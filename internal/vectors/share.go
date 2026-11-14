@@ -2,10 +2,11 @@ package vectors
 
 import (
 	"bytes"
-	"crypto/ecdh"
+	"crypto/hpke"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
@@ -14,27 +15,35 @@ import (
 
 var (
 	errShareKeyAccepted  = errors.New("is accepted")
+	errShareKeyKind      = errors.New("is refused for another reason")
 	errShareNotUnwrapped = errors.New("vectors: the share does not unwrap")
-	errLowOrderUnwrapped = errors.New("vectors: a low-order server key unwrapped")
+	errBadShareUnwrapped = errors.New("vectors: a damaged share unwrapped")
+)
+
+const (
+	mlkemKeyLen        = share.KeyLen - x25519Len
+	mlkemCiphertextLen = share.EncapsulatedLen - x25519Len
+	x25519Len          = 32
 )
 
 type ShareCase struct {
-	Name          string  `json:"name"`
-	ClientPrivate string  `json:"client_private_hex"`
-	ClientPublic  string  `json:"client_public"`
-	ServerPrivate *string `json:"server_private_hex,omitempty"`
-	E             *string `json:"e_hex,omitempty"`
-	Wrapped       string  `json:"wrapped"`
-	Valid         bool    `json:"valid"`
+	Name       string  `json:"name"`
+	ClientSeed string  `json:"client_seed_hex"`
+	ClientKey  string  `json:"client_key"`
+	E          *string `json:"e_hex,omitempty"`
+	Wrapped    string  `json:"wrapped"`
+	Valid      bool    `json:"valid"`
 }
 
-// ShareKeyRejected is a client share key a server must refuse as malformed: a point of small order, whose every
-// shared secret is zero, in its canonical encoding or with the top bit set (RFC 7748 section 5).
+// ShareKeyRejected is an X-Nylzo-Share-Key value a server must refuse. Outdated marks the X25519 key of a client from
+// before share suites, which the server answers with client_outdated instead of bad_request.
 type ShareKeyRejected struct {
-	Name string `json:"name"`
-	Key  string `json:"key"`
+	Name     string `json:"name"`
+	Key      string `json:"key"`
+	Outdated bool   `json:"outdated,omitempty"`
 }
 
+// smallOrderPoints are the X25519 points whose every shared secret is zero (RFC 7748 section 5).
 var smallOrderPoints = []struct {
 	name string
 	hex  string
@@ -48,26 +57,63 @@ var smallOrderPoints = []struct {
 	{"p-plus-one", "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"},
 }
 
+func deterministicShareKey(label string) (hpke.PrivateKey, []byte, error) {
+	seed := deterministic(label, 32)
+	key, err := share.NewKeyFromSeed(seed)
+	return key, seed, err
+}
+
 func (f *File) shareKeyRejected() error {
+	key, _, keyErr := deterministicShareKey("share/rejected")
+	if keyErr != nil {
+		return keyErr
+	}
+	public := key.PublicKey().Bytes()
+	encoded := core.Encode(public)
+	add := func(name, value string, outdated bool) error {
+		_, err := share.ParseKey(value)
+		switch {
+		case err == nil:
+			return fmt.Errorf("vectors: the share key %s %w", name, errShareKeyAccepted)
+		case errors.Is(err, share.ErrOutdated) != outdated:
+			return fmt.Errorf("vectors: the share key %s %w", name, errShareKeyKind)
+		}
+		f.ShareKeyRejected = append(f.ShareKeyRejected, ShareKeyRejected{Name: name, Key: value, Outdated: outdated})
+		return nil
+	}
+	errs := []error{
+		add("x25519-without-suite", core.Encode(public[mlkemKeyLen:]), true),
+		add("x-wing-without-suite", encoded, false),
+		add("empty", "", false),
+		add("unknown-suite", "2."+encoded, false),
+		add("empty-suite", "."+encoded, false),
+		add("short", suiteKey(public[:share.KeyLen-1]), false),
+		add("ml-kem-coefficient-q", suiteKey(withCoefficientQ(public)), false),
+	}
 	for _, point := range smallOrderPoints {
-		canonical, err := hex.DecodeString(point.hex)
+		half, err := hex.DecodeString(point.hex)
 		if err != nil {
 			return err
 		}
-		topBit := bytes.Clone(canonical)
-		topBit[share.KeyLen-1] |= 0x80
-		for _, encoded := range []struct {
-			name  string
-			bytes []byte
-		}{{point.name, canonical}, {point.name + "-top-bit", topBit}} {
-			key := core.Encode(encoded.bytes)
-			if _, err = share.ParseKey(key); err == nil {
-				return fmt.Errorf("vectors: the share key %s %w", encoded.name, errShareKeyAccepted)
-			}
-			f.ShareKeyRejected = append(f.ShareKeyRejected, ShareKeyRejected{Name: encoded.name, Key: key})
-		}
+		lowOrder := append(bytes.Clone(public[:mlkemKeyLen]), half...)
+		errs = append(errs, add("x25519-"+point.name, suiteKey(lowOrder), false))
+		lowOrder[share.KeyLen-1] |= 0x80
+		errs = append(errs, add("x25519-"+point.name+"-top-bit", suiteKey(lowOrder), false))
 	}
-	return nil
+	return errors.Join(errs...)
+}
+
+func suiteKey(raw []byte) string {
+	return strconv.Itoa(share.Suite) + "." + core.Encode(raw)
+}
+
+// withCoefficientQ sets the first coefficient of the ML-KEM half to q = 3329, which the modulus check of FIPS 203
+// section 7.2 refuses.
+func withCoefficientQ(public []byte) []byte {
+	changed := bytes.Clone(public)
+	changed[0] = 0x01
+	changed[1] = changed[1]&0xf0 | 0x0d
+	return changed
 }
 
 type CompressedLength struct {
@@ -77,43 +123,58 @@ type CompressedLength struct {
 }
 
 func (f *File) share() error {
-	client, err := ecdh.X25519().NewPrivateKey(deterministic("share/client", share.KeyLen))
-	if err != nil {
-		return err
-	}
-	server, err := ecdh.X25519().NewPrivateKey(deterministic("share/server", share.KeyLen))
+	client, seed, err := deterministicShareKey("share/client")
 	if err != nil {
 		return err
 	}
 	expiry := deterministic32("share/e")
-	wrapped, err := share.WrapWith(server, expiry, client.PublicKey())
+	sealed, err := sealDeterministic(
+		client.PublicKey().Bytes(),
+		expiry[:],
+		deterministic("share/encapsulation", 32),
+		deterministic("share/ephemeral", x25519Len),
+	)
 	if err != nil {
 		return err
 	}
+	wrapped := [share.WrappedLen]byte(sealed)
 	unwrapped, err := share.Unwrap(client, &wrapped)
 	if err != nil || unwrapped != *expiry {
 		return errors.Join(errShareNotUnwrapped, err)
 	}
+	clientKey := share.FormatKey(client.PublicKey())
 	f.Share = append(f.Share, ShareCase{
-		Name:          "wrapped-share",
-		ClientPrivate: hex.EncodeToString(client.Bytes()),
-		ClientPublic:  core.Encode(client.PublicKey().Bytes()),
-		ServerPrivate: new(hex.EncodeToString(server.Bytes())),
-		E:             new(hex.EncodeToString(expiry[:])),
-		Wrapped:       core.Encode(wrapped[:]),
-		Valid:         true,
+		Name:       "wrapped-share",
+		ClientSeed: hex.EncodeToString(seed),
+		ClientKey:  clientKey,
+		E:          new(hex.EncodeToString(expiry[:])),
+		Wrapped:    core.Encode(wrapped[:]),
+		Valid:      true,
 	})
-	lowOrder := wrapped
-	clear(lowOrder[:share.KeyLen])
-	if _, err = share.Unwrap(client, &lowOrder); err == nil {
-		return errLowOrderUnwrapped
+	damaged := []struct {
+		name   string
+		damage func(*[share.WrappedLen]byte)
+	}{
+		{"low-order-encapsulation", func(w *[share.WrappedLen]byte) {
+			clear(w[mlkemCiphertextLen:share.EncapsulatedLen])
+		}},
+		{"changed-ml-kem-ciphertext", func(w *[share.WrappedLen]byte) { w[0] ^= 1 }},
+		{"changed-x25519-ciphertext", func(w *[share.WrappedLen]byte) { w[mlkemCiphertextLen] ^= 1 }},
+		{"changed-tag", func(w *[share.WrappedLen]byte) { w[share.WrappedLen-1] ^= 1 }},
 	}
-	f.Share = append(f.Share, ShareCase{
-		Name:          "low-order-server-key",
-		ClientPrivate: hex.EncodeToString(client.Bytes()),
-		ClientPublic:  core.Encode(client.PublicKey().Bytes()),
-		Wrapped:       core.Encode(lowOrder[:]),
-	})
+	for _, change := range damaged {
+		bad := wrapped
+		change.damage(&bad)
+		if _, err = share.Unwrap(client, &bad); err == nil {
+			return fmt.Errorf("%w: %s", errBadShareUnwrapped, change.name)
+		}
+		f.Share = append(f.Share, ShareCase{
+			Name:       change.name,
+			ClientSeed: hex.EncodeToString(seed),
+			ClientKey:  clientKey,
+			Wrapped:    core.Encode(bad[:]),
+		})
+	}
 	return nil
 }
 

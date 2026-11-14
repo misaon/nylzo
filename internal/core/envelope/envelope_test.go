@@ -23,23 +23,25 @@ type sealed struct {
 	payload envelope.Payload
 }
 
-func contentKeys(tb testing.TB, id core.ID, passphraseKey []byte) keys.ContentKeys {
+func contentKeys(tb testing.TB, id core.ID) keys.ContentKeys {
 	tb.Helper()
-	content, err := keys.DeriveContent(id, core.NewSecret(), passphraseKey, core.NewSecret())
+	content, err := keys.DeriveContent(id, core.NewSecret(), new(keys.ExportKey), core.NewSecret())
 	if err != nil {
 		tb.Fatal(err)
 	}
 	return content
 }
 
+const testDeadline = 1_797_000_000
+
 func seal(tb testing.TB, text string, file []byte) sealed {
 	tb.Helper()
 	id := core.NewID()
 	sample := sealed{
 		id:      id,
-		content: contentKeys(tb, id, nil),
+		content: contentKeys(tb, id),
 		header:  envelope.NewHeader(core.KDFNone),
-		policy:  envelope.Policy{OpensMax: 1, TTLSeconds: 86400},
+		policy:  envelope.Policy{OpensMax: 1, TTLSeconds: 86400, Deadline: testDeadline},
 		payload: envelope.Payload{Meta: envelope.Meta{Text: &text}},
 	}
 	if file != nil {
@@ -105,7 +107,7 @@ func TestAK8TamperingFailsIntegrity(t *testing.T) {
 	t.Parallel()
 	sample := seal(t, "integrity", nil)
 	prefix := envelope.PrefixLen
-	otherKeys := contentKeys(t, sample.id, bytes.Repeat([]byte{1}, core.KeyLen))
+	otherKeys := contentKeys(t, sample.id)
 	cases := map[string]struct {
 		content keys.ContentKeys
 		id      core.ID
@@ -125,13 +127,25 @@ func TestAK8TamperingFailsIntegrity(t *testing.T) {
 		"opens_max": {
 			sample.content,
 			sample.id,
-			envelope.Policy{OpensMax: 2, TTLSeconds: 86400},
+			envelope.Policy{OpensMax: 2, TTLSeconds: 86400, Deadline: testDeadline},
 			sample.object,
 		},
 		"ttl_s": {
 			sample.content,
 			sample.id,
-			envelope.Policy{OpensMax: 1, TTLSeconds: 86401},
+			envelope.Policy{OpensMax: 1, TTLSeconds: 86401, Deadline: testDeadline},
+			sample.object,
+		},
+		"deadline": {
+			sample.content,
+			sample.id,
+			envelope.Policy{OpensMax: 1, TTLSeconds: 86400, Deadline: testDeadline + 60},
+			sample.object,
+		},
+		"no deadline": {
+			sample.content,
+			sample.id,
+			envelope.Policy{OpensMax: 1, TTLSeconds: 86400},
 			sample.object,
 		},
 		"another id":  {sample.content, core.NewID(), sample.policy, sample.object},
@@ -220,14 +234,16 @@ func TestEveryHeaderGetsAFreshRandomIV(t *testing.T) {
 func TestOpenRejectsAnUnsupportedHeader(t *testing.T) {
 	t.Parallel()
 	sample := seal(t, "header", nil)
-	version, flags, released := bytes.Clone(sample.object), bytes.Clone(sample.object), bytes.Clone(sample.object)
-	version[0], flags[2], released[0] = 3, 1, 1
+	version, flags := bytes.Clone(sample.object), bytes.Clone(sample.object)
+	earlier, released := bytes.Clone(sample.object), bytes.Clone(sample.object)
+	version[0], flags[2], earlier[0], released[0] = 4, 1, 2, 1
 	for name, test := range map[string]struct {
 		kdf    core.KDF
 		object []byte
 		want   error
 	}{
 		"version":         {core.KDFNone, version, envelope.ErrVersion},
+		"version 2":       {core.KDFNone, earlier, envelope.ErrVersion},
 		"version 1":       {core.KDFNone, released, envelope.ErrVersion},
 		"flags":           {core.KDFNone, flags, envelope.ErrFlags},
 		"kdf":             {core.KDFScrypt, sample.object, core.ErrKDFMismatch},
@@ -275,6 +291,18 @@ func TestSealEnforcesTheLimits(t *testing.T) {
 		"no opens":     {sample.header, envelope.Policy{OpensMax: 0, TTLSeconds: 60}, sample.payload, envelope.ErrPolicy},
 		"ttl under 60": {sample.header, envelope.Policy{OpensMax: 1, TTLSeconds: 59}, sample.payload, envelope.ErrPolicy},
 		"flags":        {envelope.Header{Version: envelope.Version, Flags: 1}, sample.policy, sample.payload, envelope.ErrFlags},
+		"no deadline": {
+			sample.header,
+			envelope.Policy{OpensMax: 1, TTLSeconds: 60},
+			sample.payload,
+			envelope.ErrPolicy,
+		},
+		"a deadline without its flag": {
+			envelope.Header{Version: envelope.Version},
+			sample.policy,
+			sample.payload,
+			envelope.ErrPolicy,
+		},
 	} {
 		_, err := envelope.Seal(&sample.content, test.header, sample.id, test.policy, test.payload)
 		if !errors.Is(err, test.want) {

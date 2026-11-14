@@ -8,9 +8,9 @@ import (
 	"syscall"
 
 	"golang.org/x/term"
-)
 
-const exitInterrupted = 130
+	"github.com/misaon/nylzo/internal/cli/stopsignal"
+)
 
 var ErrNoTerminal = errors.New("no terminal to ask on")
 
@@ -42,7 +42,8 @@ func (s *System) StdoutIsTerminal() bool {
 	return term.IsTerminal(int(s.stdout.Fd()))
 }
 
-// ReadSecret reads from the controlling terminal without echo and restores the echo when interrupted.
+// ReadSecret reads from the controlling terminal without echo, and on a stop signal restores the echo before the
+// process ends by that signal.
 func (*System) ReadSecret(prompt string) ([]byte, error) {
 	files, err := openTerminal()
 	if err != nil {
@@ -59,16 +60,16 @@ func (*System) ReadSecret(prompt string) ([]byte, error) {
 		return nil, ErrNoTerminal
 	}
 	interrupted := make(chan os.Signal, 1)
-	signal.Notify(interrupted, os.Interrupt, syscall.SIGTERM)
+	stopsignal.Notify(interrupted, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(interrupted)
 	done := make(chan struct{})
 	defer close(done)
 	go func() {
 		select {
-		case <-interrupted:
+		case received := <-interrupted:
 			_ = term.Restore(descriptor, state)
 			fmt.Fprintln(output)
-			os.Exit(exitInterrupted)
+			stopsignal.Exit(received)
 		case <-done:
 		}
 	}()

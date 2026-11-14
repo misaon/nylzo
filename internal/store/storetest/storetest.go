@@ -23,6 +23,7 @@ type contract struct {
 var contracts = []contract{
 	{"CreateLoadConflict", (*fixture).createLoadConflict},
 	{"OnlyThePresentedKeyOpensARecord", (*fixture).onlyThePresentedKeyOpens},
+	{"ResealWrapsVisitsEveryRow", (*fixture).resealWrapsVisitsEveryRow},
 	{"AK3MetadataDoesNotConsume", (*fixture).metadataDoesNotConsume},
 	{"AK4ConcurrentClaims", (*fixture).concurrentClaims},
 	{"AK5PassphraseBackoff", (*fixture).passphraseBackoff},
@@ -38,6 +39,8 @@ var contracts = []contract{
 	{"RecordedEndingWins", (*fixture).recordedEndingWins},
 	{"ReleaseAfterExpiryRecordsNothing", (*fixture).releaseAfterExpiryRecordsNothing},
 	{"BurnAndCancel", (*fixture).burnAndCancel},
+	{"F11TakeBackRestoresOnlyItsOwnWait", (*fixture).takeBackRestoresOnlyItsOwnWait},
+	{"F11EndedMessagesCountNoAttempt", (*fixture).endedMessagesCountNoAttempt},
 	{"TakeDownWithoutTheKey", (*fixture).takeDownWithoutTheKey},
 	{"ReportsPerMessage", (*fixture).reportsPerMessage},
 	{"AK7Expiry", (*fixture).expiry},
@@ -54,6 +57,9 @@ var contracts = []contract{
 }
 
 var baseTime = time.Date(2026, 10, 22, 10, 0, 0, 0, time.UTC)
+
+// recordsKey stands in for the key that the server derives from its pepper.
+var recordsKey = seal.NewKey()
 
 const (
 	oneMinute uint32 = 60
@@ -102,7 +108,7 @@ func (f *fixture) create(opens uint16, ttlSeconds uint32, passphrase bool) *mess
 		created.reference(),
 		bytes.NewReader(bytes.Repeat([]byte{0xAB}, blobSize)),
 		blobSize,
-		time.Duration(ttlSeconds)*time.Second,
+		created.Message.ExpiresAt,
 	); err != nil {
 		f.t.Fatal(err)
 	}
@@ -115,12 +121,13 @@ func (f *fixture) createRow(opens uint16, ttlSeconds uint32, passphrase bool) *m
 	readKey, manageKey := core.NewSecret()[:], core.NewSecret()[:]
 	blobReference := core.NewID()
 	record := store.NewRecord(
+		recordsKey,
 		seal.LocatorOf(id[:]),
 		newMessage(opens, ttlSeconds, passphrase),
 		readKey,
 		manageKey,
 		core.Encode(blobReference[:]),
-		seal.NewKey(),
+		new(seal.NewBlobKey()),
 	)
 	if err := f.store.Create(f.t.Context(), &record.Row); err != nil {
 		f.t.Fatal(err)
@@ -147,19 +154,15 @@ func (f *fixture) claim(created *message, now time.Time, seed int) (store.ClaimR
 	return store.Claim(f.t.Context(), f.store, record, claimParameters(record, now, seed))
 }
 
-func (f *fixture) claimWithVerifier(
-	created *message,
-	now time.Time,
-	seed int,
-	correct bool,
-) (store.ClaimResult, error) {
-	record := f.get(created)
-	parameters := claimParameters(record, now, seed)
-	parameters.VerifierSent = true
-	parameters.VerifyMAC = func(_ byte, stored []byte) bool {
-		return correct && bytes.Equal(stored, created.Message.VerifierMAC)
+func (f *fixture) attempt(created *message, now time.Time) (store.Attempt, store.PassphraseError, error) {
+	return store.CountAttempt(f.t.Context(), f.store, f.get(created), func() time.Time { return now })
+}
+
+func (f *fixture) takeBack(created *message, attempt store.Attempt, now time.Time) {
+	f.t.Helper()
+	if err := store.TakeBack(f.t.Context(), f.store, f.get(created), attempt, now); err != nil {
+		f.t.Fatal(err)
 	}
-	return store.Claim(f.t.Context(), f.store, record, parameters)
 }
 
 func (f *fixture) download(created *message, lease *store.Lease, now time.Time) error {
@@ -221,10 +224,11 @@ func newMessage(opens uint16, ttlSeconds uint32, passphrase bool) *store.Message
 		Size:           blobSize,
 	}
 	if passphrase {
-		created.KDF = 1
-		created.VerifierMAC = mac(fmt.Sprintf("verifier/%d", time.Now().UnixNano()))
-		created.VerifierPepperID = 7
+		created.KDF = 3
 	}
+	salt := seal.NewEraseSalt()
+	created.Registration = seal.WrapRegistration(&salt, seal.Locator{}, make([]byte, seal.RegistrationLen))
+	created.RegistrationPepperID = 7
 	return created
 }
 

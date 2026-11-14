@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,6 +35,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/signing"
 
 	"github.com/misaon/nylzo/internal/erase"
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store"
@@ -46,19 +48,20 @@ import (
 
 const reexecEnv = "NYLZO_CLI_TEST_REEXEC"
 
+var testPepper = bytes.Repeat([]byte{7}, pepper.SecretLen)
+
 func TestMain(tests *testing.M) {
 	if os.Getenv(reexecEnv) == "1" {
-		os.Exit(
-			Run(
-				os.Args[1:],
-				&command.Environment{
-					Stdin:    os.Stdin,
-					Stdout:   os.Stdout,
-					Stderr:   os.Stderr,
-					Getenv:   os.Getenv,
-					Terminal: noTerminal{},
-				},
-			),
+		Main(
+			os.Args[1:],
+			&command.Environment{
+				Stdin:    os.Stdin,
+				Stdout:   os.Stdout,
+				Stderr:   os.Stderr,
+				Getenv:   os.Getenv,
+				Terminal: noTerminal{},
+				Harden:   noHarden,
+			},
 		)
 	}
 	tests.Run()
@@ -77,9 +80,10 @@ func newTestServer(t *testing.T, change func(*config.Server)) *testServer {
 	directory := t.TempDir()
 	settings := config.Defaults()
 	settings.DataDirectory = directory
-	settings.Pepper = bytes.Repeat([]byte{7}, 32)
+	settings.Pepper = bytes.Clone(testPepper)
 	settings.ReportKey = testReportKey.PublicKey()
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
+	settings.Development.AllowSwap = true
 	settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1<<20, 1<<20
 	settings.Rates.SourcePerSecond, settings.Rates.SourceBurst = 1<<20, 1<<20
 	settings.Rates.CreatePerHour, settings.Rates.CreatePerDay, settings.Rates.ReadPerHour = 1000, 1000, 1000
@@ -162,8 +166,9 @@ func runWith(
 			Getenv:   getenvFrom(variables),
 			Terminal: terminal,
 			Version:  "test",
+			Harden:   noHarden,
 		},
-	)
+	).Code
 	return commandResult{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
@@ -249,7 +254,7 @@ func TestCreateAndReadText(t *testing.T) {
 		"--opens",
 		"2",
 	)
-	if !strings.HasPrefix(link, instance.url+"/r#2.0.") || strings.Count(created.stdout, "\n") != 1 {
+	if !strings.HasPrefix(link, instance.url+"/r#3.0.") || strings.Count(created.stdout, "\n") != 1 {
 		t.Fatalf("create printed %q", created.stdout)
 	}
 	if strings.Contains(created.stderr, "#") {
@@ -324,7 +329,7 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	linkKeys, err := keys.DeriveLink(parsed.ID, &parsed.Secret)
+	read, err := keys.DeriveRead(parsed.ID, &parsed.Secret)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,8 +343,12 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	readKey := signing.PublicKey(&linkKeys.R)
-	recordKey, err := seal.Unwrap(seal.KeyFor(readKey[:], locator, seal.Read), row.ReadWrap, locator, seal.Read)
+	readKey := signing.PublicKey(&read)
+	ring, err := pepper.NewRing(testPepper, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recordKey, err := seal.UnwrapRecordKey(ring.RecordsKey(), readKey[:], row.ReadWrap, locator, seal.Read)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -363,15 +372,15 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	}
 	encrypted := stored[erase.BlockLen:]
 	object := make([]byte, record.Message.Size)
-	seal.BlobStream(blobKey, salt).XORKeyStream(object, encrypted[:record.Message.Size])
+	seal.BlobStream(blobKey.Key, salt).XORKeyStream(object, encrypted[:record.Message.Size])
 	return object
 }
 
 func TestALinkFromANewerVersionAsksForANewerNylzo(t *testing.T) {
 	t.Parallel()
 	secret := core.Encode(make([]byte, core.SecretLen))
-	newer := "https://nylzo.example/r#3.3." + core.NewID().String() + "." + secret + "." + secret
-	damaged := "https://nylzo.example/r#2.9." + core.NewID().String() + "." + secret + "." + secret
+	newer := "https://nylzo.example/r#4.3." + core.NewID().String() + "." + secret + "." + secret
+	damaged := "https://nylzo.example/r#3.9." + core.NewID().String() + "." + secret + "." + secret
 	for _, name := range []string{"read", "burn", "report"} {
 		result := runWith(t, newer, nil, nil, withDestination(name)...)
 		if result.code != command.ExitError ||
@@ -394,8 +403,10 @@ func TestRetiredAndReleasedLinksAskForANewLink(t *testing.T) {
 	secret := core.Encode(make([]byte, core.SecretLen))
 	id := core.NewID().String()
 	for link, want := range map[string]string{
-		"https://nylzo.example/r#2.2." + id + "." + secret + "." + secret: "the link uses a passphrase profile " +
+		"https://nylzo.example/r#3.2." + id + "." + secret + "." + secret: "the link uses a passphrase profile " +
 			"that nylzo no longer supports; ask the sender for a new link",
+		"https://nylzo.example/r#2.3." + id + "." + secret + "." + secret: "the link is from before this " +
+			"instance's security upgrade, which deleted every message it held; ask the sender for a new link",
 		"https://nylzo.example/m/" + id + "#1.0." + secret: "the link is from before this instance's security " +
 			"upgrade, which deleted every message it held; ask the sender for a new link",
 	} {
@@ -423,7 +434,7 @@ func TestPassphraseFromFilesAndWrongAttempts(t *testing.T) {
 	right := writeSecretFile(t, "correct horse battery staple\n")
 	wrong := writeSecretFile(t, "wrong horse battery staple")
 	link, _ := createText(t, instance, "behind a passphrase", "--passphrase-file", right)
-	if !strings.Contains(link, "#2.3.") {
+	if !strings.Contains(link, "#3.3.") {
 		t.Fatalf("link %s", link)
 	}
 	result := runWith(t, link, nil, nil, "read", "--passphrase-file", wrong, "--out", t.TempDir())
@@ -439,6 +450,26 @@ func TestPassphraseFromFilesAndWrongAttempts(t *testing.T) {
 		runWith(t, link, map[string]string{command.EnvironmentPassphrase: right}, nil, "read", "--out", t.TempDir()),
 	)
 	assertPrivate(t, paths[0], "behind a passphrase")
+}
+
+func TestBurnNeedsThePassphrase(t *testing.T) {
+	t.Parallel()
+	instance := newTestServer(t, nil)
+	right := writeSecretFile(t, "correct horse battery staple\n")
+	link, _ := createText(t, instance, "burn behind a passphrase", "--passphrase-file", right)
+	wrong := writeSecretFile(t, "wrong horse battery staple")
+	result := runWith(t, link, nil, nil, "burn", "--passphrase-file", wrong)
+	if result.code != command.ExitError || !strings.Contains(result.stderr, "wrong passphrase; 4 attempts left") {
+		t.Fatalf("burn with a wrong passphrase: %d %q", result.code, result.stderr)
+	}
+	if result = runWith(t, link, nil, nil, "burn"); result.code != command.ExitError ||
+		!strings.Contains(result.stderr, "needs a passphrase") {
+		t.Fatalf("burn without a passphrase: %d %q", result.code, result.stderr)
+	}
+	if result = runWith(t, link, nil, nil, "burn", "--passphrase-file", right); result.code != command.ExitOK ||
+		result.stdout != "deleted\n" {
+		t.Fatalf("burn with the passphrase: %d %q %q", result.code, result.stdout, result.stderr)
+	}
 }
 
 func TestCreateHasNoProfileChoice(t *testing.T) {
@@ -880,7 +911,7 @@ func TestAServerCannotSwitchOffThePassphrase(t *testing.T) {
 		"--passphrase-file",
 		writeSecretFile(t, "correct horse battery staple"),
 	)
-	if result.code != command.ExitOK || !strings.Contains(result.stdout, "#2.3.") {
+	if result.code != command.ExitOK || !strings.Contains(result.stdout, "#3.3.") {
 		t.Fatalf("a passphrase was dropped on the server's word: %d %q %q", result.code, result.stdout, result.stderr)
 	}
 }
@@ -907,7 +938,16 @@ func TestReadChecksTheOutputBeforeItSpendsAnOpen(t *testing.T) {
 func TestLiedPolicyHeaderIsRefused(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)
-	for name, field := range map[string][2]string{"kdf": {`"kdf_id":0`, `"kdf_id":3`}, "flags": {`"flags":0`, `"flags":1`}} {
+	for name, lie := range map[string]func(string) string{
+		"kdf":   func(policy string) string { return strings.Replace(policy, `"kdf_id":0`, `"kdf_id":3`, 1) },
+		"flags": func(policy string) string { return strings.Replace(policy, `"flags":2`, `"flags":3`, 1) },
+		"deadline": func(policy string) string {
+			return regexp.MustCompile(`"deadline":(\d+)`).ReplaceAllStringFunc(policy, func(field string) string {
+				deadline, _ := strconv.ParseInt(strings.TrimPrefix(field, `"deadline":`), 10, 64)
+				return `"deadline":` + strconv.FormatInt(deadline+60, 10)
+			})
+		},
+	} {
 		link, _ := createText(t, instance, "policy header")
 		proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			request, _ := http.NewRequestWithContext(r.Context(), r.Method, instance.url+r.URL.RequestURI(), r.Body)
@@ -922,7 +962,7 @@ func TestLiedPolicyHeaderIsRefused(t *testing.T) {
 			if policy := response.Header.Get("X-Nylzo-Policy"); policy != "" {
 				raw, _ := base64.RawURLEncoding.DecodeString(policy)
 				w.Header().
-					Set("X-Nylzo-Policy", core.Encode([]byte(strings.Replace(string(raw), field[0], field[1], 1))))
+					Set("X-Nylzo-Policy", core.Encode([]byte(lie(string(raw)))))
 			}
 			w.WriteHeader(response.StatusCode)
 			io.Copy(w, response.Body)
@@ -990,7 +1030,8 @@ func TestCreateRetriesWithANewIDAndSignedRequestsRetryA404(t *testing.T) {
 	}
 }
 
-// F7: the headers of a create and of a claim have one length whether or not the message has a passphrase.
+// F7, F05, F11: the headers of the requests that create, read and burn a message have one length whether or not the
+// message has a passphrase.
 func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)
@@ -1001,13 +1042,30 @@ func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/v1/messages":
 			route = "create"
+		case r.URL.Path == "/api/v1/instance" && r.Header.Get("X-Nylzo-Ttl") != "":
+			route = "instance"
+		case strings.HasSuffix(r.URL.Path, "/handshake"):
+			route = "handshake"
 		case strings.HasSuffix(r.URL.Path, "/claim"):
 			route = "claim"
+		case strings.HasSuffix(r.URL.Path, "/burn"):
+			route = "burn"
 		default:
 			return false
 		}
-		if route == "claim" && (r.Header.Get("X-Nylzo-Verifier") == "" || r.Header.Get("X-Nylzo-Share-Key") == "") {
-			t.Errorf("a %s without a verifier or a share key", route)
+		required := map[string][]string{
+			"instance":  {"X-Nylzo-Registration"},
+			"handshake": {"X-Nylzo-Ke1"},
+			"claim":     {"X-Nylzo-Ke3", "X-Nylzo-Share-Key"},
+			"burn":      {"X-Nylzo-Ke3"},
+		}
+		for _, name := range required[route] {
+			if r.Header.Get(name) == "" {
+				t.Errorf("a %s without %s", route, name)
+			}
+		}
+		if r.Header.Get("X-Nylzo-Verifier") != "" {
+			t.Errorf("a %s with the verifier of protocol v2", route)
 		}
 		size := 0
 		for name, values := range r.Header {
@@ -1032,8 +1090,25 @@ func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 	readPaths(t, runWith(t, "\n  "+plain+"  \n", nil, nil, "read", "--out", t.TempDir()))
 	passphrase := map[string]string{command.EnvironmentPassphrase: writeSecretFile(t, "correct horse battery staple")}
 	readPaths(t, runWith(t, guarded, passphrase, nil, "read", "--out", t.TempDir()))
-	for route, sizes := range lengths {
-		if len(sizes) != 2 || sizes[0] != sizes[1] {
+	plainBurn, _ := createText(t, instance, "same length")
+	guardedBurn, _ := createText(
+		t,
+		instance,
+		"same length",
+		"--passphrase-file",
+		passphrase[command.EnvironmentPassphrase],
+	)
+	for _, burned := range []commandResult{
+		runWith(t, plainBurn, nil, nil, "burn"),
+		runWith(t, guardedBurn, passphrase, nil, "burn"),
+	} {
+		if burned.code != command.ExitOK {
+			t.Fatalf("burn: %d %q", burned.code, burned.stderr)
+		}
+	}
+	for route, want := range map[string]int{"instance": 4, "create": 4, "handshake": 4, "claim": 2, "burn": 2} {
+		sizes := lengths[route]
+		if len(sizes) != want || slices.Min(sizes) != slices.Max(sizes) {
 			t.Errorf("%s headers of %v bytes; a passphrase must not change them", route, sizes)
 		}
 	}
@@ -1145,9 +1220,17 @@ func TestReadWritesToDiskOnlyWhenAsked(t *testing.T) {
 		!strings.Contains(result.stderr, "--out DIR") {
 		t.Fatalf("read --stdout of an attachment did not say why it saved nothing: %d %q", result.code, result.stderr)
 	}
-	paths := readPaths(t, runWith(t, attachment, nil, nil, "read", "--out", t.TempDir()))
+	result := runWith(t, attachment, nil, nil, "read", "--out", t.TempDir())
+	paths := readPaths(t, result)
 	if len(paths) != 1 || mustRead(t, paths[0]) != "\x01\x02\x03" {
 		t.Fatalf("the second open lost the file: %v", paths)
+	}
+	if !strings.Contains(result.stderr, "cannot scan attachments") {
+		t.Fatalf("a saved attachment came without the warning: %q", result.stderr)
+	}
+	if result = runWith(t, link, nil, nil, "read", "--out", t.TempDir()); result.code != command.ExitOK ||
+		strings.Contains(result.stderr, "cannot scan attachments") {
+		t.Fatalf("a text-only read: %d %q", result.code, result.stderr)
 	}
 }
 
@@ -1246,29 +1329,35 @@ func TestASecondSignalStopsTheCommand(t *testing.T) {
 		t.Skip("signals")
 	}
 	t.Parallel()
-	stdin, keep, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer keep.Close()
-	process := exec.Command(os.Args[0], "burn")
-	process.Env = append(os.Environ(), reexecEnv+"=1")
-	process.Stdin = stdin
-	if err = process.Start(); err != nil {
-		t.Fatal(err)
-	}
-	stdin.Close()
-	done := make(chan error, 1)
-	go func() { done <- process.Wait() }()
-	time.Sleep(300 * time.Millisecond)
-	process.Process.Signal(syscall.SIGTERM)
-	time.Sleep(300 * time.Millisecond)
-	process.Process.Signal(syscall.SIGTERM)
-	select {
-	case <-done:
-	case <-time.After(10 * time.Second):
-		process.Process.Kill()
-		t.Fatal("two signals did not stop a command blocked on stdin")
+	for _, stop := range []syscall.Signal{syscall.SIGTERM, syscall.SIGINT} {
+		stdin, keep, err := os.Pipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		process := exec.Command(os.Args[0], "burn")
+		process.Env = append(os.Environ(), reexecEnv+"=1")
+		process.Stdin = stdin
+		if err = process.Start(); err != nil {
+			t.Fatal(err)
+		}
+		stdin.Close()
+		done := make(chan error, 1)
+		go func() { done <- process.Wait() }()
+		time.Sleep(300 * time.Millisecond)
+		process.Process.Signal(stop)
+		time.Sleep(300 * time.Millisecond)
+		process.Process.Signal(stop)
+		select {
+		case err = <-done:
+		case <-time.After(10 * time.Second):
+			process.Process.Kill()
+			t.Fatalf("two %v signals did not stop a command blocked on stdin", stop)
+		}
+		keep.Close()
+		if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != -1 ||
+			exit.Sys().(syscall.WaitStatus).Signal() != stop {
+			t.Fatalf("the second %v did not end the command by itself: %v", stop, err)
+		}
 	}
 }
 
@@ -1283,9 +1372,12 @@ func TestAnUnwritableOutDirectoryIsNotNamed(t *testing.T) {
 	if err := os.Mkdir(locked, 0o500); err != nil {
 		t.Fatal(err)
 	}
+	before := instance.requests.Load()
 	result := runWith(t, link, nil, nil, "read", "--out", locked)
-	if result.code != command.ExitError || strings.Contains(result.stderr, "correct horse") {
-		t.Fatalf("read into an unwritable --out: %d %q", result.code, result.stderr)
+	if result.code != command.ExitError || strings.Contains(result.stderr, "correct horse") ||
+		instance.requests.Load() != before {
+		t.Fatalf("read into an unwritable --out: %d %q, %d requests",
+			result.code, result.stderr, instance.requests.Load()-before)
 	}
 	paths := readPaths(t, runWith(t, link, nil, nil, "read", "--out", t.TempDir()))
 	assertPrivate(t, paths[0], "kept")
@@ -1356,8 +1448,8 @@ func TestOpenRefusesALinkItCannotHandOver(t *testing.T) {
 		want   string
 	}{
 		"another instance": {link, "https://nylzo.example", "belongs to another instance"},
-		"damaged link":     {strings.Replace(link, "#2.", "#2.9", 1), instance.url, "incomplete or damaged"},
-		"newer link":       {strings.Replace(link, "#2.", "#7.", 1), instance.url, "newer version"},
+		"damaged link":     {strings.Replace(link, "#3.", "#3.9", 1), instance.url, "incomplete or damaged"},
+		"newer link":       {strings.Replace(link, "#3.", "#7.", 1), instance.url, "newer version"},
 		"no link":          {"", instance.url, "empty"},
 	} {
 		result := runWith(t, testCase.stdin, nil, nil, "open", "--no-browser", "--server", testCase.server)

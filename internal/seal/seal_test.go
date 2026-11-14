@@ -1,8 +1,14 @@
 package seal_test
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"errors"
 	"math/bits"
 	"testing"
 
@@ -30,7 +36,7 @@ func TestPaddedSizeFollowsPadme(t *testing.T) {
 // F10: the record key seals the fields and wraps the blob key only through keys of their own.
 func TestRecordKeyServesEachPurposeThroughItsOwnKey(t *testing.T) {
 	t.Parallel()
-	recordKey, blobKey := seal.NewKey(), seal.NewKey()
+	recordKey, blobKey := seal.NewKey(), seal.NewBlobKey()
 	locator := seal.LocatorOf([]byte("message"))
 	aead := func(key seal.Key) cipher.AEAD {
 		block, err := aes.NewCipher(key[:])
@@ -51,29 +57,215 @@ func TestRecordKeyServesEachPurposeThroughItsOwnKey(t *testing.T) {
 	}
 	if _, err := aead(
 		recordKey,
-	).Open(nil, nil, seal.WrapBlobKey(recordKey, blobKey, locator), aad("blob")); err == nil {
+	).Open(nil, nil, seal.WrapBlobKey(recordKey, &blobKey, locator), aad("blob")); err == nil {
 		t.Fatal("the blob key is wrapped under the record key itself")
 	}
 }
 
-func TestAWrapOpensOnlyForItsKeyLocatorAndPurpose(t *testing.T) {
+func TestAWrapOpensOnlyWithBothKeysForItsLocatorAndPurpose(t *testing.T) {
 	t.Parallel()
-	key, wrapping := seal.NewKey(), seal.NewKey()
+	recordKey, pepperKey := seal.NewKey(), seal.NewKey()
+	publicKey := []byte("a public key that a request carries")
 	locator, elsewhere := seal.LocatorOf([]byte("message")), seal.LocatorOf([]byte("another message"))
-	wrapped := seal.Wrap(wrapping, key, locator, seal.Read)
-	if opened, err := seal.Unwrap(wrapping, wrapped, locator, seal.Read); err != nil || opened != key {
+	wrapped := seal.WrapRecordKey(pepperKey, publicKey, recordKey, locator, seal.Read)
+	unwrap := func(pepper seal.Key, public []byte, at seal.Locator, purpose seal.Purpose) error {
+		opened, err := seal.UnwrapRecordKey(pepper, public, wrapped, at, purpose)
+		if err == nil && opened != recordKey {
+			t.Fatal("the wrap opened to another key")
+		}
+		return err
+	}
+	if err := unwrap(pepperKey, publicKey, locator, seal.Read); err != nil {
 		t.Fatalf("unwrap: %v", err)
 	}
 	for name, err := range map[string]error{
-		"another key":     func() error { _, err := seal.Unwrap(seal.NewKey(), wrapped, locator, seal.Read); return err }(),
-		"another locator": func() error { _, err := seal.Unwrap(wrapping, wrapped, elsewhere, seal.Read); return err }(),
-		"another purpose": func() error { _, err := seal.Unwrap(wrapping, wrapped, locator, seal.Manage); return err }(),
+		"the public key alone":      unwrap(seal.Key{}, publicKey, locator, seal.Read),
+		"another pepper key":        unwrap(seal.NewKey(), publicKey, locator, seal.Read),
+		"the pepper key alone":      unwrap(pepperKey, nil, locator, seal.Read),
+		"another public key":        unwrap(pepperKey, []byte("another public key"), locator, seal.Read),
+		"another locator":           unwrap(pepperKey, publicKey, elsewhere, seal.Read),
+		"another purpose":           unwrap(pepperKey, publicKey, locator, seal.Manage),
+		"the inner wrap on its own": openInner(t, wrapped, publicKey, locator),
 	} {
 		if err == nil {
 			t.Errorf("a wrap opened with %s", name)
 		}
 	}
-	if len(wrapped) != seal.WrapLen || len(seal.Record(key, locator, make([]byte, 103))) != seal.RecordBlock {
+	if len(wrapped) != seal.SealedWrapLen ||
+		len(seal.Record(recordKey, locator, make([]byte, 103))) != seal.RecordBlock {
 		t.Fatal("wraps and records must have fixed lengths")
 	}
+}
+
+// openInner treats a stored wrap as the bare wrap of an earlier release, which the public key alone opened.
+func openInner(t *testing.T, stored, publicKey []byte, locator seal.Locator) error {
+	t.Helper()
+	derived, err := hkdf.Key(sha256.New, publicKey, locator[:], "nylzo/v1/record/read", seal.KeyLen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = newGCM(t, seal.Key(derived)).Open(nil, nil, stored, aad(locator, "read"))
+	return err
+}
+
+// legacyWrap builds a wrap as nylzo 0.13 and earlier stored it, from spec §5.2 of that release.
+func legacyWrap(t *testing.T, publicKey []byte, recordKey seal.Key, locator seal.Locator) []byte {
+	t.Helper()
+	derived, err := hkdf.Key(sha256.New, publicKey, locator[:], "nylzo/v1/record/read", seal.KeyLen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return newGCM(t, seal.Key(derived)).Seal(nil, nil, recordKey[:], aad(locator, "read"))
+}
+
+func TestResealWrapMovesEveryWrapUnderTheCurrentPepperKey(t *testing.T) {
+	t.Parallel()
+	recordKey, previous, current := seal.NewKey(), seal.NewKey(), seal.NewKey()
+	publicKey := []byte("pk_R")
+	locator := seal.LocatorOf([]byte("message"))
+	opensWith := func(wrapped []byte, pepperKey seal.Key) bool {
+		opened, err := seal.UnwrapRecordKey(pepperKey, publicKey, wrapped, locator, seal.Read)
+		return err == nil && opened == recordKey
+	}
+	legacy := legacyWrap(t, publicKey, recordKey, locator)
+	if len(legacy) != seal.WrapLen {
+		t.Fatalf("a wrap of an earlier release has %d bytes", len(legacy))
+	}
+	changed, err := seal.ResealWrap(current, nil, &legacy, locator, seal.Read)
+	if err != nil || !changed || !opensWith(legacy, current) {
+		t.Fatalf("a wrap of an earlier release was not sealed: changed %t, %v", changed, err)
+	}
+	underPrevious := seal.WrapRecordKey(previous, publicKey, recordKey, locator, seal.Read)
+	resealed := bytes.Clone(underPrevious)
+	changed, err = seal.ResealWrap(current, []seal.Key{previous}, &resealed, locator, seal.Read)
+	if err != nil || !changed || !opensWith(resealed, current) || opensWith(resealed, previous) {
+		t.Fatalf("a wrap of the previous pepper was not sealed again: changed %t, %v", changed, err)
+	}
+	kept := bytes.Clone(resealed)
+	changed, err = seal.ResealWrap(current, []seal.Key{previous}, &kept, locator, seal.Read)
+	if err != nil || changed || !bytes.Equal(kept, resealed) {
+		t.Fatalf("a wrap under the current pepper changed: %t, %v", changed, err)
+	}
+	kept = bytes.Clone(underPrevious)
+	changed, err = seal.ResealWrap(current, nil, &kept, locator, seal.Read)
+	if !errors.Is(err, seal.ErrOpen) || changed || !bytes.Equal(kept, underPrevious) {
+		t.Fatalf("a wrap that no pepper key opens must stay as it is: %t, %v", changed, err)
+	}
+}
+
+// F14: the tag follows spec §5.2 and covers the salt and every encrypted byte, so no change to a stored blob passes.
+func TestTheBlobTagCoversTheSaltAndEveryEncryptedByte(t *testing.T) {
+	t.Parallel()
+	blob, salt := seal.NewBlobKey(), seal.NewEraseSalt()
+	encrypted := make([]byte, seal.PaddedSize(4097))
+	rand.Read(encrypted)
+	check := func(blobKey seal.Key, salt seal.EraseSalt, encrypted []byte) error {
+		mac := seal.BlobMAC(blobKey, salt)
+		mac.Write(encrypted)
+		return seal.CheckBlobTag(mac, &blob.Tag)
+	}
+	tagKey, err := hkdf.Key(sha256.New, blob.Key[:], salt[:], "nylzo/v2/blob/tag", seal.KeyLen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	specified := hmac.New(sha256.New, tagKey)
+	specified.Write(salt[:])
+	specified.Write(encrypted)
+	blob.Tag = seal.BlobTag(specified.Sum(nil))
+	if err = check(blob.Key, salt, encrypted); err != nil {
+		t.Fatalf("the tag of spec section 5.2 does not check: %v", err)
+	}
+	flipped := bytes.Clone(encrypted)
+	flipped[len(flipped)-1] ^= 1
+	otherSalt := salt
+	otherSalt[0] ^= 1
+	for name, err := range map[string]error{
+		"a flipped bit in the padding": check(blob.Key, salt, flipped),
+		"another salt":                 check(blob.Key, otherSalt, encrypted),
+		"a byte less":                  check(blob.Key, salt, encrypted[:len(encrypted)-1]),
+		"a byte more":                  check(blob.Key, salt, append(bytes.Clone(encrypted), 0)),
+		"another blob key":             check(seal.NewKey(), salt, encrypted),
+	} {
+		if !errors.Is(err, seal.ErrBlobChanged) {
+			t.Errorf("%s passed the check: %v", name, err)
+		}
+	}
+}
+
+func TestABlobWrapHoldsTheTagAndOneOfAnEarlierReleaseHasNone(t *testing.T) {
+	t.Parallel()
+	recordKey := seal.NewKey()
+	locator, elsewhere := seal.LocatorOf([]byte("message")), seal.LocatorOf([]byte("another message"))
+	blob := seal.NewBlobKey()
+	rand.Read(blob.Tag[:])
+	rand.Read(blob.SaltTag[:])
+	wrapped := seal.WrapBlobKey(recordKey, &blob, locator)
+	if opened, err := seal.UnwrapBlobKey(recordKey, wrapped, locator); err != nil || opened != blob ||
+		len(wrapped) != seal.BlobWrapLen {
+		t.Fatalf("the blob wrap must give back the key and both tags: %d bytes, %v", len(wrapped), err)
+	}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("a key without its tags got a wrap that skips the check")
+			}
+		}()
+		seal.WrapBlobKey(recordKey, &seal.BlobKey{Key: blob.Key}, locator)
+	}()
+	if _, err := seal.UnwrapBlobKey(recordKey, wrapped, elsewhere); !errors.Is(err, seal.ErrOpen) {
+		t.Fatalf("a blob wrap opened for another locator: %v", err)
+	}
+	earlier := legacyBlobWrap(t, recordKey, blob.Key, locator)
+	opened, err := seal.UnwrapBlobKey(recordKey, earlier, locator)
+	if err != nil || opened.Tagged || opened.Key != blob.Key || len(earlier) != seal.WrapLen {
+		t.Fatalf("a blob wrap of an earlier release must give its key without a tag: %+v, %v", opened.Tagged, err)
+	}
+}
+
+// F14: a burn trusts the salt through a tag of its own, which follows spec §5.2.
+func TestTheSaltTagFollowsTheSpecAndRefusesAnotherSalt(t *testing.T) {
+	t.Parallel()
+	blob, salt := seal.NewBlobKey(), seal.NewEraseSalt()
+	saltKey, err := hkdf.Key(sha256.New, blob.Key[:], nil, "nylzo/v2/blob/salt", seal.KeyLen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	specified := hmac.New(sha256.New, saltKey)
+	specified.Write(salt[:])
+	blob.SaltTag = seal.BlobTag(specified.Sum(nil))
+	if seal.SaltTagOf(blob.Key, salt) != blob.SaltTag || seal.CheckSaltTag(&blob, salt) != nil {
+		t.Fatal("the salt tag does not follow spec section 5.2")
+	}
+	otherSalt := salt
+	otherSalt[seal.EraseSaltLen-1] ^= 1
+	if err = seal.CheckSaltTag(&blob, otherSalt); !errors.Is(err, seal.ErrBlobChanged) {
+		t.Fatalf("another salt passed the check: %v", err)
+	}
+}
+
+// legacyBlobWrap builds a blob wrap as nylzo 0.13 stored it, from spec §5.2 of that release.
+func legacyBlobWrap(t *testing.T, recordKey, blobKey seal.Key, locator seal.Locator) []byte {
+	t.Helper()
+	derived, err := hkdf.Key(sha256.New, recordKey[:], locator[:], "nylzo/v2/record/blob", seal.KeyLen)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return newGCM(t, seal.Key(derived)).Seal(nil, nil, blobKey[:], aad(locator, "blob"))
+}
+
+func newGCM(t *testing.T, key seal.Key) cipher.AEAD {
+	t.Helper()
+	block, err := aes.NewCipher(key[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	gcm, err := cipher.NewGCMWithRandomNonce(block)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return gcm
+}
+
+func aad(locator seal.Locator, label string) []byte {
+	return append(locator[:len(locator):len(locator)], label...)
 }

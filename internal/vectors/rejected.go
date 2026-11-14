@@ -19,8 +19,8 @@ var (
 
 // Rejected is an object a reader of the link of envelope case Base must refuse with Error. The reader
 // receives the object of ObjectFrom (default Base) or Object, with FlipByte flipped, SetByte set and cut to
-// TruncateTo. ReaderID, OpensMax and TTLSeconds replace what the reader expects: a link to another id, or a
-// policy that the server reports differently.
+// TruncateTo. ReaderID, OpensMax, TTLSeconds and Deadline replace what the reader expects: a link to another id, or
+// a policy that the server reports differently, where a Deadline of 0 is a policy without one.
 type Rejected struct {
 	Name       string   `json:"name"`
 	Base       string   `json:"base"`
@@ -32,10 +32,11 @@ type Rejected struct {
 	ReaderID   *string  `json:"reader_id,omitempty"`
 	OpensMax   *int     `json:"opens_max,omitempty"`
 	TTLSeconds *int     `json:"ttl_s,omitempty"`
+	Deadline   *int     `json:"deadline,omitempty"`
 	ObjectHash string   `json:"h"`
 	E          string   `json:"e_hex"`
 	KDFID      int      `json:"kdf_id"`
-	Passphrase *string  `json:"passphrase,omitempty"`
+	P          *string  `json:"p_hex,omitempty"`
 	Error      string   `json:"error"`
 }
 
@@ -47,6 +48,7 @@ type SetByte struct {
 const (
 	rejectedBase     = "text-ascii"
 	scryptBase       = "scrypt-text"
+	legacyBase       = "legacy-text"
 	errorIntegrity   = "integrity"
 	errorPlaintext   = "plaintext"
 	errorVersion     = "version"
@@ -57,16 +59,18 @@ const (
 )
 
 type rejection struct {
-	vector Rejected
-	object []byte
-	hash   *[core.ObjectHashLen]byte
-	share  *[core.ShareLen]byte
+	vector    Rejected
+	object    []byte
+	hash      *[core.ObjectHashLen]byte
+	share     *[core.ShareLen]byte
+	exportKey *keys.ExportKey
 }
 
 func (f *File) rejected() error {
 	sealed := map[string]sealedCase{}
 	for _, vector := range envelopeCases {
-		if vector.name == rejectedBase || vector.name == "text-escapes" || vector.name == scryptBase {
+		if vector.name == rejectedBase || vector.name == "text-escapes" || vector.name == scryptBase ||
+			vector.name == legacyBase {
 			sealedVector, err := sealCase(vector)
 			if err != nil {
 				return err
@@ -79,6 +83,7 @@ func (f *File) rejected() error {
 	twoKey, err := twoKeyObject(
 		base.id,
 		base.secret,
+		base.exportKey,
 		[2]*[core.ShareLen]byte{base.share, secondShare},
 		base.header,
 		base.policy,
@@ -87,6 +92,7 @@ func (f *File) rejected() error {
 		return err
 	}
 	cases := rejectedCases(&base, twoKey, secondShare, sealed["text-escapes"].object)
+	cases = append(cases, deadlineRejections(&base)...)
 	for index := range cases {
 		vector, checkErr := rejectedVector(sealed, &cases[index])
 		if checkErr != nil {
@@ -121,15 +127,8 @@ func rejectedCases(
 			},
 		},
 		{vector: Rejected{Name: "flags-set", FlipByte: new(2), Error: errorFlags}},
-		{vector: Rejected{Name: "version-other-than-2", FlipByte: new(0), Error: errorVersion}},
-		{
-			vector: Rejected{
-				Name:       "kdf-other-than-link",
-				KDFID:      int(core.KDFScrypt),
-				Passphrase: new("a passphrase the link asks for"),
-				Error:      errorKDFMismatch,
-			},
-		},
+		{vector: Rejected{Name: "version-other-than-3", FlipByte: new(0), Error: errorVersion}},
+		{vector: Rejected{Name: "kdf-other-than-link", KDFID: int(core.KDFScrypt), Error: errorKDFMismatch}},
 		{
 			vector: Rejected{
 				Name:     "wrong-id",
@@ -153,12 +152,12 @@ func rejectedCases(
 		},
 		{
 			vector: Rejected{
-				Name:       "wrong-passphrase",
-				Base:       scryptBase,
-				KDFID:      int(core.KDFScrypt),
-				Passphrase: new("a wrong passphrase for this link"),
-				Error:      errorIntegrity,
+				Name:  "wrong-export-key",
+				Base:  scryptBase,
+				KDFID: int(core.KDFScrypt),
+				Error: errorIntegrity,
 			},
+			exportKey: deterministicExportKey("rejected/wrong-export-key"),
 		},
 		{vector: Rejected{Name: "envelope-kdf-1", SetByte: &SetByte{Offset: 1, Value: 1}, Error: errorKDF}},
 		{vector: Rejected{Name: "envelope-kdf-2", SetByte: &SetByte{Offset: 1, Value: 2}, Error: errorKDF}},
@@ -175,6 +174,35 @@ func rejectedCases(
 			vector: Rejected{Name: "two-key-object-second-share", Error: errorIntegrity},
 			object: twoKey,
 			share:  secondShare,
+		},
+	}
+}
+
+// deadlineRejections change the deadline a reader expects or the flag that seals it in (F13).
+func deadlineRejections(base *sealedCase) []rejection {
+	return []rejection{
+		{
+			vector: Rejected{
+				Name:     "changed-deadline",
+				Deadline: new(int(base.policy.Deadline) + 60),
+				Error:    errorIntegrity,
+			},
+		},
+		{vector: Rejected{Name: "deadline-missing", Deadline: new(0), Error: errorIntegrity}},
+		{
+			vector: Rejected{
+				Name:    "deadline-flag-cleared",
+				SetByte: &SetByte{Offset: 2, Value: 0},
+				Error:   errorIntegrity,
+			},
+		},
+		{
+			vector: Rejected{
+				Name:     "deadline-for-a-legacy-object",
+				Base:     legacyBase,
+				Deadline: new(int(base.policy.Deadline)),
+				Error:    errorIntegrity,
+			},
 		},
 	}
 }
@@ -211,12 +239,18 @@ func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected
 	if err != nil {
 		return Rejected{}, err
 	}
-	derived, err := keys.DeriveAll(id, base.secret, kdf, valueOr(vector.Passphrase), share)
+	exportKey := rejected.exportKey
+	if exportKey == nil {
+		exportKey = base.exportKey
+	} else {
+		vector.P = new(hex.EncodeToString(exportKey[:]))
+	}
+	content, err := keys.DeriveContent(id, base.secret, exportKey, share)
 	if err != nil {
 		return Rejected{}, err
 	}
 	expected := envelope.Expected{ID: id, Policy: policy, KDF: kdf, ObjectHash: hash}
-	_, _, openErr := envelope.Open(&derived.Content, &expected, object)
+	_, _, openErr := envelope.Open(&content, &expected, object)
 	if got := errorName(openErr); got != vector.Error {
 		return Rejected{}, fmt.Errorf(
 			"%w %q fails with %q, want %q",
@@ -259,6 +293,9 @@ func readerOf(base *sealedCase, vector *Rejected) (core.ID, envelope.Policy, err
 	}
 	if vector.TTLSeconds != nil {
 		policy.TTLSeconds = uint32(*vector.TTLSeconds) //nolint:gosec // G115: a generated case near the base policy
+	}
+	if vector.Deadline != nil {
+		policy.Deadline = uint32(*vector.Deadline) //nolint:gosec // G115: a generated case near the base policy
 	}
 	return id, policy, nil
 }

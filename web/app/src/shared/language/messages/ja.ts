@@ -151,6 +151,7 @@ export const messages: Catalog = {
   'problem.opens.out_of_range': '開封回数は1〜{max}回の範囲で指定してください。',
   'problem.passphrase.too_short': 'あと{missing}必要です（{min}文字以上）。または「生成」を選んでください。',
   'problem.passphrase.malformed': 'パスワードに使えない文字が含まれています。',
+  'problem.passphrase.too_long': 'パスワードが長すぎます。',
   'problem.passphrase.repetitive': 'パスワードに使われている文字の種類が少なすぎます。',
   'problem.passphrase.sequential': 'パスワードが、連続した文字、数字、またはキーの並びになっています。',
   'problem.passphrase.context': 'パスワードの大部分がNylzoという単語です。',
@@ -177,12 +178,13 @@ export const messages: Catalog = {
   'clipboard.cleared': 'クリップボードを空にしました。すでにクリップボードの履歴にあるコピーは残ります。',
   'created.another': '新しいメッセージ',
   'created.remembered': 'この端末にメッセージを登録しました。',
+  'created.remembered.session': 'このタブがメッセージを記憶します。遅くともタブを閉じるか再読み込みすると消えます。',
   'created.status_link': '「送信済み」を開く',
   'created.not_remembered': 'この端末にメッセージを登録できなかったため、ここから取り消すことはできません。',
 
   'sent.title': '送信済み',
   'sent.note':
-    'この一覧はこのブラウザにのみ保存され、メッセージへのリンクは含みません。各項目は、メッセージの終了から{days}後に消えます。',
+    'この一覧にメッセージへのリンクは含まれません。終了したメッセージの項目は、ここで結果を確認した時点でページが削除します。そのほかの項目は、有効期限から{days}以上たった後、Nylzoを開いたときに削除します。',
   'sent.loading': '送信済みメッセージを読み込んでいます…',
   'sent.unavailable':
     'このブラウザではページがデータを保存できないため、送信済みメッセージを記憶できません。このサイトにデータの保存を許可するか、別のブラウザを使ってください。',
@@ -194,14 +196,16 @@ export const messages: Catalog = {
   'sent.state.expired': '期限切れ',
   'sent.state.cancelled': '取り消し済み',
   'sent.state.deleted': '削除済み',
+  'sent.state.lost': '開封不可',
   'sent.label.time': '有効期限',
   'sent.label.opens': '開封回数',
-  'sent.label.attempts': 'パスワードの誤入力',
+  'sent.label.attempts': '失敗した試行',
   'sent.label.first_opened': '初回開封',
   'sent.not_opened': '未開封',
   'sent.until': '{time}まで',
   'sent.opens': '{max}回中{used}回',
-  'sent.unknown': 'メッセージはすでにサーバーから消えています。',
+  'sent.unknown':
+    'サーバーでメッセージが見つかりませんでした。すでに終了している可能性があります。不要ならこの一覧から削除してください。',
   'sent.failed': '状態を読み込めませんでした。接続を確認して、もう一度お試しください。',
   'sent.cancel': 'メッセージを取り消す',
   'sent.cancel.confirm': '取り消すと、誰もメッセージを開封できなくなります。',
@@ -218,14 +222,16 @@ export const messages: Catalog = {
   'sent.unavailable.title': '送信済みの一覧をここに保存できません',
   'sent.empty.title': 'まだ何もありません',
   'sent.created': '{time}に作成',
-  'sent.state.unknown': 'もう存在しません',
+  'sent.created.session': '{time}に作成・このタブのみ',
+  'sent.state.unknown': '見つかりません',
   'sent.state.failed': '状態不明',
   'sent.state.loading': '読み込み中',
-  'sent.ended.opened': '{time}に開封されました。サーバーからは削除済みで、この項目はあと{days}間ここに残ります。',
-  'sent.ended.expired':
-    '{time}に有効期限が切れました。サーバーからは削除済みで、この項目はあと{days}間ここに残ります。',
-  'sent.ended.cancelled': '{time}に取り消されました。サーバーからは削除済みで、この項目はあと{days}間ここに残ります。',
-  'sent.ended.deleted': '受信者が削除したか、運営者が撤去しました。この項目はあと{days}間ここに残ります。',
+  'sent.ended.opened': '{time}に開封されました。サーバーからは削除済みで、このページを離れると項目も消えます。',
+  'sent.ended.expired': '{time}に有効期限が切れました。サーバーからは削除済みで、このページを離れると項目も消えます。',
+  'sent.ended.cancelled': '{time}に取り消されました。サーバーからは削除済みで、このページを離れると項目も消えます。',
+  'sent.ended.deleted': '受信者が削除したか、運営者が撤去しました。このページを離れると項目も消えます。',
+  'sent.ended.lost':
+    'サーバーが再起動などでこのメッセージの鍵を失ったため、もう誰も開封できません。必要なら、もう一度送ってください。このページを離れると項目も消えます。',
   'sent.cancel.title': 'メッセージ「{label}」を取り消しますか？',
   'sent.cancel.title.untitled': 'メッセージを取り消しますか？',
   'sent.forget.label': '一覧から外す',
@@ -235,10 +241,12 @@ export const messages: Catalog = {
   'read.title': 'ワンタイムメッセージ',
   'read.loading': 'メッセージを読み込んでいます…',
   'read.retry_later': 'サービスが混み合っています。{time}後にもう一度お試しください。',
+  'read.wait': '失敗した試行が多すぎるため、開封を一時停止しています。{time}後にもう一度お試しください。',
   'read.ended.opened': 'メッセージはすでに開封されています。',
   'read.ended.expired': 'メッセージの有効期限が切れました。',
   'read.ended.cancelled': '送信者がメッセージを取り消しました。',
   'read.ended.deleted': 'メッセージは削除されました。',
+  'read.ended.lost': 'サーバーはこのメッセージをもう開封できません。',
   'read.passphrase': 'パスワード',
   'read.reveal': 'メッセージを表示',
   'read.resumable':
@@ -251,8 +259,7 @@ export const messages: Catalog = {
     'パスワードが違います。メッセージはまだ開封されていません。あと{attempts}試せますが、その後はしばらく待つ必要があります。',
   'read.rejected.wait': 'パスワードが違います。次は{time}後に試せます。',
   'read.rejected.malformed': 'パスワードに使えない文字が含まれています。',
-  'read.rejected.wrong_or_changed':
-    'メッセージを復号できませんでした。パスワードが違うか、データが変更されています。パスワードをもう一度入力してください。',
+  'read.rejected.long': 'パスワードが長すぎます。',
   'read.delete': '開封せずに削除',
   'read.delete.rest': 'メッセージを削除',
   'read.delete.rest.short': '削除',
@@ -264,6 +271,11 @@ export const messages: Catalog = {
   'read.delete.no': '削除しない',
   'read.deleted_rest': '残りの開封回数を削除しました。',
   'read.delete.failed': 'メッセージを削除できませんでした。もう一度お試しください。',
+  'read.delete.wait':
+    'パスワードの誤入力が多すぎたため、今はメッセージを削除できません。{time}後にもう一度お試しください。',
+  'read.delete.locked':
+    'パスワードの誤入力が多すぎたため、有効期限までメッセージはロックされています。誰も開封できませんが、送信者はまだ取り消せます。',
+  'read.delete.passphrase': '送信者から受け取ったパスワードを入力してから、「開封せずに削除」を選んでください。',
 
   'busy.deriving': 'パスワードから鍵を準備しています…',
   'busy.claiming': 'メッセージを開封しています…',
@@ -277,8 +289,9 @@ export const messages: Catalog = {
   'revealed.sender.text': 'お金、ログイン、インストールを求められた場合は、別の経路で送信者に確認してください。',
   'revealed.file': '添付ファイル',
   'revealed.file.unchecked':
-    '添付ファイルは暗号化されているため、Nylzoはウイルスチェックができません。知っている人からのファイルだけを開いてください。',
-  'revealed.confirm.title': 'この種類のファイルはコードを実行できます。送信者を信頼できる場合にのみ開いてください。',
+    '添付ファイルは暗号化されているため、Nylzoはウイルスチェックができません。信頼できる送信者からのファイルだけをダウンロードしてください。',
+  'revealed.confirm.title':
+    'PDF、文書、画像を含め、どのファイルにも悪意のあるコードが含まれている可能性があります。送信者を信頼できる場合にのみダウンロードしてください。',
   'revealed.confirm.extension': 'ファイルの拡張子：',
   'revealed.confirm.none': 'ファイルに拡張子がありません。',
   'revealed.confirm.download': 'それでもダウンロード',
@@ -332,7 +345,7 @@ export const messages: Catalog = {
     '保存しません。アドレスごとの制限は、ディスクに書き出されることのないメモリ上にのみ保持し、再起動すると忘れます。',
   'transparency.stores.enforced.title': '有効期限は暗号でも守られる',
   'transparency.stores.enforced':
-    '有効期限と開封回数はサーバーが管理しています。さらに、有効期限の終了から遅くとも2時間以内に、メッセージに必要な鍵の一部を消去するため、それ以降はデータのコピーがあってもメッセージを開封できません。それより前に取得したコピーでも、リンクがなければメッセージは読めません。',
+    '有効期限と開封回数はサーバーが管理しています。さらに、有効期限の終了から遅くとも1分以内に、メッセージに必要な鍵の一部を消去するため、それ以降はデータのコピーがあってもメッセージを開封できません。それより前に取得したコピーでも、リンクがなければメッセージは読めません。',
   'transparency.logs.title': 'サーバーがログに記録するもの',
   'transparency.logs.written': '記録するもの',
   'transparency.logs.written.time': '分単位に切り捨てた時刻',
@@ -386,7 +399,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': '訪問者のアクセス解析に外部サービスは利用していません。',
   'transparency.personal.browser.title': 'お使いのブラウザ内',
   'transparency.personal.browser':
-    '選択した言語、メッセージの開封中に使う一時的なデータ、そしてメッセージを追跡している場合は「送信済み」の一覧。いずれもあなたが求める機能に必要なものであるため、同意は不要です。',
+    '選択した言語、メッセージの開封中に使う一時的なデータ、そして追跡中のメッセージをタブを閉じた後も残す場合は「送信済み」の一覧。いずれもあなたが求める機能に必要なものであるため、同意は不要です。',
   'transparency.limits.title': 'このインスタンスの制限',
   'transparency.limits.short': '制限',
   'transparency.limits.file': '添付ファイルの最大サイズ',
@@ -490,7 +503,7 @@ export const messages: Catalog = {
   'step.derive.label': '導出',
   'step.derive.title': '鍵を導出中',
   'step.derive.detail': 'HKDF-SHA-256で、内容の鍵と開封の署名に使う鍵を導出',
-  'step.derive.detail.passphrase': 'パスワードからscrypt、その後HKDF-SHA-256',
+  'step.derive.detail.passphrase': 'パスワードからOPAQUEとscrypt、その後HKDF-SHA-256',
   'step.encrypt.label': '暗号化',
   'step.encrypt.title': '内容を暗号化中',
   'step.encrypt.detail': 'AES-256-GCM、ブロック単位にパディング',
@@ -516,7 +529,10 @@ export const messages: Catalog = {
   'created.passphrase.copy': 'パスワードをコピー',
   'created.track.title': '「送信済み」で追跡',
   'created.track.note':
-    'メッセージが開封されたかどうかを確認でき、取り消すこともできます。このブラウザにのみ保存されます。このブラウザを使える人なら誰でも取り消せます。',
+    'メッセージが開封されたかどうかを確認でき、取り消すこともできます。このタブだけが記憶し、遅くともタブを閉じるか再読み込みすると消えます。',
+  'created.track.note.kept':
+    'メッセージが開封されたかどうかを確認でき、取り消すこともできます。このブラウザに保存されるため、このブラウザを使える人なら誰でも取り消せます。',
+  'created.track.keep': 'タブを閉じた後も記憶する',
   'created.track.label': 'ラベル（あなたにだけ表示）',
   'created.track.placeholder': 'ラベル（例：「健太さん用のパスワード」）',
   'created.track.save': '保存',
@@ -566,6 +582,9 @@ export const messages: Catalog = {
     'このメッセージはもう誰も開封できません。まだ必要な場合は、送信者に新しいリンクを依頼してください。',
   'open.notice.deleted': 'メッセージは削除されました',
   'open.notice.deleted.text': '受信者が削除したか、運営者が撤去しました。',
+  'open.notice.lost': 'サーバーはこのメッセージをもう開封できません',
+  'open.notice.lost.text':
+    'サーバーが再起動などでこのメッセージの鍵を失いました。もう誰も開封できません。送信者にもう一度送ってもらってください。',
   'open.notice.unknown': 'メッセージが見つかりません',
   'open.notice.unknown.text':
     'リンクが途中で切れているか、メッセージの有効期限がかなり前に切れています。送信者に新しいリンクを依頼してください。',
@@ -637,7 +656,7 @@ export const messages: Catalog = {
   'how.link.meta.title': 'バージョン',
   'how.link.meta.meta': '互換性のためだけ',
   'how.link.meta.body':
-    '「2」はリンク形式のバージョン、「0」はパスワードなしのメッセージを表します。古いNylzoはこのバージョンから新しいバージョンのリンクだと判断し、壊れたリンクとして扱う代わりにその旨を伝えます。サーバーはどちらの値もメッセージ自体から知っているため、この部分から新しい情報は得られません。',
+    '「3」はリンク形式のバージョン、「0」はパスワードなしのメッセージを表します。古いNylzoはこのバージョンから新しいバージョンのリンクだと判断し、壊れたリンクとして扱う代わりにその旨を伝えます。サーバーはどちらの値もメッセージ自体から知っているため、この部分から新しい情報は得られません。',
   'how.link.id.title': 'メッセージID',
   'how.link.id.meta': 'サーバーがメッセージを探すのに使う',
   'how.link.id.body':

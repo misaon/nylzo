@@ -1,15 +1,15 @@
 import { ShareError } from '../errors.ts';
-import { ID_LENGTH, KEY_LENGTH, SECRET_LENGTH, SEED_LENGTH, SHARE_LENGTH } from '../limits.ts';
+import { ID_LENGTH, KEY_LENGTH, PASSPHRASE_SALT_LENGTH, SECRET_LENGTH, SEED_LENGTH, SHARE_LENGTH } from '../limits.ts';
 import { arrayBufferBacked, assertLength, concatenate, utf8 } from '../primitives/bytes.ts';
 import { hash } from '../primitives/identifiers.ts';
 
-const PASSPHRASE_SALT_LENGTH = 32;
-const LABEL_HSALT = 'nylzo/v2/hkdf-salt';
-const LABEL_READ = 'nylzo/v2/read';
-const LABEL_PASSPHRASE_SALT = 'nylzo/v2/pw-salt';
-const LABEL_CONTENT = 'nylzo/v2/content';
-const LABEL_VERIFIER = 'nylzo/v2/verifier';
-const LABEL_COMMITMENT = 'nylzo/v2/commitment';
+const EXPORT_KEY_LENGTH = 64;
+const LABEL_HSALT = 'nylzo/v3/hkdf-salt';
+const LABEL_READ = 'nylzo/v3/read';
+const LABEL_PASSPHRASE_SALT = 'nylzo/v3/pw-salt';
+const LABEL_CONTENT = 'nylzo/v3/content';
+const LABEL_COMMITMENT = 'nylzo/v3/commitment';
+const NO_SALT = new Uint8Array(0);
 
 export interface LinkKeys {
   readonly readSeed: Uint8Array<ArrayBuffer>;
@@ -21,17 +21,12 @@ export interface ContentKeys {
   readonly commitmentKey: CryptoKey;
 }
 
-export interface DerivedKeys {
-  readonly link: LinkKeys;
-  readonly verifierSeed: Uint8Array<ArrayBuffer>;
-  readonly content: ContentKeys;
-}
-
 export async function hsalt(id: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   assertLength(id, ID_LENGTH, 'id');
   return hash(concatenate(utf8(LABEL_HSALT), id));
 }
 
+// salt_pw comes from S alone: a sender sends its registration request before the server has issued the id.
 export async function deriveLink(id: Uint8Array, secret: Uint8Array): Promise<LinkKeys> {
   assertLength(secret, SECRET_LENGTH, 'secret');
   const salt = await hsalt(id);
@@ -40,7 +35,7 @@ export async function deriveLink(id: Uint8Array, secret: Uint8Array): Promise<Li
   try {
     return {
       readSeed,
-      passphraseSalt: await deriveBytes(keyMaterial, salt, LABEL_PASSPHRASE_SALT, PASSPHRASE_SALT_LENGTH),
+      passphraseSalt: await deriveBytes(keyMaterial, NO_SALT, LABEL_PASSPHRASE_SALT, PASSPHRASE_SALT_LENGTH),
     };
   } catch (error) {
     readSeed.fill(0);
@@ -48,31 +43,27 @@ export async function deriveLink(id: Uint8Array, secret: Uint8Array): Promise<Li
   }
 }
 
-// V needs no share: a reader signs its claim with V before the server sends the share.
-export async function deriveVerifier(
-  id: Uint8Array,
-  secret: Uint8Array,
-  passphraseKey: Uint8Array,
-): Promise<Uint8Array<ArrayBuffer>> {
+export async function derivePassphraseSalt(secret: Uint8Array): Promise<Uint8Array<ArrayBuffer>> {
   assertLength(secret, SECRET_LENGTH, 'secret');
-  const salt = await hsalt(id);
-  const keyMaterial = await importWiped(concatenate(secret, passphraseKey));
-  return deriveBytes(keyMaterial, salt, LABEL_VERIFIER, SEED_LENGTH);
+  const keyMaterial = await importKeyMaterial(arrayBufferBacked(secret));
+  return deriveBytes(keyMaterial, NO_SALT, LABEL_PASSPHRASE_SALT, PASSPHRASE_SALT_LENGTH);
 }
 
+// P is the export_key of OPAQUE (spec section 2.1), for a message with or without a passphrase.
 export async function deriveContent(
   id: Uint8Array,
   secret: Uint8Array,
-  passphraseKey: Uint8Array,
+  exportKey: Uint8Array,
   share: Uint8Array | undefined,
 ): Promise<ContentKeys> {
   assertLength(secret, SECRET_LENGTH, 'secret');
+  assertLength(exportKey, EXPORT_KEY_LENGTH, 'export key');
   if (share === undefined) {
     throw new ShareError();
   }
   assertLength(share, SHARE_LENGTH, 'share');
   const salt = await hsalt(id);
-  const keyMaterial = await importWiped(concatenate(secret, passphraseKey, share));
+  const keyMaterial = await importWiped(concatenate(secret, exportKey, share));
   const contentKey = await crypto.subtle.deriveKey(
     hkdfParameters(salt, LABEL_CONTENT),
     keyMaterial,

@@ -6,6 +6,7 @@ import (
 	"github.com/misaon/nylzo/internal/cli"
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
+	"github.com/misaon/nylzo/internal/cli/harden"
 )
 
 var (
@@ -16,7 +17,7 @@ var (
 )
 
 func main() {
-	os.Exit(cli.Run(os.Args[1:], &command.Environment{
+	cli.Main(os.Args[1:], &command.Environment{
 		Stdin:    os.Stdin,
 		Stdout:   os.Stdout,
 		Stderr:   os.Stderr,
@@ -26,5 +27,6 @@ func main() {
 		Commit:   commit,
 		Date:     date,
 		Dirty:    dirty,
-	}))
+		Harden:   harden.Protect,
+	})
 }

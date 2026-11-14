@@ -237,38 +237,58 @@ describe('read page interactions', () => {
     expect(focus).toHaveBeenCalledOnce();
     expect(page.phase).toBe('notice');
     expect(page.notice).toBe('locked');
+    expect(page.actions).toBe('off');
     page.reveal(new Event('submit') as SubmitEvent);
     expect(reader.reveal).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('downloads safe attachments directly and requires confirmation for executable files', async () => {
+  it('asks before every download, a file named like a PDF included (F09)', async () => {
     const page = new ReadPage(new Translator('en'));
     const click = { detail: 1 } as MouseEvent;
     const doubleClick = { detail: 2 } as MouseEvent;
-    const unsafe = { ...file, name: 'script.sh' };
-    await page.askDownload(doubleClick, file);
-    expect(saveFile).not.toHaveBeenCalled();
-    await page.askDownload(click, file);
-    expect(saveFile).toHaveBeenCalledExactlyOnceWith(file.bytes, file.name);
-    expect(page.downloaded.shown).toBe(true);
     const keep = focusTarget(page, 'keepFile');
-    await page.askDownload(click, unsafe);
-    expect(page.confirmingDownload).toBe(true);
+    await page.download.ask(doubleClick);
+    expect(page.download.shown).toBe(false);
+    await page.download.ask(click);
+    expect(page.download.shown).toBe(true);
     expect(keep).toHaveBeenCalledOnce();
-    await page.confirmDownload(doubleClick, unsafe);
-    expect(saveFile).toHaveBeenCalledTimes(1);
-    await page.confirmDownload(click, unsafe);
-    expect(saveFile).toHaveBeenLastCalledWith(unsafe.bytes, unsafe.name);
-    expect(page.confirmingDownload).toBe(false);
-    await page.confirmDownload(click, unsafe);
+    expect(saveFile).not.toHaveBeenCalled();
+    await page.download.confirm(click, file);
+    expect(saveFile).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(999);
+    expect(page.download.ready).toBe(false);
+    vi.advanceTimersByTime(1);
+    expect(page.download.ready).toBe(true);
+    await page.download.confirm(doubleClick, file);
+    expect(saveFile).not.toHaveBeenCalled();
+    vi.mocked(saveFile).mockImplementationOnce(() => {
+      throw new Error('out of memory');
+    });
+    await expect(page.download.confirm(click, file)).rejects.toThrow('out of memory');
+    expect(page.download.shown).toBe(true);
+    await page.download.confirm(click, file);
+    expect(saveFile).toHaveBeenLastCalledWith(file.bytes, file.name);
     expect(saveFile).toHaveBeenCalledTimes(2);
-    await page.askDownload(click, unsafe);
-    await page.cancelDownload(doubleClick);
-    expect(page.confirmingDownload).toBe(true);
-    await page.cancelDownload(click);
-    expect(page.confirmingDownload).toBe(false);
+    expect(page.download.shown).toBe(false);
+    expect(page.download.ready).toBe(false);
+    expect(page.downloaded.shown).toBe(true);
+    await page.download.confirm(click, file);
+    expect(saveFile).toHaveBeenCalledTimes(2);
+    await page.download.ask(click);
+    await page.download.cancel(doubleClick);
+    expect(page.download.shown).toBe(true);
+    await page.download.cancel(click);
+    expect(page.download.shown).toBe(false);
+    await page.download.ask(click);
+    page.download.onKeydown({ key: 'Enter', detail: 0 } as KeyboardEvent);
+    expect(page.download.shown).toBe(true);
+    const escape = { key: 'Escape', detail: 0, stopPropagation: vi.fn<(...arguments_: unknown[]) => void>() };
+    page.download.onKeydown(escape as unknown as KeyboardEvent);
+    expect(escape.stopPropagation).toHaveBeenCalledOnce();
+    expect(page.download.shown).toBe(false);
     vi.advanceTimersByTime(2400);
+    expect(page.download.ready).toBe(false);
     expect(page.downloaded.shown).toBe(false);
   });
 
@@ -312,6 +332,8 @@ describe('read page interactions', () => {
     { outcome: 'retry_later', retryAfter: 30 },
     { outcome: 'unknown' },
     { outcome: 'ignored' },
+    { outcome: 'waiting', retryAfter: 60, locked: false },
+    { outcome: 'waiting', retryAfter: 86_400, locked: true },
   ])('preserves the content and reports the result of deleting remaining opens: $outcome', async (outcome) => {
     const page = new ReadPage(new Translator('en'));
     notify({ view: 'revealed', text: 'keep on screen', burnable: true, opensRemaining: 1 });
@@ -324,9 +346,46 @@ describe('read page interactions', () => {
     expect(page.deleting).toBe(false);
     expect(page.revealed?.text).toBe('keep on screen');
     expect(page.restDeleted).toBe(outcome.outcome === 'deleted' || outcome.outcome === 'ended');
-    expect(page.burnFailed).toBe(['failed', 'retry_later', 'unknown'].includes(outcome.outcome));
+    expect(page.burnFailed).toBe(['failed', 'retry_later', 'unknown', 'waiting'].includes(outcome.outcome));
     expect(page.burnNote === '').toBe(outcome.outcome === 'ignored');
     expect(page.burned).toEqual({ outcome, afterReveal: true });
+  });
+
+  it('asks for the passphrase before deleting a message that has one and hands it to the reader (F05)', async () => {
+    const page = new ReadPage(new Translator('en'));
+    ready({ kdfId: KDF_SCRYPT });
+    const focus = focusTarget(page, 'passphrase');
+    await page.askDelete();
+    expect(page.emptyPassphrase).toBe(true);
+    expect(page.askingDelete).toBe(false);
+    expect(focus).toHaveBeenCalledOnce();
+    page.passphrase = 'correct horse battery staple';
+    page.typed();
+    page.reveal(new Event('submit', { cancelable: true }) as SubmitEvent);
+    expect(page.askingDelete).toBe(true);
+    const button = new Event('submit', { cancelable: true });
+    page.reveal(Object.assign(button, { submitter: {} as HTMLButtonElement }));
+    expect(reader.reveal).not.toHaveBeenCalled();
+    expect(page.deleteIntent).toBe(true);
+    page.passphrase = '';
+    await page.burn();
+    expect(reader.burn).not.toHaveBeenCalled();
+    expect(page.askingDelete).toBe(false);
+    page.passphrase = 'correct horse battery staple';
+    await page.askDelete();
+    const gate = Promise.withResolvers<BurnOutcome>();
+    reader.burn.mockReturnValueOnce(gate.promise);
+    const burning = page.burn();
+    expect(page.burnNote).toBe(new Translator('en').translate('busy.deriving'));
+    await page.askDelete();
+    expect(page.askingDelete).toBe(false);
+    gate.resolve({ outcome: 'rejected' });
+    await burning;
+    expect(reader.burn).toHaveBeenCalledExactlyOnceWith('correct horse battery staple');
+    expect(page.passphrase).toBe('');
+    expect(page.burnNote).toBe('');
+    expect(page.burnFailed).toBe(false);
+    expect(focus).toHaveBeenCalledTimes(3);
   });
 
   it('moves focus safely through deletion confirmation and restores actions when cancelled', async () => {
@@ -389,7 +448,7 @@ describe('read page interactions', () => {
     const worker = Object.assign(new EventTarget(), { postMessage: vi.fn<(...arguments_: unknown[]) => void>() });
     vi.mocked(startWorker).mockResolvedValue({ worker: worker as unknown as Worker, stop });
     const page = new ReadPage(new Translator('en'));
-    const derivation = dependencies.scrypt('secret', new Uint8Array(16), vi.fn<(fraction: number) => void>());
+    const derivation = dependencies.stretch(new Uint8Array(64), vi.fn<(fraction: number) => void>());
     await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledOnce());
     ready();
     notify({ view: 'busy', step: 'claiming' });
@@ -398,7 +457,7 @@ describe('read page interactions', () => {
     page.passphrase = 'secret';
     page.showPassphrase = true;
     page.confirmingCopy = true;
-    page.confirmingDownload = true;
+    page.download.shown = true;
     page.askingDelete = true;
     page.leave();
     await displayed;
@@ -411,7 +470,7 @@ describe('read page interactions', () => {
     expect(page.passphrase).toBe('');
     expect(page.showPassphrase).toBe(false);
     expect(page.confirmingCopy).toBe(false);
-    expect(page.confirmingDownload).toBe(false);
+    expect(page.download.shown).toBe(false);
     expect(page.askingDelete).toBe(false);
     expect(page.revealText).toBeUndefined();
     expect(page.marked).toBeUndefined();

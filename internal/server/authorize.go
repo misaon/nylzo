@@ -44,7 +44,7 @@ func (s *Server) authorize(
 		}
 		row, granted.known = found, known
 	}
-	opened := openWithSignature(r, &granted, &row, purpose, body)
+	opened := s.openWithSignature(r, &granted, &row, purpose, body)
 	if !granted.known || !parsed || !fresh || !opened {
 		return granted, false, nil
 	}
@@ -70,7 +70,7 @@ func parseSignature(r *http.Request) (signing.Signature, bool) {
 	return signature, true
 }
 
-func openWithSignature(
+func (s *Server) openWithSignature(
 	r *http.Request,
 	granted *access,
 	row *store.Row,
@@ -82,7 +82,7 @@ func openWithSignature(
 	if !keyOK {
 		signature.PublicKey = dummyPublicKey
 	}
-	record, openErr := openRow(row, purpose, signature.PublicKey[:])
+	record, openErr := s.openRow(row, purpose, signature.PublicKey[:])
 	components, single := requestComponents(r)
 	signatureOK := signature.Verify(signedPurpose(purpose), r.Method, r.URL.EscapedPath(), body, components)
 	granted.record = record
@@ -91,14 +91,20 @@ func openWithSignature(
 
 // requestComponents rejects repeated singleton fields so intermediaries cannot select a different value.
 func requestComponents(r *http.Request) (signing.Components, bool) {
+	single := true
+	for _, name := range []string{api.ShareKeyHeaderName, api.LeaseHeaderName, api.KE1HeaderName, api.KE3HeaderName} {
+		single = single && len(r.Header.Values(name)) <= 1
+	}
 	return signing.Components{
 		ShareKey: r.Header.Get(api.ShareKeyHeaderName),
 		Lease:    r.Header.Get(api.LeaseHeaderName),
-	}, len(r.Header.Values(api.ShareKeyHeaderName)) <= 1 && len(r.Header.Values(api.LeaseHeaderName)) <= 1
+		KE1:      r.Header.Get(api.KE1HeaderName),
+		KE3:      r.Header.Get(api.KE3HeaderName),
+	}, single
 }
 
 // openRow opens the record with a zero key after a failed unwrap, so a wrong key costs the same work as a right one.
-func openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Record, error) {
+func (s *Server) openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Record, error) {
 	wrapped := row.ReadWrap
 	if purpose == seal.Manage {
 		wrapped = row.ManageWrap
@@ -106,11 +112,9 @@ func openRow(row *store.Row, purpose seal.Purpose, publicKey []byte) (store.Reco
 	var record store.Record
 	var err error
 	secretmode.Do(func() {
-		wrapping := seal.KeyFor(publicKey, row.Locator, purpose)
-		key, unwrapErr := seal.Unwrap(wrapping, wrapped, row.Locator, purpose)
+		key, unwrapErr := seal.UnwrapRecordKey(s.recordsKey, publicKey, wrapped, row.Locator, purpose)
 		var openErr error
 		record, openErr = store.OpenRecord(row, key)
-		clear(wrapping[:])
 		clear(key[:])
 		err = errors.Join(unwrapErr, openErr)
 	})
@@ -122,9 +126,39 @@ func (a *access) forget() {
 	clear(a.record.Key[:])
 }
 
-// verifierInput binds the verifier mac to the erase salt, so once the blob is erased no copy of a record tests a passphrase.
-func verifierInput(salt seal.EraseSalt, verifierKey []byte) []byte {
-	return append(salt[:len(salt):len(salt)], verifierKey...)
+// readEraseSalt reads the salt that seals the registration and checks it against its tag, so a changed salt costs no
+// passphrase attempt, and answers a blob that is gone as a claim does.
+func (s *Server) readEraseSalt(
+	w http.ResponseWriter,
+	r *http.Request,
+	record *store.Record,
+	salt *seal.EraseSalt,
+) bool {
+	var key seal.BlobKey
+	defer key.Clear()
+	if !s.readBlobKey(w, r, record, &key) {
+		return false
+	}
+	file, read, ok := s.openOrFinishBlob(w, r, record)
+	defer clear(read[:])
+	if !ok {
+		return false
+	}
+	file.Close()
+	if err := seal.CheckSaltTag(&key, read); err != nil {
+		s.writeBlobFailure(w, r, err)
+		return false
+	}
+	*salt = read
+	return true
+}
+
+func writePassphraseRefusal(w http.ResponseWriter, refusal *store.PassphraseError) {
+	writeJSON(w, http.StatusForbidden, api.PassphraseResponse{
+		Error:        api.ErrorPassphrase,
+		RetryAfter:   ceilSeconds(refusal.RetryAfter),
+		AttemptsLeft: refusal.AttemptsLeft,
+	})
 }
 
 func signedPurpose(purpose seal.Purpose) string {
@@ -192,6 +226,22 @@ func (s *Server) authorizedLive(w http.ResponseWriter, r *http.Request, purpose 
 	return granted, true
 }
 
+// authorizedOpenable is authorizedLive for a message the server can still open: one whose generation it lost ends as
+// lost at this request and answers 410.
+func (s *Server) authorizedOpenable(w http.ResponseWriter, r *http.Request, purpose seal.Purpose) (access, bool) {
+	granted, ok := s.authorizedLive(w, r, purpose)
+	if !ok {
+		return granted, false
+	}
+	now := time.Now()
+	s.endLostMessage(r.Context(), &granted.record, now)
+	if granted.record.Ended(now) {
+		writeGone(w, string(granted.record.State(now)))
+		return granted, false
+	}
+	return granted, true
+}
+
 // emptyBodyWait bounds the read of a body of unknown length, which a proxy sends for a request without one, such as
 // Caddy for an HTTP/3 request without Content-Length, and which ends at once unless the client holds it open.
 const emptyBodyWait = time.Second
@@ -222,16 +272,17 @@ func validPathID(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // newDummyRow is opened instead of a missing row; random wrapping keys make sure no public key opens it.
-func newDummyRow() store.Row {
+func newDummyRow(recordsKey seal.Key) store.Row {
 	id := core.NewID()
 	message := &store.Message{Version: 1, OpensMax: 1, OpensRemaining: 1}
 	record := store.NewRecord(
+		recordsKey,
 		seal.LocatorOf(id[:]),
 		message,
 		core.NewSecret()[:],
 		core.NewSecret()[:],
 		"",
-		seal.NewKey(),
+		new(seal.NewBlobKey()),
 	)
 	return record.Row
 }

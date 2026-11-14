@@ -2,8 +2,9 @@
 set -euo pipefail
 export LC_ALL=C
 umask 077
-tang=/etc/nylzo/tang.json
-image=/var/lib/nylzo-storage.luks
+settings=${NYLZO_HOST_SETTINGS:-/etc/nylzo/host.env}
+tang=${NYLZO_TANG_CONFIGURATION:-/etc/nylzo/tang.json}
+image=${NYLZO_STORAGE_IMAGE:-/var/lib/nylzo-storage.luks}
 name=nylzo-storage
 volume=/var/lib/nylzo-storage
 directories=(nylzo nylzo-secrets caddy)
@@ -11,7 +12,17 @@ fail() {
   echo "Encrypted storage refused: $1" >&2
   exit 1
 }
-[[ -s "$tang" ]] || fail "$tang is missing"
+required=$(sed -n 's/^ENCRYPTED_STORAGE_REQUIRED=//p' "$settings")
+case "$required" in
+  true | false) ;;
+  # Hosts provisioned before this setting lack the line.
+  '') required=false ;;
+  *) fail "set ENCRYPTED_STORAGE_REQUIRED to true or false in $settings" ;;
+esac
+if [[ "$required" = false && ! -e "$tang" && ! -e "$image" && ! -e "/dev/mapper/$name" ]]; then
+  echo 'Data stays on the unencrypted root filesystem: no Tang configuration, and ENCRYPTED_STORAGE_REQUIRED is not true.' >&2
+  exit 0
+fi
 unlock() {
   local loop="$1" attempt
   for ((attempt = 0; attempt < 30; attempt++)); do
@@ -20,12 +31,20 @@ unlock() {
   done
   fail 'the Tang servers did not unlock the data volume'
 }
+if [[ -e "/dev/mapper/$name" && ! -e "$image" ]] && ! mountpoint --quiet "$volume"; then
+  cryptsetup close "$name"
+fi
 if [[ ! -e "/dev/mapper/$name" ]]; then
+  [[ -s "$tang" ]] || fail "$tang is missing"
   if [[ -e "$image" ]]; then
     loop=$(losetup --noheadings --output NAME --associated "$image" | head -n 1)
     [[ -n "$loop" ]] || loop=$(losetup --find --show "$image")
     unlock "$loop"
   else
+    if [[ -e "$image.new" ]]; then
+      while read -r stale; do losetup --detach "$stale"; done < <(losetup --noheadings --output NAME --associated "$image.new")
+      rm -f "$image.new"
+    fi
     for directory in "${directories[@]}"; do
       [[ -z "$(find "/var/lib/$directory" -mindepth 1 -print -quit 2>/dev/null)" ]] || fail "/var/lib/$directory already holds data; migrate it into the encrypted volume by hand"
     done
@@ -33,7 +52,6 @@ if [[ ! -e "/dev/mapper/$name" ]]; then
     [[ "$available" =~ ^[0-9]{1,15}$ ]] || fail 'cannot read the free space'
     size=$(( (available - 8 * 1024 ** 3) / 1024 ** 2 * 1024 ** 2 ))
     (( size >= 8 * 1024 ** 3 )) || fail 'less than 16 GiB is free'
-    rm -f "$image.new"
     fallocate --length "$size" "$image.new"
     loop=$(losetup --find --show "$image.new")
     key=$(mktemp /run/nylzo-storage-key.XXXXXXXX)
@@ -44,7 +62,7 @@ if [[ ! -e "/dev/mapper/$name" ]]; then
     # clevis takes the new keyslot passphrase from pwmake, which fails on Flatcar without a cracklib dictionary.
     printf '#!/bin/sh\nexec openssl rand -hex 64\n' > "$generator/pwmake"
     chmod 0700 "$generator/pwmake"
-    PATH="$generator:$PATH" clevis luks bind -y -k "$key" -d "$loop" sss "$(cat "$tang")"
+    PATH="$generator:$PATH" clevis luks bind -k "$key" -d "$loop" sss "$(cat "$tang")"
     cryptsetup luksRemoveKey --batch-mode "$loop" "$key"
     rm -f "$key"
     unlock "$loop"

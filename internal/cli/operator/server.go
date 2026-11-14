@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/cli/harden"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/secretmode"
@@ -43,7 +44,7 @@ var (
 	errMemoryLock = errors.New(
 		"the server must lock its memory so no key reaches swap: raise the memlock limit " +
 			"(systemd LimitMEMLOCK=infinity, docker run --ulimit memlock=-1:-1, Compose ulimits memlock -1) " +
-			"or grant CAP_IPC_LOCK; NYLZO_ALLOW_SWAP=1 serves without the lock",
+			"or grant CAP_IPC_LOCK outside a user namespace; NYLZO_ALLOW_SWAP=1 serves without the lock",
 	)
 	errSecretMode = errors.New(
 		"this build leaves request keys in memory after use: build with GOEXPERIMENT=runtimesecret for " +
@@ -86,10 +87,7 @@ func runServer(
 		return code
 	}
 	logger := logging.New(environment.Stderr)
-	err := hardenProcess()
-	if err == nil {
-		err = run(ctx, logger)
-	}
+	err := run(ctx, logger)
 	switch {
 	case err == nil:
 		return command.ExitOK
@@ -110,7 +108,7 @@ func requireMemoryLock(development config.Development, logger *slog.Logger) erro
 		logger.Warn("memory-not-locked", "reason", "NYLZO_ALLOW_SWAP")
 		return nil
 	}
-	if err := lockMemory(); err != nil {
+	if err := harden.LockMemory(); err != nil {
 		return fmt.Errorf("%w: %w", errMemoryLock, err)
 	}
 	return nil
@@ -232,14 +230,24 @@ func prepareEpoch(settings *config.Server, logger *slog.Logger) error {
 		return err
 	}
 	directory := settings.EpochDirectory()
-	if _, err := epoch.Inspect(directory); err != nil {
+	if _, err := inspectEpoch(directory); err != nil {
 		return err
 	}
 	return requireErasable(epoch.ErasablePaths(directory), settings.Development, logger)
 }
 
-// upgradingOpen erases a data directory of nylzo 0.1 or 0.2 before it opens it, because protocol version 2 reads
-// none of its messages; an interrupted upgrade finishes on the next start.
+// inspectEpoch runs in secret mode, because it reads every seed of the file.
+func inspectEpoch(directory string) (epoch.State, error) {
+	var (
+		state epoch.State
+		err   error
+	)
+	secretmode.Do(func() { state, err = epoch.Inspect(directory) })
+	return state, err
+}
+
+// upgradingOpen erases a data directory of an earlier protocol version before it opens it, because protocol version 3
+// reads none of its messages; an interrupted upgrade finishes on the next start.
 func upgradingOpen(dataDirectory string, logger *slog.Logger) func(context.Context, string) (*sqlite.Store, error) {
 	return func(ctx context.Context, path string) (*sqlite.Store, error) {
 		upgraded, err := sqlite.UpgradeFromReleased(ctx, path, func() error { return disk.EraseAll(dataDirectory) })
@@ -250,7 +258,7 @@ func upgradingOpen(dataDirectory string, logger *slog.Logger) func(context.Conte
 			logger.WarnContext(
 				ctx,
 				"store-upgraded",
-				"notice", "protocol version 2: every message stored before this upgrade was erased",
+				"notice", "protocol version 3: every message stored before this upgrade was erased",
 			)
 		}
 		return sqlite.Open(ctx, path)
@@ -324,9 +332,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 			"notice", "another process had the database open, so the log headers still count earlier writes",
 		)
 	}
-	instance, err := server.New(&settings, database, blobs, server.WithLogger(logger))
-	clear(settings.Pepper)
-	clear(settings.PepperPrevious)
+	instance, err := startInstance(ctx, &settings, database, blobs, logger)
 	if err != nil {
 		return err
 	}
@@ -370,6 +376,27 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	waitFor(ctx, &sweeper, shutdownTimeout, logger)
 	instance.Close()
 	return err
+}
+
+// startInstance seals the stored rows with the pepper before the server takes a request (spec §5.2).
+func startInstance(
+	ctx context.Context,
+	settings *config.Server,
+	database *sqlite.Store,
+	blobs *disk.Blobs,
+	logger *slog.Logger,
+) (*server.Server, error) {
+	instance, err := server.New(settings, database, blobs, server.WithLogger(logger))
+	clear(settings.Pepper)
+	clear(settings.PepperPrevious)
+	if err != nil {
+		return nil, err
+	}
+	if err = instance.SealRows(ctx); err != nil {
+		instance.Close()
+		return nil, err
+	}
+	return instance, nil
 }
 
 func logListening(ctx context.Context, logger *slog.Logger, address net.Addr, settings *config.Server) {
@@ -466,7 +493,7 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	return nil
 }
 
-// advanceRatchet erases the epoch keys of the hours that have passed while serve does not run; it starts no ratchet,
+// advanceRatchet erases the epoch keys of the minutes that have passed while serve does not run; it starts no ratchet,
 // and only a directory the operator named must exist.
 func advanceRatchet(settings *config.Server, now time.Time, logger *slog.Logger) error {
 	options := epoch.Options{CheckFileSystem: func(directory string) error {

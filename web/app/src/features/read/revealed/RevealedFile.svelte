@@ -33,9 +33,9 @@
       <div
         class={[
           'flex items-center gap-3.5 fade-swap',
-          page.confirmingDownload ? 'pointer-events-none opacity-0' : 'opacity-100',
+          page.download.shown ? 'pointer-events-none opacity-0' : 'opacity-100',
         ]}
-        inert={page.confirmingDownload}
+        inert={page.download.shown}
       >
         <span
           class="relative grid size-12 shrink-0 place-items-center rounded-pane text-white tile-current"
@@ -61,8 +61,8 @@
         <Button
           {@attach page.focus.attach('download')}
           variant="tint"
-          disabled={page.confirmingDownload}
-          onclick={(event: MouseEvent) => void page.askDownload(event, file)}
+          disabled={page.download.shown}
+          onclick={(event: MouseEvent) => void page.download.ask(event)}
           class="max-sm:w-11 max-sm:px-0"
           aria-label={translate('open.download.file')}
         >
@@ -71,11 +71,16 @@
         </Button>
       </div>
       <div
+        role="alertdialog"
+        tabindex="-1"
+        aria-labelledby="{id}-confirm-title"
+        aria-describedby="{id}-confirm"
+        onkeydown={page.download.onKeydown}
         class={[
           'flex flex-col gap-2.5 fade-swap sm:flex-row sm:items-center sm:justify-between',
-          page.confirmingDownload ? 'opacity-100' : 'pointer-events-none opacity-0',
+          page.download.shown ? 'opacity-100' : 'pointer-events-none opacity-0',
         ]}
-        inert={!page.confirmingDownload}
+        inert={!page.download.shown}
       >
         <div class="flex min-w-0 items-center gap-3.5">
           <span
@@ -85,27 +90,28 @@
             <Icon name="alert" class="size-5" />
           </span>
           <span class="min-w-0">
-            <span role="alert" class="block text-ui text-ink"
-              >{page.confirmingDownload ? translate('revealed.confirm.title') : ''}</span
-            >
-            <span class="block text-micro text-ink-mute"
+            <span id="{id}-confirm-title" class="block text-ui text-ink">{translate('revealed.confirm.title')}</span>
+            <span id="{id}-confirm" class="block text-micro text-ink-mute"
               >{#if extension}{translate('revealed.confirm.extension')}
                 <bdi translate="no">.{extension}</bdi>{:else}{translate('revealed.confirm.none')}{/if}</span
             >
           </span>
         </div>
-        <div class="grid shrink-0 grid-cols-2 gap-1.5 sm:flex">
+        <div
+          class="flex shrink-0 flex-wrap gap-1.5 *:min-w-fit *:flex-1 max-sm:*:h-auto max-sm:*:min-h-11 max-sm:*:py-2 max-sm:*:text-center max-sm:*:whitespace-normal sm:flex-nowrap sm:*:flex-none"
+        >
           <Button
             {@attach page.focus.attach('keepFile')}
             variant="ghost"
-            onclick={(event: MouseEvent) => void page.cancelDownload(event)}
+            onclick={(event: MouseEvent) => void page.download.cancel(event)}
           >
             {translate('revealed.confirm.cancel')}
           </Button>
           <Button
             variant="danger"
-            disabled={!page.confirmingDownload}
-            onclick={(event: MouseEvent) => void page.confirmDownload(event, file)}
+            disabled={!page.download.shown}
+            aria-disabled={page.download.shown && !page.download.ready}
+            onclick={(event: MouseEvent) => void page.download.confirm(event, file)}
           >
             <Icon name="download" class="size-4 shrink-0" animated />
             {translate('revealed.confirm.download')}

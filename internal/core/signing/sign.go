@@ -18,12 +18,11 @@ const (
 	SignatureLen = ed25519.SignatureSize
 	ChallengeLen = 36
 
-	PurposeRead     = "read"
-	PurposeVerifier = "verifier"
-	PurposeManage   = "manage"
+	PurposeRead   = "read"
+	PurposeManage = "manage"
 
 	AuthScheme   = "Nylzo-Sig"
-	requestLabel = "nylzo/v2/request"
+	requestLabel = "nylzo/v3/request"
 )
 
 var ErrAuthorization = errors.New("core: malformed request signature")
@@ -53,6 +52,8 @@ func ValidPublicKey(publicKey []byte) bool {
 type Components struct {
 	ShareKey string `json:"share_key"`
 	Lease    string `json:"lease"`
+	KE1      string `json:"ke1"`
+	KE3      string `json:"ke3"`
 }
 
 func RequestMessage(
@@ -70,7 +71,7 @@ func RequestMessage(
 	message = append(message, challenge[:]...)
 	message = append(message, bodyHash[:]...)
 	// Fixed order and length prefixes bind both values without delimiter ambiguities.
-	for _, value := range []string{components.ShareKey, components.Lease} {
+	for _, value := range []string{components.ShareKey, components.Lease, components.KE1, components.KE3} {
 		message = binary.BigEndian.AppendUint64(message, uint64(len(value)))
 		message = append(message, value...)
 	}
@@ -113,19 +114,6 @@ func ParseAuthorization(header string) (Signature, error) {
 	return signature, nil
 }
 
-func ParseVerifierHeader(header string, challenge [ChallengeLen]byte) (Signature, error) {
-	encodedPublicKey, encodedSignature, ok := strings.Cut(header, ".")
-	if !ok {
-		return Signature{}, ErrAuthorization
-	}
-	signature := Signature{Challenge: challenge}
-	if !core.DecodeInto(signature.PublicKey[:], encodedPublicKey) ||
-		!core.DecodeInto(signature.Value[:], encodedSignature) {
-		return Signature{}, ErrAuthorization
-	}
-	return signature, nil
-}
-
 func (s *Signature) Verify(purpose, method, path string, body []byte, components Components) bool {
 	return ed25519.Verify(
 		s.PublicKey[:],
@@ -142,8 +130,4 @@ func (s *Signature) Authorization() string {
 	) + "." + core.Encode(
 		s.Value[:],
 	)
-}
-
-func (s *Signature) VerifierHeader() string {
-	return core.Encode(s.PublicKey[:]) + "." + core.Encode(s.Value[:])
 }

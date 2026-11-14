@@ -1,5 +1,5 @@
 import { PowTimeoutError, solvePow } from '@nylzo/core';
-import { scryptPassphraseKey } from '@nylzo/core/scrypt';
+import { stretchScrypt } from '@nylzo/core/scrypt';
 
 import { isKdfRequest, throttledProgress } from './kdf-protocol.ts';
 import type { KdfRequest, KdfResponse } from './kdf-protocol.ts';
@@ -11,8 +11,9 @@ function reply(message: KdfResponse, transfer: Transferable[] = []): void {
 
 function handle(request: KdfRequest): void {
   const onProgress = throttledProgress((fraction) => reply({ kind: 'progress', fraction }));
-  if (request.kind === 'scrypt') {
-    const key = scryptPassphraseKey(request.passphrase, request.passphraseSalt, onProgress);
+  if (request.kind === 'stretch') {
+    const key = stretchScrypt(request.message, onProgress);
+    request.message.fill(0);
     reply({ kind: 'key', key }, [key.buffer]);
     return;
   }

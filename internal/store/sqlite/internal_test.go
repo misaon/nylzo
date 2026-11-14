@@ -100,6 +100,32 @@ func TestACommitAfterTheClientLeftReportsTheCancellation(t *testing.T) {
 	}
 }
 
+func TestTheDummyRowGetsTheBlobWrapLengthOfALiveRow(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	earlier, err := Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = earlier.writer.Exec(
+		`UPDATE messages SET blob_wrap = ? WHERE locator = ?`,
+		make([]byte, seal.WrapLen),
+		store.DummyLocator[:],
+	)
+	if closeErr := earlier.Close(); err != nil || closeErr != nil {
+		t.Fatal(err, closeErr)
+	}
+	reopened, err := Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	dummy, err := reopened.Load(t.Context(), store.DummyLocator)
+	if err != nil || len(dummy.BlobWrap) != seal.BlobWrapLen {
+		t.Fatalf("the dummy row of an earlier release keeps a blob wrap of %d bytes: %v", len(dummy.BlobWrap), err)
+	}
+}
+
 func TestACorruptRowLeavesTheRestOfItsPageToTheSweep(t *testing.T) {
 	t.Parallel()
 	storage, ctx := openTest(t), t.Context()
@@ -124,6 +150,10 @@ func TestACorruptRowLeavesTheRestOfItsPageToTheSweep(t *testing.T) {
 	}
 	if _, err = storage.Load(ctx, seal.Locator(good)); err != nil {
 		t.Fatal(err)
+	}
+	visited := 0
+	if err = storage.ResealWraps(ctx, func(*store.Row) bool { visited++; return false }); err != nil || visited != 2 {
+		t.Fatalf("resealing must pass over a corrupt row and visit the good and the dummy row: %d %v", visited, err)
 	}
 	if purged, purgeErr := storage.PurgeRows(ctx, now, store.SweepBatch); purgeErr != nil || purged != 2 {
 		t.Fatalf("the purge must remove a corrupt row too: %d %v", purged, purgeErr)

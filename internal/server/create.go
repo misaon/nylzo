@@ -8,6 +8,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
+	"hash"
 	"io"
 	"math"
 	"net/http"
@@ -16,9 +17,9 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
+	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/epoch"
-	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/config"
@@ -37,16 +38,17 @@ const (
 )
 
 type createRequest struct {
-	header      api.CreateHeader
-	id          core.ID
-	readKey     []byte
-	verifierKey []byte
-	manageKey   []byte
-	opensMax    uint16
-	ttlSeconds  uint32
-	bodyBy      time.Time
-	outdated    bool
-	ratchetID   epoch.RatchetID
+	header       api.CreateHeader
+	id           core.ID
+	readKey      []byte
+	registration []byte
+	manageKey    []byte
+	opensMax     uint16
+	ttlSeconds   uint32
+	bodyBy       time.Time
+	outdated     bool
+	generation   epoch.GenerationID
+	deadline     time.Time
 }
 
 // The create checks run in the order of spec §6.2, each before the body is read.
@@ -86,12 +88,18 @@ func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequ
 	size := request.header.Size
 	tokenOK := false
 	if ok {
-		request.ratchetID, tokenOK = s.idTokens.Valid(
+		request.generation, tokenOK = s.idTokens.Valid(
 			request.id,
 			*request.header.Epoch,
+			request.ttlSeconds,
 			request.header.IDToken,
 			time.Now(),
 		)
+		request.deadline = epoch.Deadline(*request.header.Epoch)
+	}
+	held, heldErr := false, error(nil)
+	if tokenOK {
+		held, heldErr = s.holdsGeneration(request.generation, time.Now())
 	}
 	switch {
 	case request.outdated:
@@ -100,7 +108,10 @@ func (s *Server) admitCreate(w http.ResponseWriter, r *http.Request) (createRequ
 		rejectCreate(w, r, http.StatusBadRequest, errBadRequest)
 	case !tokenOK:
 		rejectCreate(w, r, http.StatusForbidden, errIDToken)
-	case request.ratchetID != s.epochs.ID():
+	case heldErr != nil:
+		closeAfterResponse(w, r)
+		s.writeInternal(w, r, heldErr)
+	case !held:
 		rejectCreate(w, r, http.StatusConflict, errShareLost)
 	case r.ContentLength < 0 || r.Header.Get("Content-Length") == "":
 		rejectCreate(w, r, http.StatusLengthRequired, errLengthRequired)
@@ -126,7 +137,7 @@ func parseCreateHeader(raw string, limits config.Limits) (createRequest, bool) {
 		return request, false
 	}
 	header := &request.header
-	if header.Epoch == nil {
+	if header.Epoch == nil || (header.VerifierKey != nil && header.Registration == nil) {
 		request.outdated = true
 		return request, false
 	}
@@ -174,14 +185,14 @@ func (c *createRequest) decodeKeys() bool {
 	kdf := core.KDF(c.header.KDFID)
 	keysOK := signing.ValidPublicKey(c.readKey) && signing.ValidPublicKey(c.manageKey) &&
 		!bytes.Equal(c.readKey, c.manageKey)
-	if !kdf.Valid() || !keysOK || c.header.VerifierKey == nil {
+	if !kdf.Valid() || !keysOK || c.header.Registration == nil || c.header.VerifierKey != nil {
 		return false
 	}
-	if c.verifierKey, err = core.DecodeExact(*c.header.VerifierKey, signing.PublicKeyLen); err != nil {
+	if c.registration, err = core.DecodeExact(*c.header.Registration, opaque.RecordLen); err != nil {
 		return false
 	}
-	return signing.ValidPublicKey(c.verifierKey) && !bytes.Equal(c.verifierKey, c.readKey) &&
-		!bytes.Equal(c.verifierKey, c.manageKey)
+	_, err = opaque.DeserializeElement(c.registration[:opaque.ElementLen])
+	return err == nil
 }
 
 func releaseUnlessStored(ctx context.Context, release func(context.Context), stored *bool) {
@@ -298,24 +309,37 @@ func (t *trackingReader) Read(buffer []byte) (int, error) {
 
 type storedBlob struct {
 	reference string
-	key       seal.Key
+	key       seal.BlobKey
 	salt      seal.EraseSalt
+	mac       hash.Hash
 }
 
 func newStoredBlob() storedBlob {
 	reference := core.NewID()
-	return storedBlob{reference: core.Encode(reference[:]), key: seal.NewKey(), salt: seal.NewEraseSalt()}
+	blob := storedBlob{
+		reference: core.Encode(reference[:]),
+		key:       seal.NewBlobKey(),
+		salt:      seal.NewEraseSalt(),
+	}
+	blob.mac = seal.BlobMAC(blob.key.Key, blob.salt)
+	blob.key.SaltTag = seal.SaltTagOf(blob.key.Key, blob.salt)
+	return blob
 }
 
 // sealed puts the erase block first and pads the object with Padmé, so the stored length shows only a size class.
 func (b *storedBlob) sealed(object io.Reader, size int64) io.Reader {
 	plain := io.MultiReader(object, io.LimitReader(zeros{}, seal.PaddedSize(size)-size))
-	encrypted := cipher.StreamReader{S: seal.BlobStream(b.key, b.salt), R: plain}
-	return io.MultiReader(bytes.NewReader(seal.EraseBlock(b.salt)), encrypted)
+	encrypted := cipher.StreamReader{S: seal.BlobStream(b.key.Key, b.salt), R: plain}
+	return io.MultiReader(bytes.NewReader(seal.EraseBlock(b.salt)), io.TeeReader(encrypted, b.mac))
+}
+
+// finishTag runs once the blob is stored, so the wrap holds the tag of exactly the stored bytes.
+func (b *storedBlob) finishTag() {
+	b.key.Tag = seal.BlobTag(b.mac.Sum(nil))
 }
 
 func (b *storedBlob) clear() {
-	clear(b.key[:])
+	b.key.Clear()
 	clear(b.salt[:])
 }
 
@@ -342,7 +366,7 @@ func (s *Server) receiveBlob(
 		return envelope.Header{}, time.Time{}, false
 	}
 	envelopeHeader, err := envelope.ParseHeader(raw[:])
-	if raw[0] < envelope.Version {
+	if raw[0] < envelope.Version || (err == nil && envelopeHeader.Flags&envelope.FlagDeadline == 0) {
 		writeError(w, http.StatusBadRequest, errClientOutdated)
 		return envelope.Header{}, time.Time{}, false
 	}
@@ -355,10 +379,11 @@ func (s *Server) receiveBlob(
 		blob.reference,
 		blob.sealed(io.MultiReader(bytes.NewReader(raw[:]), body), size),
 		seal.StoredBlobSize(size),
-		request.ttl(),
+		request.deadline,
 	)
 	s.setWriteDeadline(w, time.Now().Add(writeTimeout))
 	if err == nil {
+		blob.finishTag()
 		return envelopeHeader, uploaded, true
 	}
 	switch {
@@ -390,8 +415,8 @@ func (s *Server) storeMessage(
 	blob *storedBlob,
 	uploaded, now time.Time,
 ) bool {
-	message := s.newMessage(request, envelopeHeader, uploaded, blob.salt)
-	err := s.persistMessage(r.Context(), request, message, blob, now)
+	message := s.newMessage(request, envelopeHeader, uploaded, blob.salt, seal.LocatorOf(request.id[:]))
+	err := s.persistMessage(r.Context(), request, message, blob, uploaded, now)
 	if err == nil {
 		writeJSON(
 			w,
@@ -406,9 +431,9 @@ func (s *Server) storeMessage(
 	switch {
 	case errors.Is(err, store.ErrConflict):
 		rejectCreate(w, r, http.StatusConflict, errConflict)
-	case errors.Is(err, errShareEpoch):
+	case errors.Is(err, errDeadlinePassed):
 		rejectCreate(w, r, http.StatusForbidden, errIDToken)
-	case errors.Is(err, errRatchetChanged):
+	case errors.Is(err, errGenerationGone):
 		rejectCreate(w, r, http.StatusConflict, errShareLost)
 	default:
 		s.writeInternal(w, r, err)
@@ -421,71 +446,87 @@ func (s *Server) persistMessage(
 	request *createRequest,
 	message *store.Message,
 	blob *storedBlob,
-	now time.Time,
+	uploaded, now time.Time,
 ) error {
-	if request.ratchetID != s.epochs.ID() {
-		return errRatchetChanged
-	}
-	if !shareOutlives(message.Epoch, message.ExpiresAt) {
-		return errShareEpoch
+	held, err := s.holdsGeneration(request.generation, now)
+	switch {
+	case err != nil:
+		return err
+	case !held:
+		return errGenerationGone
+	case !uploaded.Before(message.ExpiresAt):
+		return errDeadlinePassed
+	case !s.epochs.Covers(request.generation, message.Epoch):
+		return errGenerationGone
 	}
 	locator := seal.LocatorOf(request.id[:])
 	var record store.Record
 	secretmode.Do(func() {
-		record = store.NewRecord(locator, message, request.readKey, request.manageKey, blob.reference, blob.key)
+		record = store.NewRecord(
+			s.recordsKey,
+			locator,
+			message,
+			request.readKey,
+			request.manageKey,
+			blob.reference,
+			&blob.key,
+		)
 	})
 	defer clear(record.Key[:])
 	return s.store.Create(ctx, &record.Row, s.storedCreateCounters(now)...)
 }
 
 var (
-	errShareEpoch     = errors.New("server: the share epoch does not cover the expiry")
-	errRatchetChanged = errors.New("server: the share of the id came from an earlier seed")
+	errDeadlinePassed = errors.New("server: the deadline of the id passed before its upload was stored")
+	errGenerationGone = errors.New("server: the share of the id came from a seed that is gone")
 )
 
-// shareOutlives keeps every message inside the life of its share, and every share at most an hour past its message.
-func shareOutlives(shareEpoch uint32, expiresAt time.Time) bool {
-	expiryEpoch := epoch.Hour(expiresAt)
-	return expiryEpoch <= shareEpoch && shareEpoch <= expiryEpoch+1
-}
-
-// newMessage starts the TTL when the upload has been stored, so a slow upload does not use it up.
+// newMessage expires the message at the deadline of its share, which the id token authenticates (spec section 5.6).
 func (s *Server) newMessage(
 	request *createRequest,
 	envelopeHeader envelope.Header,
 	uploaded time.Time,
 	salt seal.EraseSalt,
+	locator seal.Locator,
 ) *store.Message {
 	message := &store.Message{
 		Version:        envelopeHeader.Version,
 		KDF:            uint8(envelopeHeader.KDF),
 		Flags:          envelopeHeader.Flags,
 		CreatedAt:      uploaded.UTC().Truncate(time.Minute),
-		ExpiresAt:      store.ExpiresAt(uploaded, request.ttl()),
+		ExpiresAt:      request.deadline,
 		TTLSeconds:     request.ttlSeconds,
 		OpensMax:       request.opensMax,
 		OpensRemaining: request.opensMax,
 		Size:           request.header.Size,
 		Epoch:          *request.header.Epoch,
-		RatchetID:      request.ratchetID,
+		Generation:     request.generation,
 	}
-	if envelopeHeader.KDF.RequiresPassphrase() {
-		verifier := s.ring.MAC(pepper.Verifier, verifierInput(salt, request.verifierKey))
-		message.VerifierMAC = verifier.MAC[:]
-		message.VerifierPepperID = verifier.PepperID
-	}
+	message.Registration = seal.WrapRegistration(&salt, locator, request.registration)
+	message.RegistrationPepperID = s.ring.CurrentID()
 	return message
 }
 
-func (c *createRequest) ttl() time.Duration {
-	return time.Duration(c.ttlSeconds) * time.Second
+func rejectCreate(w http.ResponseWriter, r *http.Request, status int, body any) {
+	closeAfterResponse(w, r)
+	writeJSON(w, status, body)
 }
 
-func rejectCreate(w http.ResponseWriter, r *http.Request, status int, body any) {
+// closeAfterResponse ends an HTTP/1 connection whose create body was never read.
+func closeAfterResponse(w http.ResponseWriter, r *http.Request) {
 	if r.ProtoMajor == 1 {
 		w.Header().Set("Connection", "close")
 	}
-	writeJSON(w, status, body)
+}
+
+// holdsGeneration runs in secret mode, because looking for a generation may read the seeds again.
+func (s *Server) holdsGeneration(generation epoch.GenerationID, now time.Time) (bool, error) {
+	var (
+		held bool
+		err  error
+	)
+	secretmode.Do(func() { held, err = s.epochs.Holds(generation, now) })
+	return held, err
 }
 
 func (s *Server) setCreateDeadlines(w http.ResponseWriter, bodyBy time.Time) {

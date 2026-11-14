@@ -65,7 +65,7 @@ for (const refusePkcs8 of [false, true]) {
     async ({ newPage }) => {
       const sender = await newPage();
       await auditKeys(sender, refusePkcs8);
-      const link = await createMessageInPage(sender, { text: 'native keys', remember: true });
+      const link = await createMessageInPage(sender, { text: 'native keys', remember: 'browser' });
       await expect(sender.getByText('This device remembered the message.')).toBeVisible();
       const senderAudit = await sender.evaluate(() => globalThis.nylzoKeyAudit);
       expect(senderAudit.privateExports).toBe(0);

@@ -30,6 +30,7 @@ var endedStates = map[string]string{
 	api.StateExpired:   "the message has expired",
 	api.StateCancelled: "the sender cancelled the message",
 	api.StateDeleted:   "the message was deleted",
+	api.StateLost:      "the server lost the key to the message, usually in a restart; it has to be sent again",
 }
 
 // Explain turns an error into a message that never repeats text from the server or a certificate.
@@ -41,7 +42,8 @@ func Explain(err error) string {
 		return text
 	}
 	clientRefused := errors.Is(err, client.ErrInsecureServer) || errors.Is(err, client.ErrServerURL) ||
-		errors.Is(err, client.ErrRedirect) || errors.Is(err, client.ErrResponse)
+		errors.Is(err, client.ErrRedirect) || errors.Is(err, client.ErrResponse) ||
+		errors.Is(err, client.ErrServerOutdated)
 	if clientRefused {
 		return err.Error()
 	}
@@ -76,6 +78,8 @@ func explainLocal(err error) string {
 		return weakPassphraseText(err)
 	case errors.Is(err, keys.ErrMalformedPassphrase):
 		return "the passphrase is not valid UTF-8"
+	case errors.Is(err, keys.ErrLongPassphrase):
+		return fmt.Sprintf("the passphrase is longer than %d bytes", keys.MaxPassphraseBytes)
 	case errors.Is(err, console.ErrNoTerminal):
 		return "there is no terminal to ask on; use a file instead"
 	default:
@@ -108,6 +112,16 @@ func weakPassphraseText(err error) string {
 	}
 }
 
+var apiErrors = map[string]string{
+	api.ErrorNotFound:       "no such message: the link or token is wrong, or the message is gone",
+	api.ErrorTooLarge:       "the message is larger than the server accepts",
+	api.ErrorWork:           "the server refused the proof of work; try again",
+	api.ErrorIDToken:        "the server refused the new message id; try again",
+	api.ErrorConflict:       "the server refused the new message id; try again",
+	api.ErrorInternal:       "the server failed; try again later",
+	api.ErrorClientOutdated: "this nylzo is older than the server; update it",
+}
+
 func explainAPI(apiErr *client.APIError) string {
 	wait := ""
 	if apiErr.RetryAfter > 0 {
@@ -119,8 +133,6 @@ func explainAPI(apiErr *client.APIError) string {
 			return text
 		}
 		return "the message is no longer available"
-	case api.ErrorNotFound:
-		return "no such message: the link or token is wrong, or the message is gone"
 	case api.ErrorPassphrase:
 		if apiErr.AttemptsLeft > 0 && apiErr.RetryAfter == 0 {
 			return fmt.Sprintf(
@@ -133,15 +145,10 @@ func explainAPI(apiErr *client.APIError) string {
 		return "the server limits requests from your address" + wait
 	case api.ErrorUnavailable:
 		return "the server is busy or has reached its daily limit" + wait
-	case api.ErrorTooLarge:
-		return "the message is larger than the server accepts"
-	case api.ErrorWork:
-		return "the server refused the proof of work; try again"
-	case api.ErrorIDToken, api.ErrorConflict:
-		return "the server refused the new message id; try again"
-	case api.ErrorInternal:
-		return "the server failed; try again later"
 	default:
+		if text, ok := apiErrors[apiErr.Kind]; ok {
+			return text
+		}
 		return fmt.Sprintf("the server answered with status %d", apiErr.Status)
 	}
 }

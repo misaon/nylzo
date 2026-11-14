@@ -61,10 +61,10 @@ nylzo read --link-file /tmp/tmp.XXXXXXXXXX/link.txt --out /tmp/tmp.XXXXXXXXXX
 nylzo burn --link-file /tmp/tmp.XXXXXXXXXX/link.txt
 ```
 
-- `read` needs `--out`: it creates a new private directory (0700) inside it, writes the text as `message.txt` and an attachment under a cleaned name (0600), and prints the paths. `--out` must be an existing directory. Without `--out` or `--stdout` it refuses to run and spends nothing. Reading spends one open. `message.txt` holds the text byte for byte, including a trailing newline if the sender's file had one.
-- A passphrase: `nylzo read --passphrase-file "$D/pass.txt" --out "$D"`. A wrong passphrase spends no open, but attempts are limited.
+- `read` needs `--out`: it creates a new private directory (0700) inside it, writes the text as `message.txt` and an attachment under a cleaned name (0600), and prints the paths. `--out` must be an existing directory. Without `--out` or `--stdout` it refuses to run and spends nothing. Reading spends one open. `message.txt` holds the text byte for byte, including a trailing newline if the sender's file had one. On Windows and macOS every file carries the system's mark for a download from the internet. Do not remove the mark, and do not run or open an attachment yourself: the mark does not stop a script started through an interpreter. Give the user the path instead.
+- A passphrase: `nylzo read --passphrase-file "$D/pass.txt" --out "$D"`, and the same `--passphrase-file` for `nylzo burn`. A wrong passphrase spends no open and deletes nothing, but attempts are limited.
 - Do not use `nylzo read --stdout`: it prints the plaintext into your output.
-- Do not read the files. Pass them to the program that needs them, for example `docker login --username deploy --password-stdin < "$D/message.txt"`, or tell the user the path.
+- Do not read the files. Pass `message.txt` to the program that needs it, for example `docker login --username deploy --password-stdin < "$D/message.txt"`, or tell the user the path. Give the user the path of an attachment.
 - When the user is done, delete the directory or suggest it: the files hold the plaintext, and on SSDs and in backups a deletion may not erase them.
 
 Report a message to the operator, with the reason in a file:

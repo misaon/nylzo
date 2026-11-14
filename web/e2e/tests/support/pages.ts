@@ -8,7 +8,7 @@ export interface ComposedMessage {
   readonly text?: string;
   readonly file?: MessageFile;
   readonly passphrase?: string;
-  readonly remember?: boolean;
+  readonly remember?: 'browser' | 'tab';
 }
 
 export async function openApp(page: Page, url: string): Promise<Response | null> {
@@ -29,7 +29,7 @@ export async function createMessageInPage(page: Page, message: ComposedMessage, 
   await page.getByRole('button', { name: 'Create link' }).click();
   const link = await createdLink(page);
   if (message.remember) {
-    await trackInSent(page);
+    await trackInSent(page, '', message.remember);
   }
   return link;
 }
@@ -47,10 +47,19 @@ async function openSecurityMenu(page: Page): Promise<void> {
   }
 }
 
-export async function trackInSent(page: Page, label = ''): Promise<void> {
+export async function trackInSent(page: Page, label = '', where: 'browser' | 'tab' = 'browser'): Promise<void> {
   await page.getByLabel('Label, only you see it').fill(label);
+  if (where === 'browser') {
+    await page.getByRole('switch', { name: 'Keep after closing this tab' }).click();
+  }
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText(/This device (?:remembered|could not remember) the message/u)).toBeVisible();
+  await expect(
+    page.getByText(
+      where === 'browser'
+        ? /This device (?:remembered|could not remember) the message/u
+        : 'This tab remembers the message, at most until you close or reload it.',
+    ),
+  ).toBeVisible();
 }
 
 export async function chooseLanguage(page: Page, name: 'Čeština' | 'English'): Promise<void> {

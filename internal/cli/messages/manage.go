@@ -93,9 +93,12 @@ func manageClient(environment *command.Environment, file string) (*manageToken, 
 	return &token, server, nil
 }
 
+// RunBurn checks the message before it asks for the passphrase, whose handshake the server needs to delete it (F05).
 func RunBurn(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "burn")
 	linkFile := flags.String("link-file", "", "read the link from this file (or "+command.EnvironmentLink+", or stdin)")
+	var source passphraseSource
+	passphraseFlags(flags, &source)
 	if code, done := command.FlagsDone(command.ParseFlags(flags, environment, arguments)); done {
 		return code
 	}
@@ -104,7 +107,19 @@ func RunBurn(ctx context.Context, environment *command.Environment, arguments []
 		return command.Failf(environment, "%s", err)
 	}
 	defer link.wipe()
-	if err = server.Burn(ctx, link.id, &link.keys.R); err != nil {
+	metadata, err := server.Metadata(ctx, link.id, &link.keys.R)
+	if err == nil {
+		err = checkBurnable(link, &metadata)
+	}
+	if err != nil {
+		return command.Failf(environment, "%s", command.Explain(err))
+	}
+	login, err := logIn(ctx, environment, server, link, source)
+	if err != nil {
+		return command.Failf(environment, "%s", command.Explain(err))
+	}
+	defer login.Wipe()
+	if err = server.Burn(ctx, link.id, &link.keys.R, &login); err != nil {
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	fmt.Fprintln(environment.Stdout, "deleted")

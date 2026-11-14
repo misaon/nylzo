@@ -10,7 +10,7 @@ import (
 	"github.com/misaon/nylzo/internal/seal"
 )
 
-var errClaimParameters = errors.New("store: claim needs a clock, and a verifier check when a verifier is sent")
+var errClaimParameters = errors.New("store: claim needs a clock")
 
 type Removal int
 
@@ -51,59 +51,134 @@ func (r *Record) Lease(mac []byte) *Lease {
 	return nil
 }
 
+// Claim spends an open of a message whose handshake the caller has finished with a matching KE3.
 func Claim(ctx context.Context, messages Messages, record *Record, parameters ClaimParameters) (ClaimResult, error) {
-	if parameters.Clock == nil || (parameters.VerifierSent && parameters.VerifyMAC == nil) {
+	if parameters.Clock == nil {
 		return ClaimResult{}, errClaimParameters
 	}
 	var result ClaimResult
-	var refusal PassphraseError
-	refused := false
 	err := record.update(ctx, messages, parameters.Clock(), func(current *Record) error {
 		now := parameters.Clock()
-		result, refused = ClaimResult{}, false
-		if state := current.State(now); state != StateAvailable {
-			return &GoneError{State: state}
-		}
-		if wait, busy := leasesFull(current.Message, now); busy {
-			return &BusyError{RetryAfter: wait}
-		}
-		if current.Message.PassphraseRequired() {
-			if refusal, refused = checkPassphrase(current.Message, &parameters, now); refused {
-				return nil
-			}
+		result = ClaimResult{}
+		if err := claimClosed(current, now); err != nil {
+			return err
 		}
 		result = ClaimResult{Message: current.Message, Lease: consumeOpen(current, &parameters, now)}
 		return nil
 	})
+	if err != nil {
+		return ClaimResult{}, err
+	}
+	return result, nil
+}
+
+// CountAttempt counts a handshake as a failed passphrase attempt until a matching KE3 takes it back, because its KE2
+// lets the client test one passphrase (spec section 6.4, RFC 9807 section 9.2). A refusal counts nothing. It also runs
+// on a message whose last open is spent while a lease is active, which a burn and a resumed download need.
+func CountAttempt(
+	ctx context.Context,
+	messages Messages,
+	record *Record,
+	clock func() time.Time,
+) (Attempt, PassphraseError, error) {
+	var attempt Attempt
+	var status PassphraseError
+	var refusal *PassphraseError
+	err := record.update(ctx, messages, clock(), func(current *Record) error {
+		now := clock()
+		attempt, status, refusal = Attempt{}, PassphraseError{}, nil
+		if current.Ended(now) {
+			return &GoneError{State: current.State(now)}
+		}
+		message := current.Message
+		if locked, refused := lockedOut(message, now); refused {
+			refusal = &locked
+			return nil
+		}
+		attempt.Previous = message.NextAttemptAt
+		message.FailCountTotal++
+		message.NextAttemptAt = time.Time{}
+		if wait := backoff(message.FailCountTotal); wait > 0 {
+			message.NextAttemptAt = CeilMinute(now.Add(wait))
+		}
+		attempt.Set = message.NextAttemptAt
+		status = PassphraseStatus(message, now)
+		return nil
+	})
 	switch {
 	case err != nil:
-		return ClaimResult{}, err
-	case refused:
-		return ClaimResult{}, &refusal
+		return Attempt{}, PassphraseError{}, err
+	case refusal != nil:
+		return Attempt{}, PassphraseError{}, refusal
 	default:
-		return result, nil
+		return attempt, status, nil
 	}
 }
 
-// checkPassphrase commits a failed attempt with the claim transaction, so it reports a refusal instead of an error.
-func checkPassphrase(message *Message, parameters *ClaimParameters, now time.Time) (PassphraseError, bool) {
+// PassphraseStatus is what a reader is told after an attempt: the attempts left before waits and the current wait, or
+// the lock until the expiry once the waits have run out.
+func PassphraseStatus(message *Message, now time.Time) PassphraseError {
+	status := PassphraseError{AttemptsLeft: max(0, FreeAttempts-message.FailCountTotal)}
+	switch {
+	case message.NextAttemptAt.After(now):
+		status.RetryAfter = message.NextAttemptAt.Sub(now)
+	case message.FailCountTotal >= MaxFailedAttempts:
+		status.RetryAfter = max(0, message.ExpiresAt.Sub(now))
+	default:
+	}
+	return status
+}
+
+// TakeBack undoes the count of a handshake whose KE3 matched, in a transaction of its own, so it stands whatever the
+// claim or burn then answers.
+func TakeBack(ctx context.Context, messages Messages, record *Record, attempt Attempt, now time.Time) error {
+	return record.update(ctx, messages, now, func(current *Record) error {
+		message := current.Message
+		message.FailCountTotal = max(0, message.FailCountTotal-1)
+		if message.NextAttemptAt.Equal(attempt.Set) {
+			message.NextAttemptAt = attempt.Previous
+		}
+		return nil
+	})
+}
+
+// RefuseAttempt answers a handshake that CountAttempt would refuse, so such a handshake reads no blob; the transaction
+// decides again.
+func RefuseAttempt(record *Record, now time.Time) error {
+	if record.Ended(now) {
+		return &GoneError{State: record.State(now)}
+	}
+	if refusal, refused := lockedOut(record.Message, now); refused {
+		return &refusal
+	}
+	return nil
+}
+
+// RefuseClaim answers a claim that the transaction would refuse, so such a claim reads no blob; the transaction
+// decides again. The handshake before it has already applied the passphrase waits.
+func RefuseClaim(record *Record, now time.Time) error {
+	return claimClosed(record, now)
+}
+
+func claimClosed(record *Record, now time.Time) error {
+	if state := record.State(now); state != StateAvailable {
+		return &GoneError{State: state}
+	}
+	if wait, busy := leasesFull(record.Message, now); busy {
+		return &BusyError{RetryAfter: wait}
+	}
+	return nil
+}
+
+// lockedOut refuses an attempt after the lifetime cap or before next_attempt_at without testing the passphrase.
+func lockedOut(message *Message, now time.Time) (PassphraseError, bool) {
 	if message.FailCountTotal >= MaxFailedAttempts {
 		return PassphraseError{RetryAfter: message.ExpiresAt.Sub(now)}, true
 	}
 	if message.NextAttemptAt.After(now) {
 		return PassphraseError{RetryAfter: message.NextAttemptAt.Sub(now)}, true
 	}
-	if parameters.VerifierSent && parameters.VerifyMAC(message.VerifierPepperID, message.VerifierMAC) {
-		return PassphraseError{}, false
-	}
-	message.FailCountTotal++
-	message.NextAttemptAt = time.Time{}
-	wait := backoff(message.FailCountTotal)
-	if wait > 0 {
-		message.NextAttemptAt = CeilMinute(now.Add(wait))
-		wait = message.NextAttemptAt.Sub(now)
-	}
-	return PassphraseError{RetryAfter: wait, AttemptsLeft: max(0, FreeAttempts-message.FailCountTotal)}, true
+	return PassphraseError{}, false
 }
 
 // leasesFull caps the active leases, so every record fits one RecordBlock and its length says nothing (A4-4).
@@ -157,7 +232,7 @@ func RecordDownload(ctx context.Context, messages Messages, record *Record, leas
 		switch {
 		case lease == nil || !lease.Active(now):
 			return ErrLeaseInvalid
-		case current.Message.Ending != "" || !current.HasBlob():
+		case current.Ended(now):
 			return &GoneError{State: current.State(now)}
 		case lease.Downloads >= MaxLeaseDownload:
 			return ErrLeaseLimit
@@ -193,7 +268,7 @@ func Ack(ctx context.Context, messages Messages, blobs Blobs, record *Record, le
 	return deleteBlobOf(ctx, messages, blobs, record)
 }
 
-// MarkEnding records burn or cancel unless the message has already ended, and reports the state it ends in.
+// MarkEnding records an ending unless the message has already ended, and reports its state.
 func MarkEnding(ctx context.Context, messages Messages, record *Record, requested State, now time.Time) (State, error) {
 	var final State
 	err := record.update(ctx, messages, now, func(current *Record) error {
@@ -209,7 +284,8 @@ func MarkEnding(ctx context.Context, messages Messages, record *Record, requeste
 	return final, err
 }
 
-// End records burn or cancel, then deletes the blob even when the caller has gone.
+// End records a cancel or a burn, whose KE3 the caller has checked (F05), then deletes the blob even when the caller
+// has gone.
 func End(
 	ctx context.Context,
 	messages Messages,
@@ -220,13 +296,14 @@ func End(
 ) (State, error) {
 	ctx = context.WithoutCancel(ctx)
 	final, err := MarkEnding(ctx, messages, record, requested, now)
-	if err != nil {
+	switch {
+	case err != nil:
 		return "", err
+	case record.Row.BlobReference == "":
+		return final, nil
+	default:
+		return final, deleteBlobOf(ctx, messages, blobs, record)
 	}
-	if record.Row.BlobReference != "" {
-		err = deleteBlobOf(ctx, messages, blobs, record)
-	}
-	return final, err
 }
 
 // Finish deletes the blob of a message that has ended or whose last lease is over; a release records its minute.
