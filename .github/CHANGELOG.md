@@ -1,5 +1,93 @@
 # Changelog
 
+## [0.14.0](https://github.com/misaon/nylzo/compare/v0.13.0...v0.14.0) (2026-11-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **security:** the Compose example needs Nylzo 0.14.0 or later, the tmpfiles entry from nylzo-epoch.conf, and a host without swap or with a noswap tmpfs on /run/nylzo/epoch. A host reboot ends every live message. A deployment that takes the new compose.yaml must first move epoch/seed out of nylzo-data, as the Self-hosting guide shows.
+* **deploy:** the Compose example needs Docker Engine 28.0 or newer. Engine 27 refuses the isolated gateway mode; Engine 26 and older ignore it, which check-isolation reports.
+* **security:** the fragment and envelope move to version 3 and the first start of serve erases every message of protocol v2. Clients of protocol v2 get client_outdated and must be updated.
+* **security:** messages now seal their deadline (envelope flag 2) and the TTL runs from the instance response. A CLI before this release can neither create nor read such messages and gets client_outdated, and the seed file of an unreleased main build (nylzo-e2) is refused as damaged. Ship server and CLI together.
+* **security:** clients from before this release send an X25519 share key and get 400 client_outdated; a client of this release gets 400 bad_request from an older server. Ship server and CLI together.
+
+### Features
+
+* **security:** check passphrases with OPAQUE in protocol v3 ([#360](https://github.com/misaon/nylzo/issues/360)) ([8dfe6e6](https://github.com/misaon/nylzo/commit/8dfe6e60f78b28c5aab6133c93235f8d2108fa33))
+
+
+### Fixes
+
+* **automation:** hold go.step.sm/crypto until Caddy raises it ([#386](https://github.com/misaon/nylzo/issues/386)) ([cecfeb5](https://github.com/misaon/nylzo/commit/cecfeb5ff486e5656c710045df333d4b11071827))
+* **automation:** unblock the quic-go, regctl and Ubuntu 26.04 Arm updates ([#385](https://github.com/misaon/nylzo/issues/385)) ([5b3398d](https://github.com/misaon/nylzo/commit/5b3398d7f53c18d530973e68324bba088bdca27a))
+* **backend:** update module golang.org/x/crypto to v0.59.0 [security] (main) ([#338](https://github.com/misaon/nylzo/issues/338)) ([3b05d77](https://github.com/misaon/nylzo/commit/3b05d77dffd99082ab10cdeb7b53314f13b51785))
+* **backend:** update OpenTelemetry to v1.47.0 in the Caddy build ([#377](https://github.com/misaon/nylzo/issues/377)) ([2ec368c](https://github.com/misaon/nylzo/commit/2ec368c8f93da6db77cd8b73ac533be74931b1d1))
+* **cli:** end by the stop signal after cleanup ([#353](https://github.com/misaon/nylzo/issues/353)) ([2f95b98](https://github.com/misaon/nylzo/commit/2f95b98623ef198c7c5cbeb4839b558ef387e5b9))
+* **cli:** make the read --out directory after the passphrase prompt ([#358](https://github.com/misaon/nylzo/issues/358)) ([5f50c39](https://github.com/misaon/nylzo/commit/5f50c39c05c45be66b81a4938b5cd30b801d6d2f))
+* **deploy:** enforce the encrypted data volume in the strict profile (F20) ([#378](https://github.com/misaon/nylzo/issues/378)) ([8d3e62d](https://github.com/misaon/nylzo/commit/8d3e62ddbfa104172b68dd5e469170207c03bc33))
+* **deploy:** isolate the Compose backend from the internet and the host (F19) ([#379](https://github.com/misaon/nylzo/issues/379)) ([26bb995](https://github.com/misaon/nylzo/commit/26bb99525ce75ea6675d69f3617db7c2416acebd))
+* **deploy:** keep stored messages open across a pepper rotation on Hetzner ([#348](https://github.com/misaon/nylzo/issues/348)) ([df1934f](https://github.com/misaon/nylzo/commit/df1934f24e48d67d04781acbb0bbab0764906c33))
+* end messages a host reboot left unreadable as lost (F21) ([#381](https://github.com/misaon/nylzo/issues/381)) ([67f0dcd](https://github.com/misaon/nylzo/commit/67f0dcd8dc192578879828f910bd718e3faed081))
+* **security:** ask before every attachment download ([#341](https://github.com/misaon/nylzo/issues/341)) ([d280a57](https://github.com/misaon/nylzo/commit/d280a57705cc9ec2a3b65d759a3513873ccde258))
+* **security:** bind share and lease headers to request signatures ([#330](https://github.com/misaon/nylzo/issues/330)) ([82f5303](https://github.com/misaon/nylzo/commit/82f53037ae27338058534b57a51489fb226cdbdc))
+* **security:** check a tag over every stored blob before spending an open ([#364](https://github.com/misaon/nylzo/issues/364)) ([50d63dd](https://github.com/misaon/nylzo/commit/50d63ddd79c77c474c23d08a57863ba00af6bd94))
+* **security:** end the expiry share at the message deadline ([#366](https://github.com/misaon/nylzo/issues/366)) ([344b8ff](https://github.com/misaon/nylzo/commit/344b8fff5104eded8a172ccd0f3c8aca8804e535))
+* **security:** harden CLI processes before they read secrets ([#337](https://github.com/misaon/nylzo/issues/337)) ([ffa0667](https://github.com/misaon/nylzo/commit/ffa06676ba054e03fb42551c4a73ce82a3e10199))
+* **security:** keep passphrase verifiers out of every log ([#357](https://github.com/misaon/nylzo/issues/357)) ([a0aec34](https://github.com/misaon/nylzo/commit/a0aec34ea816a106d99787a0cd768045c8ea533b))
+* **security:** keep read running until a claimed message is saved ([#349](https://github.com/misaon/nylzo/issues/349)) ([191213e](https://github.com/misaon/nylzo/commit/191213e2773204f81ded53f06c6c7d3da7231d4a))
+* **security:** keep request challenges in memory, out of the database ([#335](https://github.com/misaon/nylzo/issues/335)) ([9b1059f](https://github.com/misaon/nylzo/commit/9b1059f488af10e39cd48e684cc503df7eff086e))
+* **security:** keep the Compose epoch seed on host tmpfs (F18) ([#380](https://github.com/misaon/nylzo/issues/380)) ([1414f10](https://github.com/misaon/nylzo/commit/1414f106c7c54b7d43f68c8073c99a473550aa6c))
+* **security:** mark files that read writes as downloaded from the internet ([#344](https://github.com/misaon/nylzo/issues/344)) ([a9f34b0](https://github.com/misaon/nylzo/commit/a9f34b0aaa41fb1676bcd26ea714cd56d985d050))
+* **security:** rebuild with Go 1.27.4 ([#327](https://github.com/misaon/nylzo/issues/327)) ([d790cbe](https://github.com/misaon/nylzo/commit/d790cbee51609a5ecc37271a0ae83295a883e7ff))
+* **security:** renew epoch seeds with fresh entropy every hour ([#354](https://github.com/misaon/nylzo/issues/354)) ([3094e54](https://github.com/misaon/nylzo/commit/3094e5489f5ac5c1b398f031ef1579323c053a6e))
+* **security:** require the passphrase to delete a protected message ([#340](https://github.com/misaon/nylzo/issues/340)) ([591dcbb](https://github.com/misaon/nylzo/commit/591dcbb5a9f018be4c6199166f55377388c748ce))
+* **security:** seal record key wraps with a key from the pepper ([#347](https://github.com/misaon/nylzo/issues/347)) ([8541282](https://github.com/misaon/nylzo/commit/854128268c694d8036f35530769b77fe83147ba9))
+* **security:** sign macOS release binaries with the hardened runtime ([#345](https://github.com/misaon/nylzo/issues/345)) ([34c8477](https://github.com/misaon/nylzo/commit/34c847746d0ee9de7ee97db2abd556a0a9f1b7af))
+* **security:** warn after read saves an attachment ([#346](https://github.com/misaon/nylzo/issues/346)) ([35d2473](https://github.com/misaon/nylzo/commit/35d24733f9226775fb0fbaf34797edba4d7d023c))
+* **security:** wrap expiry shares with hybrid post-quantum HPKE ([#361](https://github.com/misaon/nylzo/issues/361)) ([4894da7](https://github.com/misaon/nylzo/commit/4894da7ea544c4d9e1e2f588fb4d26c1f52b2539))
+* **security:** write private CLI files owner-only on local disks ([#336](https://github.com/misaon/nylzo/issues/336)) ([5f4c20f](https://github.com/misaon/nylzo/commit/5f4c20f22bdf05ad2396cc95a82d68b2e09ef965))
+* **web:** keep tracked sent messages in the tab by default (F16) ([#365](https://github.com/misaon/nylzo/issues/365)) ([2d4ce75](https://github.com/misaon/nylzo/commit/2d4ce75021fe839de0fabbd36e0f16f059d196c2))
+* **web:** remove third-party analytics from message forms ([#329](https://github.com/misaon/nylzo/issues/329)) ([7161e40](https://github.com/misaon/nylzo/commit/7161e40376568f1a0ad9caac5ea73598386e7d6f))
+
+
+### Build
+
+* **infrastructure:** update infrastructure dependencies (main) ([#350](https://github.com/misaon/nylzo/issues/350)) ([4ccfaac](https://github.com/misaon/nylzo/commit/4ccfaac207905439bfc9b841a4dbcc74a703d47a))
+* **infrastructure:** update infrastructure dependencies to v2.20.1 (main) ([#324](https://github.com/misaon/nylzo/issues/324)) ([1e64ec5](https://github.com/misaon/nylzo/commit/1e64ec5237d3ab8df9d125f3fcfbd868ec8068e5))
+
+
+### CI
+
+* **deps:** replace actions/attest-build-provenance action with actions/attest v4.2.2 (main) ([#279](https://github.com/misaon/nylzo/issues/279)) ([52beb8a](https://github.com/misaon/nylzo/commit/52beb8a1cef9a95d7ff58d960c6174e964c00997))
+* **deps:** update ci dependencies (main) ([#317](https://github.com/misaon/nylzo/issues/317)) ([ae9db4b](https://github.com/misaon/nylzo/commit/ae9db4b6287943284555149036d275579ce7ea2d))
+* **deps:** update ci dependencies (main) ([#351](https://github.com/misaon/nylzo/issues/351)) ([eaab2ce](https://github.com/misaon/nylzo/commit/eaab2ce4fcde0e707abcdd76446611f4efa60d0c))
+* **deps:** update ci dependencies (main) ([#356](https://github.com/misaon/nylzo/issues/356)) ([8beb6a0](https://github.com/misaon/nylzo/commit/8beb6a039dab02f284bd6c4469c4c6497de52252))
+* **deps:** update ci dependencies (main) ([#370](https://github.com/misaon/nylzo/issues/370)) ([2ec41d0](https://github.com/misaon/nylzo/commit/2ec41d0ba8f8b625f33878a4bce45608963d3a62))
+* **deps:** update dependency ubuntu to v26 (main) ([#319](https://github.com/misaon/nylzo/issues/319)) ([fbdcd3e](https://github.com/misaon/nylzo/commit/fbdcd3ecf90ec2b94a8b5a894d6bd31da96bd24d))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.226.1 (main) ([#315](https://github.com/misaon/nylzo/issues/315)) ([111180e](https://github.com/misaon/nylzo/commit/111180e9335c272a3a15cdf2b647415dfdb0b1ae))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.230.0 (main) ([#332](https://github.com/misaon/nylzo/issues/332)) ([82684ea](https://github.com/misaon/nylzo/commit/82684ea06b12e78abfddf59e464e51ad38969923))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.230.1 (main) ([#333](https://github.com/misaon/nylzo/issues/333)) ([56f7944](https://github.com/misaon/nylzo/commit/56f79445a0b68d8ff0f08f28ea3d3e275a188656))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.234.0 (main) ([#334](https://github.com/misaon/nylzo/issues/334)) ([ec0270f](https://github.com/misaon/nylzo/commit/ec0270f93a1ee9da28a42f2a5e39be6a190631b3))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.234.1 (main) ([#342](https://github.com/misaon/nylzo/issues/342)) ([318af6c](https://github.com/misaon/nylzo/commit/318af6c3d5dae14820c9eec14e9d73c3c726fded))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.235.2 (main) ([#352](https://github.com/misaon/nylzo/issues/352)) ([7ac1ce5](https://github.com/misaon/nylzo/commit/7ac1ce5404f67175be0940c943389ed65df34825))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.235.3 (main) ([#355](https://github.com/misaon/nylzo/issues/355)) ([ed7d52f](https://github.com/misaon/nylzo/commit/ed7d52ffeeb6cfcf29190fdbf6a9a8d19b86b818))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.236.2 (main) ([#359](https://github.com/misaon/nylzo/issues/359)) ([e304688](https://github.com/misaon/nylzo/commit/e30468883bbc8fcec88e98422857cdd6e3d818bb))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.236.5 (main) ([#362](https://github.com/misaon/nylzo/issues/362)) ([f3f505c](https://github.com/misaon/nylzo/commit/f3f505c8cd2bd664a4c38cbe7e297913a4c24f45))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.237.3 (main) ([#367](https://github.com/misaon/nylzo/issues/367)) ([8543735](https://github.com/misaon/nylzo/commit/8543735ff3cf18f977a584318fc8da33a3ca2a4a))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.238.1 (main) ([#368](https://github.com/misaon/nylzo/issues/368)) ([2651942](https://github.com/misaon/nylzo/commit/2651942978f743f353daedfd91c643e2dd94970e))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.238.2 (main) ([#369](https://github.com/misaon/nylzo/issues/369)) ([0748769](https://github.com/misaon/nylzo/commit/0748769c92f1738b88c7fef09ebbd246774f943e))
+* **security:** isolate native release builds from publication ([#331](https://github.com/misaon/nylzo/issues/331)) ([26dfa48](https://github.com/misaon/nylzo/commit/26dfa482d29ecbe09f22bf5ed1f6069bda2d7ccd))
+
+
+### Tests
+
+* **guard:** derive the newer override patch from the locked version ([#383](https://github.com/misaon/nylzo/issues/383)) ([366c08c](https://github.com/misaon/nylzo/commit/366c08c8a248fc85ffddf7344a50df533375c666))
+
+
+### Maintenance
+
+* **config:** migrate Renovate config ([#343](https://github.com/misaon/nylzo/issues/343)) ([e8f1d19](https://github.com/misaon/nylzo/commit/e8f1d193b1dcaeeb7e03f59ab4e4a382d7dee73e))
+
 ## [0.13.0](https://github.com/misaon/nylzo/compare/v0.12.0...v0.13.0) (2026-11-10)
 
 
