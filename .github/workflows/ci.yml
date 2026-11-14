@@ -598,7 +598,7 @@ jobs:
         with:
           distribution: goreleaser
           # renovate: datasource=github-releases depName=goreleaser/goreleaser
-          version: v2.20.0
+          version: v2.20.2
           args: release --snapshot --skip=publish,sign,sbom --clean
       - name: The checksums list every embedded web client file
         run: |
