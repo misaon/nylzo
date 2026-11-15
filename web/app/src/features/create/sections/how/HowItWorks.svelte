@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getTranslator } from '../../../../shared/language/translator.svelte.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
-  import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
+  import { reveal, REVEAL_INDEXES } from '../../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import HowDiagram from './HowDiagram.svelte';
   import { LINK_PARTS } from './link-parts.ts';
@@ -44,19 +44,15 @@
       aria-labelledby="how-link-title"
       {@attach reveal}
     >
-      <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h3
-            id="how-link-title"
-            class="reveal-focus font-display text-panel font-light [--reveal-delay:150ms] [--reveal-index:0] md:text-panel-lg"
-          >
-            {translate('how.link.title')}
-          </h3>
-          <p class="mt-1 reveal-focus text-body-sm text-ink-soft [--reveal-delay:150ms] [--reveal-index:1]">
-            {translate('how.link.sub')}
-          </p>
-        </div>
-      </div>
+      <h3
+        id="how-link-title"
+        class="reveal-focus font-display text-panel font-light [--reveal-delay:150ms] [--reveal-index:0] md:text-panel-lg"
+      >
+        {translate('how.link.title')}
+      </h3>
+      <p class="mt-1 reveal-focus text-body-sm text-ink-soft [--reveal-delay:150ms] [--reveal-index:1]">
+        {translate('how.link.sub')}
+      </p>
       <div class="relative mt-6 rounded-pane p-2.5 well md:px-6 md:py-5">
         <div class="flex flex-col gap-2 lg:flex-row lg:gap-6">
           {#each LINK_PARTS as part, index (part.id)}
@@ -69,7 +65,8 @@
             >
               <button
                 class={[
-                  'group flex min-w-0 flex-col text-left max-lg:w-full',
+                  'group flex min-w-0 flex-col text-left [--reveal-step:150ms] max-lg:w-full',
+                  REVEAL_INDEXES[index],
                   index === LINK_PARTS.length - 1 ? 'lg:flex-1' : 'lg:shrink-0',
                 ]}
                 type="button"
@@ -79,9 +76,8 @@
                 <span class="flex w-fit max-w-full flex-col">
                   <span
                     class={[
-                      'reveal-focus truncate text-ui whitespace-nowrap tabular-nums transition duration-500 [--reveal-blur:4px] [--reveal-y:6px] lg:text-body',
+                      'reveal-focus truncate text-ui whitespace-nowrap tabular-nums transition duration-500 [--reveal-blur:4px] [--reveal-delay:320ms] [--reveal-y:6px] lg:text-body',
                       part.tone,
-                      part.delays.text,
                       active ? 'opacity-100' : 'opacity-75 group-hover:opacity-100',
                     ]}
                   >
@@ -89,25 +85,21 @@
                   </span>
                   <span
                     class={[
-                      'mt-2 block h-[3px] w-full origin-left reveal-draw rounded-full',
+                      'mt-2 block h-[3px] w-full origin-left reveal-draw rounded-full [--reveal-delay:400ms]',
                       part.bar,
-                      part.delays.bar,
                     ]}
                     aria-hidden="true"
                   ></span>
                 </span>
                 <span
                   class={[
-                    'mt-3 reveal-focus text-body transition-colors duration-500 [--reveal-blur:4px] [--reveal-y:6px]',
-                    part.delays.title,
+                    'mt-3 reveal-focus text-body transition-colors duration-500 [--reveal-blur:4px] [--reveal-delay:480ms] [--reveal-y:6px]',
                     active ? 'text-ink' : 'text-ink-soft',
                   ]}>{translate(part.title)}</span
                 >
                 <span
-                  class={[
-                    'mt-0.5 reveal-focus text-caption text-ink-mute [--reveal-blur:4px] [--reveal-y:6px]',
-                    part.delays.meta,
-                  ]}>{translate(part.meta)}</span
+                  class="mt-0.5 reveal-focus text-caption text-ink-mute [--reveal-blur:4px] [--reveal-delay:540ms] [--reveal-y:6px]"
+                  >{translate(part.meta)}</span
                 >
               </button>
               {#if active}

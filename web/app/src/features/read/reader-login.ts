@@ -146,34 +146,19 @@ function sameBytes(first: Uint8Array, second: Uint8Array): boolean {
   return first.length === second.length && first.every((byte, index) => byte === second[index]);
 }
 
-interface KdfMark {
-  readonly begin: () => void;
-  readonly end: () => void;
-}
-
-interface MarkStore {
-  readonly setItem: (key: string, value: string) => void;
-  readonly removeItem: (key: string) => void;
-}
-
 // Marks a scrypt run, so a tab that crashed during one explains it when that message opens again; it holds the lease
 // tag, never the message id.
 export const KDF_MARK = 'nylzo:kdf';
 
-export function kdfMark(session: Readonly<MarkStore>, owner: () => string): KdfMark {
-  return {
-    begin: () => quietly(() => session.setItem(KDF_MARK, owner())),
-    end: () => quietly(() => session.removeItem(KDF_MARK)),
+interface KdfMark {
+  readonly session: {
+    readonly setItem: (key: string, value: string) => void;
+    readonly removeItem: (key: string) => void;
   };
+  readonly owner: string;
 }
 
-function quietly(action: () => void): void {
-  try {
-    action();
-  } catch {}
-}
-
-// Profile 3 stretches the OPRF output in a worker, between the begin and the end of the mark.
+// Profile 3 stretches the OPRF output in a worker, between the setting and the removal of the mark.
 export function stretchFor(
   kdfId: KdfId,
   mark: KdfMark,
@@ -185,11 +170,11 @@ export function stretchFor(
   }
   return async (message) => {
     onProgress?.(0);
-    mark.begin();
+    mark.session.setItem(KDF_MARK, mark.owner);
     try {
       return await stretch(message, (fraction) => onProgress?.(fraction));
     } finally {
-      mark.end();
+      mark.session.removeItem(KDF_MARK);
     }
   };
 }

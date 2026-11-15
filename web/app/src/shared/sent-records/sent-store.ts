@@ -39,7 +39,9 @@ async function databaseListed(factory: IDBFactory, ifListingFails: boolean): Pro
   }
 }
 
-function openSentStore(factory: IDBFactory | undefined): SentStore & { readonly close: () => void } {
+export function browserSentStore(
+  factory: IDBFactory | undefined = browserDatabases(),
+): SentStore & { readonly close: () => void } {
   let database: Promise<IDBDatabase> | undefined;
   let closed = false;
   let active = 0;
@@ -182,10 +184,6 @@ export async function rememberSent(store: SentStore, record: SentRecord, timeout
   return false;
 }
 
-export function browserSentStore(factory = browserDatabases()): SentStore & { readonly close: () => void } {
-  return openSentStore(factory);
-}
-
 function nextPurgeAt(records: readonly SentRecord[]): number | undefined {
   const deadlines = records.map((record) => retainedUntil(record));
   return deadlines.length === 0 ? undefined : Math.min(...deadlines);
@@ -194,7 +192,7 @@ function nextPurgeAt(records: readonly SentRecord[]): number | undefined {
 export async function purgeSentRecords(factory: IDBFactory | undefined, now: number): Promise<number | undefined> {
   try {
     if (factory && (await databaseListed(factory, false))) {
-      const store = openSentStore(factory);
+      const store = browserSentStore(factory);
       try {
         return nextPurgeAt(await retainedRecords(store, now));
       } finally {

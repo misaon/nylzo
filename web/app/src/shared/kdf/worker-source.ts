@@ -9,6 +9,8 @@ class WorkerSourceError extends Error {
   }
 }
 
+const SOURCE_TIMEOUT_MS = 30_000;
+
 const createdUrls = new Set<string>();
 
 const workerPolicy =
@@ -48,6 +50,7 @@ async function fetchVerified(): Promise<Blob> {
     credentials: 'omit',
     redirect: 'error',
     referrerPolicy: 'no-referrer',
+    signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
   });
   if (!response.ok) {
     throw new WorkerSourceError();

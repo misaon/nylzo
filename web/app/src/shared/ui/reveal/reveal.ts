@@ -6,6 +6,13 @@ export const REVEAL_INDEXES = [
   '[--reveal-index:2]',
   '[--reveal-index:3]',
   '[--reveal-index:4]',
+  '[--reveal-index:5]',
+  '[--reveal-index:6]',
+  '[--reveal-index:7]',
+  '[--reveal-index:8]',
+  '[--reveal-index:9]',
+  '[--reveal-index:10]',
+  '[--reveal-index:11]',
 ] as const;
 
 let observer: IntersectionObserver | undefined;

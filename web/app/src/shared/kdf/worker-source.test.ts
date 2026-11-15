@@ -68,6 +68,24 @@ describe('verified worker source', () => {
     started.stop();
   });
 
+  it('gives up on a source that stalls and fetches it again on the next start', async () => {
+    const stalled = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(stalled.signal);
+    fetchSource.mockImplementationOnce(async (_url, options) => {
+      const waiting = Promise.withResolvers<Response>();
+      options?.signal?.addEventListener('abort', () => waiting.reject(new DOMException('timed out', 'TimeoutError')));
+      return waiting.promise;
+    });
+    const { startWorker } = await import('./worker-source.ts');
+    const first = startWorker();
+    stalled.abort();
+    await expect(first).rejects.toMatchObject({ name: 'WorkerSourceError' });
+    expect(timeout).toHaveBeenCalledExactlyOnceWith(30_000);
+    const second = await startWorker();
+    expect(fetchSource).toHaveBeenCalledTimes(2);
+    second.stop();
+  });
+
   it('refuses worker creation when prefetch and startup cannot verify the source', async () => {
     fetchSource.mockRejectedValue(new Error('integrity mismatch'));
     const { startWorker } = await import('./worker-source.ts');

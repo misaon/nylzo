@@ -2,9 +2,9 @@
   import { getTranslator } from '../../../../shared/language/translator.svelte.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
   import type { IconName } from '../../../../shared/ui/icon/icons.ts';
-  import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
+  import { reveal, REVEAL_INDEXES } from '../../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
-  import { COMPARE_ROWS, HEAD_FADE } from './compare-rows.ts';
+  import { COMPARE_ROWS } from './compare-rows.ts';
   import type { MarkKind } from './compare-rows.ts';
 
   const { translate } = getTranslator();
@@ -14,6 +14,13 @@
     'sticky left-0 z-10 bg-void-900 shadow-[1px_0_0_oklch(1_0_0/0.08)] md:static md:bg-transparent md:shadow-none';
   const NYLZO_COLUMN =
     'bg-aegis-500/12 shadow-[inset_1px_0_0_oklch(0.67_0.16_252/0.3),inset_-1px_0_0_oklch(0.67_0.16_252/0.3)]';
+  const MARK_DELAYS = [
+    '[--reveal-delay:520ms]',
+    '[--reveal-delay:690ms]',
+    '[--reveal-delay:860ms]',
+    '[--reveal-delay:1030ms]',
+    '[--reveal-delay:1200ms]',
+  ] as const;
   const MARKS: Readonly<
     Record<
       MarkKind,
@@ -41,10 +48,8 @@
 
 <section id="comparison" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="compare-title">
   <div class="mx-auto max-w-page">
-    <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between" {@attach reveal}>
-      <div class="max-w-[600px]">
-        <SectionIntro id="compare-title" eyebrow={translate('compare.eyebrow')} title={translate('compare.title')} />
-      </div>
+    <div class="max-w-[600px]" {@attach reveal}>
+      <SectionIntro id="compare-title" eyebrow={translate('compare.eyebrow')} title={translate('compare.title')} />
     </div>
     <p class="mt-6 flex reveal-focus items-center gap-1.5 text-micro text-ink-mute md:hidden" {@attach reveal}>
       <Icon name="arrowRight" class="size-3.5 shrink-0" stroke={2} />
@@ -58,7 +63,9 @@
         aria-labelledby="compare-title"
         tabindex="0"
       >
-        <table class="w-full min-w-182 table-fixed border-collapse text-left md:min-w-0">
+        <table
+          class="w-full min-w-182 table-fixed border-collapse text-left [--reveal-delay:150ms] [--reveal-step:45ms] md:min-w-0"
+        >
           <caption class="sr-only">{translate('compare.caption')}</caption>
           <colgroup>
             <col class="w-48 md:w-[38%]" />
@@ -68,7 +75,7 @@
             {/each}
           </colgroup>
           <thead>
-            <tr class={['reveal-fade border-b border-white/8', HEAD_FADE]}>
+            <tr class="reveal-fade border-b border-white/8">
               <th scope="col" class={['px-4 py-4 text-micro font-normal text-ink-mute md:px-6', STICKY]}>
                 {translate('compare.feature')}
               </th>
@@ -84,8 +91,8 @@
             </tr>
           </thead>
           <tbody>
-            {#each COMPARE_ROWS as row (row.label)}
-              <tr class={['reveal-fade border-b border-white/8 last:border-0', row.fade]}>
+            {#each COMPARE_ROWS as row, index (row.label)}
+              <tr class={['reveal-fade border-b border-white/8 last:border-0', REVEAL_INDEXES[index + 1]]}>
                 <th scope="row" class={['px-4 py-3 text-ui font-normal text-balance text-ink md:px-6', STICKY]}>
                   {translate(row.label)}
                 </th>
@@ -99,9 +106,9 @@
                       <span class={['flex flex-col items-center gap-1 text-micro', mark.tone]}>
                         <span
                           class={[
-                            'grid size-5 shrink-0 reveal-pop place-items-center rounded-full [--reveal-duration:0.55s]',
+                            'grid size-5 shrink-0 reveal-pop place-items-center rounded-full [--reveal-duration:0.55s] [--reveal-step:35ms]',
                             mark.mark,
-                            cell.delay,
+                            MARK_DELAYS[column],
                           ]}
                         >
                           <Icon name={mark.icon} class="size-3" stroke={2.2} />

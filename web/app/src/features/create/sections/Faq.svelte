@@ -9,7 +9,6 @@
   const { translate } = translator;
   const longest = $derived(translator.plural('count.day', LONGEST_TTL_DAYS));
 
-  const columns = FAQ_COLUMNS;
   const COLUMN_DELAYS = ['md:[--reveal-delay:0ms]', 'md:[--reveal-delay:110ms]'] as const;
 </script>
 
@@ -24,7 +23,7 @@
       {translate('faq.title')}
     </h2>
     <div class="mt-10 grid gap-4 md:grid-cols-2 md:items-start">
-      {#each columns as items, column (column)}
+      {#each FAQ_COLUMNS as items, column (column)}
         <div class="grid content-start gap-4 max-md:contents">
           {#each items as item (item.key)}
             <Accordion

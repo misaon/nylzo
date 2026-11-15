@@ -1,5 +1,4 @@
 <script lang="ts">
-  import type { Attachment } from 'svelte/attachments';
   import { fade, slide } from 'svelte/transition';
 
   import { clearClipboard } from '../../../shared/clipboard/clear-clipboard.ts';
@@ -38,12 +37,12 @@
   const COPIED_MS = 2400;
   const SAVED_MS = 900;
   const PASSPHRASE_MASK = '•'.repeat(18);
+  const RISE = 'transition-[opacity,translate] duration-500 starting:[translate:0_0.375rem] starting:opacity-0';
 
   const copied = new Flash(COPIED_MS);
   const passphraseCopied = new Flash(COPIED_MS);
   const justSaved = new Flash(SAVED_MS);
   const focus = new FocusTargets<'clipboard' | 'link' | 'title'>();
-  let entered = $state(false);
   let editing = $state(false);
   let clipboard = $state<'cleared' | 'copied' | 'failed' | 'untouched'>('untouched');
   let passphraseShown = $state(false);
@@ -66,14 +65,6 @@
     }
     return translate(clipboard === 'cleared' ? 'clipboard.cleared' : 'clipboard.copied');
   });
-
-  const enter: Attachment = () => {
-    const frame = requestAnimationFrame(() => {
-      entered = true;
-      focus.focus('title');
-    });
-    return () => cancelAnimationFrame(frame);
-  };
 
   async function copy() {
     try {
@@ -108,12 +99,6 @@
       await navigator.share({ url: created.link });
     } catch {}
   }
-
-  function item(delay: string): string[] {
-    return entered
-      ? ['translate-y-0 opacity-100 duration-500', delay]
-      : ['translate-y-1.5 opacity-0 duration-150 ease-in-out'];
-  }
 </script>
 
 {#snippet copyLinkButton()}
@@ -133,11 +118,7 @@
 {/snippet}
 
 <div
-  class={[
-    'relative flex flex-col overflow-hidden text-left fade-swap',
-    entered ? 'translate-y-0 opacity-100' : 'translate-y-3 opacity-0',
-  ]}
-  {@attach enter}
+  class="relative flex flex-col overflow-hidden text-left fade-swap starting:[translate:0_0.75rem] starting:opacity-0"
   out:fade={{ duration: motionMs(400) }}
 >
   <div
@@ -148,10 +129,7 @@
       aria-hidden="true"
     ></div>
     <span
-      class={[
-        'relative grid size-12 shrink-0 place-items-center transition-[opacity,scale] md:size-14',
-        entered ? 'scale-100 opacity-100 delay-60 duration-500' : 'scale-75 opacity-0 duration-150 ease-in-out',
-      ]}
+      class="relative grid size-12 shrink-0 place-items-center transition-[opacity,scale] delay-60 duration-500 md:size-14 starting:scale-75 starting:opacity-0"
       aria-hidden="true"
     >
       <span
@@ -163,24 +141,20 @@
     </span>
     <h2
       {@attach focus.attach('title')}
+      {@attach () => focus.focus('title')}
       tabindex="-1"
       class={[
-        'relative mt-5 font-display text-panel font-light text-ink transition-[opacity,translate] outline-none md:text-panel-lg',
-        item('delay-120'),
+        'relative mt-5 font-display text-panel font-light text-ink delay-120 outline-none md:text-panel-lg',
+        RISE,
       ]}
     >
       {translate('created.title')}
     </h2>
-    <p
-      class={[
-        'relative mt-2 text-ui text-pretty text-ink-soft transition-[opacity,translate] md:text-body',
-        item('delay-120'),
-      ]}
-    >
+    <p class={['relative mt-2 text-ui text-pretty text-ink-soft delay-120 md:text-body', RISE]}>
       {translate(passphrase === '' ? 'created.sub' : 'created.sub.passphrase')}
     </p>
 
-    <div class={['relative mt-7 w-full max-w-[720px] transition-[opacity,translate] md:mt-8', item('delay-180')]}>
+    <div class={['relative mt-7 w-full max-w-[720px] delay-180 md:mt-8', RISE]}>
       <div class="relative rounded-card">
         <span
           class={[
@@ -343,8 +317,8 @@
       out:slide={{ duration: motionMs(400) }}
       onoutroend={() => keepFocus(focus.get('title'))}
       class={[
-        'flex flex-col gap-3 border-t border-white/8 px-4 py-4 text-left transition-[opacity,translate] sm:flex-row sm:items-center sm:gap-4',
-        item('delay-220'),
+        'flex flex-col gap-3 border-t border-white/8 px-4 py-4 text-left delay-220 sm:flex-row sm:items-center sm:gap-4',
+        RISE,
       ]}
     >
       <div class="flex min-w-0 flex-1 items-center gap-3">
@@ -422,8 +396,8 @@
 
   <div
     class={[
-      'flex flex-col gap-2.5 border-t border-white/8 p-3 transition-[opacity,translate] sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:pl-4',
-      item('delay-240'),
+      'flex flex-col gap-2.5 border-t border-white/8 p-3 delay-240 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:pl-4',
+      RISE,
     ]}
   >
     <ul

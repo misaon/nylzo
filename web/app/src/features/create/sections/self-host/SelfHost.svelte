@@ -6,22 +6,17 @@
   import { FocusTargets } from '../../../../shared/ui/focus/focus.ts';
   import { arrowTarget } from '../../../../shared/ui/focus/roving-focus.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
-  import { reveal } from '../../../../shared/ui/reveal/reveal.ts';
+  import { reveal, REVEAL_INDEXES } from '../../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import IconTile from '../../../../shared/ui/tile/IconTile.svelte';
-  import { installLines, installText, LINE_DELAYS, TOKEN_CLASSES } from './commands.ts';
+  import { installLines, installText, TOKEN_CLASSES } from './commands.ts';
   import type { InstallTab } from './commands.ts';
 
   const { translate } = getTranslator();
 
   const tabs: readonly InstallTab[] = ['cli', 'compose', 'binary', 'verify'];
   const indicator = ['translate-x-0', 'translate-x-full', 'translate-x-[200%]', 'translate-x-[300%]'] as const;
-  const points = [
-    { key: 'host.point.cli', revealIndex: '[--reveal-index:3]' },
-    { key: 'host.point.compose', revealIndex: '[--reveal-index:4]' },
-    { key: 'host.point.signed', revealIndex: '[--reveal-index:5]' },
-    { key: 'host.point.mit', revealIndex: '[--reveal-index:6]' },
-  ] as const;
+  const points = ['host.point.cli', 'host.point.compose', 'host.point.signed', 'host.point.mit'] as const;
 
   let tab = $state<InstallTab>('cli');
   const focus = new FocusTargets<InstallTab>();
@@ -52,10 +47,12 @@
         {translate('host.sub')}
       </p>
       <ul role="list" class="mt-8 grid gap-4 text-body text-ink-soft">
-        {#each points as point (point.key)}
-          <li class={['flex reveal-focus items-center gap-3 leading-7 [--reveal-blur:5px]', point.revealIndex]}>
+        {#each points as point, position (point)}
+          <li
+            class={['flex reveal-focus items-center gap-3 leading-7 [--reveal-blur:5px]', REVEAL_INDEXES[position + 3]]}
+          >
             <IconTile icon="check" tone="neutral" size="small" />
-            {translate(point.key)}
+            {translate(point)}
           </li>
         {/each}
       </ul>
@@ -121,7 +118,7 @@
           role="tabpanel"
           aria-labelledby="host-tab-{tab}"
           tabindex="0"
-          class="stack overflow-x-auto p-4 text-caption tabular-nums outline-2 -outline-offset-2 outline-transparent transition focus-visible:-outline-offset-2 focus-visible:outline-aegis-300 md:text-body-sm"
+          class="stack overflow-x-auto p-4 text-caption tabular-nums outline-2 -outline-offset-2 outline-transparent transition [--reveal-delay:620ms] [--reveal-step:170ms] focus-visible:-outline-offset-2 focus-visible:outline-aegis-300 md:text-body-sm"
         >
           {#each tabs as id (id)}
             {const lines = $derived(installLines(id, domain))}
@@ -136,7 +133,7 @@
                 <p
                   class={[
                     'reveal-type pl-[1.15em] -indent-[1.15em] wrap-anywhere whitespace-pre-wrap',
-                    LINE_DELAYS[row],
+                    REVEAL_INDEXES[row],
                   ]}
                 >
                   <span class="text-ink-mute/60 select-none">$&nbsp;</span
@@ -148,7 +145,7 @@
               <p
                 class={[
                   'reveal-type pl-[1.15em] -indent-[1.15em] wrap-anywhere whitespace-pre-wrap',
-                  LINE_DELAYS[lines.length],
+                  REVEAL_INDEXES[lines.length],
                 ]}
                 aria-hidden="true"
               >

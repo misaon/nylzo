@@ -593,15 +593,8 @@
             "name": "Declaration"
           },
           {
-            "from": "package",
-            "package": "@octokit/core",
-            "name": "Octokit"
-          },
-          {
             "from": "file",
             "name": [
-              "GitHubClient",
-              "FileReview",
               "FakeApi",
               "SentStore",
               "PreferenceStore",
@@ -614,17 +607,7 @@
           },
           {
             "from": "file",
-            "name": [
-              "ApiError",
-              "Stored",
-              "Api",
-              "SignedRequest",
-              "FakeOptions",
-              "GrypeReport",
-              "GrypeMatch",
-              "Prerender",
-              "RecordedRequest"
-            ]
+            "name": ["ApiError", "Stored", "Api", "SignedRequest", "FakeOptions", "Prerender", "RecordedRequest"]
           },
           {
             "from": "package",

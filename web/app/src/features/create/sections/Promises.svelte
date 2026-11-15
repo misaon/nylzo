@@ -30,12 +30,11 @@
     </div>
     <div class="mt-14 grid gap-4 md:grid-cols-6 md:gap-5">
       {#each PROMISES as promise (promise.key)}
-        <article class={[CARD, promise.layout, promise.motion]} {@attach reveal}>
-          <IconTile
-            icon={promise.icon}
-            tone="current"
-            class={['reveal-pop [--reveal-delay:320ms] [--reveal-step:120ms]', promise.revealIndex]}
-          />
+        <article
+          class={[CARD, promise.wide ? 'md:col-span-4 md:p-8' : 'md:col-span-2 md:p-7', promise.motion]}
+          {@attach reveal}
+        >
+          <IconTile icon={promise.icon} tone="current" class="reveal-pop [--reveal-delay:320ms]" />
           <h3 class={promise.wide ? 'mt-6 font-display text-panel font-light md:text-panel-lg' : 'mt-5 text-title'}>
             {translate(`${promise.key}.title`, { days: longest })}
           </h3>
@@ -61,11 +60,7 @@
         {@attach reveal}
       >
         <div class="flex items-center gap-5 max-md:flex-col max-md:items-start max-md:gap-6">
-          <IconTile
-            icon="code"
-            tone="current"
-            class="reveal-pop [--reveal-delay:320ms] [--reveal-step:120ms] md:[--reveal-index:0]"
-          />
+          <IconTile icon="code" tone="current" class="reveal-pop [--reveal-delay:320ms]" />
           <div>
             <h3 class="font-display text-panel font-light md:text-panel-lg">{translate('promise.open.title')}</h3>
             <p class="mt-2 max-w-[640px] leading-relaxed text-pretty text-ink-soft">{translate('promise.open.text')}</p>

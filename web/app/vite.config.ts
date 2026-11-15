@@ -4,7 +4,6 @@ import { gzipSync } from 'node:zlib';
 
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
-import browserslist from 'browserslist';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 
@@ -17,35 +16,10 @@ const developmentApi = process.env['NYLZO_DEV_API'] ?? 'http://127.0.0.1:8080';
 const GZIP_OS_UNKNOWN = 255;
 const PRELOADED_FONTS = /^assets\/(?:geist|sora)-(?:latin-wght-normal|latin-ext-wght-normal|czech)-[\w-]+\.woff2$/u;
 const PRECOMPRESSED = /\.(?:js|css)$/u;
-const VITE_BROWSER_NAMES = new Map([
-  ['and_chr', 'chrome'],
-  ['and_ff', 'firefox'],
-  ['chrome', 'chrome'],
-  ['edge', 'edge'],
-  ['firefox', 'firefox'],
-  ['ios_saf', 'ios'],
-  ['safari', 'safari'],
-]);
-const versionOrder = new Intl.Collator('en', { numeric: true });
+// The oldest browsers the client runs in: Safari from the TLS handshake the deployment profiles require
+// (X25519MLKEM768), Chrome, Edge and Firefox from Uint8Array.prototype.toBase64, which has no fallback.
+const BROWSER_TARGETS = ['chrome140', 'edge140', 'firefox133', 'safari26', 'ios26'];
 const SAFARI_MODULE_INTEGRITY_BUG = 'https://bugs.webkit.org/show_bug.cgi?id=326340';
-
-function browserTargets(): string[] {
-  const browsers = browserslist(undefined, { path: import.meta.dirname });
-  const minimumVersions = new Map<string, string>();
-  for (const browser of browsers) {
-    const [name = '', versions = ''] = browser.split(' ', 2);
-    const viteName = VITE_BROWSER_NAMES.get(name);
-    if (viteName === undefined) {
-      throw new Error(`Browserslist selected ${browser}, which has no Vite build target.`);
-    }
-    const [version = versions] = versions.split('-', 1);
-    const minimum = minimumVersions.get(viteName);
-    if (minimum === undefined || versionOrder.compare(version, minimum) < 0) {
-      minimumVersions.set(viteName, version);
-    }
-  }
-  return Array.from(minimumVersions, ([viteName, version]) => `${viteName}${version}`);
-}
 
 function buildMetadata(): Plugin {
   return {
@@ -159,7 +133,7 @@ export default defineConfig(({ isSsrBuild }) => ({
   define: { __NYLZO_BUILD_INFO__: JSON.stringify(information) },
   server: { strictPort: true, proxy: { '/api': developmentApi } },
   build: {
-    ...(!isSsrBuild && { target: browserTargets() }),
+    ...(!isSsrBuild && { target: BROWSER_TARGETS }),
     outDir: outputDirectory,
     emptyOutDir: true,
     assetsInlineLimit: 0,

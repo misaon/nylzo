@@ -10,15 +10,6 @@ function tooLarge(): ResponseError {
   return new ResponseError('the response is larger than the protocol allows');
 }
 
-function grown(buffer: Uint8Array<ArrayBuffer>, used: number, needed: number, limit: number): Uint8Array<ArrayBuffer> {
-  if (needed <= buffer.length) {
-    return buffer;
-  }
-  const larger = new Uint8Array(Math.min(limit, Math.max(needed, buffer.length * 2)));
-  larger.set(buffer.subarray(0, used));
-  return larger;
-}
-
 export async function readBody(
   response: Response,
   limit: number,
@@ -41,16 +32,20 @@ export async function readBody(
   let received = 0;
   const reader = response.body.getReader();
   for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
-    if (received + chunk.value.length > limit) {
+    const needed = received + chunk.value.length;
+    if (needed > limit) {
       await reader.cancel();
       throw tooLarge();
     }
-    object = grown(object, received, received + chunk.value.length, limit);
+    if (needed > object.length) {
+      const capacity = Math.min(limit, Math.max(needed, object.length * 2));
+      object = new Uint8Array(object.buffer.transfer(capacity));
+    }
     object.set(chunk.value, received);
-    received += chunk.value.length;
+    received = needed;
     onProgress?.(received, total);
   }
-  return received === object.length ? object : object.slice(0, received);
+  return received === object.length ? object : new Uint8Array(object.buffer.transfer(received));
 }
 
 export function mediaTypeOf(response: Response): string {

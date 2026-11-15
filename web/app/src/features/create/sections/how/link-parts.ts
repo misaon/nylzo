@@ -8,7 +8,6 @@ interface LinkPart {
   readonly body: MessageKey;
   readonly tone: string;
   readonly bar: string;
-  readonly delays: { readonly text: string; readonly bar: string; readonly title: string; readonly meta: string };
 }
 
 export const LINK_PARTS: readonly LinkPart[] = [
@@ -20,12 +19,6 @@ export const LINK_PARTS: readonly LinkPart[] = [
     body: 'how.link.host.body',
     tone: 'text-ink-soft',
     bar: 'bg-ink-soft/35',
-    delays: {
-      text: '[--reveal-delay:320ms]',
-      bar: '[--reveal-delay:400ms]',
-      title: '[--reveal-delay:480ms]',
-      meta: '[--reveal-delay:540ms]',
-    },
   },
   {
     id: 'meta',
@@ -35,12 +28,6 @@ export const LINK_PARTS: readonly LinkPart[] = [
     body: 'how.link.meta.body',
     tone: 'text-solar-300',
     bar: 'bg-solar-300/35',
-    delays: {
-      text: '[--reveal-delay:470ms]',
-      bar: '[--reveal-delay:550ms]',
-      title: '[--reveal-delay:630ms]',
-      meta: '[--reveal-delay:690ms]',
-    },
   },
   {
     id: 'id',
@@ -50,12 +37,6 @@ export const LINK_PARTS: readonly LinkPart[] = [
     body: 'how.link.id.body',
     tone: 'text-rose-300',
     bar: 'bg-rose-400/35',
-    delays: {
-      text: '[--reveal-delay:620ms]',
-      bar: '[--reveal-delay:700ms]',
-      title: '[--reveal-delay:780ms]',
-      meta: '[--reveal-delay:840ms]',
-    },
   },
   {
     id: 'key',
@@ -65,11 +46,5 @@ export const LINK_PARTS: readonly LinkPart[] = [
     body: 'how.link.key.body',
     tone: 'text-aegis-300',
     bar: 'bg-aegis-300/35',
-    delays: {
-      text: '[--reveal-delay:770ms]',
-      bar: '[--reveal-delay:850ms]',
-      title: '[--reveal-delay:930ms]',
-      meta: '[--reveal-delay:990ms]',
-    },
   },
 ];

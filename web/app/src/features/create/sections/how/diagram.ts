@@ -66,7 +66,7 @@ interface Layout {
   readonly endHalo: number;
   readonly endDot: number;
   readonly lines: readonly string[];
-  readonly chips: readonly { readonly position: string; readonly animation: string }[];
+  readonly chips: readonly string[];
   readonly chipIcon: string;
   readonly chipStroke: number;
   readonly keyChip: string;
@@ -95,16 +95,7 @@ export const LAYOUTS: Readonly<Record<DiagramLayout, Layout>> = {
     endHalo: 6,
     endDot: 2.5,
     lines: ['M86 140H150', 'M210 140H274'],
-    chips: [
-      {
-        position: 'left-[32.78%] top-[51.85%]',
-        animation: 'glow-chip motion-safe:ring-aegis-400/40 motion-safe:after:animate-how-chip-a',
-      },
-      {
-        position: 'left-[67.22%] top-[51.85%]',
-        animation: 'glow-chip motion-safe:ring-aegis-400/40 motion-safe:after:animate-how-chip-b',
-      },
-    ],
+    chips: ['left-[32.78%] top-[51.85%]', 'left-[67.22%] top-[51.85%]'],
     chipIcon: 'hidden size-3',
     chipStroke: 2.2,
     keyChip: 'left-[50.00%] top-[12.96%]',
@@ -135,16 +126,7 @@ export const LAYOUTS: Readonly<Record<DiagramLayout, Layout>> = {
     endHalo: 7.199999999999999,
     endDot: 3,
     lines: ['M194 170H456', 'M544 170H806'],
-    chips: [
-      {
-        position: 'left-[32.50%] top-[53.13%]',
-        animation: 'glow-chip motion-safe:ring-aegis-400/40 motion-safe:after:animate-how-chip-a',
-      },
-      {
-        position: 'left-[67.50%] top-[53.13%]',
-        animation: 'glow-chip motion-safe:ring-aegis-400/40 motion-safe:after:animate-how-chip-b',
-      },
-    ],
+    chips: ['left-[32.50%] top-[53.13%]', 'left-[67.50%] top-[53.13%]'],
     chipIcon: 'size-3.5',
     chipStroke: 2,
     keyChip: 'left-[50.00%] top-[9.84%]',

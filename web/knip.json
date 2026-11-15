@@ -6,12 +6,7 @@
     },
     "app": {
       "entry": ["src/app/prerender.ts"],
-      "ignoreDependencies": [
-        "@fontsource-variable/geist",
-        "@fontsource-variable/sora",
-        "@typescript/native",
-        "svelte-check"
-      ]
+      "ignoreDependencies": ["@typescript/native"]
     },
     "e2e": {
       "playwright": {

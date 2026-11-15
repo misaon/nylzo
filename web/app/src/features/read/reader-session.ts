@@ -19,6 +19,14 @@ export async function leaseTag(secret: Uint8Array): Promise<string> {
   }
 }
 
+function blockedAs<Value>(action: () => Value, fallback: NoInfer<Value>): Value {
+  try {
+    return action();
+  } catch {
+    return fallback;
+  }
+}
+
 // A session of the local client has an origin nobody purges later, so its lease lives only in memory (Protocol §14.1).
 export function readerSession(): SessionStore {
   if (servedByLocalClient()) {
@@ -34,8 +42,8 @@ export function readerSession(): SessionStore {
     };
   }
   return {
-    getItem: (key) => sessionStorage.getItem(key),
-    setItem: (key, value) => sessionStorage.setItem(key, value),
-    removeItem: (key) => sessionStorage.removeItem(key),
+    getItem: (key) => blockedAs(() => sessionStorage.getItem(key), null),
+    setItem: (key, value) => blockedAs(() => sessionStorage.setItem(key, value), undefined),
+    removeItem: (key) => blockedAs(() => sessionStorage.removeItem(key), undefined),
   };
 }

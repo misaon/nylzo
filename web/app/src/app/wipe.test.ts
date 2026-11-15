@@ -221,6 +221,14 @@ describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
     expect(zeroed()).toEqual([true, true, true, true, true]);
   });
 
+  it('wipes S and salt_pw when the passphrase cannot be encoded', async () => {
+    const input = { text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: 'correct horse \u{D800} battery' };
+    const dependencies = createDependencies(fakeApi());
+    await expect(createMessage(input, dependencies)).rejects.toMatchObject({ failure: { kind: 'invalid' } });
+    expect(captured).toHaveLength(2);
+    expect(zeroed()).toEqual([true, true]);
+  });
+
   it('keeps only the OPAQUE password of a shown message while its remaining opens can be deleted', async () => {
     const api = fakeApi();
     const reader = readerFor(api, await created(api, 2));

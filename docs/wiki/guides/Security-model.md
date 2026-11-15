@@ -123,7 +123,7 @@ Inspect an instance's `/transparency` page for its operator, limits, storage and
 
 ## Transport
 
-The deployment profiles accept only TLS 1.3 with the hybrid post-quantum key exchange X25519MLKEM768, so traffic recorded today cannot be decrypted later with a quantum computer that breaks X25519 alone. Every browser in `web/.browserslistrc` uses it by default, as do the CLI and Node 26.
+The deployment profiles accept only TLS 1.3 with the hybrid post-quantum key exchange X25519MLKEM768, so traffic recorded today cannot be decrypted later with a quantum computer that breaks X25519 alone. Every browser the client is built for uses it by default, as do the CLI and Node 26.
 
 Search engine crawlers are the one exception, because they do not offer ML-KEM: Google Search Console and PageSpeed Insights could not load nylzo.com while it refused X25519, and Google documents no TLS groups for its fetchers. Caddy also completes a handshake with X25519 alone, but only from the addresses that Google (`common-crawlers.json` and `user-triggered-fetchers-google.json`), Bing (`bingbot.json`, IPv4) and Seznam (`seznambot.json`) publish for their crawlers. The list is built into the release's Caddy and updated through a reviewed pull request; a failed refresh keeps the previous list. Every other address still gets a failed handshake, so a browser that retries without ML-KEM, as Firefox before 151 does after a network error, never reaches Nylzo over classical TLS.
 

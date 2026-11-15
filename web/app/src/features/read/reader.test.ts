@@ -314,17 +314,6 @@ describe('reading a message', () => {
     expect(again.last()).toMatchObject({ view: 'ready', resumable: true });
   });
 
-  it('finishes an open that the previous client stored under the message id', async () => {
-    const api = fakeApi();
-    const created = await createMessage(input(), createDependencies(api));
-    const session = memorySession();
-    const id = idTextOf(created.link);
-    await claimElsewhere(api, created.link, '', (lease) => session.setItem(LEASE_KEY, `${id} ${lease}`));
-    const reader = openReader(api, created.link, { session });
-    await reader.load();
-    expect(reader.last()).toMatchObject({ view: 'ready', resumable: true });
-  });
-
   it('removes the stored lease as soon as the message is on the screen, before the ack answers', async () => {
     const api = fakeApi();
     const answer = Promise.withResolvers<undefined>();

@@ -169,18 +169,3 @@ export function installText(tab: InstallTab, domain: string): string {
     )
     .join('\n');
 }
-
-export const LINE_DELAYS = [
-  '[--reveal-delay:620ms]',
-  '[--reveal-delay:790ms]',
-  '[--reveal-delay:960ms]',
-  '[--reveal-delay:1130ms]',
-  '[--reveal-delay:1300ms]',
-  '[--reveal-delay:1470ms]',
-  '[--reveal-delay:1640ms]',
-  '[--reveal-delay:1810ms]',
-  '[--reveal-delay:1980ms]',
-  '[--reveal-delay:2150ms]',
-  '[--reveal-delay:2320ms]',
-  '[--reveal-delay:2490ms]',
-] as const;

@@ -32,7 +32,7 @@ import {
 } from '@nylzo/core';
 import type { KdfId, LinkKeys, Meta, RegistrationState, RequestKey, Stretch } from '@nylzo/core';
 
-import { ApiError, isApiError, shouldRetryLater } from '../../shared/api/api-errors.ts';
+import { isApiError, shouldRetryLater } from '../../shared/api/api-errors.ts';
 import type { Api, Issued } from '../../shared/api/api.ts';
 import type { InstanceLimits } from '../../shared/api/responses.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
@@ -213,6 +213,7 @@ function startRegistration(
     const code = passphraseErrorCode(error);
     throw code === undefined ? error : new CreateError({ kind: 'invalid', problems: [{ field: 'passphrase', code }] });
   } finally {
+    salt.fill(0);
     password?.fill(0);
   }
 }
@@ -234,7 +235,7 @@ async function prove(
       );
     } catch (error) {
       if (!(error instanceof PowTimeoutError) || round >= POW_ROUNDS) {
-        throw error instanceof ApiError ? error : new CreateError({ kind: 'pow' });
+        throw new CreateError({ kind: 'pow' });
       }
     }
   }
@@ -325,7 +326,6 @@ async function createOnce(
   try {
     const salt = await derivePassphraseSalt(secret);
     const registration = startRegistration(salt, kdfId, input.passphrase);
-    salt.fill(0);
     state = registration.state;
     const issuance = await issue(input, dependencies, registration.request);
     const { instance, issued } = issuance;

@@ -36,7 +36,7 @@ mise run e2e
 
 `mise run build` embeds the production web client in `bin/nylzo` and injects the same build identity into Go and Vite. Untagged and modified checkouts identify themselves as development builds. See [versioning](../maintainers/Releasing.md#one-source-of-version-identity).
 
-[web/.browserslistrc](../../../web/.browserslistrc) defines the supported browsers as `baseline newly available`, resolved from the Baseline data pinned in the web lockfile. Vite derives the client's JavaScript and CSS build targets from it.
+`BROWSER_TARGETS` in [web/app/vite.config.ts](../../../web/app/vite.config.ts) sets the JavaScript and CSS build targets: Chrome and Edge 140, Firefox 133, Safari and iOS 26. These are the oldest browsers the client runs in. Safari and iOS 26 are the first that complete the TLS handshake the deployment profiles require, and Chrome 140 and Firefox 133 are the first with `Uint8Array.prototype.toBase64`, which the client calls without a fallback. The targets only control how Vite lowers syntax and CSS; they add no missing API.
 
 ## Which CI checks run?
 

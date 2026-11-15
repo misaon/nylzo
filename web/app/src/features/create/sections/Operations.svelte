@@ -4,11 +4,11 @@
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import { ARROW_LINK } from '../../../shared/ui/link/link-classes.ts';
   import { reveal, REVEAL_INDEXES } from '../../../shared/ui/reveal/reveal.ts';
+  import SectionIntro from '../../../shared/ui/section/SectionIntro.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
 
   const { translate } = getTranslator();
 
-  const NODE_GLOW = 'shadow-[0_0_24px_-6px_oklch(0.56_0.19_258/0.7)]';
   const nodes = [
     { label: 'operations.release', zone: 'operations.signed', icon: 'shieldCheck', focus: false },
     { label: 'operations.check', zone: 'operations.every', icon: 'refresh', focus: true },
@@ -42,18 +42,14 @@
       aria-hidden="true"
     ></div>
     <div class="relative grid items-center gap-10 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:gap-14">
-      <div>
-        <p class="reveal-focus text-eyebrow text-aegis-300 uppercase [--reveal-delay:150ms] [--reveal-index:0]">
-          {translate('operations.eyebrow')}
-        </p>
-        <h2
+      <div class="[--reveal-delay:150ms]">
+        <SectionIntro
           id="operations-title"
-          class="mt-3 reveal-focus font-display text-section font-light text-balance [--reveal-delay:150ms] [--reveal-index:1] md:text-section-lg"
-        >
-          {translate('operations.title')}
-        </h2>
+          eyebrow={translate('operations.eyebrow')}
+          title={translate('operations.title')}
+        />
         <p
-          class="mt-4 max-w-[440px] reveal-focus text-lead leading-relaxed text-pretty text-ink-soft [--reveal-delay:150ms] [--reveal-index:2] md:text-lead-lg"
+          class="mt-4 max-w-[440px] reveal-focus text-lead leading-relaxed text-pretty text-ink-soft [--reveal-index:2] md:text-lead-lg"
         >
           {translate('operations.sub')}
         </p>
@@ -74,12 +70,7 @@
                   <IconTile
                     icon={node.icon}
                     tone={node.focus ? 'current' : 'neutral'}
-                    class={[
-                      'relative reveal-pop',
-                      node.focus
-                        ? 'shadow-[0_0_0_6px_oklch(0.56_0.19_258/0.14),0_0_30px_-4px_oklch(0.56_0.19_258/0.85)] [--reveal-delay:300ms]'
-                        : [NODE_GLOW, '[--reveal-delay:900ms]'],
-                    ]}
+                    class={['relative reveal-pop', node.focus ? '[--reveal-delay:300ms]' : '[--reveal-delay:900ms]']}
                   />
                   {#if node.focus}
                     <span
@@ -107,12 +98,7 @@
             ]}
           >
             <div class="flex items-center gap-3.5">
-              <IconTile
-                icon={safeguard.icon}
-                tone="current"
-                size="medium"
-                class={['reveal-pop [--reveal-delay:150ms] [--reveal-step:90ms]', REVEAL_INDEXES[index]]}
-              />
+              <IconTile icon={safeguard.icon} tone="current" size="medium" class="reveal-pop [--reveal-delay:150ms]" />
               <h3 class="text-title-sm text-balance text-ink">{translate(`${safeguard.key}.title`)}</h3>
             </div>
             <p class="text-ui text-pretty text-ink-soft">{translate(`${safeguard.key}.text`)}</p>
