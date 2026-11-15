@@ -140,11 +140,6 @@ export function installLines(tab: InstallTab, domain: string): readonly (readonl
           argument('pepper'),
         ],
         [
-          command('env'),
-          operator('$('),
-          { text: 'cat', kind: 'command', joined: true },
-          argument('report-key.env'),
-          operator(')', true),
           { text: 'NYLZO_PEPPER_FILE', kind: 'variable' },
           operator('=', true),
           argument('pepper', true),

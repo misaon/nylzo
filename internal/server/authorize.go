@@ -30,7 +30,6 @@ func (s *Server) authorize(
 	r *http.Request,
 	rawID string,
 	purpose seal.Purpose,
-	body []byte,
 ) (access, bool, error) {
 	id, idErr := core.ParseID(rawID)
 	signature, parsed := parseSignature(r)
@@ -44,7 +43,7 @@ func (s *Server) authorize(
 		}
 		row, granted.known = found, known
 	}
-	opened := s.openWithSignature(r, &granted, &row, purpose, body)
+	opened := s.openWithSignature(r, &granted, &row, purpose)
 	if !granted.known || !parsed || !fresh || !opened {
 		return granted, false, nil
 	}
@@ -70,13 +69,7 @@ func parseSignature(r *http.Request) (signing.Signature, bool) {
 	return signature, true
 }
 
-func (s *Server) openWithSignature(
-	r *http.Request,
-	granted *access,
-	row *store.Row,
-	purpose seal.Purpose,
-	body []byte,
-) bool {
+func (s *Server) openWithSignature(r *http.Request, granted *access, row *store.Row, purpose seal.Purpose) bool {
 	signature := granted.signature
 	keyOK := signing.ValidPublicKey(signature.PublicKey[:])
 	if !keyOK {
@@ -84,7 +77,7 @@ func (s *Server) openWithSignature(
 	}
 	record, openErr := s.openRow(row, purpose, signature.PublicKey[:])
 	components, single := requestComponents(r)
-	signatureOK := signature.Verify(signedPurpose(purpose), r.Method, r.URL.EscapedPath(), body, components)
+	signatureOK := signature.Verify(signedPurpose(purpose), r.Method, r.URL.EscapedPath(), nil, components)
 	granted.record = record
 	return keyOK && openErr == nil && signatureOK && single
 }
@@ -201,7 +194,7 @@ func (s *Server) authorized(w http.ResponseWriter, r *http.Request, purpose seal
 		return access{}, false
 	}
 	arrived := time.Now()
-	granted, ok, err := s.authorize(r.Context(), r, r.PathValue("id"), purpose, nil)
+	granted, ok, err := s.authorize(r.Context(), r, r.PathValue("id"), purpose)
 	if err != nil {
 		s.writeInternal(w, r, err)
 		return granted, false

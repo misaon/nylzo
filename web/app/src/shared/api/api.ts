@@ -2,7 +2,6 @@ import {
   authorizationHeader,
   decodeBase64url,
   encodeBase64url,
-  FLAG_DEADLINE,
   formatShareKey,
   idToString,
   KE2_LENGTH,
@@ -55,7 +54,6 @@ export interface Transparency {
   };
   readonly retention: {
     readonly tombstoneSeconds: number;
-    readonly abuseReportSeconds?: number;
     readonly dailyCounterSeconds: number;
   };
   readonly files: readonly ClientFile[];
@@ -193,7 +191,6 @@ interface SignedRequest {
   readonly unlock?: Unlock | undefined;
   readonly headers?: Readonly<Record<string, string>>;
   readonly attemptHeaders?: () => Readonly<Record<string, string>>;
-  readonly json?: Json;
   readonly proceed?: (() => boolean) | undefined;
   readonly keepalive?: boolean;
   readonly challenge?: Uint8Array<ArrayBuffer> | undefined;
@@ -254,9 +251,6 @@ function bytesOf(json: Json, name: string, length: number): Uint8Array<ArrayBuff
   return bytes;
 }
 
-// The envelope flags this client opens, so the server refuses a message it could not open before a claim spends an
-// open (spec 6.4).
-const READER_FLAGS = { 'X-Nylzo-Flags': String(FLAG_DEADLINE) };
 const ID_TOKEN_SECONDS = 600;
 const MINUTE_SECONDS = 60;
 
@@ -366,10 +360,6 @@ export function createApi(options: ApiOptions = {}): Api {
     if (login) {
       headers['X-Nylzo-KE3'] = encodeBase64url(login.ke3);
     }
-    const body = request.json === undefined ? undefined : utf8(JSON.stringify(request.json));
-    if (body !== undefined) {
-      headers['Content-Type'] = 'application/json';
-    }
     const components = {
       shareKey: headers['X-Nylzo-Share-Key'] ?? '',
       lease: headers['X-Nylzo-Lease'] ?? '',
@@ -382,18 +372,14 @@ export function createApi(options: ApiOptions = {}): Api {
       request.method,
       request.path,
       fresh,
-      body,
+      undefined,
       components,
     );
     headers['Authorization'] = authorizationHeader(signature);
     if (request.proceed?.() === false) {
       throw new StoppedError();
     }
-    return call(
-      request.path,
-      { method: request.method, headers, keepalive: request.keepalive === true, ...(body !== undefined && { body }) },
-      timeoutMs,
-    );
+    return call(request.path, { method: request.method, headers, keepalive: request.keepalive === true }, timeoutMs);
   }
 
   async function signed(request: SignedRequest, timeoutMs = SHORT_TIMEOUT_MS): Promise<Response> {
@@ -467,9 +453,6 @@ export function createApi(options: ApiOptions = {}): Api {
         },
         retention: {
           tombstoneSeconds: integer(retention, 'tombstone_s'),
-          ...(retention['abuse_report_s'] !== undefined && {
-            abuseReportSeconds: integer(retention, 'abuse_report_s'),
-          }),
           dailyCounterSeconds: integer(retention, 'daily_counter_s'),
         },
         files: clientFiles(manifest),
@@ -536,7 +519,6 @@ export function createApi(options: ApiOptions = {}): Api {
             purpose: PURPOSE_READ,
             key: readKey,
             unlock: claimOptions.unlock,
-            headers: READER_FLAGS,
             attemptHeaders: sent.headers,
             proceed: claimOptions.proceed,
           },
@@ -561,7 +543,7 @@ export function createApi(options: ApiOptions = {}): Api {
             purpose: PURPOSE_READ,
             key: readKey,
             unlock: blobOptions.unlock,
-            headers: { ...READER_FLAGS, 'X-Nylzo-Lease': lease },
+            headers: { 'X-Nylzo-Lease': lease },
             attemptHeaders: sent.headers,
           },
           TRANSFER_TIMEOUT_MS,

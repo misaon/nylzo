@@ -334,9 +334,6 @@ export const messages: Catalog = {
   'transparency.stores.ended.title': 'メッセージの終了後',
   'transparency.stores.ended':
     'メッセージは、最後の開封、受信者による削除、取り消し、有効期限の終了、または運営者による撤去で終了します。サーバーはまず保存メッセージの鍵を破棄するため、ディスク上に残った部分も読めなくなります。終了したメッセージの封印された記録は、最長{days}間保持します。その内容は、いつどのように終了したか、いつ初めて開封されたかです。',
-  'transparency.stores.reports.title': '不正利用の報告',
-  'transparency.stores.reports':
-    '運営者の公開鍵で封印された報告で、サーバー自身は読めません。内容は、日付、メッセージID、理由（リンクの鍵や長いコードは除く）、善意であることの申告、報告者が記入した場合はメールアドレスで、最長{days}間保持します。メッセージごとの報告件数は、そのメッセージの封印された記録に保持します。',
   'transparency.stores.counters.title': 'アドレスを含まないカウンター',
   'transparency.stores.counters':
     '作成されたメッセージの1日ごとの件数はその日の終了後{days}間、使用済みのワンタイムチャレンジは数分間だけ保持します。',

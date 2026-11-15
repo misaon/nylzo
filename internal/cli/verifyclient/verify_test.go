@@ -16,7 +16,6 @@ import (
 	"testing/fstest"
 
 	"github.com/misaon/nylzo/internal/cli/command"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 
 	"github.com/misaon/nylzo/internal/client"
@@ -117,11 +116,6 @@ func newPublicWebTestServer(
 	settings := config.Defaults()
 	settings.DataDirectory = directory
 	settings.Pepper = bytes.Repeat([]byte{7}, 32)
-	reportKey, err := abuse.NewKeyPair()
-	if err != nil {
-		t.Fatal(err)
-	}
-	settings.ReportKey = reportKey.PublicKey()
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
 	settings.Development.AllowSwap = true
 	settings.Version = version

@@ -48,7 +48,6 @@ type SetByte struct {
 const (
 	rejectedBase     = "text-ascii"
 	scryptBase       = "scrypt-text"
-	legacyBase       = "legacy-text"
 	errorIntegrity   = "integrity"
 	errorPlaintext   = "plaintext"
 	errorVersion     = "version"
@@ -69,8 +68,7 @@ type rejection struct {
 func (f *File) rejected() error {
 	sealed := map[string]sealedCase{}
 	for _, vector := range envelopeCases {
-		if vector.name == rejectedBase || vector.name == "text-escapes" || vector.name == scryptBase ||
-			vector.name == legacyBase {
+		if vector.name == rejectedBase || vector.name == "text-escapes" || vector.name == scryptBase {
 			sealedVector, err := sealCase(vector)
 			if err != nil {
 				return err
@@ -193,15 +191,7 @@ func deadlineRejections(base *sealedCase) []rejection {
 			vector: Rejected{
 				Name:    "deadline-flag-cleared",
 				SetByte: &SetByte{Offset: 2, Value: 0},
-				Error:   errorIntegrity,
-			},
-		},
-		{
-			vector: Rejected{
-				Name:     "deadline-for-a-legacy-object",
-				Base:     legacyBase,
-				Deadline: new(int(base.policy.Deadline)),
-				Error:    errorIntegrity,
+				Error:   errorFlags,
 			},
 		},
 	}

@@ -29,7 +29,6 @@ import (
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/server"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
@@ -55,14 +54,9 @@ func newTestServer(t *testing.T) *testServer {
 func serveWith(t *testing.T, before func(*http.Request)) *testServer {
 	t.Helper()
 	directory := t.TempDir()
-	reportKey, err := abuse.NewKeyPair()
-	if err != nil {
-		t.Fatal(err)
-	}
 	settings := config.Defaults()
 	settings.DataDirectory = directory
 	settings.Pepper = bytes.Repeat([]byte{7}, 32)
-	settings.ReportKey = reportKey.PublicKey()
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
 	settings.Development.AllowSwap = true
 	settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1<<20, 1<<20

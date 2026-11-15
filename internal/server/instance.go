@@ -17,7 +17,6 @@ import (
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
@@ -61,7 +60,6 @@ type transparencyRates struct {
 	CreateBytesPerDay  int64 `json:"create_bytes_per_day"`
 	ReadPerHour        int64 `json:"read_per_hour"`
 	ReadBytesPerHour   int64 `json:"read_bytes_per_hour"`
-	AbusePerHour       int64 `json:"abuse_per_hour"`
 	CoarseMultiplier   int64 `json:"coarse_multiplier"`
 	GlobalDailyCreates int64 `json:"global_daily_creates"`
 	PoWDifficulty      int   `json:"pow_difficulty"`
@@ -69,7 +67,6 @@ type transparencyRates struct {
 
 type transparencyRetention struct {
 	TombstoneSeconds    int64 `json:"tombstone_s"`
-	AbuseReportSeconds  int64 `json:"abuse_report_s"`
 	DailyCounterSeconds int64 `json:"daily_counter_s"`
 }
 
@@ -253,14 +250,12 @@ func (s *Server) handleTransparency(w http.ResponseWriter, _ *http.Request) {
 			CreateBytesPerDay:  rates.CreateBytesPerDay,
 			ReadPerHour:        rates.ReadPerHour,
 			ReadBytesPerHour:   rates.ReadBytesPerHour,
-			AbusePerHour:       rates.AbusePerHour,
 			CoarseMultiplier:   rates.CoarseMultiplier,
 			GlobalDailyCreates: rates.GlobalDailyCreates,
 			PoWDifficulty:      s.settings.PoWDifficulty,
 		},
 		Retention: transparencyRetention{
 			TombstoneSeconds:    int64(store.TombstoneTTL / time.Second),
-			AbuseReportSeconds:  int64(abuse.Retention / time.Second),
 			DailyCounterSeconds: int64(day.PurgeAt().Sub(day.End) / time.Second),
 		},
 	}

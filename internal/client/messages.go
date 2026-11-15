@@ -15,7 +15,6 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
-	"github.com/misaon/nylzo/internal/core/report"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 )
@@ -60,12 +59,6 @@ type CreateRequest struct {
 	PoWToken     string
 }
 
-type Report struct {
-	Reason    string
-	Contact   string
-	GoodFaith bool
-}
-
 type signedRequest struct {
 	method  string
 	path    string
@@ -76,7 +69,6 @@ type signedRequest struct {
 	headers   map[string]string
 	// attemptHeaders runs before every attempt, so a retry never repeats a share key (Protocol §5.6).
 	attemptHeaders func() map[string]string
-	body           []byte
 }
 
 // Instance reads the limits, and with a creation also issues an id; it refuses a difficulty above the spec maximum.
@@ -255,41 +247,6 @@ func (c *Client) Burn(ctx context.Context, id core.ID, read *[core.SeedLen]byte,
 	return c.finish(ctx, &request)
 }
 
-func (c *Client) Report(ctx context.Context, id core.ID, read *[core.SeedLen]byte, submitted *Report) error {
-	contact, err := report.ParseContact(submitted.Contact)
-	if err != nil {
-		return err
-	}
-	body, _ := json.Marshal(struct {
-		Contact   string `json:"contact,omitempty"`
-		GoodFaith bool   `json:"good_faith,omitempty"`
-		ID        string `json:"id"`
-		Reason    string `json:"reason,omitempty"`
-	}{contact, submitted.GoodFaith, id.String(), report.RedactReason(submitted.Reason)})
-	request := signedRequest{
-		method:  http.MethodPost,
-		path:    api.AbusePath,
-		purpose: signing.PurposeRead,
-		seed:    read,
-		headers: map[string]string{"Content-Type": "application/json"},
-		body:    body,
-	}
-	var answer struct {
-		Status string `json:"status"`
-	}
-	if answerErr := c.signedJSON(ctx, &request, &answer); answerErr != nil {
-		return answerErr
-	}
-	switch answer.Status {
-	case "accepted":
-		return nil
-	case "limit":
-		return ErrReportLimit
-	default:
-		return ErrResponse
-	}
-}
-
 func (c *Client) signedJSON(ctx context.Context, request *signedRequest, target any) error {
 	response, err := c.signed(ctx, request, shortTimeout)
 	if err != nil {
@@ -347,10 +304,11 @@ func (c *Client) signedOnce(
 		request.method,
 		request.path,
 		challenge,
-		request.body, components,
+		nil,
+		components,
 	)
 	headers["Authorization"] = signature.Authorization()
-	return c.do(ctx, request.method, request.path, headers, request.body, timeout)
+	return c.do(ctx, request.method, request.path, headers, nil, timeout)
 }
 
 func (c *Client) challenge(ctx context.Context) ([signing.ChallengeLen]byte, error) {

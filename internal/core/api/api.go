@@ -14,7 +14,6 @@ const (
 	InstancePath     = VersionPrefix + "instance"
 	ChallengePath    = VersionPrefix + "challenge"
 	MessagesPath     = VersionPrefix + "messages"
-	AbusePath        = VersionPrefix + "abuse"
 	TransparencyPath = "/.well-known/nylzo/transparency.json"
 	HealthPath       = "/healthz"
 )
@@ -42,14 +41,11 @@ const (
 	KE3HeaderName          = "X-Nylzo-KE3"
 	// VerifierHeaderName comes only from a client of protocol v2, which the server answers with client_outdated.
 	VerifierHeaderName = "X-Nylzo-Verifier"
-	// FlagsHeaderName names the envelope flags a reader opens, on every claim and download (spec 6.4).
-	FlagsHeaderName = "X-Nylzo-Flags"
 )
 
 const (
 	ErrorBadRequest     = "bad_request"
 	ErrorClientOutdated = "client_outdated"
-	ErrorContact        = "contact"
 	ErrorNotFound       = "not_found"
 	ErrorConflict       = "conflict"
 	ErrorShareLost      = "share_lost"

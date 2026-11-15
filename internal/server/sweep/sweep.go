@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
@@ -13,19 +12,11 @@ import (
 
 const reconcileKey = "sweep:reconcile:d"
 
-func Run(
-	ctx context.Context,
-	storage store.Store,
-	blobs store.Blobs,
-	dataDirectory string,
-	now time.Time,
-) (store.SweepReport, error) {
+func Run(ctx context.Context, storage store.Store, blobs store.Blobs, now time.Time) (store.SweepReport, error) {
 	report, err := store.SweepAll(ctx, storage, blobs, now)
-	pruneErr := errors.Join(abuse.Prune(dataDirectory, now), abuse.Prepare(dataDirectory, now))
 	orphans, reconcileErr := reconcileOncePerDay(ctx, storage, blobs, now)
 	report.OrphanedBlobs = orphans
-	restampErr := errors.Join(blobs.Restamp(ctx, now), abuse.Restamp(dataDirectory, now))
-	return report, errors.Join(err, pruneErr, reconcileErr, restampErr)
+	return report, errors.Join(err, reconcileErr, blobs.Restamp(ctx, now))
 }
 
 func reconcileOncePerDay(ctx context.Context, storage store.Store, blobs store.Blobs, now time.Time) (int, error) {

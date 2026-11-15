@@ -343,35 +343,6 @@ func forgetBlob(ctx context.Context, messages Messages, blobs Blobs, locator sea
 	return messages.ForgetBlobs(ctx, []DueBlob{{Locator: locator, Reference: reference}})
 }
 
-// CountReport takes one of the reports a message may get over its life and reports false when they are used up, so
-// the sender of many messages cannot fill the report files with reports about them (F6).
-func CountReport(ctx context.Context, messages Messages, record *Record, now time.Time) (bool, error) {
-	counted := false
-	err := record.update(ctx, messages, now, func(current *Record) error {
-		counted = false
-		if current.Ended(now) {
-			return &GoneError{State: current.State(now)}
-		}
-		message := current.Message
-		if message.Reports >= ReportsPerMessage {
-			return nil
-		}
-		message.Reports++
-		counted = true
-		return nil
-	})
-	return counted, err
-}
-
-func UncountReport(ctx context.Context, messages Messages, record *Record, now time.Time) error {
-	return record.update(context.WithoutCancel(ctx), messages, now, func(current *Record) error {
-		if message := current.Message; message.Reports > 0 {
-			message.Reports--
-		}
-		return nil
-	})
-}
-
 // TakeDown removes a message for the operator, who has its id but no key; a blob already due for the sweep counts as ended.
 func TakeDown(
 	ctx context.Context,

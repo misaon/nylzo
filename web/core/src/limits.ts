@@ -17,7 +17,7 @@ export const HEADER_LENGTH = 15;
 export const COMMITMENT_LENGTH = 32;
 export const PREFIX_LENGTH = HEADER_LENGTH + COMMITMENT_LENGTH;
 export const POLICY_LENGTH = 10;
-// FLAG_DEADLINE says that the policy carries the deadline; every message created from Nylzo 0.14.0 on sets it.
+// FLAG_DEADLINE says that the policy carries the deadline, which every envelope seals in.
 export const FLAG_DEADLINE = 2;
 
 export const MAX_TEXT_BYTES = 100 * 1024;

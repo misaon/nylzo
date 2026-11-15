@@ -108,16 +108,6 @@ func openInner(t *testing.T, stored, publicKey []byte, locator seal.Locator) err
 	return err
 }
 
-// legacyWrap builds a wrap as nylzo 0.13 and earlier stored it, from spec §5.2 of that release.
-func legacyWrap(t *testing.T, publicKey []byte, recordKey seal.Key, locator seal.Locator) []byte {
-	t.Helper()
-	derived, err := hkdf.Key(sha256.New, publicKey, locator[:], "nylzo/v1/record/read", seal.KeyLen)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return newGCM(t, seal.Key(derived)).Seal(nil, nil, recordKey[:], aad(locator, "read"))
-}
-
 func TestResealWrapMovesEveryWrapUnderTheCurrentPepperKey(t *testing.T) {
 	t.Parallel()
 	recordKey, previous, current := seal.NewKey(), seal.NewKey(), seal.NewKey()
@@ -127,17 +117,9 @@ func TestResealWrapMovesEveryWrapUnderTheCurrentPepperKey(t *testing.T) {
 		opened, err := seal.UnwrapRecordKey(pepperKey, publicKey, wrapped, locator, seal.Read)
 		return err == nil && opened == recordKey
 	}
-	legacy := legacyWrap(t, publicKey, recordKey, locator)
-	if len(legacy) != seal.WrapLen {
-		t.Fatalf("a wrap of an earlier release has %d bytes", len(legacy))
-	}
-	changed, err := seal.ResealWrap(current, nil, &legacy, locator, seal.Read)
-	if err != nil || !changed || !opensWith(legacy, current) {
-		t.Fatalf("a wrap of an earlier release was not sealed: changed %t, %v", changed, err)
-	}
 	underPrevious := seal.WrapRecordKey(previous, publicKey, recordKey, locator, seal.Read)
 	resealed := bytes.Clone(underPrevious)
-	changed, err = seal.ResealWrap(current, []seal.Key{previous}, &resealed, locator, seal.Read)
+	changed, err := seal.ResealWrap(current, []seal.Key{previous}, &resealed, locator, seal.Read)
 	if err != nil || !changed || !opensWith(resealed, current) || opensWith(resealed, previous) {
 		t.Fatalf("a wrap of the previous pepper was not sealed again: changed %t, %v", changed, err)
 	}
@@ -204,21 +186,12 @@ func TestABlobWrapHoldsTheTagAndOneOfAnEarlierReleaseHasNone(t *testing.T) {
 		len(wrapped) != seal.BlobWrapLen {
 		t.Fatalf("the blob wrap must give back the key and both tags: %d bytes, %v", len(wrapped), err)
 	}
-	func() {
-		defer func() {
-			if recover() == nil {
-				t.Fatal("a key without its tags got a wrap that skips the check")
-			}
-		}()
-		seal.WrapBlobKey(recordKey, &seal.BlobKey{Key: blob.Key}, locator)
-	}()
 	if _, err := seal.UnwrapBlobKey(recordKey, wrapped, elsewhere); !errors.Is(err, seal.ErrOpen) {
 		t.Fatalf("a blob wrap opened for another locator: %v", err)
 	}
-	earlier := legacyBlobWrap(t, recordKey, blob.Key, locator)
-	opened, err := seal.UnwrapBlobKey(recordKey, earlier, locator)
-	if err != nil || opened.Tagged || opened.Key != blob.Key || len(earlier) != seal.WrapLen {
-		t.Fatalf("a blob wrap of an earlier release must give its key without a tag: %+v, %v", opened.Tagged, err)
+	untagged := newGCM(t, blobWrapKey(t, recordKey, locator)).Seal(nil, nil, blob.Key[:], aad(locator, "blob"))
+	if _, err := seal.UnwrapBlobKey(recordKey, untagged, locator); !errors.Is(err, seal.ErrOpen) {
+		t.Fatalf("a blob wrap without tags opened, which would skip the check: %v", err)
 	}
 }
 
@@ -243,14 +216,13 @@ func TestTheSaltTagFollowsTheSpecAndRefusesAnotherSalt(t *testing.T) {
 	}
 }
 
-// legacyBlobWrap builds a blob wrap as nylzo 0.13 stored it, from spec §5.2 of that release.
-func legacyBlobWrap(t *testing.T, recordKey, blobKey seal.Key, locator seal.Locator) []byte {
+func blobWrapKey(t *testing.T, recordKey seal.Key, locator seal.Locator) seal.Key {
 	t.Helper()
 	derived, err := hkdf.Key(sha256.New, recordKey[:], locator[:], "nylzo/v2/record/blob", seal.KeyLen)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return newGCM(t, seal.Key(derived)).Seal(nil, nil, blobKey[:], aad(locator, "blob"))
+	return seal.Key(derived)
 }
 
 func newGCM(t *testing.T, key seal.Key) cipher.AEAD {

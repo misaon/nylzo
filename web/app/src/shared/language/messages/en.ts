@@ -330,9 +330,6 @@ export const messages: Catalog = {
   'transparency.stores.ended.title': 'After a message ends',
   'transparency.stores.ended':
     'A message ends with its last open, deletion by a recipient, cancellation, expiry or removal by the operator. The server then drops the key of the stored message first, so not even a leftover copy on the disk can be read. It keeps the sealed record of the ended message for at most {days}: how and when it ended and when it was first opened.',
-  'transparency.stores.reports.title': 'Abuse reports',
-  'transparency.stores.reports':
-    "Reports sealed with the operator's public key, so the server cannot read them back: the date, the message id, the reason without link keys or long codes, the good-faith statement and an email address if the reporter gave one, for at most {days}. The number of reports per message stays in the sealed record of the message.",
   'transparency.stores.counters.title': 'Counters without addresses',
   'transparency.stores.counters':
     'Daily totals of created messages for {days} after the day ends, and used one-time challenges for a few minutes.',

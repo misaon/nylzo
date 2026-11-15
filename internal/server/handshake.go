@@ -188,7 +188,7 @@ func (s *Server) takeBackUnchecked(r *http.Request) {
 		return
 	}
 	ctx := context.WithoutCancel(r.Context())
-	granted, found, err := s.authorize(ctx, r, login.ID.String(), seal.Read, nil)
+	granted, found, err := s.authorize(ctx, r, login.ID.String(), seal.Read)
 	defer granted.forget()
 	if err == nil && found && granted.record.Row.Locator == login.Locator {
 		err = store.TakeBack(ctx, s.store, &granted.record, login.Attempt, time.Now())

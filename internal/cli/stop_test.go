@@ -20,7 +20,6 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/stopsignal"
-	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
 )
 
@@ -221,7 +220,6 @@ func serveUntil(t *testing.T, stop os.Signal) {
 		"NYLZO_DATA_DIR="+t.TempDir(),
 		"NYLZO_EPOCH_DIR="+t.TempDir(),
 		"NYLZO_PEPPER_FILE="+pepperFile,
-		"NYLZO_REPORT_KEY="+core.Encode(testReportKey.PublicKey().Bytes()),
 		"NYLZO_LISTEN=127.0.0.1:0",
 		"NYLZO_ALLOW_SWAP=1",
 		"NYLZO_ALLOW_UNERASABLE_STORAGE=1",

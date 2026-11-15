@@ -468,7 +468,6 @@ describe('reading a message', () => {
 
   it.each<[string, FakeOptions]>([
     ['another profile in X-Nylzo-Policy', { servedKdfId: KDF_SCRYPT }],
-    ['unknown flags in X-Nylzo-Policy (TEST-S7)', { servedFlags: 3 }],
     ['F13: a deadline in X-Nylzo-Policy that the metadata does not report', { servedDeadline: 1_797_000_000 }],
     ['opens_max in X-Nylzo-Policy that the object does not carry', { servedOpensMax: 2 }],
     ['ttl_s in X-Nylzo-Policy that the object does not carry', { servedTtlSeconds: 7200 }],

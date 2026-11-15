@@ -33,7 +33,7 @@ func TestSecureNarrowsWiderModesAndRefusesSymlinks(t *testing.T) {
 	layout := Layout{
 		Directory: directory,
 		Files:     []string{database, database + "-wal"},
-		Trees:     []string{blobs, filepath.Join(directory, "abuse")},
+		Trees:     []string{blobs, filepath.Join(directory, "absent")},
 	}
 	narrowed, err := Secure(layout)
 	if err != nil || narrowed != 5 {

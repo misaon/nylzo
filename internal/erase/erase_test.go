@@ -103,39 +103,3 @@ func TestReplaceWritesOverTheWholeFile(t *testing.T) {
 		t.Fatalf("content %q", content)
 	}
 }
-
-func TestPadWritesZerosOverAndPastTheEnd(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "seed")
-	if err := os.WriteFile(path, []byte("first"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for range 2 {
-		if err := erase.Pad(path, 2, 8); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if content, _ := os.ReadFile(path); string(content) != "fi\x00\x00\x00\x00\x00\x00" {
-		t.Fatalf("content %q", content)
-	}
-}
-
-func TestCutTruncatesToTheSizeAndLeavesAShorterFile(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(t.TempDir(), "day")
-	if err := os.WriteFile(path, []byte("whole report and a torn tail"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := erase.Cut(path, 12); err != nil {
-		t.Fatal(err)
-	}
-	if content, _ := os.ReadFile(path); string(content) != "whole report" {
-		t.Fatalf("content %q", content)
-	}
-	if err := erase.Cut(path, 64); err != nil {
-		t.Fatal(err)
-	}
-	if content, _ := os.ReadFile(path); string(content) != "whole report" {
-		t.Fatalf("a file within the size changed: %q", content)
-	}
-}

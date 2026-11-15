@@ -14,17 +14,7 @@ type Server struct {
 	PreviousPepper   string            `json:"previous_pepper_hex"`
 	PreviousPepperID int               `json:"previous_pepper_id"`
 	MACs             []MACCase         `json:"macs"`
-	Epochs           []EpochCase       `json:"epochs"`
 	MinuteEpochs     []MinuteEpochCase `json:"minute_epochs"`
-}
-
-// EpochCase is one hour of the chain of hours that releases before Nylzo 0.14.0 made shares with (spec section 5.6).
-type EpochCase struct {
-	Hour     uint32 `json:"hour"`
-	Seed     string `json:"seed_hex"`
-	EpochKey string `json:"epoch_key_hex"`
-	Locator  string `json:"locator_hex"`
-	Share    string `json:"e_hex"`
 }
 
 // MinuteEpochCase is one minute of a generation that starts in the hour of the first case from a fixed seed: the
@@ -80,22 +70,8 @@ func (f *File) server() error {
 			MAC:     hex.EncodeToString(mac[:]),
 		})
 	}
-	seed := epoch.Seed(*deterministic32("epoch/seed"))
 	epochID := deterministicID("epoch")
 	locator := seal.LocatorOf(epochID[:])
-	const firstHour = 493_000
-	for hour := uint32(firstHour); hour < firstHour+3; hour++ {
-		key := epoch.Key(&seed)
-		share := epoch.ShareOf(&key, locator)
-		f.Server.Epochs = append(f.Server.Epochs, EpochCase{
-			Hour:     hour,
-			Seed:     hex.EncodeToString(seed[:]),
-			EpochKey: hex.EncodeToString(key[:]),
-			Locator:  hex.EncodeToString(locator[:]),
-			Share:    hex.EncodeToString(share[:]),
-		})
-		seed = epoch.Next(&seed)
-	}
 	f.Server.MinuteEpochs = minuteEpochs(epoch.Seed(*deterministic32("epoch/minute-seed")), locator)
 	return nil
 }

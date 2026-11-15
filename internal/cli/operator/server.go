@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net"
 	"net/http"
@@ -20,7 +21,6 @@ import (
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
 	"github.com/misaon/nylzo/internal/server/logging"
@@ -35,6 +35,8 @@ const serverSupported = runtime.GOOS != "windows"
 
 const (
 	databaseFile       = "nylzo.db"
+	reportDirectory    = "abuse"
+	legacyReportFile   = "abuse-reports.jsonl"
 	shutdownTimeout    = 30 * time.Second
 	defaultMemoryLimit = 192 << 20
 	failureMessage     = command.Program
@@ -50,8 +52,12 @@ var (
 		"this build leaves request keys in memory after use: build with GOEXPERIMENT=runtimesecret for " +
 			"linux/amd64 or linux/arm64; NYLZO_ALLOW_UNERASED_MEMORY=1 serves without erasing them",
 	)
-	errSweepFailed       = errors.New("sweep failed; see the sweep-once log line")
-	errNoStore           = errors.New("found no store in NYLZO_DATA_DIR")
+	errSweepFailed     = errors.New("sweep failed; see the sweep-once log line")
+	errNoStore         = errors.New("found no store in NYLZO_DATA_DIR")
+	errReportDirectory = errors.New(
+		"the abuse reports of an earlier release must be files in a directory of the data directory; remove this " +
+			"entry by hand",
+	)
 	errServerUnsupported = errors.New("the server runs on Linux and macOS only; on Windows use WSL or Docker")
 )
 
@@ -194,7 +200,7 @@ func openStore(
 	narrowed, err := datadir.Secure(datadir.Layout{
 		Directory: dataDirectory,
 		Files:     []string{databasePath, databasePath + "-wal", databasePath + "-shm"},
-		Trees:     []string{filepath.Join(dataDirectory, disk.Directory), abuse.Directory(dataDirectory)},
+		Trees:     []string{filepath.Join(dataDirectory, disk.Directory)},
 	})
 	if narrowed > 0 {
 		logger.WarnContext(ctx, "permissions-narrowed", "entries", narrowed)
@@ -246,10 +252,94 @@ func inspectEpoch(directory string) (epoch.State, error) {
 	return state, err
 }
 
+// storedReports are the abuse reports that releases before Nylzo 0.14.0 left in a data directory; found also tells of
+// an empty report directory.
+type storedReports struct {
+	files []string
+	found bool
+}
+
+// findReports refuses a report directory that is a link or holds anything but files, because erasing through it
+// would overwrite files outside the data directory, and reports that the storage would keep after an overwrite.
+func findReports(dataDirectory string, development config.Development, logger *slog.Logger) (storedReports, error) {
+	var reports storedReports
+	legacyFile := filepath.Join(dataDirectory, legacyReportFile)
+	switch legacy, err := os.Lstat(legacyFile); {
+	case errors.Is(err, fs.ErrNotExist):
+	case err != nil:
+		return storedReports{}, err
+	case !legacy.Mode().IsRegular():
+		return storedReports{}, fmt.Errorf("%w: %s", errReportDirectory, legacyFile)
+	default:
+		reports = storedReports{files: []string{legacyFile}, found: true}
+	}
+	directory := filepath.Join(dataDirectory, reportDirectory)
+	info, err := os.Lstat(directory)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return reports, requireErasable(reports.files, development, logger)
+	case err != nil:
+		return storedReports{}, err
+	case !info.IsDir():
+		return storedReports{}, fmt.Errorf("%w: %s", errReportDirectory, directory)
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		return storedReports{}, err
+	}
+	for _, entry := range entries {
+		if !entry.Type().IsRegular() {
+			return storedReports{}, fmt.Errorf("%w: %s", errReportDirectory, filepath.Join(directory, entry.Name()))
+		}
+		reports.files = append(reports.files, filepath.Join(directory, entry.Name()))
+	}
+	reports.found = true
+	return reports, requireErasable(append([]string{directory}, reports.files...), development, logger)
+}
+
+// eraseReports overwrites every stored abuse report in full before it unlinks it, because this build neither reads
+// nor prunes them; an interrupted erase finishes on the next start.
+func eraseReports(
+	ctx context.Context,
+	dataDirectory string,
+	development config.Development,
+	logger *slog.Logger,
+) error {
+	reports, err := findReports(dataDirectory, development, logger)
+	if err != nil || !reports.found {
+		return err
+	}
+	for _, path := range reports.files {
+		if shredErr := erase.Shred(path, erase.WholeFile); shredErr != nil {
+			return shredErr
+		}
+	}
+	err = os.Remove(filepath.Join(dataDirectory, reportDirectory))
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if syncErr := erase.SyncDirectory(dataDirectory); syncErr != nil {
+		return syncErr
+	}
+	logger.WarnContext(
+		ctx,
+		"reports-erased",
+		"notice", "nylzo no longer takes abuse reports: the reports that an earlier release stored were erased",
+	)
+	return nil
+}
+
 // upgradingOpen erases a data directory of an earlier protocol version before it opens it, because protocol version 3
 // reads none of its messages; an interrupted upgrade finishes on the next start.
-func upgradingOpen(dataDirectory string, logger *slog.Logger) func(context.Context, string) (*sqlite.Store, error) {
+func upgradingOpen(
+	dataDirectory string,
+	development config.Development,
+	logger *slog.Logger,
+) func(context.Context, string) (*sqlite.Store, error) {
 	return func(ctx context.Context, path string) (*sqlite.Store, error) {
+		if err := eraseReports(ctx, dataDirectory, development, logger); err != nil {
+			return nil, err
+		}
 		upgraded, err := sqlite.UpgradeFromReleased(ctx, path, func() error { return disk.EraseAll(dataDirectory) })
 		if err != nil {
 			return nil, err
@@ -318,7 +408,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 		settings.DataDirectory,
 		settings.Development,
 		blobPool(&settings),
-		upgradingOpen(settings.DataDirectory, logger),
+		upgradingOpen(settings.DataDirectory, settings.Development, logger),
 		logger,
 	)
 	if err != nil {
@@ -484,7 +574,7 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	}
 	defer database.Close()
 	now := time.Now()
-	_, err = sweep.Run(ctx, database, blobs, settings.DataDirectory, now)
+	_, err = sweep.Run(ctx, database, blobs, now)
 	err = errors.Join(err, advanceRatchet(&settings, now, logger))
 	if err != nil {
 		logger.ErrorContext(ctx, "sweep-once", "err", sweep.FirstError(err))

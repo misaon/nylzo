@@ -9,7 +9,6 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -262,15 +261,6 @@ func badSignature(seed *[core.SeedLen]byte, purpose, method, path string, challe
 	return signature.Authorization()
 }
 
-func abuseLines(t *testing.T, harness *testHarness, id core.ID) int {
-	t.Helper()
-	data, err := harness.abuseReports()
-	if err != nil && !os.IsNotExist(err) {
-		t.Fatal(err)
-	}
-	return strings.Count(string(data), id.String())
-}
-
 func TestSignedRequestsAreSingleUse(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -332,27 +322,6 @@ func TestSignedRequestsAreSingleUse(t *testing.T) {
 			),
 			http.StatusNoContent,
 		)
-
-		reported := newMessage(t, core.KDFNone, "", 1, 3600, "reported once")
-		harness.mustCreate(reported)
-		body := []byte(`{"id":"` + reported.id.String() + `","reason":"spam"}`)
-		report := signedRequest(
-			&reported.link.R,
-			signing.PurposeRead,
-			"POST",
-			"/api/v1/abuse",
-			harness.challenge(),
-			body,
-		)
-		report.headers["Content-Type"] = "application/json"
-		for range 2 {
-			if response, _ := harness.do(report); response.StatusCode != http.StatusAccepted {
-				t.Fatalf("abuse report: %d", response.StatusCode)
-			}
-		}
-		if lines := abuseLines(t, harness, reported.id); lines != 1 {
-			t.Fatalf("a replayed abuse report was stored %d times", lines)
-		}
 	})
 }
 
@@ -398,24 +367,6 @@ func TestSignatureBindsTheRequest(t *testing.T) {
 		); response.StatusCode != http.StatusOK ||
 			!strings.Contains(string(body), `"state":"available"`) {
 			t.Fatalf("a fresh signature: %d %s", response.StatusCode, body)
-		}
-
-		body := []byte(`{"id":"` + message.id.String() + `","reason":"first"}`)
-		tampered := signedRequest(
-			&message.link.R,
-			signing.PurposeRead,
-			"POST",
-			"/api/v1/abuse",
-			harness.challenge(),
-			body,
-		)
-		tampered.body = []byte(`{"id":"` + message.id.String() + `","reason":"other"}`)
-		tampered.headers["Content-Type"] = "application/json"
-		if response, _ := harness.do(tampered); response.StatusCode != http.StatusAccepted {
-			t.Fatalf("tampered abuse report: %d", response.StatusCode)
-		}
-		if lines := abuseLines(t, harness, message.id); lines != 0 {
-			t.Fatal("an abuse report with a changed body was stored")
 		}
 	})
 }
@@ -823,7 +774,7 @@ func TestHeadOnSignedRoutesIsNotFound(t *testing.T) {
 				t.Fatalf("HEAD %s: %d %q", route, response.StatusCode, body)
 			}
 		}
-		for _, route := range []string{"/api/v1/instance", "/api/v1/challenge", "/api/v1/messages", "/api/v1/abuse", path + "/claim", path + "/ack"} {
+		for _, route := range []string{"/api/v1/instance", "/api/v1/challenge", "/api/v1/messages", path + "/claim", path + "/ack"} {
 			if response, body := harness.do(
 				&testRequest{method: http.MethodHead, path: route, address: message.address},
 			); response.StatusCode != http.StatusNotFound ||
@@ -985,13 +936,7 @@ func TestAuthorizeDoesTheSameWorkForKeysThatFailTheKeyCheck(t *testing.T) {
 		for _, publicKey := range []*[signing.PublicKeyLen]byte{nil, &offCurve} {
 			r := testRequest(publicKey)
 			start := time.Now()
-			if _, ok, err := server.authorize(
-				r.Context(),
-				r,
-				path[len("/api/v1/messages/"):],
-				seal.Read,
-				nil,
-			); ok ||
+			if _, ok, err := server.authorize(r.Context(), r, path[len("/api/v1/messages/"):], seal.Read); ok ||
 				err != nil {
 				t.Fatalf("authorize: %v %v", ok, err)
 			}

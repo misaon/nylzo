@@ -24,6 +24,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"testing/synctest"
@@ -40,7 +41,6 @@ import (
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
@@ -196,6 +196,7 @@ type gatedPut struct {
 
 	entered chan struct{}
 	release chan struct{}
+	gated   atomic.Bool
 }
 
 func (b *gatedPut) PutExpiring(
@@ -205,8 +206,10 @@ func (b *gatedPut) PutExpiring(
 	size int64,
 	expiresAt time.Time,
 ) (time.Time, error) {
-	close(b.entered)
-	<-b.release
+	if b.gated.CompareAndSwap(false, true) {
+		close(b.entered)
+		<-b.release
+	}
 	return b.Blobs.PutExpiring(ctx, reference, body, size, expiresAt)
 }
 
@@ -222,33 +225,41 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	client := &http.Client{Transport: &http.Transport{Protocols: &protocols}}
 	base := "http://" + address
 
-	id := core.NewID()
-	token := issueIDToken(server, id)
-	readKey, manageKey := signing.PublicKey(core.NewSecret()), signing.PublicKey(core.NewSecret())
-	size := int64(256 << 10)
-	header, _ := json.Marshal(
-		map[string]any{
-			"id":           id.String(),
-			"id_token":     token,
-			"read_key":     core.Encode(readKey[:]),
-			"manage_key":   core.Encode(manageKey[:]),
-			"registration": anyRegistration(),
-			"epoch":        shareEpochFor(60),
-			"kdf_id":       0,
-			"opens_max":    1,
-			"ttl_s":        60,
-			"size":         size,
-		},
-	)
-	done := make(chan struct{})
-	stalled := make(chan struct{})
-	object := append(envelope.NewHeader(core.KDFNone).Bytes(), make([]byte, size-envelope.HeaderLen)...)
-	body := &signalReader{reader: bytes.NewReader(object), after: h2cStreamBuffer, signal: stalled}
-	go func() {
-		defer close(done)
-		request, _ := http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/api/v1/messages", body)
+	upload := func(size int64, wrap func(io.Reader) io.Reader) *http.Request {
+		id := core.NewID()
+		readKey, manageKey := signing.PublicKey(core.NewSecret()), signing.PublicKey(core.NewSecret())
+		header, _ := json.Marshal(
+			map[string]any{
+				"id":           id.String(),
+				"id_token":     issueIDToken(server, id),
+				"read_key":     core.Encode(readKey[:]),
+				"manage_key":   core.Encode(manageKey[:]),
+				"registration": anyRegistration(),
+				"epoch":        shareEpochFor(60),
+				"kdf_id":       0,
+				"opens_max":    1,
+				"ttl_s":        60,
+				"size":         size,
+			},
+		)
+		object := append(envelope.NewHeader(core.KDFNone).Bytes(), make([]byte, size-envelope.HeaderLen)...)
+		request, _ := http.NewRequestWithContext(
+			t.Context(),
+			http.MethodPost,
+			base+"/api/v1/messages",
+			wrap(bytes.NewReader(object)),
+		)
 		request.ContentLength = size
 		request.Header.Set("X-Nylzo-Create", core.Encode(header))
+		return request
+	}
+	done := make(chan struct{})
+	stalled := make(chan struct{})
+	go func() {
+		defer close(done)
+		request := upload(256<<10, func(object io.Reader) io.Reader {
+			return &signalReader{reader: object, after: h2cStreamBuffer, signal: stalled}
+		})
 		if response, doErr := client.Do(request); doErr == nil {
 			io.Copy(io.Discard, response.Body)
 			response.Body.Close()
@@ -258,15 +269,19 @@ func TestWaitingUploadDoesNotStallItsH2CConnection(t *testing.T) {
 	<-stalled
 
 	start := time.Now()
-	request, _ := http.NewRequest(http.MethodPost, base+"/api/v1/abuse", strings.NewReader(`{"id":"x"}`))
-	request.Header.Set("Content-Type", "application/json")
-	response, err := client.Do(request)
+	response, err := client.Do(upload(h2cStreamBuffer, func(object io.Reader) io.Reader { return object }))
 	if err != nil {
 		t.Fatal(err)
 	}
 	response.Body.Close()
-	if elapsed := time.Since(start); response.ProtoMajor != 2 || elapsed > time.Second {
-		t.Fatalf("a small request waited %v (%s) behind an upload that has not been read yet", elapsed, response.Proto)
+	if elapsed := time.Since(start); response.StatusCode != http.StatusCreated || response.ProtoMajor != 2 ||
+		elapsed > time.Second {
+		t.Fatalf(
+			"a second upload answered %d after %v (%s) behind an upload that has not been read yet",
+			response.StatusCode,
+			elapsed,
+			response.Proto,
+		)
 	}
 	close(gated.release)
 	<-done
@@ -633,34 +648,10 @@ func TestConfigErrorsAreCaughtByNew(t *testing.T) {
 		"no PoW slot": func(settings *config.Server) { settings.PoWConcurrency = 0 },
 	} {
 		settings := config.Defaults()
-		settings.ReportKey = testReportKey.PublicKey()
 		settings.Pepper = bytes.Repeat([]byte{1}, 32)
 		change(&settings)
 		if _, err := New(&settings, database, nil); !errors.Is(err, config.ErrInvalid) {
 			t.Fatalf("%s: %v", name, err)
-		}
-	}
-}
-
-func TestStartRefusesReportsInTheClearFromBeforeTheFirstRelease(t *testing.T) {
-	t.Parallel()
-	database := openStore(t, t.TempDir())
-	for _, name := range []string{"abuse-reports.jsonl", filepath.Join("abuse", "2026-10-20.jsonl")} {
-		settings := baseSettings(pepperA, nil)
-		settings.DataDirectory = t.TempDir()
-		path := filepath.Join(settings.DataDirectory, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		report := []byte(`{"date":"2026-10-20","id":"AAAAAAAAAAAAAAAAAAAAAA","reason":"spam"}` + "\n")
-		if err := os.WriteFile(path, report, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := New(settings, database, nil); !errors.Is(err, abuse.ErrLegacyReports) {
-			t.Fatalf("%s: %v", name, err)
-		}
-		if kept, err := os.ReadFile(path); err != nil || !bytes.Equal(kept, report) {
-			t.Fatalf("the refused start changed %s: %v", name, err)
 		}
 	}
 }
@@ -971,7 +962,6 @@ func TestABodyThatNeverArrivesIsAnsweredAtOnce(t *testing.T) {
 	address := harness.listen()
 	id := core.NewID().String()
 	for _, request := range []string{
-		"POST /api/v1/abuse HTTP/1.1\r\nContent-Type: text/plain\r\n",
 		"POST /api/v1/messages/" + id + "/burn HTTP/1.1\r\n",
 	} {
 		connection, err := new(net.Dialer).DialContext(t.Context(), "tcp", address)
@@ -1514,18 +1504,6 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 		}
 		needles.addMessage("pow", pow, "")
 
-		link := opened.linkText()
-		contact := "notifier.contact@example.cz"
-		report := map[string]any{
-			"id":         leased.id.String(),
-			"reason":     "spam, see " + link,
-			"contact":    contact,
-			"good_faith": true,
-		}
-		if got := reportAbuse(t, harness, leased.readToken, ip4, report); got != "202 accepted" {
-			t.Fatalf("abuse report: %s", got)
-		}
-
 		everyone := []*testMessage{expired, opened, leased, file, burned, cancelled, stuck, filler, pow, removed}
 		for _, message := range everyone {
 			needles.secret("id of "+message.id.String(), message.id[:])
@@ -1536,8 +1514,6 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 				needles.secret("record key of "+message.id.String(), record.Key[:])
 			}
 		}
-		needles.text("contact", contact)
-		needles.text("reason", "spam, see")
 		sent := harness.sentSecretHeaders()
 		for i, header := range sent {
 			needles.text(fmt.Sprintf("%s as sent in request %d", header.name, i), header.value)
@@ -1558,16 +1534,10 @@ func TestStolenServerRevealsNothing(t *testing.T) {
 			t.Fatal("the failing delete was not logged")
 		}
 		stolen := harness.stolenCopy()
-		reportFile := filepath.Join("abuse", time.Now().UTC().Format(time.DateOnly)+abuse.FileExtension)
-		for _, want := range []string{"nylzo.db", "nylzo.db-wal", reportFile} {
+		for _, want := range []string{"nylzo.db", "nylzo.db-wal"} {
 			if _, ok := stolen[want]; !ok {
 				t.Fatalf("the stolen copy misses %s: %v", want, slices.Sorted(maps.Keys(stolen)))
 			}
-		}
-		reports, err := abuse.Open(testReportKey, stolen[reportFile])
-		if err != nil || len(reports) != 1 || reports[0].ID != leased.id.String() || reports[0].Contact != contact ||
-			!reports[0].GoodFaith {
-			t.Errorf("the operator's key must open the sealed report: %+v %v", reports, err)
 		}
 		for where, data := range stolen {
 			for what, needle := range needles.named {

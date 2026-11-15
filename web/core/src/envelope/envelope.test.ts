@@ -44,11 +44,6 @@ interface Sealed {
 }
 
 const policy: Policy = { opensMax: 1, ttlSeconds: 86_400, deadline: 1_797_000_000 };
-
-// policyOf reads a policy of the vectors, where a deadline of 0 is a policy without one.
-function policyOf(opensMax: number, ttlSeconds: number, deadline: number): Policy {
-  return deadline === 0 ? { opensMax, ttlSeconds } : { opensMax, ttlSeconds, deadline };
-}
 const textPayload: Payload = { meta: { text: 'integrity' } };
 const exportKey = new Uint8Array(64).fill(1);
 const prefix = PREFIX_LENGTH;
@@ -87,6 +82,10 @@ async function digestOf(bytes: Uint8Array | undefined): Promise<string | undefin
 
 type EnvelopeVector = (typeof vectors.envelope)[number];
 
+function policyOfVector(vector: EnvelopeVector): Policy {
+  return { opensMax: vector.opens_max, ttlSeconds: vector.ttl_s, deadline: vector.deadline };
+}
+
 async function sealVector(vector: EnvelopeVector): Promise<{
   readonly object: Uint8Array<ArrayBuffer>;
   readonly keys: ContentKeys;
@@ -102,17 +101,14 @@ async function sealVector(vector: EnvelopeVector): Promise<{
   const file = vector.file && fileBytes(vector.file);
   const fileMeta = vector.file && { name: vector.file.name, mime: vector.file.mime, size: vector.file.size };
   const meta: Meta = { text: vector.text, file: fileMeta };
-  const object = await seal(content, header, id, policyOf(vector.opens_max, vector.ttl_s, vector.deadline), {
-    meta,
-    file,
-  });
+  const object = await seal(content, header, id, policyOfVector(vector), { meta, file });
   return { object, keys: content, header, meta, file };
 }
 
 describe('AK9: envelope vectors', () => {
   it.each(vectors.envelope)('$name', { timeout: 120_000 }, async (vector) => {
     const id = parseId(vector.id);
-    const vectorPolicy = policyOf(vector.opens_max, vector.ttl_s, vector.deadline);
+    const vectorPolicy = policyOfVector(vector);
     const { object, keys, header, meta, file } = await sealVector(vector);
 
     expect(new TextDecoder().decode(encodeMeta(meta))).toBe(vector.meta_json);
@@ -183,11 +179,11 @@ describe('AK9, F1, F3, F4: a reader refuses every object its link does not open'
     );
     const expected: Expected = {
       id,
-      policy: policyOf(
-        vector.opens_max ?? base.opens_max,
-        vector.ttl_s ?? base.ttl_s,
-        vector.deadline ?? base.deadline,
-      ),
+      policy: {
+        opensMax: vector.opens_max ?? base.opens_max,
+        ttlSeconds: vector.ttl_s ?? base.ttl_s,
+        deadline: vector.deadline ?? base.deadline,
+      },
       kdfId,
       objectHash: decodeBase64url(vector.h),
     };
@@ -217,7 +213,7 @@ describe('AK8: a changed envelope, policy or key fails integrity', () => {
     ['a raised opens_max', () => reopen(message.object, { policy: { ...policy, opensMax: 2 } })],
     ['a longer TTL', () => reopen(message.object, { policy: { ...policy, ttlSeconds: policy.ttlSeconds + 1 } })],
     ['F13: a later deadline', () => reopen(message.object, { policy: { ...policy, deadline: 1_797_000_060 } })],
-    ['F13: no deadline', () => reopen(message.object, { policy: { opensMax: 1, ttlSeconds: 86_400 } })],
+    ['F13: no deadline', () => reopen(message.object, { policy: { ...policy, deadline: 0 } })],
     ['another id', () => reopen(message.object, { id: randomId() })],
     [
       'another secret',
@@ -265,7 +261,7 @@ describe('open rejects a malformed header before decrypting (spec 3)', () => {
     ['version 2', (object) => flipped(object, 0, 1), KDF_NONE, VersionError],
     ['version 0', (object) => flipped(object, 0, 3), KDF_NONE, VersionError],
     ['flags 3', (object) => flipped(object, 2), KDF_NONE, FlagsError],
-    ['F13: a cleared deadline flag', (object) => flipped(object, 2, 2), KDF_NONE, IntegrityError],
+    ['F13: a cleared deadline flag', (object) => flipped(object, 2, 2), KDF_NONE, FlagsError],
     ['the retired profile 2', (object) => flipped(object, 1, KDF_RETIRED), KDF_RETIRED as KdfId, KdfError],
     ['a profile other than the fragment', (object) => object, KDF_SCRYPT, KdfMismatchError],
     ['an object without a whole tag', (object) => object.subarray(0, prefix + 3), KDF_NONE, IntegrityError],
@@ -304,13 +300,14 @@ describe('seal rejects what the spec forbids (spec 3 and 3.1)', () => {
       MetaError,
     ],
     ['file bytes without meta.file', header, policy, { meta: { text: 't' }, file: new Uint8Array(1) }, MetaError],
-    ['opens_max 0', header, { opensMax: 0, ttlSeconds: 60 }, textPayload, PolicyError],
-    ['a TTL under a minute', header, { opensMax: 1, ttlSeconds: 59 }, textPayload, PolicyError],
-    ['opens_max over 16 bits', header, { opensMax: 65_536, ttlSeconds: 60 }, textPayload, PolicyError],
-    ['a fractional opens_max', header, { opensMax: 1.5, ttlSeconds: 60 }, textPayload, PolicyError],
+    ['opens_max 0', header, { ...policy, opensMax: 0 }, textPayload, PolicyError],
+    ['a TTL under a minute', header, { ...policy, ttlSeconds: 59 }, textPayload, PolicyError],
+    ['opens_max over 16 bits', header, { ...policy, opensMax: 65_536 }, textPayload, PolicyError],
+    ['a fractional opens_max', header, { ...policy, opensMax: 1.5 }, textPayload, PolicyError],
     ['flags 1', { ...header, flags: 1 }, policy, textPayload, FlagsError],
-    ['F13: a deadline without its flag', { ...header, flags: 0 }, policy, textPayload, PolicyError],
-    ['F13: the flag without a deadline', header, { opensMax: 1, ttlSeconds: 60 }, textPayload, PolicyError],
+    ['F13: a header without the deadline flag', { ...header, flags: 0 }, policy, textPayload, FlagsError],
+    ['F13: no deadline', header, { ...policy, deadline: 0 }, textPayload, PolicyError],
+    ['F13: a deadline over 32 bits', header, { ...policy, deadline: 2 ** 32 }, textPayload, PolicyError],
     ['the retired profile 2', { ...header, kdfId: KDF_RETIRED as KdfId }, policy, textPayload, KdfError],
     ['an 11-byte iv', { ...header, iv: new Uint8Array(11) }, policy, textPayload, HeaderError],
   ])('%s', async (_, invalidHeader, invalidPolicy, payload, expected) => {

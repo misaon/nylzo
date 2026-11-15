@@ -95,7 +95,7 @@
 
   function stored({ retention }: Transparency): readonly Entry[] {
     const entry = (
-      name: 'content' | 'metadata' | 'keys' | 'ended' | 'enforced' | 'reports' | 'counters' | 'addresses',
+      name: 'content' | 'metadata' | 'keys' | 'ended' | 'enforced' | 'counters' | 'addresses',
       text: string,
     ) => ({ title: translate(`transparency.stores.${name}.title`), text });
     return [
@@ -104,9 +104,6 @@
       entry('keys', translate('transparency.stores.keys')),
       entry('ended', translate('transparency.stores.ended', { days: days(retention.tombstoneSeconds) })),
       entry('enforced', translate('transparency.stores.enforced')),
-      ...(retention.abuseReportSeconds === undefined
-        ? []
-        : [entry('reports', translate('transparency.stores.reports', { days: days(retention.abuseReportSeconds) }))]),
       entry('counters', translate('transparency.stores.counters', { days: days(retention.dailyCounterSeconds) })),
       entry('addresses', translate('transparency.stores.addresses')),
     ];

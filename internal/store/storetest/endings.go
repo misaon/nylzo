@@ -146,7 +146,7 @@ func (f *fixture) recordedEndingWins() {
 	}
 }
 
-// recordedReleaseEndsTheMessage is a regression: a release whose blob was not yet deleted once let a burn or a report in.
+// recordedReleaseEndsTheMessage is a regression: a release whose blob was not yet deleted once let a burn in.
 func (f *fixture) recordedReleaseEndsTheMessage() {
 	t, ctx := f.t, f.t.Context()
 	created := f.create(1, oneHour, false)
@@ -166,9 +166,6 @@ func (f *fixture) recordedReleaseEndsTheMessage() {
 	if state, err := store.MarkEnding(ctx, f.store, record, store.StateCancelled, afterLease); err != nil ||
 		state != store.StateOpened {
 		t.Fatalf("a cancel after a recorded release: %s %v", state, err)
-	}
-	if _, err := store.CountReport(ctx, f.store, f.get(created), afterLease); goneState(err) != store.StateOpened {
-		t.Fatalf("a report after a recorded release: %v", err)
 	}
 }
 
@@ -369,42 +366,5 @@ func (f *fixture) takeDownFinishesThroughTheSweep() {
 	}
 	if report, err := f.sweep(f.blobs, baseTime); err != nil || report.Blobs != 1 || f.blobExists(stuck.reference()) {
 		t.Fatalf("the sweep must finish the takedown: %+v %v", report, err)
-	}
-}
-
-func (f *fixture) reportsPerMessage() {
-	t, ctx := f.t, f.t.Context()
-	created := f.create(1, oneWeek, false)
-	record := f.get(created)
-	for report := 1; report <= store.ReportsPerMessage; report++ {
-		if counted, err := store.CountReport(ctx, f.store, record, baseTime); err != nil || !counted {
-			t.Fatalf("report %d: %v %v", report, counted, err)
-		}
-	}
-	if counted, err := store.CountReport(ctx, f.store, record, baseTime); err != nil || counted {
-		t.Fatalf("a fourth report: %v %v", counted, err)
-	}
-	if err := store.UncountReport(ctx, f.store, record, baseTime); err != nil {
-		t.Fatal(err)
-	}
-	if counted, err := store.CountReport(ctx, f.store, record, baseTime); err != nil || !counted {
-		t.Fatalf("a report after a count was taken back: %v %v", counted, err)
-	}
-	if counted, err := store.CountReport(ctx, f.store, record, baseTime.Add(24*time.Hour)); err != nil || counted {
-		t.Fatalf("F6: the cap holds over the whole life of the message, not per day: %v %v", counted, err)
-	}
-	if _, err := f.end(created, store.StateDeleted, baseTime.Add(25*time.Hour), f.blobs); err != nil {
-		t.Fatal(err)
-	}
-	record = f.get(created)
-	if _, err := store.CountReport(
-		ctx,
-		f.store,
-		record,
-		baseTime.Add(26*time.Hour),
-	); goneState(
-		err,
-	) != store.StateDeleted {
-		t.Fatalf("a report about an ended message: %v", err)
 	}
 }

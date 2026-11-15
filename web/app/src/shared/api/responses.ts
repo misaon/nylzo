@@ -1,4 +1,4 @@
-import { decodeBase64url, FLAG_DEADLINE, utf8 } from '@nylzo/core';
+import { decodeBase64url, utf8 } from '@nylzo/core';
 
 import { ApiError, ERROR_KINDS, MESSAGE_STATES, ResponseError } from './api-errors.ts';
 import type { MessageState } from './api-errors.ts';
@@ -39,9 +39,8 @@ export interface ServedPolicy {
   readonly opensMax: number;
   readonly ttlSeconds: number;
   readonly kdfId: number;
-  readonly flags: number;
-  // The deadline in Unix seconds, which the server reports exactly when the envelope seals it in (spec 3).
-  readonly deadline?: number;
+  // The deadline in Unix seconds, which the envelope seals in (spec 3).
+  readonly deadline: number;
 }
 
 const MAX_OPERATOR_FIELD_BYTES = 200;
@@ -222,25 +221,18 @@ export function servedPolicy(header: string | null): ServedPolicy {
   if (!isObject(json)) {
     throw new ResponseError('X-Nylzo-Policy is not an object');
   }
-  const flags = integer(json, 'flags');
-  const deadline = json['deadline'] === undefined ? undefined : unixSeconds(json, 'deadline');
-  if (((flags & FLAG_DEADLINE) !== 0) !== (deadline !== undefined)) {
-    throw new ResponseError('X-Nylzo-Policy reports a deadline that its flags do not');
-  }
   return {
     opensMax: integer(json, 'opens_max'),
     ttlSeconds: integer(json, 'ttl_s'),
     kdfId: integer(json, 'kdf_id'),
-    flags,
-    ...(deadline !== undefined && { deadline }),
+    deadline: unixSeconds(json, 'deadline'),
   };
 }
 
-// flagsAndDeadlineMatch accepts the flags a reader knows and a deadline that the metadata reports as the expiry, which
-// the envelope then authenticates (F13).
-export function flagsAndDeadlineMatch(policy: ServedPolicy, expiresAt: string | undefined): boolean {
-  const flagsKnown = policy.flags === FLAG_DEADLINE || policy.flags === 0;
-  return flagsKnown && (policy.deadline === undefined || policy.deadline * 1000 === Date.parse(expiresAt ?? ''));
+// deadlineMatchesExpiry accepts a deadline that the metadata reports as the expiry, which the envelope then
+// authenticates (F13).
+export function deadlineMatchesExpiry(policy: ServedPolicy, expiresAt: string | undefined): boolean {
+  return policy.deadline * 1000 === Date.parse(expiresAt ?? '');
 }
 
 const MAX_UINT32 = 2 ** 32 - 1;

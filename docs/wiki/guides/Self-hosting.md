@@ -67,14 +67,6 @@ Hibernation writes all memory to swap, a `noswap` tmpfs included, so turn it off
 
 Run the pepper commands only for a new deployment; do not overwrite an existing pepper during an upgrade. Keep it outside the database. Losing the pepper makes existing tokens unverifiable and live messages inaccessible. A leaked pepper combined with server data enables additional guessing attacks, and together with a public key from a recorded request it opens that message's stored metadata; see the [protocol](../reference/Protocol.md).
 
-On your own workstation, create the abuse-reporting key with a verified CLI:
-
-```sh
-nylzo report-key --key-file "$HOME/nylzo-report-key"
-```
-
-Copy the printed **public** `NYLZO_REPORT_KEY=…` value into `.env`. Keep the private key on the workstation and off the server; it is needed to decrypt reports. Encrypt it right away, for example `age --encrypt --passphrase --output "$HOME/nylzo-report-key.age" "$HOME/nylzo-report-key" && rm "$HOME/nylzo-report-key"`, and decrypt it only into a pipe when you read reports.
-
 Start from the deployment directory:
 
 ```sh
@@ -114,29 +106,17 @@ Check the HTTPS instance and its `/transparency` page. Run `nylzo verify-client 
 
 The frontend is part of Caddy's read-only executable, outside the backend process and its writable data volume. Compromising the backend alone cannot replace frontend pages or assets through this deployment. The host, Caddy, the release process and browser/device security remain trusted; a client-side injection vulnerability would still require its own fix.
 
-## Process abuse reports
+## Remove a message
 
-The server stores reports sealed to the operator's public key in daily UTC files under `abuse/`. The image has no shell. Copy reports out to your workstation; never `docker cp` or `docker compose cp` anything into the Nylzo container, because Docker 28 and older let a compromised container redirect such a copy onto host files (GHSA-vp62-88p7-qqf5, GHSA-x86f-5xw2-fm2r):
-
-```sh
-docker compose cp nylzo:/home/nonroot/abuse/. ./abuse
-```
-
-Decrypt them on the workstation with the private reporting key:
-
-```sh
-cat abuse/*.sealed | nylzo reports --key-file <(age --decrypt "$HOME/nylzo-report-key.age")
-```
-
-After review, place approved message IDs in a private file, one per line. Run from the deployment directory:
+To remove messages, place their IDs in a private file, one per line. Run from the deployment directory:
 
 ```sh
 docker compose exec -T nylzo /ko-app/nylzo takedown < approved-ids.txt
 ```
 
-Run commands in the running container with `docker compose exec`. A `docker compose run nylzo` container takes Nylzo's fixed address, so it fails while Nylzo runs and receives Caddy's API requests while Nylzo is stopped.
+Run commands in the running container with `docker compose exec`. A `docker compose run nylzo` container takes Nylzo's fixed address, so it fails while Nylzo runs and receives Caddy's API requests while Nylzo is stopped. Never `docker cp` or `docker compose cp` anything into the Nylzo container: Docker 28 and older let a compromised container redirect such a copy onto host files (GHSA-vp62-88p7-qqf5, GHSA-x86f-5xw2-fm2r).
 
-Takedown deletes the server's message blob without reading its content. Use an optional reporter contact only for acknowledgement and the moderation decision. Delete decrypted reports after review; they contain message IDs and contact addresses. See [Operations](Operations.md#abuse-reports-and-takedown) for retention, quotas, and sanitization.
+Takedown deletes the server's message blob without reading its content. See [Operations](Operations.md#takedown).
 
 ## Maintenance
 
@@ -160,7 +140,7 @@ The epoch seed exists only in the host's memory, so a reboot ends every live mes
 
 ## Upgrade and rotate keys
 
-Keep both images, the Caddyfile, `compose.yaml` and `check-isolation` from the same release: the `nylzo_frontend` directive and the `nylzo_crawler_tls` option need Nylzo's Caddy build, and `compose.yaml` starts it with `--adapter nylzo`. An older or upstream-only Caddy rejects either, and the plain Caddyfile adapter refuses the option. If you serve another host name from the same site block, such as `www`, name it in `nylzo_crawler_tls` too, or the adapter refuses the Caddyfile. The `contact` lines of `nylzo_frontend` and `nylzo_error` take `NYLZO_CONTACT` too, so the pages Caddy serves may link the operator's contact; give the Caddy container the same value as the server. Verify both new images against their exact tag, update the digest-pinned `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE`, run `docker compose up -d` and then `sudo bash check-isolation`. Do not overwrite the pepper or reporting key. Read the [operations guide](Operations.md#logging-and-upgrades) for schema compatibility.
+Keep both images, the Caddyfile, `compose.yaml` and `check-isolation` from the same release: the `nylzo_frontend` directive and the `nylzo_crawler_tls` option need Nylzo's Caddy build, and `compose.yaml` starts it with `--adapter nylzo`. An older or upstream-only Caddy rejects either, and the plain Caddyfile adapter refuses the option. If you serve another host name from the same site block, such as `www`, name it in `nylzo_crawler_tls` too, or the adapter refuses the Caddyfile. The `contact` lines of `nylzo_frontend` and `nylzo_error` take `NYLZO_CONTACT` too, so the pages Caddy serves may link the operator's contact; give the Caddy container the same value as the server. Verify both new images against their exact tag, update the digest-pinned `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE`, run `docker compose up -d` and then `sudo bash check-isolation`. Do not overwrite the pepper. Read the [operations guide](Operations.md#logging-and-upgrades) for schema compatibility.
 
 Deployments set up before Nylzo 0.14.0 keep the seed in `epoch/` inside `nylzo-data`. The new `compose.yaml` needs Nylzo 0.14.0 or later, which refuses to start while that directory is still there. Prepare `/run/nylzo/epoch` and swap as described above, put the new `compose.yaml` in place, and move the seed:
 
@@ -184,11 +164,13 @@ A deployment that still runs the official `caddy` image must also take the new `
 
 A deployment whose `compose.yaml` still has a single `nylzo` network moves to `backend` and `edge` with the same `docker compose up -d`, which recreates both containers and needs Docker Engine 28.0 or newer. The old network stays behind without containers, and Compose no longer manages it: delete it with `docker network rm nylzo_nylzo`. To keep subnets you chose for it, run `docker compose down` before you replace `compose.yaml`, because Docker refuses a new network whose ranges an existing one holds; `down` keeps the `nylzo-data` volume. Host scripts that reached Nylzo at its container address stop working, since the host has no address on `backend`.
 
+Nylzo 0.14.0 and later take no abuse reports. The first start erases the reports that an earlier release stored in `nylzo-data` and logs `reports-erased`; `nylzo store-check` says so beforehand. Nylzo ignores a `NYLZO_REPORT_KEY` left in `.env`, so you can remove it.
+
 The Caddyfile requests ordinary 90-day certificates. To match the Hetzner profile, add `issuer acme { profile shortlived }` to the site's `tls` block for 160-hour certificates, and alert on certificate expiry. Publish CAA `issue "letsencrypt.org; validationmethods=http-01,tls-alpn-01; accounturi=…"` and `issuewild ";"` for your domain, and turn off any CDN-managed certificates for it.
 
 For pepper rotation, keep the previous pepper as a second Docker secret and configure `NYLZO_PEPPER_PREVIOUS_FILE`, then generate the new pepper. The first start with both seals every stored message with the new pepper. Retain the previous pepper for seven days so passphrase checks and leases of live messages still verify. See [Operations](Operations.md#configuration).
 
-The example's retention policy does not back up message content. Keep configuration and pepper backups separate from message data, and keep the reporting private key on the workstation. Review your own retention policy before adding database, volume, or host-level backups. The epoch seed stays out of them because it lives on tmpfs, never in `nylzo-data`; never copy `/run/nylzo/epoch` into a backup. A copy of the seed, together with a link and a copy of the message, opens at any later time every message that was live when the copy was taken or whose id the server issued in the rest of that hour. See [Expiry keys](Operations.md#expiry-keys).
+The example's retention policy does not back up message content. Keep configuration and pepper backups separate from message data. Review your own retention policy before adding database, volume, or host-level backups. The epoch seed stays out of them because it lives on tmpfs, never in `nylzo-data`; never copy `/run/nylzo/epoch` into a backup. A copy of the seed, together with a link and a copy of the message, opens at any later time every message that was live when the copy was taken or whose id the server issued in the rest of that hour. See [Expiry keys](Operations.md#expiry-keys).
 
 ## Choosing a runtime for a new VPS
 

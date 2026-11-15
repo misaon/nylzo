@@ -9,10 +9,6 @@ if [[ ! -s .dev/pepper ]]; then
   od -An -N32 -tx1 /dev/urandom | tr -d ' \n' > .dev/pepper
 fi
 chmod 600 .dev/pepper
-if [[ ! -s .dev/report-key || ! -s .dev/report-key.pub ]]; then
-  rm -f .dev/report-key .dev/report-key.pub
-  bin/nylzo report-key --key-file .dev/report-key | cut -d= -f2- > .dev/report-key.pub
-fi
 
 port="${NYLZO_DEV_PORT:-8080}"
 if [[ ! "$port" =~ ^[0-9]+$ ]]; then
@@ -20,7 +16,7 @@ if [[ ! "$port" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 
-unset NYLZO_PEPPER NYLZO_PEPPER_PREVIOUS NYLZO_PEPPER_PREVIOUS_FILE NYLZO_REPORT_KEY
+unset NYLZO_PEPPER NYLZO_PEPPER_PREVIOUS NYLZO_PEPPER_PREVIOUS_FILE
 echo "nylzo: http://localhost:$port (Ctrl-C stops it, mise run dev:reset deletes the messages)"
 exec env \
   NYLZO_LISTEN="127.0.0.1:$port" \
@@ -28,7 +24,6 @@ exec env \
   NYLZO_ALLOW_SWAP=1 \
   NYLZO_ALLOW_UNERASABLE_STORAGE=1 \
   NYLZO_ALLOW_UNERASED_MEMORY=1 \
-  NYLZO_REPORT_KEY="$(cat .dev/report-key.pub)" \
   NYLZO_DATA_DIR=.dev/data \
   NYLZO_RATE_CREATE_HOUR=0 \
   NYLZO_RATE_CREATE_DAY=0 \

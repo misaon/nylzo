@@ -28,7 +28,7 @@ function normalizePassphrase(passphrase: string): Uint8Array<ArrayBuffer> {
   return utf8(passphrase.normalize('NFC'));
 }
 
-export function assertWellFormedPassphrase(kdfId: KdfId, passphrase: string): void {
+function assertWellFormedPassphrase(kdfId: KdfId, passphrase: string): void {
   if (kdfId !== KDF_NONE && !passphrase.isWellFormed()) {
     throw new MalformedPassphraseError();
   }

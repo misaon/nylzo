@@ -158,13 +158,13 @@ describe('request signatures (spec 5.5)', () => {
       ]);
       expect(exported).not.toHaveBeenCalled();
       const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(5);
-      const body = utf8('{"reason":"spam"}');
-      const nativeSignature = await signRequest(native, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
-      const compatibleSignature = await signRequest(compatible, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body);
+      const body = utf8('body');
+      const nativeSignature = await signRequest(native, PURPOSE_READ, 'POST', '/api/v1/claim', challenge, body);
+      const compatibleSignature = await signRequest(compatible, PURPOSE_READ, 'POST', '/api/v1/claim', challenge, body);
       expect(compatibleSignature.signature).toEqual(nativeSignature.signature);
       seed.fill(9);
       wipeRequestKey(compatible);
-      await expect(signRequest(compatible, PURPOSE_READ, 'POST', '/api/v1/abuse', challenge, body)).rejects.toThrow(
+      await expect(signRequest(compatible, PURPOSE_READ, 'POST', '/api/v1/claim', challenge, body)).rejects.toThrow(
         'released',
       );
     } finally {

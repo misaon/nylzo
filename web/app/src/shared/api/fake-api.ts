@@ -1,4 +1,4 @@
-import { encodeBase64url, FLAG_DEADLINE, idToString, opaqueContext, wrapShare } from '@nylzo/core';
+import { encodeBase64url, idToString, opaqueContext, wrapShare } from '@nylzo/core';
 import type { RequestKey, ShareKey } from '@nylzo/core';
 import { createRegistrationResponse, generateKE2, newServerKeys } from '@nylzo/core/testing';
 
@@ -23,7 +23,6 @@ export interface FakeOptions {
   servedKdfId?: number;
   servedOpensMax?: number;
   servedTtlSeconds?: number;
-  servedFlags?: number;
   servedDeadline?: number;
   tombstone?: boolean;
   metadataKdfId?: number;
@@ -137,7 +136,6 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
         opensMax: options.servedOpensMax ?? message.request.opensMax,
         ttlSeconds: options.servedTtlSeconds ?? message.request.ttlSeconds,
         kdfId: options.servedKdfId ?? message.request.kdfId,
-        flags: options.servedFlags ?? FLAG_DEADLINE,
         deadline: options.servedDeadline ?? message.request.deadline,
       },
       object,

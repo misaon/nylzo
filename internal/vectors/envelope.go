@@ -12,7 +12,7 @@ import (
 
 const (
 	octetStream = "application/octet-stream"
-	// vectorDeadline is the deadline every case seals in, a whole minute; the legacy case has none.
+	// vectorDeadline is the deadline every case seals in, a whole minute.
 	vectorDeadline = 1_797_000_000
 )
 
@@ -49,14 +49,12 @@ type FileContent struct {
 }
 
 type envelopeCase struct {
-	name string
-	// legacy seals a message as releases before Nylzo 0.14.0 did, without the deadline.
-	legacy bool
-	kdf    core.KDF
-	opens  uint16
-	ttl    uint32
-	text   *string
-	file   *fileCase
+	name  string
+	kdf   core.KDF
+	opens uint16
+	ttl   uint32
+	text  *string
+	file  *fileCase
 }
 
 type fileCase struct {
@@ -102,7 +100,6 @@ var envelopeCases = []envelopeCase{
 	},
 	{name: "scrypt-text", kdf: core.KDFScrypt, opens: 1, ttl: 86400, text: new("scrypt protected")},
 	{name: "opens-10-ttl-7d", opens: 10, ttl: 604800, text: new("many opens")},
-	{name: "legacy-text", legacy: true, opens: 1, ttl: 86400, text: new("created before the deadline")},
 }
 
 func (f *File) envelope() error {
@@ -141,9 +138,6 @@ func sealCase(vector envelopeCase) (sealedCase, error) {
 			IV:      [envelope.IVLen]byte(deterministic("iv/"+vector.name, envelope.IVLen)),
 		},
 		policy: envelope.Policy{OpensMax: vector.opens, TTLSeconds: vector.ttl, Deadline: vectorDeadline},
-	}
-	if vector.legacy {
-		sealed.header.Flags, sealed.policy.Deadline = 0, 0
 	}
 	content, err := keys.DeriveContent(sealed.id, sealed.secret, sealed.exportKey, sealed.share)
 	if err != nil {

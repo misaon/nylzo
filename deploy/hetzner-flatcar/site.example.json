@@ -6,7 +6,6 @@
   "architecture": "amd64",
   "administratorNetworks": ["192.0.2.1/32"],
   "administratorPublicKey": "",
-  "reportPublicKey": "",
   "operator": "",
   "contact": "",
   "hosting": "Hetzner Cloud",

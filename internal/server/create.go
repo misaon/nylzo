@@ -366,7 +366,7 @@ func (s *Server) receiveBlob(
 		return envelope.Header{}, time.Time{}, false
 	}
 	envelopeHeader, err := envelope.ParseHeader(raw[:])
-	if raw[0] < envelope.Version || (err == nil && envelopeHeader.Flags&envelope.FlagDeadline == 0) {
+	if raw[0] < envelope.Version {
 		writeError(w, http.StatusBadRequest, api.ErrorClientOutdated)
 		return envelope.Header{}, time.Time{}, false
 	}
@@ -492,7 +492,6 @@ func (s *Server) newMessage(
 	message := &store.Message{
 		Version:        envelopeHeader.Version,
 		KDF:            uint8(envelopeHeader.KDF),
-		Flags:          envelopeHeader.Flags,
 		CreatedAt:      uploaded.UTC().Truncate(time.Minute),
 		ExpiresAt:      request.deadline,
 		TTLSeconds:     request.ttlSeconds,

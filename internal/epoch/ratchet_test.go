@@ -37,19 +37,8 @@ func TestEpochVectors(t *testing.T) {
 		t.Fatal(err)
 	}
 	var file vectors.File
-	if err = json.Unmarshal(data, &file); err != nil || len(file.Server.Epochs) < 2 ||
-		len(file.Server.MinuteEpochs) < 4 {
+	if err = json.Unmarshal(data, &file); err != nil || len(file.Server.MinuteEpochs) < 4 {
 		t.Fatalf("epoch vectors: %v", err)
-	}
-	seed := epoch.Seed(decode(t, file.Server.Epochs[0].Seed))
-	for _, vector := range file.Server.Epochs {
-		key := epoch.Key(&seed)
-		share := epoch.ShareOf(&key, seal.Locator(decode(t, vector.Locator)))
-		if hex.EncodeToString(seed[:]) != vector.Seed || hex.EncodeToString(key[:]) != vector.EpochKey ||
-			hex.EncodeToString(share[:]) != vector.Share {
-			t.Fatalf("hour %d differs", vector.Hour)
-		}
-		seed = epoch.Next(&seed)
 	}
 	checkMinuteVectors(t, file.Server.MinuteEpochs)
 }

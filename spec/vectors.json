@@ -417,28 +417,6 @@
       "object_sha256": "04b691f85276c1c56b62f518137af323eef1e0925d78f40357f1c1646f5a9ebb",
       "h": "wcQb3M03ZQCnwmw1sUwXFvdZqOfvTH8SX5pH4-qr1zc",
       "link": "https://nylzo.example/r#3.0.ndUx8Ng7KbhAeWOYwBjJGg.iMcfxMKyg2nL5INnVkOoVxW9PE78Z2ZCiFr2YleHGqM.wcQb3M03ZQCnwmw1sUwXFvdZqOfvTH8SX5pH4-qr1zc"
-    },
-    {
-      "name": "legacy-text",
-      "id": "dcCzNHFo05bD_K6rhbkNqg",
-      "s": "6b01da11774bbe47ee4b199ed18083bd8d8045d77bc922f871836e2e34e4aec8",
-      "kdf_id": 0,
-      "p_hex": "560b55b0a4b28c13358fba0629a8ddeb432515b531848dca383c34902a39383c3d051cf363a5ac5531e090ded30a854063b760bab852bdfffe0b13fc6f54d7b0",
-      "e_hex": "ac610e28c579d576d7f5c4941752c558fc3f0ce9cb9b43a5a0e3a5fdae519d6a",
-      "flags": 0,
-      "iv_hex": "f25a9234259e77022a63f8b4",
-      "opens_max": 1,
-      "ttl_s": 86400,
-      "deadline": 0,
-      "text": "created before the deadline",
-      "meta_json": "{\"v\":1,\"text\":\"created before the deadline\"}",
-      "plaintext_len": 65473,
-      "commitment_hex": "ae65c71c774a4479c62d530bbd7bc8e4a9dc365511817eb60da12da270890ca1",
-      "aad_hex": "030000f25a9234259e77022a63f8b4ae65c71c774a4479c62d530bbd7bc8e4a9dc365511817eb60da12da270890ca175c0b3347168d396c3fcaeab85b90daa000100015180",
-      "object_len": 65536,
-      "object_sha256": "94c328406f3b67317b38b4c845675ec9e052b4d86ddb5152320332e8a172914a",
-      "h": "hvr16GHcrLD5F2j8BuPTjUP55KuheUO_8h8SexAnIO8",
-      "link": "https://nylzo.example/r#3.0.dcCzNHFo05bD_K6rhbkNqg.awHaEXdLvkfuSxme0YCDvY2ARdd7ySL4cYNuLjTkrsg.hvr16GHcrLD5F2j8BuPTjUP55KuheUO_8h8SexAnIO8"
     }
   ],
   "envelope_rejected": [
@@ -647,16 +625,7 @@
       "h": "Hdnx7AH5B1kKmGWi9tKe_WXLstFtq1MtqrdvF06hNbU",
       "e_hex": "04e6746cfe95b1e9466f4f7827ba26837204c294a2733e6a8c0e77076be1c221",
       "kdf_id": 0,
-      "error": "integrity"
-    },
-    {
-      "name": "deadline-for-a-legacy-object",
-      "base": "legacy-text",
-      "deadline": 1797000000,
-      "h": "hvr16GHcrLD5F2j8BuPTjUP55KuheUO_8h8SexAnIO8",
-      "e_hex": "ac610e28c579d576d7f5c4941752c558fc3f0ce9cb9b43a5a0e3a5fdae519d6a",
-      "kdf_id": 0,
-      "error": "integrity"
+      "error": "flags"
     }
   ],
   "compressed_length": [
@@ -1804,25 +1773,6 @@
     },
     {
       "components": {
-        "share_key": "",
-        "lease": "",
-        "ke1": "",
-        "ke3": ""
-      },
-      "name": "abuse report with a body",
-      "seed_hex": "ec920bf884d64a97fb4c804ef82a558358ab751a0c16fc7a8ec4067d72904d37",
-      "public_key": "eLAv01QB0iXjlRRiq-5xlzDWPYD9ce9Hs3z67z3IirA",
-      "purpose": "read",
-      "method": "POST",
-      "path": "/api/v1/abuse",
-      "challenge": "MyKObsiH32mNmBnMP7T3oR1gvwUh4GVX1Za_2NvRScW4ClTd",
-      "body_hex": "7b226964223a2279653065494f7338764c6a734a534b61464642467967222c22726561736f6e223a227370616d227d",
-      "message_hex": "6e796c7a6f2f76332f72657175657374007265616400504f5354002f6170692f76312f61627573650033228e6ec887df698d9819cc3fb4f7a11d60bf0521e06557d596bfd8dbd149c5b80a54ddc390cbe9d13da34d333d1fdfd46be19f97e6acb57709a216626e93fb25509cb20000000000000000000000000000000000000000000000000000000000000000",
-      "signature": "pWbk19sB6Ie2vHOjDZm_2VD6-uYwtVMeZKZCN02e0mnLG7BZFTmuQ36Qzs5powcJUbAsAPxxineXsQj1iHrzCg",
-      "authorization": "Nylzo-Sig eLAv01QB0iXjlRRiq-5xlzDWPYD9ce9Hs3z67z3IirA.MyKObsiH32mNmBnMP7T3oR1gvwUh4GVX1Za_2NvRScW4ClTd.pWbk19sB6Ie2vHOjDZm_2VD6-uYwtVMeZKZCN02e0mnLG7BZFTmuQ36Qzs5powcJUbAsAPxxineXsQj1iHrzCg"
-    },
-    {
-      "components": {
         "share_key": "1.fXW2XFN7n_QCGCMuyRuAytMGbByBfDdTw5OZJdbGV0slynZTSTpM6zgFNMwCTHM95Jx2ygQG4KuE0nZnyucefyIl5IxxyhQ3spwli2Zz2tVtJdWQNMm3w5HOBiN4hdqLeexUDKx8VbuVCDhcRmfFFYRkYfF2pFETiUWKWdqcdRNA59cH00WJ3txLMxmWmPOXzLsj00aszyIKttNi9FyebZUK6SlFuim0-EdPIQK0OMWf9pILNkm_RIUDjLhFXIZs1AEdl3cIJTqVYSF5H3lkE4djXbqc2RRJPQeuH-Kd3yTCphF7WtYAR_KIG5qRIrZtpkWwqQcZERkluNOWLcW_MxA5TMJ0XeSZlwksdhy3EEVB_wVvEASSc8mc1JLOg_BZsSAM9bpH1by74Zsp0xtRRpdmuiGnLgCxOrcUPjMP3fPFqaKRgCC6ZfuZ-Byy6Ksb75m-4GdihsmIeMWGJ_poU5YwQftIaPbBMwO0SzqCJQKUBiKXc1lmW4YmJ5hjaMYD52xjFocxLyXDyVicVmtSldZd4KxAVqOrN9ClU6lyxqABMoRvpihwOpsdE_AEUBeSK5xqoNlbnZkRKGw69_KbWYUc_2F0cck2KDybx9ctcbssZ7RhkKAFU3iwy_upaAwwj7R-X3uq6BmisBOwzFcGReE8bCtKsIe7Y1WrsEdSKZJCijgIjTQqHvdSNqWYStEBUCqw4SS6XlmT_NwxOGFrO1W9bnS8ygu-gqx5frNGkMOlFSLDAsA_AnsXWVdSdPqvXLoIMAEZqRx7zLk7Rkg8uDFpCuuB5vdadRdZ1JFwx2GBGVqJACiFJdI8SRV1duoWF2t3i-Ffx8Ml0tfDO-CBymTPt7El5LdHeptPIRpyMTRjvCIyw0xL5IeLTGnLAJoqL1SOGWbI5hlVHkuSbkliWGqrxEoZkbLFtZK8d2G8f7N_ugUUpysl_-BjaGhEL4k4r4oRhYiw5LtWSuPCiou10uVtevG0kkWGA8u_QgCvhwyPOUOUFOAueUt0iwebOdy8dajMf5iSEeGYmytRTFR75ZESP-K5PICFuFo_fVsvEoZ6BpwcAWN63GtsEdEXRzp4OFfKSet1JsSU4JKQ50NdvHqTnUUroxZSgXgIikAFghIZl4VHxGhRn6ho0QYHDkTKFeE_VwCyjzcr2Ep0DLAZrWEKjnbD5rXA5TlWV2inlMUBMmQUXHSHhrLLg3MYSOxHjDZA5HstnBVFkScbUot2gyBb8GE_0XJAGyg4gEdLGENeOia2EtwSv0w-oxw4gTYsUJkRyytP4rhu78dDzkZs7owknPmFPbVsIMt3RCJXQ6V1PFMXdYy7VKi3pnyjWMUXEFiYn2qTiTyYLiuEBvY29Nk497glCNQlPct9HtQiaho-ayjCMmhpNwcMdUB6GfRa83xvJWiEmxRuhtMJaNZhTTqBOKzFsVVIUCUQggO4EDtFjdNKASQhphFJJeFSBiOK7gCpnXtrFcVuiSwJ5cm0QidI5eoywYedJgK_KBKdXZCHw0fIIGIZP-W74hepQ2SyBtOifnX38lDKNNutRSvhFRztHbwJy_zksA0R8wkVjYqt86auSzGq51WVn8Q_gKL1IfG32jxA68jUKZQheS8RXQ",
         "lease": "",
         "ke1": "",
@@ -1975,108 +1925,6 @@
       "difficulty": 6
     }
   ],
-  "redact": [
-    {
-      "name": "plain",
-      "reason": "phishing for bank logins",
-      "redacted": "phishing for bank logins"
-    },
-    {
-      "name": "empty",
-      "reason": "",
-      "redacted": ""
-    },
-    {
-      "name": "link",
-      "reason": "see https://nylzo.example/r#3.0.BH5FhEHrVykxKJTx-M9tag.J8N6KBvXE20lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc.RLr0GvfsvXgZaagN4q0UDZR6yYYcrKCydyM0F5w1iLg please",
-      "redacted": "see https://nylzo.example/r[redacted] please"
-    },
-    {
-      "name": "v1-link",
-      "reason": "see https://nylzo.example/m/BH5FhEHrVykxKJTx-M9tag#1.0.J8N6KBvXE20lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc please",
-      "redacted": "see https://nylzo.example/m/[redacted][redacted] please"
-    },
-    {
-      "name": "hash-run",
-      "reason": "see https://x.example/p#token-abc def",
-      "redacted": "see https://x.example/p[redacted] def"
-    },
-    {
-      "name": "bare-secret",
-      "reason": "bare J8N6KBvXE20lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc end",
-      "redacted": "bare [redacted] end"
-    },
-    {
-      "name": "glued-secret",
-      "reason": "key_1.0.J8N6KBvXE20lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc",
-      "redacted": "key_1.0.[redacted]"
-    },
-    {
-      "name": "secret-21-chars",
-      "reason": "short J8N6KBvXE20lKaCbIo7A- stays",
-      "redacted": "short J8N6KBvXE20lKaCbIo7A- stays"
-    },
-    {
-      "name": "secret-22-chars",
-      "reason": "long J8N6KBvXE20lKaCbIo7A-q goes",
-      "redacted": "long [redacted] goes"
-    },
-    {
-      "name": "percent-link",
-      "reason": "https://safelinks.example/?url=https%3A%2F%2Fnylzo.example%2Fr%233.0.BH5FhEHrVykxKJTx-M9tag.J8N6KBvXE20lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc.RLr0GvfsvXgZaagN4q0UDZR6yYYcrKCydyM0F5w1iLg",
-      "redacted": "https://safelinks.example/?url=https://nylzo.example/r[redacted]"
-    },
-    {
-      "name": "percent-hash-once",
-      "reason": "see p%23token-abc def",
-      "redacted": "see p[redacted] def"
-    },
-    {
-      "name": "percent-hash-twice",
-      "reason": "see p%2523token-abc def",
-      "redacted": "see p[redacted] def"
-    },
-    {
-      "name": "percent-hash-three-times",
-      "reason": "see p%252523token-abc def",
-      "redacted": "see p[redacted] def"
-    },
-    {
-      "name": "percent-hash-four-times",
-      "reason": "see p%25252523token-abc def",
-      "redacted": "see p%23token-abc def"
-    },
-    {
-      "name": "secret-encoded-three-times",
-      "reason": "key %25%32%35%25%33%34%25%34%31%25%32%35%25%33%33%25%33%38%25%32%35%25%33%34%25%34%35%25%32%35%25%33%33%25%33%36%25%32%35%25%33%34%25%34%32%25%32%35%25%33%34%25%33%32%25%32%35%25%33%37%25%33%36%25%32%35%25%33%35%25%33%38%25%32%35%25%33%34%25%33%35%25%32%35%25%33%33%25%33%32%25%32%35%25%33%33%25%33%30%25%32%35%25%33%36%25%34%33%25%32%35%25%33%34%25%34%32%25%32%35%25%33%36%25%33%31%25%32%35%25%33%34%25%33%33%25%32%35%25%33%36%25%33%32%25%32%35%25%33%34%25%33%39%25%32%35%25%33%36%25%34%36%25%32%35%25%33%33%25%33%37%25%32%35%25%33%34%25%33%31%25%32%35%25%33%32%25%34%34%25%32%35%25%33%37%25%33%31%25%32%35%25%33%36%25%34%36%25%32%35%25%33%35%25%33%34%25%32%35%25%33%37%25%34%31%25%32%35%25%33%37%25%33%36%25%32%35%25%33%37%25%33%38%25%32%35%25%33%36%25%34%31%25%32%35%25%33%36%25%33%34%25%32%35%25%33%33%25%33%33%25%32%35%25%33%36%25%34%34%25%32%35%25%33%37%25%33%39%25%32%35%25%33%33%25%33%32%25%32%35%25%33%36%25%33%33%25%32%35%25%33%34%25%34%31%25%32%35%25%33%35%25%33%34%25%32%35%25%33%34%25%34%34%25%32%35%25%33%33%25%33%30%25%32%35%25%33%36%25%34%33%25%32%35%25%33%36%25%33%34%25%32%35%25%33%36%25%33%32%25%32%35%25%33%36%25%33%32%25%32%35%25%33%36%25%33%33",
-      "redacted": "key [redacted]"
-    },
-    {
-      "name": "controls-and-bidi",
-      "reason": "ab‮cd⁦e%E2%80%AEf\nnext",
-      "redacted": "a bc def next"
-    },
-    {
-      "name": "invalid-utf8-escape",
-      "reason": "bad %FF%FE bytes %C3",
-      "redacted": "bad  bytes "
-    },
-    {
-      "name": "replacement-character",
-      "reason": "a�b",
-      "redacted": "ab"
-    },
-    {
-      "name": "zero-width-split",
-      "reason": "J8N6KBvXE20​lKaCbIo7A-qoTzvxjd3my2cJTM0ldbbc",
-      "redacted": "[redacted]"
-    },
-    {
-      "name": "emoji",
-      "reason": "🔐 secret",
-      "redacted": "🔐 secret"
-    }
-  ],
   "server": {
     "pepper_hex": "a59a077138be894c1284db9057e9c47ddf644cf703cd821b445445c1dd3e409f",
     "pepper_id": 122,
@@ -2117,29 +1965,6 @@
         "purpose": "opaque-server",
         "input_hex": "fec0a1720ceebc95a8c7e6e1a632471d351e4c138bb0c2cf72892ea174053ae3",
         "mac_hex": "499ad64798bb3ba6080838f82c9e3b523e1c4b2209d262a317e5f778c57fe4b9"
-      }
-    ],
-    "epochs": [
-      {
-        "hour": 493000,
-        "seed_hex": "264c5e724f9474290966b27f7a2fb4ffe460227c58058c74b67596004e5195f2",
-        "epoch_key_hex": "8e312668dcc97ed5e6d980fae821014fd11d349399a0920495c369cb46762675",
-        "locator_hex": "373e031e379a6d735621a5bc5920349a94d3bfe1b96828f47af11cffa0e95ceb",
-        "e_hex": "5509f251bc419927eba2d9be685df714a55a0674ff840d0376b77c76f3dbb3e0"
-      },
-      {
-        "hour": 493001,
-        "seed_hex": "acce1ecf20134ef1c659431cde1e20d4464f8953e685d65982b1f704928bb5b8",
-        "epoch_key_hex": "2951b417eab57f76b4dddf5a3ae4255f07476c80767312c0e440c8cdef11adc1",
-        "locator_hex": "373e031e379a6d735621a5bc5920349a94d3bfe1b96828f47af11cffa0e95ceb",
-        "e_hex": "85582d37f4099f720824106611fec81ca0d662dbc7f06d9c89c30004c3c3f50e"
-      },
-      {
-        "hour": 493002,
-        "seed_hex": "dda7e3d450552a1953d601ea6e773dacb8fbd6fe331f5a3fbb80800f1e2b52b1",
-        "epoch_key_hex": "0b991ed6a49896bb79e293a15a94ef7cc181d106e7619ea72390d7ea16b4049a",
-        "locator_hex": "373e031e379a6d735621a5bc5920349a94d3bfe1b96828f47af11cffa0e95ceb",
-        "e_hex": "76b399ea8c4f8f6be994b64be5655b50621aa435d45eedcbe5e23073c99cc10b"
       }
     ],
     "minute_epochs": [

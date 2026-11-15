@@ -25,22 +25,22 @@ func TestRequestSignatureBindsEveryField(t *testing.T) {
 		core.NewSecret(),
 		signing.PurposeRead,
 		"POST",
-		"/api/v1/abuse",
+		"/api/v1/example",
 		challenge,
 		body,
 		signing.Components{},
 	)
-	if !signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", body, signing.Components{}) {
+	if !signature.Verify(signing.PurposeRead, "POST", "/api/v1/example", body, signing.Components{}) {
 		t.Fatal("the signature does not verify")
 	}
 	otherChallenge := *signature
 	otherChallenge.Challenge[0] ^= 1
 	for field, verified := range map[string]bool{
-		"purpose":   signature.Verify(signing.PurposeManage, "POST", "/api/v1/abuse", body, signing.Components{}),
-		"method":    signature.Verify(signing.PurposeRead, "GET", "/api/v1/abuse", body, signing.Components{}),
-		"path":      signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuses", body, signing.Components{}),
-		"body":      signature.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", []byte(`{"id":"y"}`), signing.Components{}),
-		"challenge": otherChallenge.Verify(signing.PurposeRead, "POST", "/api/v1/abuse", body, signing.Components{}),
+		"purpose":   signature.Verify(signing.PurposeManage, "POST", "/api/v1/example", body, signing.Components{}),
+		"method":    signature.Verify(signing.PurposeRead, "GET", "/api/v1/example", body, signing.Components{}),
+		"path":      signature.Verify(signing.PurposeRead, "POST", "/api/v1/examples", body, signing.Components{}),
+		"body":      signature.Verify(signing.PurposeRead, "POST", "/api/v1/example", []byte(`{"id":"y"}`), signing.Components{}),
+		"challenge": otherChallenge.Verify(signing.PurposeRead, "POST", "/api/v1/example", body, signing.Components{}),
 	} {
 		if verified {
 			t.Fatalf("a signature verified with another %s", field)

@@ -31,7 +31,7 @@ test("deployment input cannot inject services, expose SSH globally, or select a 
     { domain: "example.org\nExecStart=/bin/false" }, { name: "../other" },
     { administratorNetworks: ["0.0.0.0/0"] }, { administratorNetworks: ["::/0"] },
     { administratorNetworks: ["192.0.2.1/32/anything"] }, { architecture: "arm64" },
-    { dailyCreates: 2000 }, { initialRelease: "v0.1.2;false" }, { reportPublicKey: "invalid" }, { publicAccess: "true" },
+    { dailyCreates: 2000 }, { initialRelease: "v0.1.2;false" }, { reportPublicKey: "invalid" }, { reportPublicKey: undefined }, { publicAccess: "true" },
     { operator: "name\nNYLZO_TRUSTED_PROXIES=0.0.0.0/0" }, { unexpectedRootCommand: "/bin/false" },
     { administratorPublicKey: "ssh-ed25519 " + Buffer.alloc(51).toString("base64") },
     { administratorPublicKey: securityKey("web:") }, { administratorPublicKey: securityKey("ssh:", Buffer.alloc(31, 2)) },
@@ -53,6 +53,13 @@ test("deployment input cannot inject services, expose SSH globally, or select a 
   assert.equal(administratorKeyIsHardware(ed25519), false);
   configuration({ ...site, administratorPublicKey: securityKey(), heartbeatUrl: "https://hc-ping.com/0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d", acmeAccountUri: "https://acme-v02.api.letsencrypt.org/acme/acct/3938438202", profile: "strict",
     tang: { threshold: 2, servers: [{ url: "http://tang.example.org", thumbprint: "A".repeat(43) }, { url: "https://tang.example.net:7500", thumbprint: "B".repeat(43) }] } });
+});
+
+test("a site that boots v0.14.0 or later needs no report key and renders none", async () => {
+  const { reportPublicKey: _, ...current } = { ...site, initialRelease: "v0.14.0" };
+  const { ignition } = await render(configuration(current), releaseBundle("v0.14.0", "c".repeat(64)));
+  assert.doesNotMatch(decode(ignition).get("/etc/nylzo/service.env")!, /NYLZO_REPORT_KEY/u);
+  assert.match(decode((await render(site, bundle)).ignition).get("/etc/nylzo/service.env")!, /^NYLZO_REPORT_KEY=/mu);
 });
 
 test("automatic patch selection refuses prereleases, downgrades, breaking upgrades and overflowing versions", () => {

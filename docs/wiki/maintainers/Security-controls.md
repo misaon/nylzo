@@ -38,7 +38,7 @@ Resolve a blocking weakness before merge and before release. A false-positive or
 
 ## Secrets and credentials
 
-Never commit plaintext credentials, real message capabilities, peppers, private reporting keys, or personal signing keys. Use synthetic test data. Local environment files, deployment secrets, private instructions, and build output are ignored; GitHub secret scanning and push protection provide an additional check. If a secret reaches Git, treat it as exposed and revoke or rotate it before considering history cleanup.
+Never commit plaintext credentials, real message capabilities, peppers, or personal signing keys. Use synthetic test data. Local environment files, deployment secrets, private instructions, and build output are ignored; GitHub secret scanning and push protection provide an additional check. If a secret reaches Git, treat it as exposed and revoke or rotate it before considering history cleanup.
 
 | Credential | Storage and access | Rotation or revocation |
 | --- | --- | --- |
@@ -47,7 +47,6 @@ Never commit plaintext credentials, real message capabilities, peppers, private 
 | Installation token and `GITHUB_TOKEN` | Job-scoped environment/action inputs, minimum permissions, no public logs or test artifacts | Installation token action revokes its token at job completion; revoke an App key/installation if issuance authority is exposed |
 | Release signing identity | Ephemeral GitHub OIDC certificate and keyless Sigstore signatures; exact workflow/ref/issuer claims | Disable the automation or remove its publishing authority after compromise; never weaken identity checks to accept an old job |
 | Server pepper | Operator-managed secret file/store, separate from message data, readable only by the service identity | Follow the [operations](../guides/Operations.md) rotation procedure; do not overwrite a live pepper during an ordinary upgrade |
-| Abuse-report private key | Operator's protected workstation, off the application server | Rotate after exposure and retain old keys only as needed to decrypt retained reports securely |
 
 Do not place App or production secrets in fork/PR test jobs, caches, coverage reports, or persistent self-hosted runners. Logs must not include token values, private keys, message links, or environment dumps. Preserve only the minimum required local backup of an automation key in an encrypted credential store; remove unnecessary plaintext download copies after secure storage.
 

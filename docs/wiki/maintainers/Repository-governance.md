@@ -83,7 +83,7 @@ These decisions apply to the inspected code, not to future uses of the same func
 
 ## Members, roles, and access review
 
-`misaon` (Ondřej Misák) is the sole human repository administrator and maintainer. Responsibilities include code review, release approval, security-report triage, Wiki publication, dependency decisions, and repository access/settings. Contributors can propose changes through forks and PRs; contribution history does not itself grant write access. Instance operators separately control their own hosts, TLS, data, peppers, and abuse-reporting keys.
+`misaon` (Ondřej Misák) is the sole human repository administrator and maintainer. Responsibilities include code review, release approval, security-report triage, Wiki publication, dependency decisions, and repository access/settings. Contributors can propose changes through forks and PRs; contribution history does not itself grant write access. Instance operators separately control their own hosts, TLS, data, and peppers.
 
 Nylzo Dependency Updates (App ID `5523339`) is installed on this repository only. It has Checks, Commit statuses, Contents, Issues, Pull requests and Workflows write, Actions, Administration and Dependabot alerts read, and mandatory Metadata read. Its review and tag-creation exceptions are separate from the integrity rules, which have no bypass. Automatic merging and tagging are controlled by `SECURITY_AUTOMATION_ENABLED`; see [credentials and recovery](Security-updates.md#recovery). Codecov and Scorecard publication use job-scoped OIDC; they receive no repository App key or personal signing key.
 

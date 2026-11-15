@@ -16,7 +16,7 @@ var (
 	skillFlag   = regexp.MustCompile(`^--([a-z][a-z-]*)`)
 	inlineCode  = regexp.MustCompile("`([^`]+)`")
 	usageFlag   = regexp.MustCompile(`(?m)^ +-([a-z][a-z-]*)`)
-	skillClient = []string{"create", "read", "status", "cancel", "burn", "report", "verify-client"}
+	skillClient = []string{"create", "read", "status", "cancel", "burn", "verify-client"}
 )
 
 func TestSkillFollowsTheAgentSkillsSpec(t *testing.T) {

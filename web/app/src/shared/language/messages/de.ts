@@ -351,9 +351,6 @@ export const messages: Catalog = {
   'transparency.stores.ended.title': 'Nach dem Ende einer Nachricht',
   'transparency.stores.ended':
     'Eine Nachricht endet mit dem letzten Aufruf, dem Löschen durch den Empfänger, dem Widerruf, dem Ablauf der Gültigkeit oder dem Entfernen durch den Betreiber. Der Server verwirft dann zuerst den Schlüssel der gespeicherten Nachricht, sodass sich auch ihre Reste auf dem Datenträger nicht mehr lesen lassen. Den versiegelten Datensatz einer beendeten Nachricht bewahrt er höchstens {days} auf: wie und wann sie endete und wann sie zuerst geöffnet wurde.',
-  'transparency.stores.reports.title': 'Missbrauchsmeldungen',
-  'transparency.stores.reports':
-    'Meldungen, versiegelt mit dem öffentlichen Schlüssel des Betreibers, sodass der Server selbst sie nicht lesen kann, höchstens {days}: Datum, Nachrichten-ID, Begründung ohne Schlüssel aus Links und ohne lange Codes, die Erklärung, in gutem Glauben zu handeln, und eine E-Mail-Adresse, falls die meldende Person eine angegeben hat. Die Zahl der Meldungen pro Nachricht steht in deren versiegeltem Datensatz.',
   'transparency.stores.counters.title': 'Zähler ohne Adressen',
   'transparency.stores.counters':
     'Die täglichen Zahlen erstellter Nachrichten bewahrt er noch {days} nach Ende des Tages auf, verbrauchte Einmal-Aufgaben nur wenige Minuten.',

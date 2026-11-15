@@ -297,12 +297,6 @@ func TestSealEnforcesTheLimits(t *testing.T) {
 			sample.payload,
 			envelope.ErrPolicy,
 		},
-		"a deadline without its flag": {
-			envelope.Header{Version: envelope.Version},
-			sample.policy,
-			sample.payload,
-			envelope.ErrPolicy,
-		},
 	} {
 		_, err := envelope.Seal(&sample.content, test.header, sample.id, test.policy, test.payload, false)
 		if !errors.Is(err, test.want) {

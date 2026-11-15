@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,60 +62,6 @@ func TestAShareGoneAtTheDeadlineExpiresTheMessage(t *testing.T) {
 		}
 		if _, metadata := harness.metadata(message); metadata["state"] != "expired" || harness.blobExists(message) {
 			t.Fatalf("the message must have expired at its deadline: %v", metadata)
-		}
-	})
-}
-
-// F13: a reader of a release before Nylzo 0.14.0 cannot open an envelope that seals its deadline, so the server refuses
-// its claim and download before anything changes; a message of an earlier release, which seals none, it still serves,
-// with a policy that names no deadline.
-func TestAnOldReaderSpendsNoOpenOnADeadlineMessage(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		message := harness.issueMessage(core.KDFNone, "", 1, 3600, "sealed deadline")
-		harness.mustCreate(message)
-		claim, _, _ := harness.claimRequestFor(message, message.passphrase, "")
-		claim.oldReader = true
-		if response, body := harness.do(claim); response.StatusCode != http.StatusBadRequest ||
-			decodeJSON(t, body)["error"] != api.ErrorClientOutdated {
-			t.Fatalf("an old reader's claim: %d %s", response.StatusCode, body)
-		}
-		for _, malformed := range []string{"", "02", "256", "two"} {
-			claim, _, _ = harness.claimRequestFor(message, message.passphrase, "")
-			claim.headers = map[string]string{api.FlagsHeaderName: malformed}
-			if response, body := harness.do(claim); response.StatusCode != http.StatusBadRequest ||
-				decodeJSON(t, body)["error"] != "bad_request" {
-				t.Fatalf("a claim with X-Nylzo-Flags %q: %d %s", malformed, response.StatusCode, body)
-			}
-		}
-		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
-			t.Fatalf("a refused claim spent an open: %v", metadata)
-		}
-		response, _ := harness.claim(message, message.passphrase, "")
-		if response.StatusCode != http.StatusOK {
-			t.Fatalf("a current reader's claim: %d", response.StatusCode)
-		}
-		download := &testRequest{
-			method:    http.MethodGet,
-			path:      "/api/v1/messages/" + message.id.String() + "/blob",
-			token:     message.readToken,
-			headers:   map[string]string{api.LeaseHeaderName: response.Header.Get(api.LeaseHeaderName)},
-			oldReader: true,
-		}
-		if got, body := harness.do(download); got.StatusCode != http.StatusBadRequest ||
-			decodeJSON(t, body)["error"] != api.ErrorClientOutdated {
-			t.Fatalf("an old reader's download: %d %s", got.StatusCode, body)
-		}
-		legacy := harness.issueMessage(core.KDFNone, "", 1, 3600, "an earlier release")
-		harness.mustCreate(legacy)
-		harness.rewrite(legacy, func(stored *store.Message) { stored.Flags = 0 })
-		claim, _, _ = harness.claimRequestFor(legacy, legacy.passphrase, "")
-		claim.oldReader = true
-		served, _ := harness.do(claim)
-		policy, err := base64.RawURLEncoding.DecodeString(served.Header.Get(api.PolicyHeaderName))
-		if served.StatusCode != http.StatusOK || err != nil || strings.Contains(string(policy), "deadline") {
-			t.Fatalf("a message of an earlier release: %d %s", served.StatusCode, policy)
 		}
 	})
 }
@@ -200,7 +145,7 @@ func TestALostShareThatWentWithItsDeadlineIsNotLost(t *testing.T) {
 }
 
 // A seed file damaged while the server runs ends nothing as lost: metadata and status cannot tell a lost generation
-// from an unreadable file, so they report the stored state; a cancel and a report, which need no share, go ahead as
+// from an unreadable file, so they report the stored state; a cancel, which needs no share, goes ahead as
 // before, and a burn, whose handshake needs the share, answers 500 and keeps the message.
 func TestAnUnreadableSeedEndsNoMessage(t *testing.T) {
 	t.Parallel()
@@ -212,8 +157,6 @@ func TestAnUnreadableSeedEndsNoMessage(t *testing.T) {
 		harness.mustCreate(cancelled)
 		burned := harness.issueMessage(core.KDFNone, "", 1, 3600, "deleted while damaged")
 		harness.mustCreate(burned)
-		reported := harness.issueMessage(core.KDFNone, "", 1, 3600, "reported while damaged")
-		harness.mustCreate(reported)
 		seedPath := filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)
 		if err := os.WriteFile(seedPath, []byte("damaged"), 0o600); err != nil {
 			t.Fatal(err)
@@ -234,10 +177,6 @@ func TestAnUnreadableSeedEndsNoMessage(t *testing.T) {
 		if response, _ := harness.post(burned, "burn", burned.readToken); response.StatusCode !=
 			http.StatusInternalServerError || !harness.blobExists(burned) {
 			t.Fatalf("a burn with an unreadable seed: %d", response.StatusCode)
-		}
-		abuseReport(t, harness, reported, "203.0.113.70")
-		if lines := abuseLines(t, harness, reported.id); lines != 1 {
-			t.Fatalf("a report with an unreadable seed was stored %d times", lines)
 		}
 	})
 }
@@ -279,8 +218,6 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		harness.mustCreate(burned)
 		claimed := harness.issueMessage(core.KDFNone, "", 1, 3600, "claimed first")
 		harness.mustCreate(claimed)
-		reported := harness.issueMessage(core.KDFNone, "", 1, 3600, "reported after the loss")
-		harness.mustCreate(reported)
 		seedPath := filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)
 		if err := os.Remove(seedPath); err != nil {
 			t.Fatal(err)
@@ -313,10 +250,6 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 		if response, body := harness.claim(claimed, claimed.passphrase, ""); response.StatusCode != http.StatusGone ||
 			decodeJSON(t, body)["state"] != "lost" || harness.blobExists(claimed) {
 			t.Fatalf("a first claim whose share is lost: %d %s", response.StatusCode, body)
-		}
-		abuseReport(t, harness, reported, "203.0.113.70")
-		if lines := abuseLines(t, harness, reported.id); lines != 0 || harness.blobExists(reported) {
-			t.Fatalf("a report about a message whose share is lost was stored %d times", lines)
 		}
 		synctest.Sleep(time.Until(epoch.Deadline(tracked.epoch)) + time.Minute)
 		if _, status := harness.status(tracked); status["state"] != "lost" {
@@ -1535,24 +1468,19 @@ func TestALockedOutClaimReadsNoBlob(t *testing.T) {
 	})
 }
 
-// F14: a blob wrap that a release before Nylzo 0.14.0 stored has no tag, and its message keeps opening until it ends.
-func TestABlobWithoutTagStillOpens(t *testing.T) {
+// F14: a blob wrap without its tags would skip the check, so the server serves nothing from it and spends no open.
+func TestABlobWrapWithoutTagsOpensNothing(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
-		message := newMessage(t, core.KDFNone, "", 1, 3600, "stored by 0.13")
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "a wrap that holds only the key")
 		harness.mustCreate(message)
-		if record := harness.mustRecord(message); len(record.Row.BlobWrap) != seal.BlobWrapLen {
-			t.Fatalf("a new blob wrap has %d bytes", len(record.Row.BlobWrap))
-		}
 		harness.dropBlobTag(message)
-		response, object := harness.claim(message, "", "")
-		if response.StatusCode != http.StatusOK || !bytes.Equal(object, message.object) {
-			t.Fatalf("a message of an earlier release must still open: %d", response.StatusCode)
+		if response, _ := harness.claim(message, "", ""); response.StatusCode != http.StatusInternalServerError {
+			t.Fatalf("a claim of a blob wrap without tags: %d", response.StatusCode)
 		}
-		if downloaded, again := harness.blob(message, response.Header.Get("X-Nylzo-Lease")); downloaded.StatusCode !=
-			http.StatusOK || !bytes.Equal(again, message.object) {
-			t.Fatalf("its lease must still download it: %d", downloaded.StatusCode)
+		if _, metadata := harness.metadata(message); metadata["opens_remaining"] != float64(1) {
+			t.Fatalf("the refused claim spent an open: %v", metadata)
 		}
 	})
 }
@@ -1806,7 +1734,6 @@ func TestClaimKeepsLeaseWhenTheStreamFails(t *testing.T) {
 		}
 		request.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
 		request.Header.Set(api.KE3HeaderName, login.ke3)
-		request.Header.Set(api.FlagsHeaderName, strconv.Itoa(envelope.FlagDeadline))
 		harness.sign(request, message.readToken, &login.challenge, nil)
 		request.Header.Set("X-Forwarded-For", message.address)
 		claimed, err := harness.client.Do(request)

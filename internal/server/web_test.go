@@ -523,7 +523,7 @@ func TestTransparencyReportsWhatTheServerUses(t *testing.T) {
 		`"create_per_hour":7`,
 		`"global_daily_creates":900`,
 		`"pow_difficulty":5`,
-		`"retention":{"tombstone_s":604800,"abuse_report_s":604800,"daily_counter_s":86400}`,
+		`"retention":{"tombstone_s":604800,"daily_counter_s":86400}`,
 	} {
 		if !strings.Contains(report.body, want) {
 			t.Fatalf("transparency is missing %s: %s", want, report.body)
