@@ -24,7 +24,6 @@
     "@typescript/native": "npm:typescript@7.0.2",
     "@vitest/coverage-istanbul": "5.1.0",
     "acorn": "8.19.0",
-    "browserslist": "4.29.5",
     "fake-indexeddb": "6.2.8",
     "happy-dom": "21.0.4",
     "lightningcss": "1.33.0",

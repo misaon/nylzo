@@ -98,12 +98,12 @@
       {/each}
     {/each}
   </svg>
-  {#each shape.chips as chip (chip.position)}
+  {#each shape.chips as position, index (position)}
     <span
       class={[
-        'absolute inline-flex h-5 -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-void-950 bg-[linear-gradient(oklch(0.56_0.19_258/0.14),oklch(0.56_0.19_258/0.14))] px-2 text-micro whitespace-nowrap text-aegis-200 ring-1 ring-aegis-400/35',
-        chip.animation,
-        chip.position,
+        'glow-chip absolute inline-flex h-5 -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full bg-void-950 bg-[linear-gradient(oklch(0.56_0.19_258/0.14),oklch(0.56_0.19_258/0.14))] px-2 text-micro whitespace-nowrap text-aegis-200 ring-1 ring-aegis-400/35 motion-safe:ring-aegis-400/40',
+        index === 0 ? 'motion-safe:after:animate-how-chip-a' : 'motion-safe:after:animate-how-chip-b',
+        position,
       ]}
     >
       <Icon name="lock" class={shape.chipIcon} stroke={shape.chipStroke} />

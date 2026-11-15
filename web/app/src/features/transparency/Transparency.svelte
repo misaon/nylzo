@@ -75,6 +75,7 @@
   const CHECKS = official
     ? (['changes', 'ai', 'watch', 'ratings', 'audit'] as const)
     : (['changes', 'ai', 'ratings', 'audit'] as const);
+  const OTHERS = official ? (['hosting', 'client', 'analytics'] as const) : (['hosting', 'client'] as const);
   const PERSONAL = official
     ? (['controller', 'basis', 'processor', 'browser'] as const)
     : (['controller', 'basis', 'browser'] as const);
@@ -152,9 +153,9 @@
       return;
     }
     await tick();
-    const section = decodeURIComponent(location.hash.slice(1));
+    const section = location.hash.slice(1);
     if (section !== '') {
-      document.querySelector(`#${CSS.escape(section)}`)?.scrollIntoView({ block: 'start' });
+      document.querySelector(`#${CSS.escape(section)}`)?.scrollIntoView();
     }
   }
 
@@ -181,16 +182,6 @@
       </li>
     {/each}
   </ul>
-{/snippet}
-
-{#snippet caution(title: string, text: string)}
-  <div class="mt-6 flex gap-3.5 rounded-pane bg-solar-300/[0.08] p-4 ring-1 ring-solar-300/30 sm:p-5">
-    <IconTile icon="caution" tone="warning" size="small" />
-    <div class="min-w-0">
-      <h3 class="text-title-sm text-ink">{title}</h3>
-      <p class="mt-1 text-body-sm text-pretty text-ink-soft">{text}</p>
-    </div>
-  </div>
 {/snippet}
 
 {#snippet chips(title: string, list: readonly MessageKey[], icon: IconName, tone: string)}
@@ -268,7 +259,9 @@
     <StateCard loading={translate('transparency.loading')} />
   {:else if view.view === 'failed'}
     <StateCard>
-      <IconTile icon="alert" tone="warning" class="size-14 rounded-full" iconClass="size-6" stroke={1.6} />
+      <span class="grid size-14 place-items-center rounded-full text-white tile-warning" aria-hidden="true">
+        <Icon name="alert" class="size-6" stroke={1.6} />
+      </span>
       <p role="alert" class="mt-5 text-title-sm text-ink">{translate('transparency.failed')}</p>
       <Button variant="primary" class="mt-6" onclick={() => void load()}>
         <Icon name="refresh" class="size-4 shrink-0" animated />
@@ -331,24 +324,12 @@
 
     <section aria-labelledby="transparency-others" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-others', 'eye', translate('transparency.others.title'))}
-      {@render entries([
-        {
-          title: translate('transparency.others.hosting.title'),
-          text: translate('transparency.others.hosting'),
-        },
-        {
-          title: translate('transparency.others.client.title'),
-          text: translate('transparency.others.client'),
-        },
-        ...(official
-          ? [
-              {
-                title: translate('transparency.others.analytics.title'),
-                text: translate('transparency.others.analytics'),
-              },
-            ]
-          : []),
-      ])}
+      {@render entries(
+        OTHERS.map((name) => ({
+          title: translate(`transparency.others.${name}.title`),
+          text: translate(`transparency.others.${name}`),
+        })),
+      )}
     </section>
 
     <section aria-labelledby="transparency-personal" class="animate-appear border-t border-white/8 pt-8">
@@ -431,7 +412,13 @@
           <CopyButton text={command} class="max-sm:w-11 max-sm:px-0" labelClass="max-sm:sr-only" />
         </div>
       </div>
-      {@render caution(translate('transparency.verify.limit.title'), translate('transparency.verify.limit'))}
+      <div class="mt-6 flex gap-3.5 rounded-pane bg-solar-300/[0.08] p-4 ring-1 ring-solar-300/30 sm:p-5">
+        <IconTile icon="caution" tone="warning" size="small" />
+        <div class="min-w-0">
+          <h3 class="text-title-sm text-ink">{translate('transparency.verify.limit.title')}</h3>
+          <p class="mt-1 text-body-sm text-pretty text-ink-soft">{translate('transparency.verify.limit')}</p>
+        </div>
+      </div>
       <div class="mt-6">
         <h3 class="text-title-sm text-ink">{translate('transparency.verify.apps.title')}</h3>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{translate('transparency.verify.apps')}</p>

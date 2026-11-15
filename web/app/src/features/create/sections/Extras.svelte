@@ -39,11 +39,7 @@
           {@attach reveal}
         >
           <div class="flex items-center gap-4">
-            <IconTile
-              icon={extra.icon}
-              tone="current"
-              class={['reveal-pop [--reveal-delay:300ms] [--reveal-step:120ms]', extra.revealIndex]}
-            />
+            <IconTile icon={extra.icon} tone="current" class="reveal-pop [--reveal-delay:300ms]" />
             <h3 class="text-title text-balance">{translate(`${extra.key}.title`)}</h3>
           </div>
           <p class="mt-4 text-body text-pretty text-ink-soft">{translate(`${extra.key}.text`)}</p>
@@ -51,14 +47,7 @@
             <span
               class="inline-flex items-center gap-2 rounded-full bg-aegis-500/12 px-3 py-1.5 text-caption text-aegis-200 tabular-nums ring-1 ring-aegis-400/35"
             >
-              <Icon
-                name="check"
-                class={[
-                  'size-3.5 shrink-0 reveal-check [--reveal-delay:700ms] [--reveal-step:120ms]',
-                  extra.revealIndex,
-                ]}
-                stroke={2}
-              />
+              <Icon name="check" class="size-3.5 shrink-0 reveal-check [--reveal-delay:700ms]" stroke={2} />
               {translate(`${extra.key}.proof`)}
             </span>
           </p>

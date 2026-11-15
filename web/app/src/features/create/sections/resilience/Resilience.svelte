@@ -49,7 +49,7 @@
     let timer: ReturnType<typeof setInterval> | undefined;
     const observer = new IntersectionObserver(
       (entries) => {
-        const next = entries.some((entry) => entry.isIntersecting);
+        const next = entries.at(-1)?.isIntersecting ?? false;
         if (next === visible) {
           return;
         }
@@ -219,12 +219,7 @@
                 REVEAL_INDEXES[index],
               ]}
             >
-              <IconTile
-                icon={fact.icon}
-                tone={fact.tone}
-                size="medium"
-                class={['reveal-pop [--reveal-delay:160ms] [--reveal-step:110ms]', REVEAL_INDEXES[index]]}
-              />
+              <IconTile icon={fact.icon} tone={fact.tone} size="medium" class="reveal-pop [--reveal-delay:160ms]" />
               <span class="min-w-0">
                 <span class="block text-body text-ink">{translate(fact.key)}</span>
                 <span class="mt-1 block text-ui text-ink-mute">{translate(`${fact.key}.note`)}</span>

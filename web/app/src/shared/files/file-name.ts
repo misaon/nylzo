@@ -12,17 +12,7 @@ function byteLength(text: string): number {
 }
 
 function truncateBytes(text: string, maxBytes: number): string {
-  let truncated = '';
-  let usedBytes = 0;
-  for (const character of text) {
-    const size = byteLength(character);
-    if (usedBytes + size > maxBytes) {
-      break;
-    }
-    truncated += character;
-    usedBytes += size;
-  }
-  return truncated;
+  return text.slice(0, encoder.encodeInto(text, new Uint8Array(maxBytes)).read);
 }
 
 export function splitFileName(name: string): { readonly stem: string; readonly extension: string } {

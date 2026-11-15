@@ -2,10 +2,8 @@ import {
   assertProfile,
   deriveContent,
   deriveLink,
-  idToString,
   IntegrityError,
   isReadPath,
-  KdfMismatchError,
   LinkReleasedError,
   LinkRetiredKdfError,
   LinkVersionError,
@@ -22,9 +20,8 @@ import {
 import type { ContentKeys, KdfId, Link, LinkKeys, RequestKey } from '@nylzo/core';
 
 import { endedStateOf, isApiError, shouldRetryLater, StoppedError } from '../../shared/api/api-errors.ts';
-import type { EndedState, MessageState } from '../../shared/api/api-errors.ts';
+import type { EndedState } from '../../shared/api/api-errors.ts';
 import type { Api, Envelope, Metadata } from '../../shared/api/api.ts';
-import type { DownloadProgress } from '../../shared/api/object-body.ts';
 import { flagsAndDeadlineMatch } from '../../shared/api/responses.ts';
 import { attempt } from '../../shared/attempt.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
@@ -36,7 +33,6 @@ import {
   attemptsOf,
   discardExportKey,
   KDF_MARK,
-  kdfMark,
   passphraseRejection,
   rememberStretch,
   stretchFor,
@@ -100,6 +96,7 @@ export type BurnOutcome =
   | { readonly outcome: 'unknown' }
   | { readonly outcome: 'waiting'; readonly retryAfter: number; readonly locked: boolean };
 
+// Blocked storage reads as empty and drops writes; no method throws.
 export interface SessionStore {
   getItem: (key: string) => string | null;
   setItem: (key: string, value: string) => void;
@@ -151,30 +148,6 @@ const LINK_PAGE_PATH = '/r';
 const LINK_PAGE_KEY = 'r';
 const RELEASED_PAGE_PREFIX = '/m/';
 const LEASE_KEY = `nylzo:lease:${LINK_PAGE_KEY}`;
-
-function isTerminal(state: MessageState): state is Exclude<EndedState, 'opened'> {
-  return state === 'expired' || state === 'cancelled' || state === 'deleted' || state === 'lost';
-}
-
-function safely<Value>(action: () => Value, fallback: NoInfer<Value>): Value {
-  try {
-    return action();
-  } catch {
-    return fallback;
-  }
-}
-
-function profileMatches(metadata: Metadata, kdfId: KdfId): boolean {
-  try {
-    assertProfile(kdfId, metadata.kdfId);
-  } catch (error) {
-    if (error instanceof KdfMismatchError) {
-      return false;
-    }
-    throw error;
-  }
-  return true;
-}
 
 function pageKeyOf(path: string): string | undefined {
   if (!isReadPath(path)) {
@@ -248,13 +221,13 @@ function takeFragment({ location, session, ...link }: ReaderDependencies): strin
   }
   const droppedKey = `nylzo:dropped:${pageKey}`;
   if (fragment !== '') {
-    safely(() => session.setItem(droppedKey, '1'), undefined);
+    session.setItem(droppedKey, '1');
     return fragment;
   }
-  if (safely(() => session.getItem(`nylzo:lease:${pageKey}`), null) !== null) {
+  if (session.getItem(`nylzo:lease:${pageKey}`) !== null) {
     return { view: 'reopen' };
   }
-  return safely(() => session.getItem(droppedKey), null) === null ? fragment : { view: 'removed' };
+  return session.getItem(droppedKey) === null ? fragment : { view: 'removed' };
 }
 
 function linkProblemView(error: unknown, pathname: string): ReadView {
@@ -282,7 +255,6 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let heldKey: HeldKey | undefined;
   let revealedView: RevealedView | undefined;
   let leaseOwner = '';
-  let previousOwner = '';
   let metadata: Metadata | undefined;
   let deviceFailed = false;
   let busy = false;
@@ -295,29 +267,25 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let revealable = false;
   let closedAs: ClosedView | undefined;
 
-  const storedLease = () => lease ?? leaseOf(safely(() => session.getItem(LEASE_KEY), null));
+  const storedLease = () => lease ?? leaseOf(session.getItem(LEASE_KEY));
   const allowed = () => page.visible() && !page.prerendering();
   const pageLeft = (): boolean => closedAs !== undefined;
 
   // Session storage holds only the lease, which authorizes nothing without the key from the link.
   function keepLease(value: string): void {
     lease = value;
-    safely(() => session.setItem(LEASE_KEY, `${leaseOwner} ${value}`), undefined);
+    session.setItem(LEASE_KEY, `${leaseOwner} ${value}`);
   }
 
   // Every link shares one page, so a stored lease names its message and serves no other.
   function leaseOf(stored: string | null): string | null {
     const [owner, value] = stored?.split(' ') ?? [];
-    return (owner === leaseOwner || owner === previousOwner) && value ? value : null;
-  }
-
-  function forgetStoredLease(): void {
-    safely(() => session.removeItem(LEASE_KEY), undefined);
+    return owner === leaseOwner && value ? value : null;
   }
 
   function forgetLease(): void {
     lease = undefined;
-    forgetStoredLease();
+    session.removeItem(LEASE_KEY);
   }
 
   function forgetSecrets(): void {
@@ -385,10 +353,12 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     if (current.endedAt !== undefined) {
       return current.state === 'available' ? { view: 'failed' } : endedView(current.state, current);
     }
-    if (isTerminal(current.state)) {
+    if (current.state !== 'available' && current.state !== 'opened') {
       return endedView(current.state, current);
     }
-    if (!profileMatches(current, kdfId)) {
+    try {
+      assertProfile(kdfId, current.kdfId);
+    } catch {
       return { view: 'tampered' };
     }
     if (current.state === 'opened' && storedLease() === null) {
@@ -413,11 +383,9 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     }
     show({ view: 'loading', kdfId: link.kdfId });
     leaseOwner = (await attempt(leaseTag(link.secret))) ?? '';
-    // The client before the lease tag stored the message id; an open it began must still finish after an upgrade.
-    previousOwner = idToString(link.id);
-    if (safely(() => session.getItem(KDF_MARK), null) === leaseOwner) {
+    if (session.getItem(KDF_MARK) === leaseOwner) {
       deviceFailed = true;
-      safely(() => session.removeItem(KDF_MARK), undefined);
+      session.removeItem(KDF_MARK);
     }
     const linked = await attempt(linkSecrets(link));
     if (!linked) {
@@ -442,7 +410,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
 
   // The mark explains a tab that crashed during the stretching.
   function loginTarget(held: HeldKey, onProgress?: Progress): LoginTarget {
-    const mark = kdfMark(session, () => leaseOwner);
+    const mark = { session, owner: leaseOwner };
     const stretch = remembered.around(stretchFor(held.kdfId, mark, dependencies.stretch, onProgress));
     return { api, id: held.id, kdfId: held.kdfId, readKey: held.readKey, stretch };
   }
@@ -471,13 +439,14 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     current: Secrets,
     access: ContentAccess,
     previous: string,
-    onProgress: DownloadProgress,
-    onDerive: Progress,
   ): Promise<Fetched | ReadView> {
-    const target = { ...loginTarget(current, onDerive), lease: previous };
+    const target = { ...loginTarget(current, showDeriving), lease: previous };
     const unlock = unlockWith(target, access.password, access.keepExportKey);
     try {
-      const envelope = await api.blob(current.id, current.readKey, previous, newShareKey, { onProgress, unlock });
+      const envelope = await api.blob(current.id, current.readKey, previous, newShareKey, {
+        onProgress: showDownload,
+        unlock,
+      });
       lease = previous;
       return { envelope, lease: previous, fromLease: true };
     } catch (error) {
@@ -493,14 +462,9 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     }
   }
 
-  async function claim(
-    current: Secrets,
-    access: ContentAccess,
-    onProgress: DownloadProgress,
-    onDerive: Progress,
-  ): Promise<Fetched | ReadView> {
+  async function claim(current: Secrets, access: ContentAccess): Promise<Fetched | ReadView> {
     show({ view: 'busy', step: 'claiming' });
-    const unlock = unlockWith(loginTarget(current, onDerive), access.password, access.keepExportKey);
+    const unlock = unlockWith(loginTarget(current, showDeriving), access.password, access.keepExportKey);
     try {
       const claimed = await api.claim(current.id, current.readKey, {
         unlock: async () => {
@@ -510,7 +474,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
         },
         shareKeys: newShareKey,
         onLease: keepLease,
-        onProgress,
+        onProgress: showDownload,
         proceed: () => !pageLeft(),
       });
       return { envelope: claimed, lease: claimed.lease, fromLease: false };
@@ -522,20 +486,17 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     }
   }
 
+  function showDeriving(fraction: number): void {
+    show({ view: 'busy', step: 'deriving', fraction });
+  }
+
   function showDownload(received: number, total: number | undefined): void {
     show({ view: 'busy', step: 'downloading', fraction: total ? received / total : undefined });
   }
 
-  async function fetchEnvelope(
-    current: Secrets,
-    access: ContentAccess,
-    onDerive: Progress,
-  ): Promise<Fetched | ReadView> {
-    const onProgress = showDownload;
+  async function fetchEnvelope(current: Secrets, access: ContentAccess): Promise<Fetched | ReadView> {
     const previous = storedLease();
-    return previous === null
-      ? claim(current, access, onProgress, onDerive)
-      : fetchFromLease(current, access, previous, onProgress, onDerive);
+    return previous === null ? claim(current, access) : fetchFromLease(current, access, previous);
   }
 
   // Every claim follows a handshake, also without a passphrase, so its requests do not tell (spec 2).
@@ -592,9 +553,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     if (pageLeft()) {
       return { view: 'cleared' };
     }
-    const fetched = await fetchEnvelope(current, access, (fraction) => {
-      show({ view: 'busy', step: 'deriving', fraction });
-    });
+    const fetched = await fetchEnvelope(current, access);
     if ('view' in fetched) {
       return fetched;
     }
@@ -646,7 +605,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       return undefined;
     }
     // Once the message is on the screen, no reload may bring it back from the lease, even if the ack never arrives.
-    forgetStoredLease();
+    session.removeItem(LEASE_KEY);
     acknowledging = true;
     acknowledged = acknowledge(current, fetched, ackChallenge);
     return undefined;
@@ -672,32 +631,15 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   }
 
   function showBurnOutcome(outcome: BurnOutcome, shown: RevealedView | undefined): void {
+    const ended = outcome.outcome === 'deleted' || outcome.outcome === 'ended';
     if (shown) {
-      if (revealedView === shown && (outcome.outcome === 'deleted' || outcome.outcome === 'ended')) {
+      if (revealedView === shown && ended) {
         show({ ...shown, burnable: false, opensRemaining: 0 });
       }
-      return;
-    }
-    switch (outcome.outcome) {
-      case 'deleted': {
-        show(endedView('deleted'));
-        break;
-      }
-      case 'ended': {
-        show(endedView(outcome.state));
-        break;
-      }
-      case 'unknown': {
-        show({ view: 'unknown' });
-        break;
-      }
-      case 'failed':
-      case 'ignored':
-      case 'rejected':
-      case 'retry_later':
-      case 'waiting': {
-        break;
-      }
+    } else if (ended) {
+      show(endedView(outcome.outcome === 'ended' ? outcome.state : 'deleted'));
+    } else if (outcome.outcome === 'unknown') {
+      show({ view: 'unknown' });
     }
   }
 

@@ -22,10 +22,6 @@
     ['#3E586E', '#324569', '#494269'],
   ] as const;
   const STOP_OFFSETS = [0, 0.52, 1] as const;
-  const license: { readonly icon: IconName; readonly name: string } = $derived({
-    icon: 'document',
-    name: translate('trust.license'),
-  });
 </script>
 
 {#snippet glyph(item: { readonly icon: IconName; readonly name: string })}
@@ -100,7 +96,7 @@
               {#if !logo.labelOnly}{logo.name}{/if}
             </li>
           {/each}
-          {@render glyph(license)}
+          {@render glyph({ icon: 'document', name: translate('trust.license') })}
         </ul>
       {/each}
     </div>

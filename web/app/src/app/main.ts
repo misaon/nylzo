@@ -25,16 +25,9 @@ async function loadFonts(sample: string): Promise<void> {
   } catch {}
 }
 
-async function fontsLoaded(sample: string): Promise<void> {
-  const timeout = new Promise<void>((resolve) => {
-    setTimeout(resolve, FONT_WAIT_MS);
-  });
-  await Promise.race([loadFonts(sample), timeout]);
-}
-
-async function nextTask(): Promise<void> {
+async function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, 0);
+    setTimeout(resolve, milliseconds);
   });
 }
 
@@ -52,8 +45,8 @@ async function contentPainted(): Promise<void> {
 }
 
 async function loadApp(language: Language) {
-  const [{ App, prepare, tidy }] = await Promise.all([import('./start.ts'), loadCatalog(language)]);
-  return { App, prepare, tidy };
+  const [start] = await Promise.all([import('./start.ts'), loadCatalog(language)]);
+  return start;
 }
 
 async function boot(): Promise<void> {
@@ -74,13 +67,16 @@ async function boot(): Promise<void> {
   document.documentElement.lang = language;
   // A prerendered home page shows its content first, so its code waits for that paint; other pages load it with the fonts.
   const appModules = homePage ? undefined : loadApp(language);
-  await fontsLoaded(homePage ? LANGUAGE_DETAILS[homePage].fontSample : ANY_TEXT_SAMPLE);
+  await Promise.race([
+    loadFonts(homePage ? LANGUAGE_DETAILS[homePage].fontSample : ANY_TEXT_SAMPLE),
+    delay(FONT_WAIT_MS),
+  ]);
   document.documentElement.dataset['fonts'] = '';
   if (document.body.firstElementChild) {
     await contentPainted();
   }
   const { App, prepare, tidy } = await (appModules ?? loadApp(language));
-  await nextTask();
+  await delay(0);
   prepare();
   const options = { target: document.body, props: { start: { path, language } } };
   if (document.body.firstElementChild) {
