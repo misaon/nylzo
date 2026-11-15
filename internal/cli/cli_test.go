@@ -81,7 +81,6 @@ func newTestServer(t *testing.T, change func(*config.Server)) *testServer {
 	settings := config.Defaults()
 	settings.DataDirectory = directory
 	settings.Pepper = bytes.Clone(testPepper)
-	settings.ReportKey = testReportKey.PublicKey()
 	settings.Development.AllowUnerasableStorage = runtime.GOOS != "linux"
 	settings.Development.AllowSwap = true
 	settings.Rates.BucketPerSecond, settings.Rates.BucketBurst = 1<<20, 1<<20
@@ -381,7 +380,7 @@ func TestALinkFromANewerVersionAsksForANewerNylzo(t *testing.T) {
 	secret := core.Encode(make([]byte, core.SecretLen))
 	newer := "https://nylzo.example/r#4.3." + core.NewID().String() + "." + secret + "." + secret
 	damaged := "https://nylzo.example/r#3.9." + core.NewID().String() + "." + secret + "." + secret
-	for _, name := range []string{"read", "burn", "report"} {
+	for _, name := range []string{"read", "burn"} {
 		result := runWith(t, newer, nil, nil, withDestination(name)...)
 		if result.code != command.ExitError ||
 			!strings.Contains(
@@ -410,7 +409,7 @@ func TestRetiredAndReleasedLinksAskForANewLink(t *testing.T) {
 		"https://nylzo.example/m/" + id + "#1.0." + secret: "the link is from before this instance's security " +
 			"upgrade, which deleted every message it held; ask the sender for a new link",
 	} {
-		for _, name := range []string{"read", "burn", "report"} {
+		for _, name := range []string{"read", "burn"} {
 			result := runWith(t, link, nil, nil, withDestination(name)...)
 			if result.code != command.ExitError || !strings.Contains(result.stderr, want) {
 				t.Errorf("%s with %s: %d %q", name, link, result.code, result.stderr)
@@ -670,10 +669,6 @@ func TestNoFlagTakesASecret(t *testing.T) {
 		"stdout":                   true,
 		"json":                     true,
 		"allow-header":             true,
-		"reason-file":              true,
-		"contact":                  true,
-		"good-faith":               true,
-		"key-file":                 true,
 		"no-browser":               true,
 	}
 	for _, subcommand := range commands() {
@@ -939,8 +934,7 @@ func TestLiedPolicyHeaderIsRefused(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)
 	for name, lie := range map[string]func(string) string{
-		"kdf":   func(policy string) string { return strings.Replace(policy, `"kdf_id":0`, `"kdf_id":3`, 1) },
-		"flags": func(policy string) string { return strings.Replace(policy, `"flags":2`, `"flags":3`, 1) },
+		"kdf": func(policy string) string { return strings.Replace(policy, `"kdf_id":0`, `"kdf_id":3`, 1) },
 		"deadline": func(policy string) string {
 			return regexp.MustCompile(`"deadline":(\d+)`).ReplaceAllStringFunc(policy, func(field string) string {
 				deadline, _ := strconv.ParseInt(strings.TrimPrefix(field, `"deadline":`), 10, 64)

@@ -7,7 +7,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/hkdf"
-	"crypto/hpke"
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/base64"
@@ -21,7 +20,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
-	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -42,7 +40,6 @@ import (
 	"github.com/misaon/nylzo/internal/epoch"
 	pepperkeys "github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
 	"github.com/misaon/nylzo/internal/server/transport"
@@ -57,14 +54,6 @@ var (
 	pepperB     = bytes.Repeat([]byte{0x22}, 32)
 	errInjected = errors.New("test: injected storage failure")
 )
-
-var testReportKey = func() hpke.PrivateKey {
-	key, err := abuse.NewKeyPair()
-	if err != nil {
-		panic(err)
-	}
-	return key
-}()
 
 type syncBuffer struct {
 	mutex  sync.Mutex
@@ -122,13 +111,12 @@ type testRequest struct {
 	// challenge is the challenge of a handshake, which a claim or burn signs; without it the request takes a new one.
 	challenge *[signing.ChallengeLen]byte
 	rawCreate bool
-	// oldReader leaves out X-Nylzo-Flags, as a reader of a release before Nylzo 0.14.0 does.
+	// oldReader sends the X25519 share key of a release before Nylzo 0.14.0, which names no suite.
 	oldReader bool
 }
 
 func baseSettings(pepper, previous []byte) *config.Server {
 	settings := config.Defaults()
-	settings.ReportKey = testReportKey.PublicKey()
 	settings.Pepper = pepper
 	settings.PepperPrevious = previous
 	settings.TrustedProxies = []netip.Prefix{
@@ -294,8 +282,8 @@ func (h *testHarness) tryDo(request *testRequest) (testResponse, responseBody, e
 	if _, set := request.headers[api.ShareKeyHeaderName]; streams && !set {
 		r.Header.Set(api.ShareKeyHeaderName, testShareKeyHeader)
 	}
-	if _, set := request.headers[api.FlagsHeaderName]; streams && !set && !request.oldReader {
-		r.Header.Set(api.FlagsHeaderName, strconv.Itoa(envelope.FlagDeadline))
+	if request.oldReader {
+		r.Header.Set(api.ShareKeyHeaderName, core.Encode(make([]byte, releasedShareKeyLen)))
 	}
 	if request.address != "" {
 		r.Header.Set("X-Forwarded-For", request.address)
@@ -661,7 +649,7 @@ func (h *testHarness) blobFile(message *testMessage) string {
 	return filepath.Join(h.directory, disk.Directory, hex.EncodeToString([]byte(h.blobReference(message))))
 }
 
-// dropBlobTag stores the blob wrap as Nylzo 0.13 did, with the key alone, built from spec section 5.2 of that release.
+// dropBlobTag stores a blob wrap that holds the key alone, which no release since Nylzo 0.14.0 writes.
 func (h *testHarness) dropBlobTag(message *testMessage) {
 	h.t.Helper()
 	record := h.mustRecord(message)
@@ -740,35 +728,6 @@ func (h *testHarness) mustRecord(message *testMessage) store.Record {
 		h.t.Fatal(err)
 	}
 	return record
-}
-
-// rewrite seals the row again after change, keeping its blob, the way a row stored by an older build would look.
-func (h *testHarness) rewrite(message *testMessage, change func(*store.Message)) {
-	h.t.Helper()
-	record := h.mustRecord(message)
-	blobKey, err := record.BlobKey()
-	if err != nil {
-		h.t.Fatal(err)
-	}
-	change(record.Message)
-	readKey, manageKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.manage)
-	rebuilt := store.NewRecord(
-		h.server.recordsKey,
-		record.Row.Locator,
-		record.Message,
-		readKey[:],
-		manageKey[:],
-		record.Row.BlobReference,
-		&blobKey,
-	)
-	rebuilt.Row.BlobPurgeAt, rebuilt.Row.PurgeAt = record.Row.BlobPurgeAt, record.Row.PurgeAt
-	err = h.store.Update(h.t.Context(), record.Row.Locator, func(row *store.Row) error {
-		*row = rebuilt.Row
-		return nil
-	})
-	if err != nil {
-		h.t.Fatal(err)
-	}
 }
 
 // endedState reports the state of a message whose blob is gone, the shape a tombstone had.
@@ -862,38 +821,6 @@ func (h *testHarness) withIDToken(header string) string {
 		return header
 	}
 	return core.Encode(encoded)
-}
-
-func (h *testHarness) abuseFile(day time.Time) string {
-	return filepath.Join(h.directory, "abuse", day.UTC().Format(time.DateOnly)+abuse.FileExtension)
-}
-
-// abuseReports opens the sealed reports with the operator's key and returns them as JSON lines.
-func (h *testHarness) abuseReports() ([]byte, error) {
-	files, err := filepath.Glob(filepath.Join(h.directory, "abuse", "*"+abuse.FileExtension))
-	if err != nil || len(files) == 0 {
-		return nil, cmp.Or(err, os.ErrNotExist)
-	}
-	slices.Sort(files)
-	var all []byte
-	for _, file := range files {
-		data, readErr := os.ReadFile(file)
-		if readErr != nil {
-			return nil, readErr
-		}
-		reports, openErr := abuse.Open(testReportKey, data)
-		if openErr != nil {
-			return nil, openErr
-		}
-		for i := range reports {
-			encoded, encodeErr := json.Marshal(&reports[i])
-			if encodeErr != nil {
-				return nil, encodeErr
-			}
-			all = append(append(all, encoded...), '\n')
-		}
-	}
-	return all, nil
 }
 
 func (h *testHarness) endOnFirstLoad(message *testMessage, state store.State, finished bool) {
@@ -1190,6 +1117,9 @@ var (
 	testShareKey       = share.NewKey()
 	testShareKeyHeader = share.FormatKey(testShareKey.PublicKey())
 )
+
+// releasedShareKeyLen is the length of the X25519 share key that releases before Nylzo 0.14.0 sent.
+const releasedShareKeyLen = 32
 
 // unwrapShare reads the share a claim or download carried, as a client does.
 func unwrapShare(t *testing.T, response testResponse) [core.ShareLen]byte {

@@ -57,14 +57,6 @@ func (f *File) request() error {
 		},
 		{"status manage", signing.PurposeManage, http.MethodGet, messagePath + "/status", nil, signing.Components{}},
 		{
-			"abuse report with a body",
-			signing.PurposeRead,
-			http.MethodPost,
-			"/api/v1/abuse",
-			[]byte(`{"id":"` + id + `","reason":"spam"}`),
-			signing.Components{},
-		},
-		{
 			"claim read",
 			signing.PurposeRead,
 			http.MethodPost,

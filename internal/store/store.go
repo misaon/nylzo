@@ -37,7 +37,6 @@ const (
 	MinTransferRate   = 16000
 	BlobPurgeStep     = 15 * time.Minute
 	RowPurgeStep      = time.Hour
-	ReportsPerMessage = 3
 	MaxActiveLeases   = 8
 )
 
@@ -112,7 +111,6 @@ func (e *PassphraseError) Error() string {
 type Message struct {
 	Version        uint8
 	KDF            uint8
-	Flags          uint8
 	CreatedAt      time.Time
 	ExpiresAt      time.Time
 	TTLSeconds     uint32
@@ -128,8 +126,6 @@ type Message struct {
 	Ending               State
 	EndedAt              time.Time
 	Leases               []Lease
-	ReportDay            int64
-	Reports              int
 	// Epoch and Generation name the expiry share of the message (spec section 5.6).
 	Epoch      uint32
 	Generation epoch.GenerationID

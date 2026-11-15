@@ -29,5 +29,4 @@ Where the Hetzner deployment goes next, so that no change ever needs SSH and the
 ## Stays manual
 
 - Account two-factor authentication, Hetzner token rotation (the API has no token endpoints), registrar locks.
-- Offline custody of the reporting key.
 - Approving the protected `infrastructure` environment, if the owner keeps a required reviewer.

@@ -83,7 +83,7 @@ func (f fixture) createExpiring(t *testing.T, now time.Time) string {
 
 func (f fixture) run(t *testing.T, now time.Time) (store.SweepReport, error) {
 	t.Helper()
-	return sweep.Run(t.Context(), f.store, f.blobs, f.dataDirectory, now)
+	return sweep.Run(t.Context(), f.store, f.blobs, now)
 }
 
 func nextDay() time.Time {

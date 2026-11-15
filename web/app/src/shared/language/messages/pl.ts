@@ -370,9 +370,6 @@ export const messages: Catalog = {
   'transparency.stores.ended.title': 'Po zakończeniu wiadomości',
   'transparency.stores.ended':
     'Wiadomość kończy się ostatnim otwarciem, usunięciem przez odbiorcę, anulowaniem, wygaśnięciem ważności lub zdjęciem przez operatora. Serwer najpierw niszczy wtedy klucz przechowywanej wiadomości, więc nie da się odczytać nawet jej pozostałości na dysku. Zapieczętowany rekord zakończonej wiadomości przechowuje najdłużej przez {days}: jak i\u{A0}kiedy się zakończyła oraz kiedy została po raz pierwszy otwarta.',
-  'transparency.stores.reports.title': 'Zgłoszenia nadużyć',
-  'transparency.stores.reports':
-    'Zgłoszenia zapieczętowane kluczem publicznym operatora, więc sam serwer ich nie odczyta: datę, ID wiadomości, powód bez kluczy z\u{A0}linków i\u{A0}długich kodów, oświadczenie o\u{A0}działaniu w\u{A0}dobrej wierze oraz e-mail, jeśli zgłaszający go podał, najdłużej przez {days}. Liczbę zgłoszeń dla wiadomości przechowuje w\u{A0}jej zapieczętowanym rekordzie.',
   'transparency.stores.counters.title': 'Liczniki bez adresów',
   'transparency.stores.counters':
     'Dzienne liczniki utworzonych wiadomości przechowuje jeszcze przez {days} po zakończeniu dnia, a\u{A0}wykorzystane jednorazowe wyzwania tylko przez kilka minut.',

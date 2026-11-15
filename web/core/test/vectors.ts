@@ -110,12 +110,6 @@ interface RejectedVector {
   readonly error: 'flags' | 'header' | 'integrity' | 'kdf' | 'kdf_mismatch' | 'plaintext' | 'version';
 }
 
-interface CompressedLengthVector {
-  readonly original_len: number;
-  readonly needed_len: number;
-  readonly object_len: number;
-}
-
 interface ShareVector {
   readonly name: string;
   readonly client_seed_hex: string;
@@ -195,7 +189,6 @@ interface VectorFile {
   readonly opaque: readonly OpaqueVector[];
   readonly envelope: readonly EnvelopeVector[];
   readonly envelope_rejected: readonly RejectedVector[];
-  readonly compressed_length: readonly CompressedLengthVector[];
   readonly share: readonly ShareVector[];
   readonly link: readonly LinkVector[];
   readonly meta: readonly MetaVector[];
@@ -217,7 +210,6 @@ function loadVectors(): VectorFile {
     file.opaque,
     file.envelope,
     file.envelope_rejected,
-    file.compressed_length,
     file.share,
     file.link,
     file.meta,

@@ -17,7 +17,6 @@ import (
 	"github.com/misaon/nylzo/internal/core/keys"
 	"github.com/misaon/nylzo/internal/core/opaque"
 	"github.com/misaon/nylzo/internal/core/proofofwork"
-	"github.com/misaon/nylzo/internal/core/report"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/pepper"
@@ -567,31 +566,6 @@ func TestPoWVectors(t *testing.T) {
 	_, err := proofofwork.Solve(cancelled, challenge, core.NewID(), proofofwork.MaxDifficulty)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("a cancelled solve went on: %v", err)
-	}
-}
-
-func TestRedactionVectors(t *testing.T) {
-	t.Parallel()
-	file := loadVectors(t)
-	if len(file.Redact) == 0 {
-		t.Fatal("no redaction vectors")
-	}
-	for _, vector := range file.Redact {
-		if redacted := report.RedactReason(vector.Reason); redacted != vector.Redacted {
-			t.Errorf("%s: %q, want %q", vector.Name, redacted, vector.Redacted)
-		}
-	}
-	for reason, long := range map[string]bool{
-		"":                                false,
-		strings.Repeat("ab ", 400):        true,
-		strings.Repeat("a", 3000):         false,
-		strings.Repeat("# ", 150):         true,
-		strings.Repeat("<", 1000):         false,
-		strings.Repeat("ab ", 333) + "ab": true,
-	} {
-		if report.ReasonTooLong(reason) != long {
-			t.Errorf("ReasonTooLong(%.20q) must be %v after redaction, like the web client", reason, long)
-		}
 	}
 }
 

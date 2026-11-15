@@ -39,7 +39,7 @@ func TestErrorTextDropsPathsAndIDs(t *testing.T) {
 		"joined": {
 			fmt.Errorf("sweep: %w", errors.Join(
 				errors.New("sqlite: busy"),
-				&fs.PathError{Op: "unlink", Path: "/data/abuse/2026-10-01.jsonl", Err: syscall.EACCES},
+				&fs.PathError{Op: "unlink", Path: "/data/nylzo.db-wal", Err: syscall.EACCES},
 			)),
 			"sweep: sqlite: busy\nunlink: " + syscall.EACCES.Error(),
 		},
@@ -89,7 +89,7 @@ func TestEventsWriteOnlyCountsAndTheFirstErrorWhenFlushed(t *testing.T) {
 	pathErr := &fs.PathError{Op: "remove", Path: "/data/blobs/0a", Err: syscall.EROFS}
 	logger.ErrorContext(ctx, "lease-timer", "err", pathErr)
 	logger.With("category", "X-Real-IP").WarnContext(ctx, "forwarded-header-ignored")
-	logger.WarnContext(ctx, "abuse-files-half-full", "bytes", 1234, "limit", 4096)
+	logger.WarnContext(ctx, "epoch-clock-behind", "bytes", 1234, "limit", 4096)
 	if buffer.Len() != 0 {
 		t.Fatalf("an event was written before the flush: %s", buffer.String())
 	}
@@ -104,7 +104,7 @@ func TestEventsWriteOnlyCountsAndTheFirstErrorWhenFlushed(t *testing.T) {
 		lines = append(lines, fmt.Sprint(entry))
 	}
 	want := []string{
-		"map[count:1 level:WARN msg:abuse-files-half-full]",
+		"map[count:1 level:WARN msg:epoch-clock-behind]",
 		"map[count:2 err:store: busy level:ERROR msg:finish-ending]",
 		"map[category:X-Real-IP count:1 level:WARN msg:forwarded-header-ignored]",
 		"map[count:1 err:remove: " + syscall.EROFS.Error() + " level:ERROR msg:lease-timer]",

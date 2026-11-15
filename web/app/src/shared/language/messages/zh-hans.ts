@@ -311,9 +311,6 @@ export const messages: Catalog = {
   'transparency.stores.ended.title': '消息失效后',
   'transparency.stores.ended':
     '消息在以下情况下失效：最后一次打开、被接收者删除、被撤销、有效期结束或被运营者移除。此后服务器会首先丢弃该存储消息的密钥，因此即使磁盘上还有残留数据，也无法读取。失效消息的密封记录最多保留 {days}，其中包括消息如何以及何时失效，以及首次打开的时间。',
-  'transparency.stores.reports.title': '滥用举报',
-  'transparency.stores.reports':
-    '用运营者的公钥密封的举报，服务器自身无法读取：日期、消息 ID、去除了链接密钥和长代码的举报理由、善意声明，以及举报人提供的电子邮件地址（如有），最多保留 {days}。每条消息收到的举报数量保存在该消息的密封记录中。',
   'transparency.stores.counters.title': '不含地址的计数器',
   'transparency.stores.counters': '每日创建的消息数量在当天结束后再保留 {days}；已使用的一次性挑战只保留几分钟。',
   'transparency.stores.addresses.title': 'IP 地址',

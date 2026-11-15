@@ -342,9 +342,6 @@ export const messages: Catalog = {
   'transparency.stores.ended.title': 'Dopo la fine del messaggio',
   'transparency.stores.ended':
     'Un messaggio termina con l’ultima apertura, l’eliminazione da parte del destinatario, l’annullamento, la scadenza o la rimozione da parte del gestore. A quel punto il server scarta per prima cosa la chiave del messaggio salvato, così non si può leggere nemmeno ciò che ne resta sul disco. Il record sigillato del messaggio terminato viene conservato per un massimo di {days}: come e quando è terminato e quando è stato aperto la prima volta.',
-  'transparency.stores.reports.title': 'Segnalazioni di abuso',
-  'transparency.stores.reports':
-    'Segnalazioni sigillate con la chiave pubblica del gestore, così il server stesso non può leggerle: data, ID del messaggio, motivo privo delle chiavi dei link e di codici lunghi, dichiarazione di buona fede ed e-mail, se chi segnala l’ha indicata, per un massimo di {days}. Il numero di segnalazioni per messaggio è conservato nel record sigillato del messaggio.',
   'transparency.stores.counters.title': 'Contatori senza indirizzi',
   'transparency.stores.counters':
     'Conserva i conteggi giornalieri dei messaggi creati ancora per {days} dopo la fine della giornata, le sfide monouso già usate solo per pochi minuti.',

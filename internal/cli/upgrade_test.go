@@ -20,7 +20,6 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/operator"
-	"github.com/misaon/nylzo/internal/core"
 )
 
 // The fixture is the data directory that nylzo v0.2.3 serve left after four creates (text, passphrase, attachment,
@@ -38,7 +37,6 @@ func TestServeUpgradesTheDataDirectoryOfARelease(t *testing.T) {
 	variables := map[string]string{
 		"NYLZO_DATA_DIR":              directory,
 		"NYLZO_PEPPER_FILE":           pepper,
-		"NYLZO_REPORT_KEY":            core.Encode(testReportKey.PublicKey().Bytes()),
 		"NYLZO_LISTEN":                address,
 		"NYLZO_ALLOW_SWAP":            "1",
 		"NYLZO_ALLOW_UNERASED_MEMORY": "1",

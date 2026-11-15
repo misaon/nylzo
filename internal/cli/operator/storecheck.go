@@ -13,7 +13,6 @@ import (
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/server"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -44,6 +43,13 @@ func storeCheck(ctx context.Context, getenv func(string) string, output io.Write
 	if dataErr := checkDataDirectory(ctx, &settings, output, logger); dataErr != nil {
 		return dataErr
 	}
+	reports, err := findReports(settings.DataDirectory, settings.Development, logger)
+	if err != nil {
+		return err
+	}
+	if reports.found {
+		fmt.Fprintln(output, "reports: abuse reports of an earlier release; serve erases them")
+	}
 	return checkEpochDirectory(&settings, output, logger)
 }
 
@@ -57,7 +63,7 @@ func checkDataDirectory(ctx context.Context, settings *config.Server, output io.
 	err := datadir.Check(datadir.Layout{
 		Directory: dataDirectory,
 		Files:     []string{databasePath, databasePath + "-wal", databasePath + "-shm"},
-		Trees:     []string{filepath.Join(dataDirectory, disk.Directory), abuse.Directory(dataDirectory)},
+		Trees:     []string{filepath.Join(dataDirectory, disk.Directory)},
 	})
 	if err != nil {
 		return err
@@ -79,7 +85,10 @@ func checkDataDirectory(ctx context.Context, settings *config.Server, output io.
 	case sqlite.ReadinessOpen:
 		fmt.Fprintln(output, "store: this build opens it")
 	case sqlite.ReadinessUpgrade:
-		fmt.Fprintln(output, "store: written by nylzo 0.1 or 0.2; serve upgrades it and erases every message in it")
+		fmt.Fprintln(
+			output,
+			"store: written by a release before 0.14.0; serve upgrades it and erases every message in it",
+		)
 	case sqlite.ReadinessCreate:
 		fmt.Fprintln(output, "store: no database yet; serve creates it")
 	default:
@@ -111,11 +120,11 @@ func checkEpochDirectory(settings *config.Server, output io.Writer, logger *slog
 	switch state {
 	case epoch.StateSeed:
 		fmt.Fprintln(output, "epoch: a seed; serve goes on with it")
-	case epoch.StateLegacySeed:
+	case epoch.StateReleasedSeed:
 		fmt.Fprintln(
 			output,
-			"epoch: a seed of an earlier release; serve converts it and keeps every live message, "+
-				"after which releases before 0.14.0 cannot read it",
+			"epoch: a seed of a release before 0.14.0; serve erases it with every message of that release "+
+				"and starts a new one",
 		)
 	case epoch.StateNoSeed:
 		fmt.Fprintln(output, "epoch: no seed; serve starts a new one, which ends every live message")

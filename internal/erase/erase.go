@@ -32,24 +32,6 @@ func Overwrite(path string, length int64) error {
 	})
 }
 
-// Cut overwrites the file past size with zeros where it lies and syncs them before it truncates the file to size, so
-// the blocks the truncation frees hold nothing.
-func Cut(path string, size int64) error {
-	return rewrite(path, func(file *os.File, length int64) error {
-		if length <= size {
-			return nil
-		}
-		err := writeZeros(file, size, length-size)
-		if err == nil {
-			err = file.Sync()
-		}
-		if err == nil {
-			err = file.Truncate(size)
-		}
-		return err
-	})
-}
-
 // Replace writes content over the whole file where it lies, so the old content is gone once it returns.
 func Replace(path string, content []byte) error {
 	return rewrite(path, func(file *os.File, size int64) error {
@@ -58,14 +40,6 @@ func Replace(path string, content []byte) error {
 		}
 		_, err := file.WriteAt(content, 0)
 		return err
-	})
-}
-
-// Pad writes zeros from start up to end where they lie, growing a shorter file, and syncs them. It writes them on
-// every call, so a later Replace of that length overwrites in place even after an earlier write or sync failed.
-func Pad(path string, start, end int64) error {
-	return rewrite(path, func(file *os.File, _ int64) error {
-		return writeZeros(file, start, end-start)
 	})
 }
 

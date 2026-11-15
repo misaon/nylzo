@@ -12,7 +12,7 @@ This is a single-server deployment with brief restart windows, not a highly avai
 - Enable the strongest 2FA each provider offers on the hosting, DNS, registrar, and GitHub accounts, and keep recovery codes offline.
 - Choose administrator networks: IPv4 /24 or narrower, IPv6 /64 or narrower. A single /32 or /128, or a WireGuard exit you control, is better than a shared VPN range.
 - Create a hardware-backed SSH key. A Mac with Touch ID needs no extra device: `sc_auth create-ctk-identity -l nylzo-admin -k p-256-ne -t bio` creates a key that never leaves the Secure Enclave, and `ssh-keygen -w /usr/lib/ssh-keychain.dylib -K -N ""` writes its `sk-ecdsa-sha2-nistp256@openssh.com` key files. A FIDO2 security key works too: `ssh-keygen -t ed25519-sk -O verify-required -O resident`. Provisioning a server requires one of them and writes `HARDWARE_KEYS_ONLY=true` to its `/etc/nylzo/host.env`, so the server accepts only these two types. sshd requires user presence on every login (`PubkeyAuthOptions touch-required`). Apple's provider reports presence but not user verification, so the server cannot tell a Touch ID key from one created with `-t none`, which signs without asking; create it with `-t bio` and check for `bio` in the Prot column of `sc_auth list-ctk-identities`. A security key can also demand its PIN with the `verify-required` option on its `authorized_keys` line.
-- Install [mise](https://mise.jdx.dev/getting-started.html) and [age](https://github.com/FiloSottile/age), clone a reviewed Nylzo revision, and use a [verified Nylzo CLI](Verify-a-release.md).
+- Install [mise](https://mise.jdx.dev/getting-started.html), clone a reviewed Nylzo revision, and use a [verified Nylzo CLI](Verify-a-release.md).
 
 ```sh
 umask 077
@@ -20,7 +20,7 @@ mkdir -p .deploy
 mise run deploy init "$HOME/.ssh/id_ed25519_sk.pub" .deploy/production
 ```
 
-Initialization creates the reporting key pair, a random state-encryption key and `site.json`. It encrypts the reporting private key into `report-key.age`, with a passphrase by default or to `NYLZO_REPORT_KEY_RECIPIENT`, for example a recipient from age-plugin-yubikey. The plaintext key exists only for that step. Read reports with `nylzo reports --key-file <(age --decrypt report-key.age) < report.sealed`. Back up the operator directory away from the server; losing the state key makes OpenTofu state unreadable, and losing the reporting key makes sealed reports unreadable.
+Initialization creates a random state-encryption key and `site.json`. Back up the operator directory away from the server; losing the state key makes OpenTofu state unreadable. A `site.json` from an earlier release may still carry `reportPublicKey`. A site whose `initialRelease` is before v0.14.0 must keep it, because such a release refuses to start without it; later releases ignore it.
 
 Edit `site.json`:
 

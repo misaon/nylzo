@@ -588,8 +588,7 @@ jobs:
           sudo swapoff -a
           sudo install -m 0644 nylzo-epoch.conf /etc/tmpfiles.d/nylzo-epoch.conf
           sudo systemd-tmpfiles --create nylzo-epoch.conf
-          report_key=$(../../dist/nylzo report-key --key-file "$RUNNER_TEMP/report-key" | cut -d= -f2-)
-          printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\nNYLZO_CADDY_IMAGE=caddy:ci\nNYLZO_REPORT_KEY=%s\n' "$report_key" > .env
+          printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\nNYLZO_CADDY_IMAGE=caddy:ci\n' > .env
           docker compose up -d
           for service in nylzo caddy; do
             docker inspect "nylzo-${service}-1" --format '{{.HostConfig.Memory}} {{.HostConfig.PidsLimit}} {{.HostConfig.NanoCpus}} {{json .HostConfig.Ulimits}}' | tee "$RUNNER_TEMP/limits"

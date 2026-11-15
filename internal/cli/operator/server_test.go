@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -16,9 +17,10 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
+	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
 	"github.com/misaon/nylzo/internal/store"
@@ -80,7 +82,6 @@ func TestServeSetsASoftMemoryLimitUnlessGOMEMLIMITIsSet(t *testing.T) {
 		debug.SetMemoryLimit(math.MaxInt64)
 		variables := map[string]string{
 			"NYLZO_PEPPER_FILE": pepperFile(t),
-			"NYLZO_REPORT_KEY":  testReportKeyText,
 			"NYLZO_DATA_DIR":    t.TempDir(),
 			"GOMEMLIMIT":        testCase.operatorLimit,
 		}
@@ -138,7 +139,7 @@ func TestConfigErrorsNameTheVariable(t *testing.T) {
 	}
 }
 
-func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
+func TestSweepOnceNeedsNoPepper(t *testing.T) {
 	directory := t.TempDir()
 	storage, _, err := openStore(
 		t.Context(),
@@ -152,23 +153,12 @@ func TestSweepOnceNeedsNoPepperAndDropsOldReports(t *testing.T) {
 		t.Fatal(err)
 	}
 	storage.Close()
-	reports := filepath.Join(directory, "abuse")
-	if err = os.Mkdir(reports, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	old := filepath.Join(reports, "2020-01-01"+abuse.FileExtension)
-	if err = os.WriteFile(old, make([]byte, abuse.SealedLen), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	result := run(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, RunSweepOnce)
 	if result.code != 0 {
 		t.Fatalf("sweep-once without a pepper: exit %d, %s", result.code, result.stderr)
 	}
 	if strings.Count(result.stderr, `"level":"ERROR"`) != 0 || strings.Contains(result.stderr, `"msg":"sweep-once"`) {
 		t.Fatalf("a clean sweep logged an error or a report: %s", result.stderr)
-	}
-	if _, err = os.Stat(old); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("sweep-once kept an abuse report older than 7 days: %v", err)
 	}
 }
 
@@ -184,7 +174,6 @@ func TestServeChecksThePortBeforeItSweeps(t *testing.T) {
 		map[string]string{
 			"NYLZO_DATA_DIR":    t.TempDir(),
 			"NYLZO_PEPPER_FILE": pepperFile(t),
-			"NYLZO_REPORT_KEY":  testReportKeyText,
 			"NYLZO_LISTEN":      taken.Addr().String(),
 		},
 		nil,
@@ -214,7 +203,6 @@ func TestServeRefusesADataDirectoryThatAnotherServeHolds(t *testing.T) {
 		map[string]string{
 			"NYLZO_DATA_DIR":    directory,
 			"NYLZO_PEPPER_FILE": pepperFile(t),
-			"NYLZO_REPORT_KEY":  testReportKeyText,
 			"NYLZO_LISTEN":      taken.Addr().String(),
 		},
 		nil,
@@ -240,7 +228,6 @@ func TestServeRefusesABuildThatLeavesKeysInMemory(t *testing.T) {
 		map[string]string{
 			"NYLZO_DATA_DIR":              t.TempDir(),
 			"NYLZO_PEPPER_FILE":           pepperFile(t),
-			"NYLZO_REPORT_KEY":            testReportKeyText,
 			"NYLZO_LISTEN":                taken.Addr().String(),
 			"NYLZO_ALLOW_UNERASED_MEMORY": "0",
 		},
@@ -342,7 +329,7 @@ func TestSweepOnceRefusesAnotherSchemaVersion(t *testing.T) {
 	}
 }
 
-func TestServeSealsTheWrapsOfAnEarlierReleaseBeforeItListens(t *testing.T) {
+func TestServeSealsTheWrapsOfThePreviousPepperBeforeItListens(t *testing.T) {
 	directory := t.TempDir()
 	id := storeMessage(t, directory)
 	locator := seal.LocatorOf(id[:])
@@ -358,32 +345,131 @@ func TestServeSealsTheWrapsOfAnEarlierReleaseBeforeItListens(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer database.Close()
-	err = database.Update(t.Context(), locator, func(row *store.Row) error {
-		row.ReadWrap, row.ManageWrap = make([]byte, seal.WrapLen), make([]byte, seal.WrapLen)
-		return nil
-	})
-	if err != nil {
+	previousFile := filepath.Join(t.TempDir(), "previous")
+	if err = os.WriteFile(previousFile, []byte(strings.Repeat("fedcba9876543210", 4)), 0o400); err != nil {
 		t.Fatal(err)
 	}
 	variables := map[string]string{
-		"NYLZO_PEPPER_FILE": pepperFile(t),
-		"NYLZO_REPORT_KEY":  testReportKeyText,
-		"NYLZO_DATA_DIR":    directory,
-		"GOMEMLIMIT":        "1GiB",
+		"NYLZO_PEPPER_FILE":          pepperFile(t),
+		"NYLZO_PEPPER_PREVIOUS_FILE": previousFile,
+		"NYLZO_DATA_DIR":             directory,
+		"GOMEMLIMIT":                 "1GiB",
 	}
 	settings, err := serveSettings(&command.Environment{Getenv: getenvFrom(variables)})
 	if err != nil {
 		t.Fatal(err)
 	}
 	settings.Development = testDevelopment
+	previous, err := pepper.NewRing(settings.PepperPrevious, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := pepper.NewRing(settings.Pepper, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicKey, recordKey := core.NewSecret(), seal.NewKey()
+	err = database.Update(t.Context(), locator, func(row *store.Row) error {
+		row.ReadWrap = seal.WrapRecordKey(previous.RecordsKey(), publicKey[:], recordKey, locator, seal.Read)
+		row.ManageWrap = seal.WrapRecordKey(previous.RecordsKey(), publicKey[:], recordKey, locator, seal.Manage)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	instance, err := startInstance(t.Context(), &settings, database, blobs, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
 	instance.Close()
 	row, err := database.Load(t.Context(), locator)
-	if err != nil || len(row.ReadWrap) != seal.SealedWrapLen || len(row.ManageWrap) != seal.SealedWrapLen {
-		t.Fatalf("serve left the wraps of an earlier release unsealed: %d and %d bytes, %v",
-			len(row.ReadWrap), len(row.ManageWrap), err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := seal.UnwrapRecordKey(current.RecordsKey(), publicKey[:], row.ReadWrap, locator, seal.Read)
+	if err != nil || opened != recordKey {
+		t.Fatalf("serve left the read wrap under the previous pepper: %v", err)
+	}
+}
+
+// Erasing through a linked report directory would overwrite files outside the data directory, so serve refuses it and
+// store-check says so before an update switches to this build.
+func TestServeRefusesAReportDirectoryThatLeadsElsewhere(t *testing.T) {
+	directory, outside := t.TempDir(), t.TempDir()
+	kept := filepath.Join(outside, "kept")
+	if err := os.WriteFile(kept, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(directory, reportDirectory)); err != nil {
+		t.Fatal(err)
+	}
+	logger := slog.New(slog.DiscardHandler)
+	if err := eraseReports(t.Context(), directory, testDevelopment, logger); !errors.Is(err, errReportDirectory) {
+		t.Fatalf("erasing through a linked report directory: %v", err)
+	}
+	if check := run(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, RunStoreCheck); check.code !=
+		command.ExitError {
+		t.Fatalf("store-check passed a linked report directory: %s", check.stdout)
+	}
+	if content, err := os.ReadFile(kept); err != nil || string(content) != "keep" {
+		t.Fatalf("the erase wrote outside the data directory: %q %v", content, err)
+	}
+}
+
+// A second link to each file shows its bytes after the start: only an overwrite in place turns them into zeros.
+func TestServeErasesTheAbuseReportsOfEarlierReleases(t *testing.T) {
+	directory, keep := t.TempDir(), t.TempDir()
+	content := bytes.Repeat([]byte{0xa5}, 2944)
+	names := []string{
+		legacyReportFile,
+		filepath.Join(reportDirectory, "2026-11-14.sealed"),
+		filepath.Join(reportDirectory, "2026-10-20.jsonl"),
+	}
+	if err := os.Mkdir(filepath.Join(directory, reportDirectory), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		path := filepath.Join(directory, name)
+		if err := os.WriteFile(path, content, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Link(path, filepath.Join(keep, filepath.Base(name))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	check := run(t, "", map[string]string{"NYLZO_DATA_DIR": directory}, nil, RunStoreCheck)
+	if check.code != command.ExitOK || !strings.Contains(check.stdout, "reports: abuse reports of an earlier release") {
+		t.Fatalf("store-check did not announce the erase: exit %d, %s%s", check.code, check.stdout, check.stderr)
+	}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logs, nil))
+	for range 2 {
+		storage, _, err := openStore(
+			t.Context(),
+			directory,
+			testDevelopment,
+			testPool,
+			upgradingOpen(directory, testDevelopment, logger),
+			logger,
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		storage.Close()
+	}
+	if strings.Count(logs.String(), `"msg":"reports-erased"`) != 1 {
+		t.Fatalf("the start that erased reports must warn once, and a later start not at all: %s", logs.String())
+	}
+	if _, err := os.Lstat(filepath.Join(directory, reportDirectory)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the report directory is still in the data directory: %v", err)
+	}
+	for _, name := range names {
+		left, err := os.ReadFile(filepath.Join(keep, filepath.Base(name)))
+		if err != nil || !bytes.Equal(left, make([]byte, len(content))) {
+			t.Fatalf("%s kept some of its bytes: %v", name, err)
+		}
+		if _, err = os.Lstat(filepath.Join(directory, name)); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("%s is still in the data directory: %v", name, err)
+		}
 	}
 }

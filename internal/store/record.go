@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	recordFormat = 3
+	recordFormat = 4
 	macLen       = 32
-	fieldsLen    = 310
+	fieldsLen    = 304
 	leaseLen     = 42
 )
 
@@ -228,7 +228,7 @@ func lastLeaseEnd(message *Message) time.Time {
 
 func encodeMessage(message *Message) []byte {
 	data := make([]byte, 0, fieldsLen+len(message.Leases)*leaseLen)
-	data = append(data, recordFormat, message.Version, message.KDF, message.Flags)
+	data = append(data, recordFormat, message.Version, message.KDF)
 	data = appendTime(data, message.CreatedAt)
 	data = appendTime(data, message.ExpiresAt)
 	data = binary.BigEndian.AppendUint32(data, message.TTLSeconds)
@@ -242,8 +242,6 @@ func encodeMessage(message *Message) []byte {
 	data = appendTime(data, optional(message.FirstOpenedAt))
 	data = append(data, saturate[uint8](int64(slices.Index(endings, message.Ending))))
 	data = appendTime(data, message.EndedAt)
-	data = binary.BigEndian.AppendUint32(data, saturate[uint32](message.ReportDay))
-	data = append(data, saturate[uint8](int64(message.Reports)))
 	data = binary.BigEndian.AppendUint32(data, message.Epoch)
 	data = append(data, message.Generation[:]...)
 	data = append(data, saturate[uint8](int64(len(message.Leases))))
@@ -293,7 +291,7 @@ func decodeMessage(data []byte) (*Message, error) {
 	if format != recordFormat {
 		return nil, fmt.Errorf("%w: unknown record format", ErrCorrupt)
 	}
-	message := &Message{Version: fields.readByte(), KDF: fields.readByte(), Flags: fields.readByte()}
+	message := &Message{Version: fields.readByte(), KDF: fields.readByte()}
 	message.CreatedAt = fields.readTime()
 	message.ExpiresAt = fields.readTime()
 	message.TTLSeconds = fields.readUint32()
@@ -309,8 +307,6 @@ func decodeMessage(data []byte) (*Message, error) {
 	}
 	ending := int(fields.readByte())
 	message.EndedAt = fields.readTime()
-	message.ReportDay = int64(fields.readUint32())
-	message.Reports = int(fields.readByte())
 	message.Epoch = fields.readUint32()
 	copy(message.Generation[:], fields.next(epoch.GenerationIDLen))
 	leases := int(fields.readByte())

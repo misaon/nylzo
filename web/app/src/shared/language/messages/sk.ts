@@ -332,9 +332,6 @@ export const messages: Catalog = {
   'transparency.stores.ended.title': 'Po skončení správy',
   'transparency.stores.ended':
     'Správa končí posledným otvorením, vymazaním príjemcom, zrušením, skončením platnosti alebo odstránením prevádzkovateľom. Server potom najprv zahodí kľúč uloženej správy, takže sa nedá prečítať ani jej zvyšok na disku. Zapečatený záznam skončenej správy uchováva najdlhšie {days}: ako a\u{A0}kedy skončila a\u{A0}kedy bola prvýkrát otvorená.',
-  'transparency.stores.reports.title': 'Hlásenia zneužitia',
-  'transparency.stores.reports':
-    'Hlásenia zapečatené verejným kľúčom prevádzkovateľa, takže ich server sám neprečíta: dátum, ID správy, dôvod bez kľúčov z\u{A0}odkazov a\u{A0}dlhých kódov, vyhlásenie o\u{A0}dobrej viere a\u{A0}e-mail, ak ho oznamovateľ uviedol, najdlhšie {days}. Počet hlásení na správu uchováva v\u{A0}jej zapečatenom zázname.',
   'transparency.stores.counters.title': 'Počítadlá bez adries',
   'transparency.stores.counters':
     'Denné počty vytvorených správ uchováva ešte {days} po skončení dňa, použité jednorazové výzvy len niekoľko minút.',

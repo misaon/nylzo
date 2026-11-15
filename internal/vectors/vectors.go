@@ -39,7 +39,6 @@ type File struct {
 	AssignedVersion  string             `json:"unicode_assigned_version"`
 	Request          []Request          `json:"request"`
 	PoW              []PoW              `json:"pow"`
-	Redact           []Redact           `json:"redact"`
 	Server           Server             `json:"server"`
 }
 
@@ -59,7 +58,6 @@ func Generate() (*File, error) {
 		file.strength,
 		file.request,
 		file.pow,
-		file.redact,
 		file.server,
 	}
 	errs := make([]error, len(steps))

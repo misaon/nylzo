@@ -272,7 +272,7 @@ func TestMetadataRefusesASizeTheProtocolDoesNotAllow(t *testing.T) {
 func TestEnvelopesAreBoundedByTheProtocol(t *testing.T) {
 	t.Parallel()
 	limit := envelope.ObjectLimit(envelope.MaxFileBytes)
-	policy := core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":0}`))
+	policy := core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"deadline":1797000000}`))
 	for name, test := range map[string]struct {
 		length string
 		body   int64
@@ -306,29 +306,28 @@ func TestEnvelopesAreBoundedByTheProtocol(t *testing.T) {
 	for _, header := range []string{
 		"",
 		"!!",
-		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":9,"flags":0}`)),
-		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":257,"flags":0}`)),
-		core.Encode([]byte(`{"opens_max":0,"ttl_s":60,"kdf_id":0,"flags":0}`)),
-		core.Encode([]byte(`{"ttl_s":60,"kdf_id":0,"flags":0}`)),
-		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":2}`)),
-		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":0,"deadline":1797000000}`)),
-		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":2,"deadline":0}`)),
-		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":2,"deadline":4294967296}`)),
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":9,"deadline":1797000000}`)),
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":257,"deadline":1797000000}`)),
+		core.Encode([]byte(`{"opens_max":0,"ttl_s":60,"kdf_id":0,"deadline":1797000000}`)),
+		core.Encode([]byte(`{"ttl_s":60,"kdf_id":0,"deadline":1797000000}`)),
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0}`)),
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"deadline":0}`)),
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"deadline":4294967296}`)),
 	} {
 		if _, err := decodePolicy(header); !errors.Is(err, ErrResponse) {
 			t.Fatalf("policy %q accepted", header)
 		}
 	}
 	sealed, err := decodePolicy(
-		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":2,"deadline":1797000000}`)),
+		core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"deadline":1797000000}`)),
 	)
-	if err != nil || sealed.Policy.Deadline != 1_797_000_000 || sealed.Flags != envelope.FlagDeadline {
+	if err != nil || sealed.Policy.Deadline != 1_797_000_000 {
 		t.Fatalf("a policy that seals its deadline: %+v %v", sealed, err)
 	}
 }
 
-// F13: the message must expire at the deadline the client sealed, and a reader names the flags it opens.
-func TestCreateRefusesAnotherExpiryAndReadersNameTheirFlags(t *testing.T) {
+// F13: the message must expire at the deadline the client sealed.
+func TestCreateRefusesAnotherExpiry(t *testing.T) {
 	t.Parallel()
 	creator := serve(t, func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusCreated)
@@ -338,23 +337,6 @@ func TestCreateRefusesAnotherExpiryAndReadersNameTheirFlags(t *testing.T) {
 	if _, err := creator.Create(t.Context(), request); !errors.Is(err, ErrResponse) {
 		t.Fatalf("an expiry other than the sealed deadline: %v", err)
 	}
-	challenge := `{"challenge":"` + core.Encode(make([]byte, signing.ChallengeLen)) + `"}`
-	var flags []string
-	reader := serve(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == api.ChallengePath {
-			w.Write([]byte(challenge))
-			return
-		}
-		flags = append(flags, r.Header.Get(api.FlagsHeaderName))
-		w.WriteHeader(http.StatusGone)
-		w.Write([]byte(`{"error":"gone","state":"expired"}`))
-	})
-	id := core.NewID()
-	reader.Claim(t.Context(), id, core.NewSecret(), &Login{}, 0)
-	reader.Blob(t.Context(), id, core.NewSecret(), "lease", 0)
-	if len(flags) != 2 || flags[0] != "2" || flags[1] != "2" {
-		t.Fatalf("readers sent X-Nylzo-Flags %q", flags)
-	}
 }
 
 func TestRetriedDownloadDrawsANewShareKeyAndReportsTheOneAnswered(t *testing.T) {
@@ -362,7 +344,7 @@ func TestRetriedDownloadDrawsANewShareKeyAndReportsTheOneAnswered(t *testing.T) 
 	challenge := `{"challenge":"` + core.Encode(
 		make([]byte, signing.ChallengeLen),
 	) + `","expires_at":"2026-10-24T00:00:00Z"}`
-	policy := core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"flags":0}`))
+	policy := core.Encode([]byte(`{"opens_max":1,"ttl_s":60,"kdf_id":0,"deadline":1797000000}`))
 	var sent []string
 	client := serve(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/v1/challenge" {

@@ -11,12 +11,12 @@ import (
 )
 
 var errSealedBeforeFailure = errors.New(
-	"server: stored rows were sealed with the current pepper before the start failed; releases before 0.14.0 no " +
-		"longer open them",
+	"server: stored rows were sealed with the current pepper before the start failed; the previous pepper no " +
+		"longer opens them",
 )
 
-// SealRows puts the wraps of every stored row under the current pepper before the server takes a request: the rows of
-// an earlier release, which have no pepper layer, and the rows that the previous pepper sealed (spec §5.1, §5.2).
+// SealRows puts the wraps that the previous pepper sealed under the current one before the server takes a request
+// (spec §5.1, §5.2).
 func (s *Server) SealRows(ctx context.Context) error {
 	var earlier []seal.Key
 	secretmode.Do(func() {

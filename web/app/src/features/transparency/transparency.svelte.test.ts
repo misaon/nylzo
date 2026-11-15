@@ -50,7 +50,7 @@ describe('transparency page', () => {
         globalDailyCreates: 0,
         powDifficulty: 4,
       },
-      retention: { tombstoneSeconds: 86_400, abuseReportSeconds: 172_800, dailyCounterSeconds: 86_400 },
+      retention: { tombstoneSeconds: 86_400, dailyCounterSeconds: 86_400 },
       files: [],
     };
     api.transparency = load;
@@ -81,7 +81,6 @@ describe('transparency page', () => {
     expect(target.textContent).toContain('a'.repeat(64));
     expect(target.querySelector('[data-testid="server-version"]')?.textContent).toBe(data.server);
     expect(target.textContent).toContain('nylzo verify-client --server');
-    expect(target.textContent).toContain(translator.translate('transparency.stores.reports.title'));
     expect(target.textContent).not.toContain(translator.translate('transparency.loading'));
   });
 
@@ -100,12 +99,11 @@ describe('transparency page', () => {
   });
 
   it.each([undefined, { contact: 'javascript:alert(1)' }, { contact: 'https://example.test/contact' }])(
-    'renders optional operator information without unsafe links, and no report retention the server does not report: %j',
+    'renders optional operator information without unsafe links: %j',
     async (operator) => {
       load.mockResolvedValue({
         ...data,
         operator,
-        retention: { tombstoneSeconds: 86_400, dailyCounterSeconds: 86_400 },
         limits: { ...data.limits, maxTtlSeconds: 3600 },
         rates: { ...data.rates, createPerHour: 0, createPerDay: 0, readPerHour: 0, globalDailyCreates: 5 },
       });
@@ -114,7 +112,6 @@ describe('transparency page', () => {
       expect(target.textContent).toContain(
         operator === undefined ? translator.translate('transparency.operator.missing') : contactLabel(operator.contact),
       );
-      expect(target.textContent).not.toContain(translator.translate('transparency.stores.reports.title'));
       expect(target.querySelector('a[href="https://example.test/contact"]') !== null).toBe(
         operator?.contact === 'https://example.test/contact',
       );

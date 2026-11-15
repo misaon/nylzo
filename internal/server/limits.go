@@ -61,11 +61,7 @@ func (s *Server) allowAPI(buckets *clientBuckets) bool {
 }
 
 func (s *Server) allowRead(w http.ResponseWriter, r *http.Request) bool {
-	return s.allowHourly(w, r, "read", s.settings.Rates.ReadPerHour)
-}
-
-func (s *Server) allowHourly(w http.ResponseWriter, r *http.Request, kind string, limit int64) bool {
-	return s.countHourly(w, r, &ratelimit.Hit{Kind: kind, Limit: limit})
+	return s.countHourly(w, r, &ratelimit.Hit{Kind: "read", Limit: s.settings.Rates.ReadPerHour})
 }
 
 // allowReadBytes counts the object that a claim or download is about to stream, so a few clients cannot fill the

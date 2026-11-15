@@ -99,7 +99,11 @@ async function expectSignedRequest(request: Request): Promise<void> {
   expect(request.headers.has('X-Nylzo-Verifier')).toBe(false);
 }
 
-const policy = encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 3, flags: 0 })));
+function policyWith(changed: object): string {
+  return encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 3, ...changed })));
+}
+
+const policy = policyWith({ deadline: 1_797_000_000 });
 const WRAPPED_SHARE_LENGTH = 1168;
 const { publicKey: shareKey } = newShareKey();
 const shareKeys = (): ShareKey => ({ seed: new Uint8Array(32).fill(5), publicKey: shareKey });
@@ -368,7 +372,7 @@ describe('api client', () => {
     });
     expect(leases).toEqual([LEASE]);
     expect(claimed.lease).toBe(LEASE);
-    expect(claimed.policy).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 3, flags: 0 });
+    expect(claimed.policy).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 3, deadline: 1_797_000_000 });
     expect(claimed.share).toEqual(new Uint8Array(WRAPPED_SHARE_LENGTH).fill(6));
     expect(claimed.object).toEqual(object);
     expect(progress.at(-1)).toEqual([object.length, object.length]);
@@ -379,7 +383,6 @@ describe('api client', () => {
     expect(challenge).toBe(encodeBase64url(HANDSHAKE_CHALLENGE));
     expect(request.headers.get('X-Nylzo-KE3')).toBe(encodeBase64url(KE3));
     expect(request.headers.get('X-Nylzo-Share-Key')).toBe(formatShareKey(shareKey));
-    expect(request.headers.get('X-Nylzo-Flags')).toBe('2');
     expect(server.issued()).toBe(0);
   });
 
@@ -475,7 +478,7 @@ describe('api client', () => {
   });
 
   it('accepts only a canonical policy header with integer fields', () => {
-    expect(servedPolicy(policy)).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 3, flags: 0 });
+    expect(servedPolicy(policy)).toEqual({ opensMax: 1, ttlSeconds: 3600, kdfId: 3, deadline: 1_797_000_000 });
     for (const malformed of [
       null,
       '',
@@ -684,12 +687,11 @@ function transparencyReport(change: Record<string, unknown> = {}) {
       create_per_day: 100,
       create_bytes_per_day: 50_000_000,
       read_per_hour: 300,
-      abuse_per_hour: 5,
       coarse_multiplier: 5,
       global_daily_creates: 0,
       pow_difficulty: 4,
     },
-    retention: { tombstone_s: 604_800, abuse_report_s: 604_800, daily_counter_s: 86_400 },
+    retention: { tombstone_s: 604_800, daily_counter_s: 86_400 },
     ...change,
   };
 }
@@ -768,27 +770,11 @@ describe('transparency', () => {
   });
 });
 
-function policyWith(changed: object): string {
-  return encodeBase64url(utf8(JSON.stringify({ opens_max: 1, ttl_s: 3600, kdf_id: 3, ...changed })));
-}
-
 describe('F13: deadlines', () => {
-  it('reads the deadline of X-Nylzo-Policy exactly when its flags seal one', () => {
-    for (const changed of [
-      { flags: 2 },
-      { flags: 0, deadline: 1_797_000_000 },
-      { flags: 2, deadline: 0 },
-      { flags: 2, deadline: 2 ** 32 },
-    ]) {
+  it('refuses an X-Nylzo-Policy without a deadline of 32 bits', () => {
+    for (const changed of [{}, { deadline: 0 }, { deadline: 2 ** 32 }]) {
       expect(() => servedPolicy(policyWith(changed))).toThrow(ResponseError);
     }
-    expect(servedPolicy(policyWith({ flags: 2, deadline: 1_797_000_000 }))).toEqual({
-      opensMax: 1,
-      ttlSeconds: 3600,
-      kdfId: 3,
-      flags: 2,
-      deadline: 1_797_000_000,
-    });
   });
 
   it.each([

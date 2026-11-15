@@ -3,7 +3,7 @@ import { EncodingError } from '../errors.ts';
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 const EIGHT_BITS = 0b1111_1111;
 
-export function encodedLength(byteLength: number): number {
+function encodedLength(byteLength: number): number {
   return Math.ceil((byteLength * 4) / 3);
 }
 

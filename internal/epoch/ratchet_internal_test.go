@@ -8,7 +8,6 @@ import (
 	"hash/crc32"
 	"os"
 	"path/filepath"
-	"slices"
 	"testing"
 	"time"
 
@@ -147,88 +146,50 @@ func TestAFailedOverwriteIsWrittenAgainBeforeAShareIsIssued(t *testing.T) {
 	}
 }
 
-// F12: the single chain of an earlier release keeps every share it handed out but issues nothing more, and a crash
-// or a full disk at any point of the conversion leaves a file that reads as the old chain or the new file.
-func TestALegacySeedKeepsItsSharesAndIssuesNoMore(t *testing.T) {
+// The seed of a release before 0.14.0 made the shares of messages that the store upgrade erases, so serve overwrites
+// it where it lies and starts a new ratchet, also after a crash between the overwrite and the unlink, while a process
+// that creates no seed refuses it.
+func TestAReleasedSeedIsErasedAndReplaced(t *testing.T) {
 	t.Parallel()
-	hour := hourOf(Minute(internalStart))
-	locator := seal.LocatorOf([]byte("message"))
-	legacyID := GenerationID{9}
-	var seed Seed
-	rand.Read(seed[:])
-	latest := hour + Span
-	legacyFile := legacyContent(legacyID, hour, &seed)
-	grown := append(bytes.Clone(legacyFile), make([]byte, FileLen-legacyLen)...)
-	halfGrown := grown[:legacyLen+3*512]
-	for name, testCase := range map[string]struct {
-		content []byte
-		later   uint32
-	}{
-		"in its hour":           {legacyFile, 0},
-		"three hours later":     {legacyFile, 3},
-		"grown by a crash":      {grown, 0},
-		"half grown, disk full": {halfGrown, 1},
+	releasedSeed := make([]byte, releasedLen)
+	copy(releasedSeed, releasedFormat)
+	rand.Read(releasedSeed[len(releasedFormat):128])
+	for name, content := range map[string][]byte{
+		"as the release left it":         releasedSeed,
+		"zeroed by an interrupted erase": make([]byte, releasedLen),
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			directory := t.TempDir()
 			path := filepath.Join(directory, FileName)
-			if err := os.WriteFile(path, testCase.content, 0o600); err != nil {
+			if err := os.WriteFile(path, content, 0o600); err != nil {
 				t.Fatal(err)
 			}
-			before, err := os.Stat(path)
-			if err != nil {
+			secondLink := filepath.Join(t.TempDir(), FileName)
+			if err := os.Link(path, secondLink); err != nil {
 				t.Fatal(err)
 			}
-			if state, inspectErr := Inspect(directory); state != StateLegacySeed || inspectErr != nil {
-				t.Fatalf("inspecting a legacy seed: %v %v", state, inspectErr)
+			if state, err := Inspect(directory); state != StateReleasedSeed || err != nil {
+				t.Fatalf("inspecting a released seed: %v %v", state, err)
 			}
-			now := internalStart.Add(time.Duration(testCase.later) * time.Hour)
-			ratchet, _, err := Open(directory, now, Options{})
-			if err != nil {
-				t.Fatal(err)
+			if _, _, err := Open(directory, internalStart, Options{}); !errors.Is(err, ErrCorrupt) {
+				t.Fatalf("a process that creates no seed opened a released one: %v", err)
+			}
+			ratchet, created, err := Open(directory, internalStart, Options{Create: true})
+			if err != nil || !created {
+				t.Fatalf("serve kept a released seed: %v %v", created, err)
 			}
 			t.Cleanup(ratchet.Close)
-			want := legacyShare(seed, latest-hour, locator)
-			if got, shareErr := ratchet.Share(legacyID, latest, locator, now); shareErr != nil || got != want {
-				t.Fatalf("a share of the earlier release changed: %v", shareErr)
+			if overwritten, readErr := os.ReadFile(secondLink); readErr != nil || !zeroed(overwritten) {
+				t.Fatalf("the released seed was unlinked without an overwrite: %v", readErr)
 			}
-			if _, passedErr := ratchet.Share(legacyID, hour+testCase.later-1, locator, now); testCase.later > 0 &&
-				!errors.Is(passedErr, ErrShareExpired) {
-				t.Fatalf("the share of a passed hour: %v", passedErr)
-			}
-			if issuer, _, issueErr := ratchet.Issue(Minute(now)+60, locator, now); issueErr != nil ||
-				issuer == legacyID {
-				t.Fatalf("the old chain issued a new share: %v", issueErr)
-			}
-			content, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			after, err := os.Stat(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if len(content) != FileLen || !os.SameFile(before, after) || !zeroed(content[512:]) ||
-				(testCase.later > 0 && bytes.Contains(content, seed[:])) {
-				t.Fatal("the conversion replaced the file, wrote past its first sector or left the passed seed in it")
-			}
-			if err = ratchet.Advance(hourStart(latest + 1)); err != nil ||
-				slices.Contains(ratchet.Generations(), legacyID) {
-				t.Fatalf("the legacy generation outlived its last epoch: %v", err)
+			if state, inspectErr := Inspect(directory); state != StateSeed || inspectErr != nil {
+				t.Fatalf("inspecting the new seed: %v %v", state, inspectErr)
 			}
 		})
 	}
 }
 
-func legacyShare(seed Seed, hours uint32, locator seal.Locator) [32]byte {
-	step(&seed, Next, hours)
-	key := Key(&seed)
-	return ShareOf(&key, locator)
-}
-
-// A write that a crash cuts short leaves some slots behind, here across an hour; the next load brings them forward,
-// makes the same shares and overwrites the passed seeds.
 func TestATornWriteKeepsEveryShare(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
@@ -279,51 +240,6 @@ func TestATornWriteKeepsEveryShare(t *testing.T) {
 	}
 }
 
-// A torn write can also leave the converted chain of an earlier release an hour behind; the load steps it forward by
-// whole hours and it keeps making the same shares.
-func TestATornWriteKeepsTheSharesOfALegacyChain(t *testing.T) {
-	t.Parallel()
-	hour := hourOf(Minute(internalStart))
-	locator := seal.LocatorOf([]byte("message"))
-	legacyID := GenerationID{9}
-	var seed Seed
-	rand.Read(seed[:])
-	directory := t.TempDir()
-	path := filepath.Join(directory, FileName)
-	if err := os.WriteFile(path, legacyContent(legacyID, hour, &seed), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	ratchet := openInternal(t, directory, internalStart)
-	older, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	later := internalStart.Add(time.Hour + 5*time.Minute)
-	if err = ratchet.Advance(later); err != nil {
-		t.Fatal(err)
-	}
-	newer, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	torn := bytes.Clone(newer)
-	copy(torn[slotLen:2*slotLen], older[slotLen:2*slotLen])
-	tornDirectory := t.TempDir()
-	if err = os.WriteFile(filepath.Join(tornDirectory, FileName), torn, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	reopened := openInternal(t, tornDirectory, later)
-	latest := hour + Span
-	if got, shareErr := reopened.Share(legacyID, latest, locator, later); shareErr != nil ||
-		got != legacyShare(seed, latest-hour, locator) {
-		t.Fatalf("a legacy slot an hour behind made another share: %v", shareErr)
-	}
-	rewritten, err := os.ReadFile(filepath.Join(tornDirectory, FileName))
-	if err != nil || !bytes.Equal(rewritten, newer) {
-		t.Fatalf("the load left the torn legacy slot as it was: %v", err)
-	}
-}
-
 // decode accepts a file with every generation a ratchet can hold and refuses each damage that would otherwise make
 // wrong shares.
 func TestDecodeRefusesADamagedSlot(t *testing.T) {
@@ -332,9 +248,6 @@ func TestDecodeRefusesADamagedSlot(t *testing.T) {
 	for hour := uint32(1000); hour <= 1000+Span+3; hour++ {
 		full.advance(hour*minutesPerHour + 17)
 	}
-	legacy := &full.slots[len(full.slots)-1]
-	*legacy = generation{id: GenerationID{7}, kind: kindHours, first: 1000 + Span, last: 1000 + 2*Span}
-	rand.Read(legacy.hour[:])
 	content := encode(&full)
 	var decoded state
 	if !decode(content, &decoded) || decoded != full || full.issuer() == nil {
@@ -342,7 +255,6 @@ func TestDecodeRefusesADamagedSlot(t *testing.T) {
 	}
 	slotOf := func(content []byte, index int) []byte { return content[(index+1)*slotLen : (index+2)*slotLen] }
 	firstSlot := func(content []byte) []byte { return slotOf(content, 0) }
-	legacySlot := func(content []byte) []byte { return slotOf(content, len(full.slots)-1) }
 	resum := func(slot []byte) {
 		binary.BigEndian.PutUint32(slot[sumOffset:], crc32.Checksum(slot[:sumOffset], castagnoli))
 	}
@@ -361,7 +273,7 @@ func TestDecodeRefusesADamagedSlot(t *testing.T) {
 		},
 		"an unknown kind": func(content []byte) {
 			slot := firstSlot(content)
-			slot[kindOffset] = 3
+			slot[kindOffset] = 2
 			resum(slot)
 		},
 		"bytes after the kind": func(content []byte) {
@@ -385,15 +297,6 @@ func TestDecodeRefusesADamagedSlot(t *testing.T) {
 		"a life longer than Span": func(content []byte) {
 			slot := firstSlot(content)
 			setField(slot, lastOffset, field(slot, lastOffset)+1)
-		},
-		"a chain of hours longer than its span": func(content []byte) {
-			slot := legacySlot(content)
-			setField(slot, lastOffset, field(slot, firstOffset)+legacySpan+1)
-		},
-		"a chain of hours with a minute seed": func(content []byte) {
-			slot := legacySlot(content)
-			slot[minuteSeedOffset] = 1
-			resum(slot)
 		},
 		"two slots of one generation": func(content []byte) {
 			copy(slotOf(content, 1), firstSlot(content))
@@ -498,13 +401,4 @@ func TestARequestFromTheEndOfTheHourIsIssued(t *testing.T) {
 	if err != nil || late != moved {
 		t.Fatalf("a request from the end of the hour was refused: %v", err)
 	}
-}
-
-func legacyContent(id GenerationID, hour uint32, seed *Seed) []byte {
-	content := make([]byte, 0, legacyLen)
-	content = append(content, legacyFormat...)
-	content = append(content, id[:]...)
-	content = binary.BigEndian.AppendUint64(content, uint64(hour))
-	content = append(content, seed[:]...)
-	return content[:legacyLen]
 }

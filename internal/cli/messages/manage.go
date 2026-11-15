@@ -3,14 +3,11 @@ package messages
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core/api"
-	"github.com/misaon/nylzo/internal/core/report"
 )
 
 const (
@@ -140,78 +137,4 @@ func linkClient(environment *command.Environment, linkFile string) (*openLink, *
 		return nil, nil, command.Explained(err)
 	}
 	return &link, server, nil
-}
-
-func RunReport(ctx context.Context, environment *command.Environment, arguments []string) int {
-	flags := command.NewFlags(environment, "report")
-	linkFile := flags.String("link-file", "", linkFileUsage)
-	reasonFile := flags.String(
-		"reason-file",
-		"",
-		"read why the message should be removed from this file (optional; links and long codes are removed before sending)",
-	)
-	contactFlag := flags.String(
-		"contact",
-		"",
-		"your email address, used only to confirm receipt and to tell you the decision (optional)",
-	)
-	goodFaith := flags.Bool(
-		"good-faith",
-		false,
-		"state that you believe in good faith that the report is accurate and complete",
-	)
-	if code, done := command.ParseFlags(flags, environment, arguments); done {
-		return code
-	}
-	contact, err := report.ParseContact(*contactFlag)
-	if err != nil {
-		fmt.Fprintln(
-			environment.Stderr,
-			command.Program+" report: the contact must be an email address such as name@example.com",
-		)
-		return command.ExitUsage
-	}
-	reason := ""
-	if *reasonFile != "" {
-		raw, readErr := command.ReadFileLimited(*reasonFile, maxSecretInput)
-		if readErr != nil {
-			return command.Failf(environment, "reason: %s", command.Explain(readErr))
-		}
-		reason = strings.TrimSpace(string(raw))
-	}
-	if report.ReasonTooLong(reason) {
-		fmt.Fprintf(
-			environment.Stderr,
-			"%s report: the reason is longer than %d bytes after links and long codes are removed\n",
-			command.Program,
-			report.MaxReasonBytes,
-		)
-		return command.ExitUsage
-	}
-	link, server, err := linkClient(environment, *linkFile)
-	if err != nil {
-		return command.Failf(environment, "%s", err)
-	}
-	defer link.wipe()
-	err = server.Report(
-		ctx,
-		link.id,
-		&link.keys.R,
-		&client.Report{Reason: reason, Contact: contact, GoodFaith: *goodFaith},
-	)
-	if errors.Is(err, client.ErrReportLimit) {
-		return command.Failf(
-			environment,
-			"the message already has three reports today, so this one was not stored; a person reviews them, "+
-				"and anything new can go to the contact on the /transparency page of the instance",
-		)
-	}
-	if err != nil {
-		return command.Failf(environment, "%s", command.Explain(err))
-	}
-	fmt.Fprintln(
-		environment.Stdout,
-		"the report was sent; a person reviews it, and it is kept only while the message exists",
-	)
-	return command.ExitOK
 }

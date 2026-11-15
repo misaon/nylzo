@@ -23,12 +23,6 @@ execFileSync(process.execPath, [path.join(repository, 'tools/build.mts'), binary
 
 const dataDirectory = mkdtempSync(path.join(tmpdir(), 'nylzo-e2e-'));
 const keyDirectory = mkdtempSync(path.join(tmpdir(), 'nylzo-e2e-key-'));
-const reportKey = execFileSync(binary, ['report-key', '--key-file', path.join(keyDirectory, 'report-key')], {
-  encoding: 'utf8',
-})
-  .trim()
-  .replace(/^NYLZO_REPORT_KEY=/u, '');
-
 const pepperFile = path.join(keyDirectory, 'pepper');
 writeFileSync(pepperFile, randomBytes(32).toString('hex'), { mode: 0o400 });
 
@@ -47,12 +41,10 @@ const server = spawn(binary, ['serve'], {
     NYLZO_ALLOW_SWAP: '1',
     NYLZO_ALLOW_UNERASABLE_STORAGE: process.platform === 'linux' ? '0' : '1',
     NYLZO_ALLOW_UNERASED_MEMORY: process.platform === 'linux' ? '0' : '1',
-    NYLZO_REPORT_KEY: reportKey,
     NYLZO_RATE_CREATE_HOUR: '0',
     NYLZO_RATE_CREATE_DAY: '0',
     NYLZO_RATE_CREATE_BYTES_DAY: '0',
     NYLZO_RATE_READ_HOUR: '0',
-    NYLZO_RATE_ABUSE_HOUR: '0',
     NYLZO_RATE_SOURCE_RPS: '1000',
     NYLZO_RATE_SOURCE_BURST: '1000',
     NYLZO_RATE_BUCKET_RPS: '2000',

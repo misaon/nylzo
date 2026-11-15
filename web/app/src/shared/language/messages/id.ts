@@ -344,9 +344,6 @@ export const messages: Catalog = {
   'transparency.stores.ended.title': 'Setelah pesan berakhir',
   'transparency.stores.ended':
     'Pesan berakhir saat terakhir kali dibuka, dihapus oleh penerima, dibatalkan, habis masa berlakunya, atau diturunkan oleh operator. Setelah itu, server terlebih dahulu membuang kunci pesan tersimpan, sehingga sisa pesan di disk pun tidak dapat dibaca. Catatan tersegel pesan yang sudah berakhir disimpan paling lama {days}: bagaimana dan kapan pesan berakhir, serta kapan pertama kali dibuka.',
-  'transparency.stores.reports.title': 'Laporan penyalahgunaan',
-  'transparency.stores.reports':
-    'Laporan yang disegel dengan kunci publik operator, sehingga server sendiri tidak dapat membacanya: tanggal, ID pesan, alasan tanpa kunci dari tautan dan tanpa kode panjang, pernyataan iktikad baik, dan alamat email jika pelapor mencantumkannya, paling lama {days}. Jumlah laporan per pesan disimpan dalam catatan tersegel pesan tersebut.',
   'transparency.stores.counters.title': 'Penghitung tanpa alamat',
   'transparency.stores.counters':
     'Jumlah harian pesan yang dibuat disimpan selama {days} setelah hari itu berakhir, sedangkan tantangan sekali pakai yang sudah digunakan hanya beberapa menit.',

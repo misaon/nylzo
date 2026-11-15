@@ -17,7 +17,6 @@ import (
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
 	"github.com/misaon/nylzo/internal/server/leasetimer"
@@ -85,7 +84,6 @@ type Server struct {
 	work          *proof.Work
 	idTokens      proof.IDTokens
 	disk          *diskspace.Reserver
-	reports       *abuse.Reports
 	dummyRow      store.Row
 	webFiles      fs.FS
 	frontend      http.Handler
@@ -97,9 +95,6 @@ type Server struct {
 
 func New(settings *config.Server, storage store.Store, blobs store.Blobs, options ...Option) (*Server, error) {
 	if err := settings.Validate(); err != nil {
-		return nil, err
-	}
-	if err := abuse.RefuseLegacyReports(settings.DataDirectory); err != nil {
 		return nil, err
 	}
 	ring, err := pepper.NewRing(settings.Pepper, settings.PepperPrevious)
@@ -137,16 +132,6 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	)
 	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency)
 	server.idTokens = proof.NewIDTokens(ring)
-	server.reports = abuse.NewReports(
-		settings.DataDirectory,
-		settings.ReportKey,
-		server.events,
-		abuse.FilesBytes(settings.Rates.GlobalDailyCreates, store.ReportsPerMessage),
-	)
-	if prepareErr := abuse.Prepare(settings.DataDirectory, time.Now()); prepareErr != nil {
-		server.epochs.Close()
-		return nil, prepareErr
-	}
 	server.disk = diskspace.NewReserver(settings.DataDirectory, settings.MinFreeBytes, diskspace.Free, server.events)
 	server.handler = server.routes()
 	return server, nil
@@ -253,7 +238,6 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 			day = today
 			s.addressKey.Rotate()
 			s.forgetAddresses()
-			s.prepareReportDays(ctx, now)
 		} else {
 			s.purgeRateTables(now)
 		}
@@ -282,13 +266,6 @@ func (s *Server) loadWebClient() error {
 func (s *Server) flushCounts(ctx context.Context) {
 	s.requestCounts.Flush(ctx)
 	s.eventCounts.Flush(ctx)
-}
-
-// prepareReportDays keeps the day files ready when no sweep runs in this process or an external one stopped.
-func (s *Server) prepareReportDays(ctx context.Context, now time.Time) {
-	if err := abuse.Prepare(s.settings.DataDirectory, now); err != nil {
-		s.events.ErrorContext(ctx, "abuse-prepare", "err", logging.ErrorText(err))
-	}
 }
 
 // advanceRatchet runs in secret mode, so the derivation leaves no copy of the passed seed in memory.
@@ -332,7 +309,7 @@ func (s *Server) forgetAddresses() {
 
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := time.Now()
-	report, err := sweep.Run(ctx, s.store, s.blobs, s.settings.DataDirectory, now)
+	report, err := sweep.Run(ctx, s.store, s.blobs, now)
 	return report, errors.Join(err, s.advanceRatchet(now))
 }
 

@@ -25,7 +25,7 @@ const (
 	// SealedWrapLen is the length of a read or manage wrap with its pepper layer.
 	SealedWrapLen = nonceLen + WrapLen + tagLen
 	BlobTagLen    = sha256.Size
-	// BlobWrapLen is the length of a blob wrap that holds the tags of its blob; one of an earlier release is WrapLen.
+	// BlobWrapLen is the length of a blob wrap, which holds the tags of its blob.
 	BlobWrapLen = nonceLen + KeyLen + 2*BlobTagLen + tagLen
 	RecordBlock = 1024
 	// RegistrationLen is an OPAQUE registration record (spec section 2.1); SealedRegistrationLen is its wrap.
@@ -103,14 +103,9 @@ func UnwrapRecordKey(pepperKey Key, publicKey, sealed []byte, locator Locator, p
 	return Key(opened), nil
 }
 
-// ResealWrap puts a stored wrap under the current pepper key. A wrap of an earlier release has no pepper layer and is
-// WrapLen bytes long; one sealed under an earlier pepper key opens with it. Both are sealed again in place, and a wrap
-// that no key opens stays as it is and is reported as ErrOpen.
+// ResealWrap puts a stored wrap that an earlier pepper key sealed under the current one, in place. A wrap that no key
+// opens stays as it is and is reported as ErrOpen.
 func ResealWrap(current Key, earlier []Key, wrap *[]byte, locator Locator, purpose Purpose) (bool, error) {
-	if len(*wrap) == WrapLen {
-		*wrap = sealWrap(current, *wrap, locator, purpose)
-		return true, nil
-	}
 	if inner, err := openSealedWrap(current, *wrap, locator, purpose); err == nil {
 		clear(inner)
 		return false, nil
@@ -149,17 +144,16 @@ func openSealedWrap(pepperKey Key, sealed []byte, locator Locator, purpose Purpo
 	return wrapped, nil
 }
 
-// BlobKey is what a blob wrap holds. A wrap that a release before Nylzo 0.14.0 stored has no tags.
+// BlobKey is what a blob wrap holds.
 type BlobKey struct {
 	Key     Key
 	Tag     BlobTag
 	SaltTag BlobTag
-	Tagged  bool
 }
 
 // NewBlobKey is the key of a new blob, whose tags follow once the blob is stored.
 func NewBlobKey() BlobKey {
-	return BlobKey{Key: NewKey(), Tagged: true}
+	return BlobKey{Key: NewKey()}
 }
 
 func (b *BlobKey) Clear() {
@@ -168,11 +162,8 @@ func (b *BlobKey) Clear() {
 	clear(b.SaltTag[:])
 }
 
-// WrapBlobKey seals the tags with the key, so no new wrap can skip the check.
+// WrapBlobKey seals the tags with the key, so no wrap can skip the check.
 func WrapBlobKey(recordKey Key, blob *BlobKey, locator Locator) []byte {
-	if !blob.Tagged {
-		panic("seal: a blob key is wrapped only with its tags")
-	}
 	plaintext := make([]byte, 0, KeyLen+2*BlobTagLen)
 	defer clear(plaintext[:cap(plaintext)])
 	plaintext = append(append(append(plaintext, blob.Key[:]...), blob.Tag[:]...), blob.SaltTag[:]...)
@@ -182,21 +173,14 @@ func WrapBlobKey(recordKey Key, blob *BlobKey, locator Locator) []byte {
 func UnwrapBlobKey(recordKey Key, wrapped []byte, locator Locator) (BlobKey, error) {
 	opened, err := open(subkey(recordKey, locator, infoBlobWrap), wrapped, locator, labelBlob)
 	defer clear(opened)
-	switch {
-	case err != nil:
-		return BlobKey{}, ErrOpen
-	case len(opened) == KeyLen:
-		return BlobKey{Key: Key(opened)}, nil
-	case len(opened) == KeyLen+2*BlobTagLen:
-		return BlobKey{
-			Key:     Key(opened[:KeyLen]),
-			Tag:     BlobTag(opened[KeyLen : KeyLen+BlobTagLen]),
-			SaltTag: BlobTag(opened[KeyLen+BlobTagLen:]),
-			Tagged:  true,
-		}, nil
-	default:
+	if err != nil || len(opened) != KeyLen+2*BlobTagLen {
 		return BlobKey{}, ErrOpen
 	}
+	return BlobKey{
+		Key:     Key(opened[:KeyLen]),
+		Tag:     BlobTag(opened[KeyLen : KeyLen+BlobTagLen]),
+		SaltTag: BlobTag(opened[KeyLen+BlobTagLen:]),
+	}, nil
 }
 
 // WrapRegistration seals an OPAQUE registration under a key from the erase salt, so once the blob is erased no copy
@@ -309,9 +293,6 @@ func SaltTagOf(blobKey Key, salt EraseSalt) BlobTag {
 }
 
 func CheckSaltTag(blob *BlobKey, salt EraseSalt) error {
-	if !blob.Tagged {
-		return nil
-	}
 	tag := SaltTagOf(blob.Key, salt)
 	if !hmac.Equal(tag[:], blob.SaltTag[:]) {
 		return ErrBlobChanged

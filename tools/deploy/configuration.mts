@@ -20,8 +20,6 @@ export function configuration(input: any) {
     assert(family && extra === undefined && /^\d+$/u.test(prefix!) && Number(prefix) >= (family === 4 ? 24 : 64) && Number(prefix) <= (family === 4 ? 32 : 128), "Administrator CIDRs must be /24 or narrower for IPv4 and /64 or narrower for IPv6");
   }
   administratorKeyIsHardware(input.administratorPublicKey);
-  assert.match(input.reportPublicKey, /^[A-Za-z0-9_-]{1622}$/u);
-  assert.equal(Buffer.from(input.reportPublicKey, "base64url").length, 1216);
   for (const field of ["operator", "contact", "hosting"]) {
     assert.equal(typeof input[field], "string");
     assert(input[field].length <= 300 && !/[\r\n\0]/u.test(input[field]), "Invalid public instance metadata");
@@ -29,6 +27,14 @@ export function configuration(input: any) {
   assert.match(input.contact, /^(?:[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+|https:\/\/[\w.~:/?@!&+,;=%-]+)?$/u, "The contact is one email address or https:// address");
   assert(Number.isSafeInteger(input.dailyCreates) && input.dailyCreates > 0 && input.dailyCreates <= 500, "This small-server profile permits at most 500 daily creations");
   assert.match(input.initialRelease, /^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/u, "Set initialRelease to the tag of a Nylzo release that ships the Caddy build");
+  // Releases before 0.14.0 refuse to start without the report key, so a site that boots one must carry it.
+  const [major, minor] = input.initialRelease.slice(1).split(".").map(Number);
+  if (input.reportPublicKey === undefined) {
+    assert(major > 0 || minor >= 14, "A release before v0.14.0 needs reportPublicKey; set initialRelease to v0.14.0 or later");
+  } else {
+    assert.match(input.reportPublicKey, /^[A-Za-z0-9_-]{1622}$/u);
+    assert.equal(Buffer.from(input.reportPublicKey, "base64url").length, 1216);
+  }
   assert.equal(typeof input.automaticUpdates, "boolean");
   if (input.monitorClientCertificate !== undefined) {
     assert(input.automaticUpdates, "Host monitoring requires automatic update checks");

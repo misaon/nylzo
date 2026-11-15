@@ -42,7 +42,6 @@ var contracts = []contract{
 	{"F11TakeBackRestoresOnlyItsOwnWait", (*fixture).takeBackRestoresOnlyItsOwnWait},
 	{"F11EndedMessagesCountNoAttempt", (*fixture).endedMessagesCountNoAttempt},
 	{"TakeDownWithoutTheKey", (*fixture).takeDownWithoutTheKey},
-	{"ReportsPerMessage", (*fixture).reportsPerMessage},
 	{"AK7Expiry", (*fixture).expiry},
 	{"SweepSurvivesBlobErrors", (*fixture).sweepSurvivesBlobErrors},
 	{"SweepPagesPastFailures", (*fixture).sweepPagesPastFailures},

@@ -283,17 +283,7 @@ export async function initialize(sshPublicKey: string, destination: string) {
   await mkdir(root, { mode: 0o700 });
   const site = JSON.parse(await readFile(path.join(profile, "site.example.json"), "utf8"));
   site.administratorPublicKey = (await readFile(sshPublicKey, "utf8")).trim();
-  const recipient = process.env.NYLZO_REPORT_KEY_RECIPIENT;
-  if (recipient !== undefined) assert.match(recipient, /^age1[0-9a-z]{20,200}$/u, "NYLZO_REPORT_KEY_RECIPIENT must be one age recipient, for example from age-plugin-yubikey");
-  const staging = await mkdtemp(path.join(root, ".report-key-"));
-  try {
-    const plaintext = path.join(staging, "report-key");
-    const report = execFileSync(process.env.NYLZO_CLI ?? "nylzo", ["report-key", "--key-file", plaintext], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    assert(report.startsWith("NYLZO_REPORT_KEY="));
-    site.reportPublicKey = report.trim().slice("NYLZO_REPORT_KEY=".length);
-    execFileSync(process.env.NYLZO_AGE ?? "age", ["--encrypt", ...(recipient ? ["--recipient", recipient] : ["--passphrase"]), "--output", path.join(root, "report-key.age"), plaintext], { stdio: ["inherit", "inherit", "inherit"] });
-  } finally { await rm(staging, { recursive: true, force: true }); }
   await writeFile(path.join(root, "state-encryption.key"), randomBytes(64).toString("base64"), { mode: 0o600, flag: "wx" });
   await writeFile(path.join(root, "site.json"), JSON.stringify(site, null, 2) + "\n", { mode: 0o600, flag: "wx" });
-  console.log(`Created private operator configuration in ${root}. The reporting key is encrypted in report-key.age; back it up and the state-encryption key securely before provisioning.`);
+  console.log(`Created private operator configuration in ${root}. Back up the state-encryption key securely before provisioning.`);
 }

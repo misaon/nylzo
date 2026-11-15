@@ -22,7 +22,7 @@ import type { ContentKeys, KdfId, Link, LinkKeys, RequestKey } from '@nylzo/core
 import { endedStateOf, isApiError, shouldRetryLater, StoppedError } from '../../shared/api/api-errors.ts';
 import type { EndedState } from '../../shared/api/api-errors.ts';
 import type { Api, Envelope, Metadata } from '../../shared/api/api.ts';
-import { flagsAndDeadlineMatch } from '../../shared/api/responses.ts';
+import { deadlineMatchesExpiry } from '../../shared/api/responses.ts';
 import { attempt } from '../../shared/attempt.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
@@ -206,7 +206,7 @@ function policyMatches(envelope: Envelope, secrets: Secrets, metadata: Metadata 
     served.kdfId === secrets.kdfId &&
     served.opensMax === metadata?.opensMax &&
     served.ttlSeconds === metadata.ttlSeconds &&
-    flagsAndDeadlineMatch(served, metadata.expiresAt)
+    deadlineMatchesExpiry(served, metadata.expiresAt)
   );
 }
 
@@ -571,7 +571,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
         keys,
         {
           id: current.id,
-          policy: { opensMax, ttlSeconds, ...(deadline !== undefined && { deadline }) },
+          policy: { opensMax, ttlSeconds, deadline },
           kdfId: current.kdfId,
           objectHash: current.objectHash,
         },

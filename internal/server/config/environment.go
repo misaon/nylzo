@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/pepper"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/operatoraddress"
 )
 
@@ -60,11 +59,7 @@ func FromEnvironment(getenv func(string) string, needPepper bool) (Server, error
 			return settings, fmt.Errorf("%w: %s: %w", ErrInvalid, variable.name, err)
 		}
 	}
-	if !needPepper {
-		err := settings.validateWithoutReports()
-		return settings, err
-	}
-	if len(settings.Pepper) == 0 {
+	if needPepper && len(settings.Pepper) == 0 {
 		return settings, fmt.Errorf(
 			"%w: NYLZO_PEPPER_FILE is required, a file with 32 bytes in hex or base64url",
 			ErrInvalid,
@@ -108,7 +103,6 @@ func (s *Server) variables() []variable {
 		{"NYLZO_RATE_CREATE_BYTES_DAY", integerInto(&s.Rates.CreateBytesPerDay)},
 		{"NYLZO_RATE_READ_HOUR", integerInto(&s.Rates.ReadPerHour)},
 		{"NYLZO_RATE_READ_BYTES_HOUR", integerInto(&s.Rates.ReadBytesPerHour)},
-		{"NYLZO_RATE_ABUSE_HOUR", integerInto(&s.Rates.AbusePerHour)},
 		{"NYLZO_RATE_COARSE_MULTIPLIER", integerInto(&s.Rates.CoarseMultiplier)},
 		{"NYLZO_RATE_BUCKET_RPS", floatInto(&s.Rates.BucketPerSecond)},
 		{"NYLZO_RATE_BUCKET_BURST", floatInto(&s.Rates.BucketBurst)},
@@ -125,11 +119,6 @@ func (s *Server) variables() []variable {
 		{"NYLZO_ALLOW_SWAP", boolInto(&s.Development.AllowSwap)},
 		{"NYLZO_ALLOW_UNERASABLE_STORAGE", boolInto(&s.Development.AllowUnerasableStorage)},
 		{"NYLZO_ALLOW_UNERASED_MEMORY", boolInto(&s.Development.AllowUnerasedMemory)},
-		{"NYLZO_REPORT_KEY", func(value string) error {
-			key, err := abuse.ParsePublicKey(value)
-			s.ReportKey = key
-			return err
-		}},
 		{"NYLZO_PUBLIC_URL", func(value string) error {
 			s.PublicURL = value
 			return operatoraddress.CheckPublicURL(value)

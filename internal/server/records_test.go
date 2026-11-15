@@ -62,8 +62,8 @@ func TestADatabaseCopyAndARecordedPublicKeyOpenNoRecord(t *testing.T) {
 				t.Fatalf("%s opened the record", name)
 			}
 		}
-		if unwrapErr := legacyUnwrap(row.ReadWrap, readKey[:], row.Locator); unwrapErr == nil {
-			t.Fatal("the stored read wrap opens the way a wrap of an earlier release did, with pk_R alone")
+		if unwrapErr := unwrapWithoutPepper(row.ReadWrap, readKey[:], row.Locator); unwrapErr == nil {
+			t.Fatal("the stored read wrap opens with pk_R alone")
 		}
 		if _, err = seal.UnwrapRecordKey(
 			derivedRecordsKey(t, pepperA),
@@ -73,50 +73,6 @@ func TestADatabaseCopyAndARecordedPublicKeyOpenNoRecord(t *testing.T) {
 			seal.Read,
 		); err != nil {
 			t.Fatalf("pk_R and the pepper must open the record: %v", err)
-		}
-	})
-}
-
-func TestServeSealsTheRowsOfAnEarlierRelease(t *testing.T) {
-	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		if strings.Contains(harness.logs.String(), `"msg":"rows-sealed"`) {
-			t.Fatalf("a fresh store reported sealed rows: %s", harness.logs.String())
-		}
-		message := newMessage(t, core.KDFNone, "", 2, 3600, "stored by nylzo 0.13")
-		harness.mustCreate(message)
-		record := harness.mustRecord(message)
-		readKey, manageKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.manage)
-		err := harness.store.Update(t.Context(), record.Row.Locator, func(row *store.Row) error {
-			row.ReadWrap = legacyWrap(t, readKey[:], record.Key, row.Locator, seal.Read)
-			row.ManageWrap = legacyWrap(t, manageKey[:], record.Key, row.Locator, seal.Manage)
-			return nil
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		before := len(harness.logs.String())
-		harness.reopen(&harness.settings)
-		if !strings.Contains(harness.logs.String()[before:], `"msg":"rows-sealed"`) {
-			t.Fatalf("the start did not report the sealed rows: %s", harness.logs.String()[before:])
-		}
-		if response, metadata := harness.metadata(message); response.StatusCode != http.StatusOK ||
-			metadata["state"] != "available" {
-			t.Fatalf("metadata of a row of an earlier release: %d %v", response.StatusCode, metadata)
-		}
-		if response, _ := harness.status(message); response.StatusCode != http.StatusOK {
-			t.Fatalf("status of a row of an earlier release: %d", response.StatusCode)
-		}
-		row, err := harness.store.Load(t.Context(), record.Row.Locator)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(row.ReadWrap) != seal.SealedWrapLen || len(row.ManageWrap) != seal.SealedWrapLen {
-			t.Fatalf("the wraps were not sealed: %d and %d bytes", len(row.ReadWrap), len(row.ManageWrap))
-		}
-		if err = legacyUnwrap(row.ReadWrap, readKey[:], row.Locator); err == nil {
-			t.Fatal("pk_R alone still opens the sealed wrap")
 		}
 	})
 }
@@ -265,19 +221,8 @@ func TestAFailedRebuildSaysThatRowsWereSealed(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
-		message := newMessage(t, core.KDFNone, "", 1, 3600, "stored by nylzo 0.13")
-		harness.mustCreate(message)
-		record := harness.mustRecord(message)
-		readKey, manageKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.manage)
-		err := harness.store.Update(t.Context(), record.Row.Locator, func(row *store.Row) error {
-			row.ReadWrap = legacyWrap(t, readKey[:], record.Key, row.Locator, seal.Read)
-			row.ManageWrap = legacyWrap(t, manageKey[:], record.Key, row.Locator, seal.Manage)
-			return nil
-		})
-		if err != nil {
-			t.Fatal(err)
-		}
-		settings := baseSettings(pepperA, nil)
+		harness.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "sealed under pepper A"))
+		settings := baseSettings(pepperC, pepperA)
 		settings.DataDirectory = harness.directory
 		restarted, err := New(settings, failingRebuild{harness.store}, harness.blobs)
 		if err != nil {
@@ -299,18 +244,9 @@ func derivedRecordsKey(t *testing.T, secret []byte) seal.Key {
 	return ring.RecordsKey()
 }
 
-// legacyWrap builds a wrap as nylzo 0.13 and earlier stored it (spec §5.2 of that release).
-func legacyWrap(t *testing.T, publicKey []byte, recordKey seal.Key, locator seal.Locator, purpose seal.Purpose) []byte {
-	t.Helper()
-	aead, err := legacyAEAD(publicKey, locator, purpose)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return aead.Seal(nil, nil, recordKey[:], append(locator[:len(locator):len(locator)], purpose...))
-}
-
-func legacyUnwrap(wrapped, publicKey []byte, locator seal.Locator) error {
-	aead, err := legacyAEAD(publicKey, locator, seal.Read)
+// unwrapWithoutPepper opens a wrap as the inner wrap alone opens, with the public key and no pepper layer.
+func unwrapWithoutPepper(wrapped, publicKey []byte, locator seal.Locator) error {
+	aead, err := innerAEAD(publicKey, locator, seal.Read)
 	if err != nil {
 		return err
 	}
@@ -318,7 +254,7 @@ func legacyUnwrap(wrapped, publicKey []byte, locator seal.Locator) error {
 	return err
 }
 
-func legacyAEAD(publicKey []byte, locator seal.Locator, purpose seal.Purpose) (cipher.AEAD, error) {
+func innerAEAD(publicKey []byte, locator seal.Locator, purpose seal.Purpose) (cipher.AEAD, error) {
 	key, err := hkdf.Key(sha256.New, publicKey, locator[:], "nylzo/v1/record/"+string(purpose), seal.KeyLen)
 	if err != nil {
 		return nil, err

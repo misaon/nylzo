@@ -3,7 +3,6 @@ package operator
 import (
 	"bytes"
 	"context"
-	"crypto/hpke"
 	"maps"
 	"os"
 	"path/filepath"
@@ -13,8 +12,6 @@ import (
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
-	"github.com/misaon/nylzo/internal/core"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/store/disk"
 )
@@ -40,16 +37,6 @@ func pepperFile(t *testing.T) string {
 	return path
 }
 
-var testReportKey = func() hpke.PrivateKey {
-	key, err := abuse.NewKeyPair()
-	if err != nil {
-		panic(err)
-	}
-	return key
-}()
-
-var testReportKeyText = core.Encode(testReportKey.PublicKey().Bytes())
-
 type noTerminal struct{}
 
 func (noTerminal) StdinIsTerminal() bool { return false }
@@ -74,7 +61,6 @@ func run(
 	variables map[string]string,
 	terminal console.Terminal,
 	operatorCommand func(context.Context, *command.Environment, []string) int,
-	arguments ...string,
 ) commandResult {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
@@ -101,6 +87,6 @@ func run(
 		Getenv:   getenvFrom(variables),
 		Terminal: terminal,
 		Version:  "test",
-	}, arguments)
+	}, nil)
 	return commandResult{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }

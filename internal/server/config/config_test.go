@@ -14,9 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/envelope"
-	"github.com/misaon/nylzo/internal/server/abuse"
 	"github.com/misaon/nylzo/internal/server/config"
 )
 
@@ -24,14 +22,6 @@ const (
 	currentPepper  = "00112233445566778899aabbccddeeff00112233445566778899aabbccddee01"
 	previousPepper = "ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221102"
 )
-
-var reportKey = func() string {
-	key, err := abuse.NewKeyPair()
-	if err != nil {
-		panic(err)
-	}
-	return core.Encode(key.PublicKey().Bytes())
-}()
 
 var currentPepperFile, previousPepperFile string
 
@@ -50,29 +40,15 @@ func TestMain(m *testing.M) {
 	m.Run()
 }
 
-// environment gives every configuration the operator's report key unless the test sets the variable itself.
 func environment(variables map[string]string) func(string) string {
-	return func(name string) string {
-		if value, set := variables[name]; set || name != "NYLZO_REPORT_KEY" {
-			return value
-		}
-		return reportKey
-	}
+	return func(name string) string { return variables[name] }
 }
 
-func TestServeNeedsAValidReportKey(t *testing.T) {
+// A host configured for an earlier release still sets NYLZO_REPORT_KEY, and must start.
+func TestServeIgnoresTheReportKeyOfEarlierReleases(t *testing.T) {
 	t.Parallel()
-	for name, value := range map[string]string{"missing": "", "not a key": "AAAA", "an Ed25519 key": core.Encode(make([]byte, 32))} {
-		_, err := config.FromEnvironment(
-			environment(map[string]string{"NYLZO_PEPPER_FILE": currentPepperFile, "NYLZO_REPORT_KEY": value}),
-			true,
-		)
-		if !errors.Is(err, config.ErrInvalid) || !strings.Contains(err.Error(), "NYLZO_REPORT_KEY") {
-			t.Errorf("%s report key: %v", name, err)
-		}
-	}
-	if _, err := config.FromEnvironment(environment(map[string]string{"NYLZO_REPORT_KEY": ""}), false); err != nil {
-		t.Fatalf("sweep-once and takedown need no report key: %v", err)
+	if _, err := config.FromEnvironment(withPepper("NYLZO_REPORT_KEY", "AAAA"), true); err != nil {
+		t.Fatalf("a report key left in the environment: %v", err)
 	}
 }
 

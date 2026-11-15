@@ -326,9 +326,6 @@ export const messages = {
   'transparency.stores.ended.title': 'Po skončení zprávy',
   'transparency.stores.ended':
     'Zpráva končí posledním otevřením, smazáním příjemcem, zrušením, skončením platnosti nebo odstraněním provozovatelem. Server pak nejdřív zahodí klíč uložené zprávy, takže nejde přečíst ani její zbytek na disku. Zapečetěný záznam skončené zprávy uchovává nejdéle {days}: jak a\u{A0}kdy skončila a\u{A0}kdy byla poprvé otevřena.',
-  'transparency.stores.reports.title': 'Hlášení zneužití',
-  'transparency.stores.reports':
-    'Hlášení zapečetěná veřejným klíčem provozovatele, takže je server sám nepřečte: datum, ID zprávy, důvod bez klíčů z\u{A0}odkazů a\u{A0}dlouhých kódů, prohlášení o\u{A0}dobré víře a\u{A0}e-mail, pokud ho oznamovatel uvedl, nejdéle {days}. Počet hlášení na zprávu drží v\u{A0}jejím zapečetěném záznamu.',
   'transparency.stores.counters.title': 'Počítadla bez adres',
   'transparency.stores.counters':
     'Denní počty vytvořených zpráv uchovává ještě {days} po konci dne, použité jednorázové výzvy jen několik minut.',

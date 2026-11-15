@@ -15,7 +15,6 @@ import (
 
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
-	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/core/share"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/pepper"
@@ -75,8 +74,7 @@ func (s *Server) endLostMessage(ctx context.Context, record *store.Record, now t
 		s.events.ErrorContext(ctx, "epoch-lookup", "err", logging.ErrorText(err))
 		return
 	}
-	wentWithDeadline := message.Flags&envelope.FlagDeadline != 0 && s.epochs.Passed(message.Epoch)
-	if held || wentWithDeadline {
+	if held || s.epochs.Passed(message.Epoch) {
 		return
 	}
 	ctx = context.WithoutCancel(ctx)
@@ -113,7 +111,7 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	clientKey, ok := readerKey(w, r, granted.record.Message)
+	clientKey, ok := readerKey(w, r)
 	if !ok || !s.finishHandshake(w, r, &granted.record, ke3) || !s.allowReadBytes(w, r, granted.record.Message.Size) {
 		return
 	}
@@ -149,16 +147,14 @@ func (s *Server) handleClaim(w http.ResponseWriter, r *http.Request) {
 	s.serveBlob(w, r, message, servedHeaders{lease: core.Encode(lease[:]), share: wrappedShare}, blob.content)
 }
 
-// readerKey reads the share key and refuses, before anything is counted or changed, a reader of an earlier release:
-// one whose share key has no suite, or that does not name every envelope flag of the message, so it spends no open
-// on a share or an envelope it cannot open (spec sections 5.6 and 6.4).
-func readerKey(w http.ResponseWriter, r *http.Request, message *store.Message) (hpke.PublicKey, bool) {
+// readerKey reads the share key and refuses, before anything is counted or changed, a reader of an earlier release,
+// whose share key has no suite, so it spends no open on a share it cannot open (spec section 5.6).
+func readerKey(w http.ResponseWriter, r *http.Request) (hpke.PublicKey, bool) {
 	clientKey, keyErr := share.ParseKey(r.Header.Get(api.ShareKeyHeaderName))
-	readerFlags, flagsOK := parseReaderFlags(r.Header)
 	switch {
-	case errors.Is(keyErr, share.ErrOutdated) || (flagsOK && message.Flags&^readerFlags != 0):
+	case errors.Is(keyErr, share.ErrOutdated):
 		writeError(w, http.StatusBadRequest, api.ErrorClientOutdated)
-	case keyErr != nil || !flagsOK:
+	case keyErr != nil:
 		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 	default:
 		return clientKey, true
@@ -198,20 +194,6 @@ func (s *Server) shareGone(w http.ResponseWriter, r *http.Request, record *store
 	s.endLostShare(w, r, record, now)
 }
 
-// parseReaderFlags reads the envelope flags a reader opens, which X-Nylzo-Flags names once in canonical decimal.
-func parseReaderFlags(header http.Header) (uint8, bool) {
-	values := header.Values(api.FlagsHeaderName)
-	switch len(values) {
-	case 0:
-		return 0, true
-	case 1:
-		flags, err := strconv.ParseUint(values[0], 10, 8)
-		return uint8(flags), err == nil && strconv.FormatUint(flags, 10) == values[0]
-	default:
-		return 0, false
-	}
-}
-
 // shareOf computes the expiry share of a message; a share that is gone answers as shareGone does.
 func (s *Server) shareOf(w http.ResponseWriter, r *http.Request, record *store.Record) ([core.ShareLen]byte, bool) {
 	message := record.Message
@@ -223,8 +205,7 @@ func (s *Server) shareOf(w http.ResponseWriter, r *http.Request, record *store.R
 		expiryShare, err = s.epochs.Share(message.Generation, message.Epoch, record.Row.Locator, time.Now())
 	})
 	if errors.Is(err, epoch.ErrShareGone) {
-		expired := errors.Is(err, epoch.ErrShareExpired) ||
-			(message.Flags&envelope.FlagDeadline != 0 && s.epochs.Passed(message.Epoch))
+		expired := errors.Is(err, epoch.ErrShareExpired) || s.epochs.Passed(message.Epoch)
 		s.shareGone(w, r, record, expired)
 		return expiryShare, false
 	}
@@ -304,7 +285,7 @@ func (s *Server) handleBlob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	clientKey, ok := readerKey(w, r, leased.record.Message)
+	clientKey, ok := readerKey(w, r)
 	if !ok || (ke3 != nil && !s.finishHandshake(w, r, &leased.record, ke3)) ||
 		!s.allowReadBytes(w, r, leased.record.Message.Size) {
 		return
@@ -530,9 +511,6 @@ func (s *Server) openStoredBlob(ctx context.Context, record *store.Record) (io.R
 // checkBlob tags the encrypted bytes after the erase block and seeks back, so the response streams from the same open
 // file.
 func checkBlob(file io.ReadSeeker, key *seal.BlobKey, salt seal.EraseSalt, encryptedLen int64) error {
-	if !key.Tagged {
-		return nil
-	}
 	start, err := file.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return err
@@ -607,18 +585,14 @@ func giveBackStreamBuffer(buffer *[streamBufferLength]byte) {
 	streamBuffers.Put(buffer)
 }
 
-// encodePolicy reports the deadline of a message whose envelope seals it in, so the reader checks it (spec section 3).
+// encodePolicy reports the deadline that the envelope seals in, so the reader checks it (spec section 3).
 func encodePolicy(message *store.Message) string {
-	policy := api.PolicyHeader{
+	data, _ := json.Marshal(api.PolicyHeader{
 		OpensMax:   new(int(message.OpensMax)),
 		TTLSeconds: new(int(message.TTLSeconds)),
 		KDFID:      new(int(message.KDF)),
-		Flags:      new(int(message.Flags)),
-	}
-	if message.Flags&envelope.FlagDeadline != 0 {
-		policy.Deadline = new(message.ExpiresAt.Unix())
-	}
-	data, _ := json.Marshal(policy)
+		Deadline:   new(message.ExpiresAt.Unix()),
+	})
 	return core.Encode(data)
 }
 

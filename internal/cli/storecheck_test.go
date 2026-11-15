@@ -84,18 +84,18 @@ func TestStoreCheckPassesAReleaseAndWritesNothing(t *testing.T) {
 	if after := snapshot(t, filepath.Dir(directory)); !maps.Equal(before, after) {
 		t.Fatal("store-check changed the data directory")
 	}
-	legacySeed := make([]byte, 4096)
-	copy(legacySeed, "nylzo-e1\x09")
-	legacySeed[31] = 1
-	legacySeed[40] = 1
-	if err := os.WriteFile(filepath.Join(epochDirectory, epoch.FileName), legacySeed, 0o600); err != nil {
+	releasedSeed := make([]byte, 4096)
+	copy(releasedSeed, "nylzo-e1\x09")
+	releasedSeed[31] = 1
+	releasedSeed[40] = 1
+	if err := os.WriteFile(filepath.Join(epochDirectory, epoch.FileName), releasedSeed, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	beforeEpoch := snapshot(t, epochDirectory)
 	result = storeCheck(t, directory, epochDirectory)
-	if result.code != command.ExitOK || !strings.Contains(result.stdout, "seed of an earlier release") {
+	if result.code != command.ExitOK || !strings.Contains(result.stdout, "serve erases it") {
 		t.Fatalf(
-			"store-check on the seed of an earlier release: exit %d %q %s",
+			"store-check on the seed of a release before 0.14.0: exit %d %q %s",
 			result.code,
 			result.stdout,
 			result.stderr,

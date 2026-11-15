@@ -67,12 +67,6 @@ nylzo burn --link-file /tmp/tmp.XXXXXXXXXX/link.txt
 - Do not read the files. Pass `message.txt` to the program that needs it, for example `docker login --username deploy --password-stdin < "$D/message.txt"`, or tell the user the path. Give the user the path of an attachment.
 - When the user is done, delete the directory or suggest it: the files hold the plaintext, and on SSDs and in backups a deletion may not erase them.
 
-Report a message to the operator, with the reason in a file:
-
-```bash
-nylzo report --link-file /tmp/tmp.XXXXXXXXXX/link.txt --reason-file /tmp/tmp.XXXXXXXXXX/reason.txt
-```
-
 ## Check the server's web client
 
 ```bash

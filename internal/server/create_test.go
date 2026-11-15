@@ -129,7 +129,7 @@ func TestCreateTellsAnOldClientToUpdateAndRefusesAnotherDeadline(t *testing.T) {
 		harness.bindShare(withoutDeadline)
 		withoutDeadline.object[2] = 0
 		if response, body := harness.create(withoutDeadline); response.StatusCode != http.StatusBadRequest ||
-			!strings.Contains(string(body), `"client_outdated"`) {
+			!strings.Contains(string(body), `"bad_request"`) {
 			t.Fatalf("F13: an envelope without the deadline: %d %s", response.StatusCode, body)
 		}
 		for name, change := range map[string]func(*testMessage){
@@ -166,7 +166,6 @@ func FuzzCreateHeader(f *testing.F) {
 	f.Add("")
 	f.Add("not base64!")
 	settings := config.Defaults()
-	settings.ReportKey = testReportKey.PublicKey()
 	f.Fuzz(func(t *testing.T, value string) {
 		if !parsesCreateHeader(settings.Limits, value) {
 			return

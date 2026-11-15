@@ -89,7 +89,6 @@ func commands() []subcommand {
 		},
 		{"status", "show the state of a message from its manage token", messages.RunStatus, harden.Full, endsBySignal},
 		{"cancel", "end a message with its manage token", messages.RunCancel, harden.Full, endsBySignal},
-		{"report", "report a message for abuse from its link on stdin", messages.RunReport, harden.Full, endsBySignal},
 		{"burn", "delete the remaining opens of a message from its link", messages.RunBurn, harden.Full, endsBySignal},
 		{
 			"serve",
@@ -108,22 +107,8 @@ func commands() []subcommand {
 		},
 		{
 			"takedown",
-			"remove reported messages by id from stdin, on the server host",
+			"remove messages by id from stdin, on the server host",
 			operator.RunTakedown,
-			harden.Full,
-			endsBySignal,
-		},
-		{
-			"report-key",
-			"create the key pair that seals abuse reports for the operator",
-			operator.RunReportKey,
-			harden.Full,
-			endsBySignal,
-		},
-		{
-			"reports",
-			"open sealed abuse reports from stdin with the operator's private key",
-			operator.RunReports,
 			harden.Full,
 			endsBySignal,
 		},

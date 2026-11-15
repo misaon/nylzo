@@ -624,20 +624,12 @@ func checkBurnable(link *openLink, metadata *api.Metadata) error {
 	return nil
 }
 
-// headerMatches also compares a deadline the policy carries with the expiry of the metadata, which the envelope then
+// headerMatches also compares the deadline of the policy with the expiry of the metadata, which the envelope then
 // authenticates (F13).
 func headerMatches(fetched *client.Envelope, link *openLink, metadata *api.Metadata) bool {
-	flagsOK := fetched.Flags == envelope.FlagDeadline || fetched.Flags == 0
-	return flagsOK && fetched.KDF == link.kdf && int(fetched.Policy.OpensMax) == metadata.OpensMax &&
-		int64(fetched.Policy.TTLSeconds) == metadata.TTLSeconds && deadlineMatches(fetched.Policy, metadata.ExpiresAt)
-}
-
-func deadlineMatches(policy envelope.Policy, expiresAt string) bool {
-	if policy.Deadline == 0 {
-		return true
-	}
-	expires, err := time.Parse(time.RFC3339, expiresAt)
-	return err == nil && expires.Unix() == int64(policy.Deadline)
+	expires, err := time.Parse(time.RFC3339, metadata.ExpiresAt)
+	return err == nil && expires.Unix() == int64(fetched.Policy.Deadline) && fetched.KDF == link.kdf &&
+		int(fetched.Policy.OpensMax) == metadata.OpensMax && int64(fetched.Policy.TTLSeconds) == metadata.TTLSeconds
 }
 
 // contentKeysOf unwraps the share, which the server sends only with the object.

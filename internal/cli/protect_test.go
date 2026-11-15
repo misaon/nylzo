@@ -44,8 +44,8 @@ func protectedRun(
 func TestEveryCommandProtectsItsProcessFirst(t *testing.T) {
 	want := map[string]harden.Level{
 		"create": harden.Full, "read": harden.Full, "open": harden.Full, "web": harden.Full,
-		"status": harden.Full, "cancel": harden.Full, "report": harden.Full, "burn": harden.Full,
-		"report-key": harden.Full, "reports": harden.Full, "sweep-once": harden.Full, "store-check": harden.Full,
+		"status": harden.Full, "cancel": harden.Full, "burn": harden.Full,
+		"sweep-once": harden.Full, "store-check": harden.Full,
 		"takedown": harden.Full, "serve": harden.ProcessOnly,
 		"verify-client": harden.Off, "version": harden.Off,
 	}

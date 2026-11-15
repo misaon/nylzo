@@ -31,7 +31,7 @@ The CLI requires HTTPS, except for exact localhost and loopback addresses, which
 
 ## Process protection
 
-Every command that may hold a link, passphrase, manage token, message, report key, pepper or epoch key protects its process before it reads anything: `create`, `read`, `open`, `web`, `status`, `cancel`, `report`, `burn`, `report-key` and `reports`, and on the server host `sweep-once`, `store-check` and `takedown`. `serve` takes the first two steps below and then locks its memory itself, refusing to start without the lock (see the [operations guide](Operations.md)). When a step fails, the command stops before it reads a secret.
+Every command that may hold a link, passphrase, manage token, message, pepper or epoch key protects its process before it reads anything: `create`, `read`, `open`, `web`, `status`, `cancel` and `burn`, and on the server host `sweep-once`, `store-check` and `takedown`. `serve` takes the first two steps below and then locks its memory itself, refusing to start without the lock (see the [operations guide](Operations.md)). When a step fails, the command stops before it reads a secret.
 
 First, the command sets its core file limit to 0, so a crash writes no core file.
 
@@ -114,17 +114,6 @@ It exits with 0 when everything matches, 3 when a page, file, manifest or header
 
 The result applies only to that invocation. A malicious server can recognize the CLI and serve browsers different JavaScript. Run checks regularly and from another network; a successful check does not prove what other visitors receive. The repository's `watch.yml` runs it about every 30 minutes after an operator configures `NYLZO_MONITOR_URL`, using a binary from a signature-verified release.
 
-## Report abusive content
-
-```sh
-nylzo report --link-file link.txt --reason-file reason.txt \
-  --contact reporter@example.com --good-faith
-```
-
-The report is signed with the message's read key. Links use the same private input channels as `read`. The reason comes from a file so an accidentally included link does not enter the process arguments. The CLI redacts links and long tokens before submission and rejects a sanitized reason longer than 1000 bytes. `--contact` is optional; `--good-faith` declares that the report is accurate and complete to the reporter's good-faith belief. Invalid contact addresses are rejected before a request.
-
-Reports about ended messages are accepted but not stored. When the per-message daily report allowance is exhausted, the CLI reports that no further report was stored and exits with status 1. Report vulnerabilities in Nylzo through [SECURITY.md](../community/Security-policy.md), rather than the content-reporting channel.
-
 ## Version and build identity
 
 `nylzo version` and `nylzo --version` print the application version. `nylzo version --json` additionally prints the source commit, source commit date, and modified-source flag. Release builds derive their version from the signed tag; local builds identify development source explicitly. Version output identifies a build but does not authenticate it: verify the release signatures and provenance as described in [versioning and releases](../maintainers/Releasing.md).
@@ -133,6 +122,6 @@ Reports about ended messages are accepted but not stored. When the per-message d
 
 The [Nylzo agent skill](../../../skills/nylzo/SKILL.md) describes using private files outside the repository, keeping secrets and links out of conversations, and delivering decrypted content directly to a program rather than a language model. The skill gives instructions. The CLI, filesystem permissions, and sandbox enforce access rules.
 
-Exit codes: `0` for success, `1` for an operational error, and `2` for invalid usage, including a secret in an argument. For `serve`, `sweep-once`, `store-check`, `takedown`, `report-key`, and `reports`, see the [operations guide](Operations.md).
+Exit codes: `0` for success, `1` for an operational error, and `2` for invalid usage, including a secret in an argument. For `serve`, `sweep-once`, `store-check`, and `takedown`, see the [operations guide](Operations.md).
 
 When Ctrl-C (SIGINT) or a termination request (SIGTERM) stops a command, the command cleans up and then ends by that signal rather than with an exit code. The shell reports it as killed by the signal (`$?` is 128 plus the signal number: `130` for Ctrl-C, `143` for SIGTERM, `129` for a hangup that `read` held), so Ctrl-C also stops the Bash script that was waiting for the command, such as a loop over `nylzo read`, and runs that script's own cleanup, such as a trap that deletes the `--out` directory `read` just saved into. systemd counts an end by SIGTERM as a clean stop, except in a `Type=oneshot` unit, which needs `SuccessExitStatus=SIGTERM` for that. A command that had already finished its work when the signal came exits as usual, so `web` and `open`, which run until they are stopped, exit with `0` after a clean stop; `open` stopped before a browser took the link ends by the signal, and the link still works. `serve` always exits with its own status, so systemd or Docker can tell a clean stop (`0`) from a failed shutdown. At a hidden prompt the signal ends any command at once, `open` included, after the terminal echo is restored. A second signal ends a command at once, without cleanup, except where `read` holds it after the claim; a command waiting for input on stdin stops only then. A process that starts with Ctrl-C ignored, as a script's background job does, keeps ignoring it. On Windows, and as the init process of a container, where a process cannot end by a signal it caught, `nylzo` exits with 128 plus the signal number instead. A program that runs `nylzo` sees an end by a signal as such, not as an exit code (Python reports a negative `returncode`), also after `read` saved the message, so check `--out` before it runs `read` again.

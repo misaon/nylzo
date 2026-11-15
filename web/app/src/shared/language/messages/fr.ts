@@ -352,9 +352,6 @@ export const messages: Catalog = {
   'transparency.stores.ended.title': 'Après la fin d’un message',
   'transparency.stores.ended':
     'Un message prend fin par sa dernière ouverture, sa suppression par le destinataire, son annulation, l’expiration de sa validité ou son retrait par l’exploitant. Le serveur efface alors d’abord la clé du message stocké, de sorte que même ce qui en reste sur le disque devient illisible. Il conserve l’enregistrement scellé du message terminé pendant au plus {days}\u{A0}: comment et quand il a pris fin, et quand il a été ouvert pour la première fois.',
-  'transparency.stores.reports.title': 'Signalements d’abus',
-  'transparency.stores.reports':
-    'Les signalements, scellés avec la clé publique de l’exploitant pour que le serveur lui-même ne puisse pas les lire\u{A0}: date, ID du message, motif sans clés de liens ni codes longs, déclaration de bonne foi et adresse e-mail si l’auteur du signalement l’a indiquée, pendant au plus {days}. Le nombre de signalements par message est conservé dans l’enregistrement scellé de ce message.',
   'transparency.stores.counters.title': 'Compteurs sans adresses',
   'transparency.stores.counters':
     'Le nombre quotidien de messages créés, conservé encore {days} après la fin de la journée, et les défis à usage unique déjà utilisés, conservés quelques minutes seulement.',

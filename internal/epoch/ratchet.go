@@ -55,16 +55,13 @@ const (
 	minuteSeconds    = int64(time.Minute / time.Second)
 	minutesPerHour   = 60
 
-	legacyFormat     = "nylzo-e1"
-	legacyLen        = erase.BlockLen
-	legacyHourLen    = 8
-	legacySeedOffset = len(legacyFormat) + GenerationIDLen + legacyHourLen
-	// legacySpan covers every share a release before generations issued, up to its hour plus 169, from the hour
-	// before it, so the converted chain never issues.
-	legacySpan = Span + 1
+	// releasedFormat starts the seed file of the releases before 0.14.0, whose messages the store upgrade erases.
+	releasedFormat = "nylzo-e1"
+	releasedLen    = erase.BlockLen
+	// slotKind marks a slot whose chain of hours carries a chain of minutes in each hour, the only kind there is.
+	slotKind = 1
 
 	infoNext       = "nylzo/v2/epoch/next"
-	infoKey        = "nylzo/v2/epoch/key"
 	infoMinute     = "nylzo/v2/epoch/minute"
 	infoMinuteNext = "nylzo/v2/epoch/minute-next"
 	infoMinuteKey  = "nylzo/v2/epoch/minute-key"
@@ -79,14 +76,6 @@ const (
 type (
 	Seed         [SeedLen]byte
 	GenerationID [GenerationIDLen]byte
-	kind         uint8
-)
-
-const (
-	// kindMinutes makes the shares of one minute each, from a chain of hours and a chain of minutes in each hour.
-	kindMinutes kind = 1
-	// kindHours is the chain of an earlier release, which made the shares of whole hours.
-	kindHours kind = 2
 )
 
 var (
@@ -135,13 +124,9 @@ func hourOf(minute uint32) uint32 {
 	return minute / minutesPerHour
 }
 
-// Next and Key are the chain of hours and the key of an hour that releases before minutes made shares with.
+// Next is the chain of hours.
 func Next(seed *Seed) Seed {
 	return Seed(expand(seed, infoNext))
-}
-
-func Key(seed *Seed) [SeedLen]byte {
-	return expand(seed, infoKey)
 }
 
 // FirstMinute starts the chain of minutes of the hour whose seed it is.
@@ -184,11 +169,9 @@ func expand(seed *Seed, info string) [SeedLen]byte {
 
 // generation is a chain of seeds that starts from fresh entropy in the hour first, makes the shares of the ids issued
 // in that hour, and goes once the ratchet passes its last epoch. A copy of one predicts no other. A generation of
-// minutes holds the seed of the next hour and the seed of the current minute, so neither yields a passed minute; a
-// chain of hours holds the seed of the current hour and makes the shares of whole hours.
+// minutes holds the seed of the next hour and the seed of the current minute, so neither yields a passed minute.
 type generation struct {
 	id     GenerationID
-	kind   kind
 	first  uint32
 	last   uint32
 	hour   Seed
@@ -211,7 +194,7 @@ func (g *generation) startFresh(minute uint32) {
 
 // startMinutes derives the seeds of the minute the generation starts in from the seed of its hour.
 func (g *generation) startMinutes(id GenerationID, root *Seed, minute uint32) {
-	g.id, g.kind, g.first, g.last = id, kindMinutes, hourOf(minute), (hourOf(minute)+Span)*minutesPerHour-1
+	g.id, g.first, g.last = id, hourOf(minute), (hourOf(minute)+Span)*minutesPerHour-1
 	g.minute = FirstMinute(root)
 	g.hour = Next(root)
 	step(&g.minute, NextMinute, minute%minutesPerHour)
@@ -219,10 +202,6 @@ func (g *generation) startMinutes(id GenerationID, root *Seed, minute uint32) {
 
 // advance moves the seeds from one minute to a later one and overwrites every seed in between.
 func (g *generation) advance(from, target uint32) {
-	if g.kind == kindHours {
-		step(&g.hour, Next, hourOf(target)-hourOf(from))
-		return
-	}
 	if hourOf(from) == hourOf(target) {
 		step(&g.minute, NextMinute, target-from)
 		return
@@ -235,37 +214,18 @@ func (g *generation) advance(from, target uint32) {
 
 // ends reports whether the generation has no share left at the minute.
 func (g *generation) ends(minute uint32) bool {
-	if g.kind == kindHours {
-		return g.last < hourOf(minute)
-	}
 	return g.last < minute
 }
 
-// makes reports whether the generation, at the minute, still makes the share of the epoch: a minute, or an hour for
-// a chain of hours.
+// makes reports whether the generation, at the minute, still makes the share of the epoch.
 func (g *generation) makes(minute, shareEpoch uint32) bool {
-	if g.kind == kindHours {
-		return hourOf(minute) <= shareEpoch && shareEpoch <= g.last
-	}
 	return minute <= shareEpoch && shareEpoch <= g.last
-}
-
-// passed reports whether the epoch ended before the minute, so its share went with its deadline.
-func (g *generation) passed(minute, shareEpoch uint32) bool {
-	if g.kind == kindHours {
-		return shareEpoch < hourOf(minute)
-	}
-	return shareEpoch < minute
 }
 
 // keyOf is the epoch key of an epoch the generation makes at the minute; it moves a copy and wipes it.
 func (g *generation) keyOf(minute, shareEpoch uint32) [SeedLen]byte {
 	moved := *g
 	defer moved.clear()
-	if moved.kind == kindHours {
-		step(&moved.hour, Next, shareEpoch-hourOf(minute))
-		return Key(&moved.hour)
-	}
 	moved.advance(minute, shareEpoch)
 	return MinuteKey(&moved.minute)
 }
@@ -311,7 +271,7 @@ func (s *state) advance(target uint32) {
 // issuer is the generation that makes the shares of the ids issued in the hour.
 func (s *state) issuer() *generation {
 	for i := range s.slots {
-		if slot := &s.slots[i]; slot.used() && slot.kind == kindMinutes && slot.first == hourOf(s.minute) {
+		if slot := &s.slots[i]; slot.used() && slot.first == hourOf(s.minute) {
 			return slot
 		}
 	}
@@ -351,8 +311,8 @@ type State int
 const (
 	StateNoSeed State = iota
 	StateSeed
-	// StateLegacySeed is the single chain of a release before generations, which the next advance converts.
-	StateLegacySeed
+	// StateReleasedSeed is the seed of a release before 0.14.0, which serve erases with the messages of that release.
+	StateReleasedSeed
 )
 
 // Inspect checks the directory and the seed as Open does, without creating or advancing anything; it waits for a
@@ -386,10 +346,10 @@ func Inspect(directory string) (State, error) {
 	var loaded state
 	defer clear(loaded.slots[:])
 	switch {
+	case released(content):
+		return StateReleasedSeed, nil
 	case !decode(content, &loaded):
 		return StateNoSeed, ErrCorrupt
-	case legacy(content):
-		return StateLegacySeed, nil
 	}
 	return StateSeed, nil
 }
@@ -411,7 +371,7 @@ func MinuteSeeds(content []byte) []Seed {
 	decode(content, &loaded)
 	var seeds []Seed
 	for i := range loaded.slots {
-		if slot := &loaded.slots[i]; slot.used() && slot.kind == kindMinutes {
+		if slot := &loaded.slots[i]; slot.used() {
 			seeds = append(seeds, slot.minute)
 		}
 	}
@@ -426,10 +386,7 @@ func Seeds(content []byte) []Seed {
 	var seeds []Seed
 	for i := range loaded.slots {
 		if slot := &loaded.slots[i]; slot.used() {
-			seeds = append(seeds, slot.hour)
-			if slot.kind == kindMinutes {
-				seeds = append(seeds, slot.minute)
-			}
+			seeds = append(seeds, slot.hour, slot.minute)
 		}
 	}
 	return seeds
@@ -446,7 +403,8 @@ type Ratchet struct {
 	replace  func(path string, content []byte) error
 }
 
-// Open loads the ratchet from the directory and advances it; it reports created when it started a new one.
+// Open loads the ratchet from the directory and advances it; it reports created when it started a new one, which it
+// also does over the seed of a release before 0.14.0, because the store upgrade erases every message of that release.
 // A missing directory is refused, because a volume that failed to mount looks the same.
 func Open(directory string, now time.Time, options Options) (*Ratchet, bool, error) {
 	if err := checkDirectory(directory, true); err != nil {
@@ -467,6 +425,9 @@ func Open(directory string, now time.Time, options Options) (*Ratchet, bool, err
 	}
 	created := false
 	if options.Create {
+		if eraseErr := eraseReleased(ratchet.path); eraseErr != nil {
+			return nil, false, eraseErr
+		}
 		if created, err = ratchet.create(now); err != nil {
 			return nil, false, err
 		}
@@ -544,7 +505,7 @@ func (r *Ratchet) Share(
 	named, err := r.findLocked(id, now)
 	current := r.state.minute
 	if err != nil || named == nil || !named.makes(current, shareEpoch) {
-		held, passed := err == nil && named != nil, err == nil && named != nil && named.passed(current, shareEpoch)
+		held, passed := err == nil && named != nil, err == nil && named != nil && shareEpoch < current
 		r.mutex.Unlock()
 		switch {
 		case passed:
@@ -706,7 +667,7 @@ func (r *Ratchet) loadLocked(now time.Time) error {
 	r.state = loaded
 	updated := encode(&r.state)
 	defer clear(updated)
-	if err = r.write(legacy(content), updated); err != nil {
+	if err = r.replace(r.path, updated); err != nil {
 		r.unsynced = true
 		return fmt.Errorf("epoch: overwrite the seed: %w", err)
 	}
@@ -714,20 +675,44 @@ func (r *Ratchet) loadLocked(now time.Time) error {
 	return nil
 }
 
-// write pads a file of an earlier release with synced zeros before it overwrites it, every time, so a crash leaves
-// the old seed in its first sector or the new one, and every length in between reads as the old file. A pad that
-// fails is cut back, so a release before generations can still read the file.
-func (r *Ratchet) write(converts bool, content []byte) error {
-	if converts {
-		if err := erase.Pad(r.path, legacyLen, int64(len(content))); err != nil {
-			return errors.Join(err, erase.Cut(r.path, legacyLen))
-		}
+// eraseReleased overwrites and removes the seed of a release before 0.14.0, so create starts a new ratchet. It holds
+// the lock of the file and erases only while the name still leads to it, so a process that shares the directory never
+// erases the new seed that another one has written since.
+func eraseReleased(path string) error {
+	file, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
 	}
-	return r.replace(r.path, content)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	if lockErr := lock(file); lockErr != nil {
+		return lockErr
+	}
+	defer unlock(file)
+	content, err := readContent(file)
+	found := released(content)
+	clear(content)
+	if err != nil || !found {
+		return err
+	}
+	held, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	named, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) || (err == nil && !os.SameFile(held, named)) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return erase.Remove(path, erase.WholeFile)
 }
 
-// readContent reads a file of this release or one of an earlier release that a conversion may have grown. A read
-// that fails says nothing about the file, so it returns that error rather than ErrCorrupt.
+// readContent reads a file no longer than a seed file. A read that fails says nothing about the file, so it returns
+// that error rather than ErrCorrupt.
 func readContent(file *os.File) ([]byte, error) {
 	content := make([]byte, FileLen+1)
 	count, err := file.ReadAt(content, 0)
@@ -735,15 +720,16 @@ func readContent(file *os.File) ([]byte, error) {
 	case err != nil && !errors.Is(err, io.EOF):
 		clear(content)
 		return nil, err
-	case count < legacyLen || count > FileLen:
+	case count > FileLen:
 		clear(content)
 		return nil, ErrCorrupt
 	}
 	return content[:count], nil
 }
 
-func legacy(content []byte) bool {
-	return bytes.HasPrefix(content, []byte(legacyFormat))
+// released also reports the zeros that an interrupted erase of such a seed leaves, so the next start finishes it.
+func released(content []byte) bool {
+	return bytes.HasPrefix(content, []byte(releasedFormat)) || (len(content) == releasedLen && zeroed(content))
 }
 
 func encode(saved *state) []byte {
@@ -756,7 +742,7 @@ func encode(saved *state) []byte {
 		}
 		slot := content[(i+1)*slotLen : (i+2)*slotLen]
 		copy(slot, entry.id[:])
-		slot[kindOffset] = byte(entry.kind)
+		slot[kindOffset] = slotKind
 		binary.BigEndian.PutUint32(slot[firstOffset:], entry.first)
 		binary.BigEndian.PutUint32(slot[lastOffset:], entry.last)
 		binary.BigEndian.PutUint32(slot[minuteOffset:], saved.minute)
@@ -767,17 +753,9 @@ func encode(saved *state) []byte {
 	return content
 }
 
-// decode fills the state from a file of this release or of an earlier one and clears it when it refuses the file.
+// decode fills the state from a seed file and clears it when it refuses the file.
 func decode(content []byte, into *state) bool {
-	var ok bool
-	switch {
-	case len(content) == FileLen && bytes.HasPrefix(content, []byte(fileFormat)):
-		ok = decodeSlots(content, into)
-	case legacy(content):
-		ok = decodeLegacy(content, into)
-	default:
-		return false
-	}
+	ok := len(content) == FileLen && bytes.HasPrefix(content, []byte(fileFormat)) && decodeSlots(content, into)
 	if !ok {
 		*into = state{}
 	}
@@ -822,59 +800,31 @@ func decodeSlots(content []byte, into *state) bool {
 // readSlot reads a slot that is not empty and returns the minute of its seeds.
 func readSlot(slot []byte, entry *generation) (uint32, bool) {
 	copy(entry.id[:], slot)
-	entry.kind = kind(slot[kindOffset])
 	entry.first = binary.BigEndian.Uint32(slot[firstOffset:])
 	entry.last = binary.BigEndian.Uint32(slot[lastOffset:])
 	minute := binary.BigEndian.Uint32(slot[minuteOffset:])
 	copy(entry.hour[:], slot[hourSeedOffset:])
 	copy(entry.minute[:], slot[minuteSeedOffset:])
 	return minute, binary.BigEndian.Uint32(slot[sumOffset:]) == crc32.Checksum(slot[:sumOffset], castagnoli) &&
-		entry.used() && zeroed(slot[kindOffset+1:firstOffset]) && zeroed(slot[paddingOffset:sumOffset]) &&
-		entry.lives(minute) && (entry.kind == kindMinutes || entry.minute == Seed{})
+		entry.used() && slot[kindOffset] == slotKind && zeroed(slot[kindOffset+1:firstOffset]) &&
+		zeroed(slot[paddingOffset:sumOffset]) && entry.lives(minute)
 }
 
-// lives checks that the minute lies within the life of the generation and that the life fits its kind.
+// lives checks that the minute lies within the life of the generation and that the life is no longer than Span.
 func (g *generation) lives(minute uint32) bool {
-	switch g.kind {
-	case kindMinutes:
-		return g.first <= hourOf(minute) && minute <= g.last && g.last < (g.first+Span)*minutesPerHour
-	case kindHours:
-		return g.first <= hourOf(minute) && hourOf(minute) <= g.last && g.last-g.first <= legacySpan
-	default:
-		return false
-	}
+	return g.first <= hourOf(minute) && minute <= g.last && g.last < (g.first+Span)*minutesPerHour
 }
 
-// distinct refuses two slots of one generation or two generations of one kind that start in one hour.
+// distinct refuses two slots of one generation or two generations that start in one hour.
 func distinct(loaded *state) bool {
 	for i := range loaded.slots {
 		for j := i + 1; j < len(loaded.slots); j++ {
 			a, b := &loaded.slots[i], &loaded.slots[j]
-			if a.used() && b.used() && (a.id == b.id || (a.kind == b.kind && a.first == b.first)) {
+			if a.used() && b.used() && (a.id == b.id || a.first == b.first) {
 				return false
 			}
 		}
 	}
-	return true
-}
-
-// decodeLegacy turns the single chain of a release before generations into a chain of hours that makes every share
-// that release can have handed out, up to its hour plus 169. It starts in the hour before and makes no minutes, so it
-// never issues again and a copy of the old file predicts no share issued after the upgrade. Zero bytes may follow it
-// up to the length of this release.
-func decodeLegacy(content []byte, into *state) bool {
-	entry := &into.slots[0]
-	copy(entry.id[:], content[len(legacyFormat):])
-	hour := binary.BigEndian.Uint64(content[len(legacyFormat)+GenerationIDLen:])
-	copy(entry.hour[:], content[legacySeedOffset:])
-	if hour == 0 || hour > uint64(^uint32(0)/minutesPerHour-legacySpan) || !entry.used() ||
-		!zeroed(content[legacySeedOffset+SeedLen:]) {
-		return false
-	}
-	into.minute = uint32(hour) * minutesPerHour
-	entry.kind = kindHours
-	entry.first = uint32(hour) - 1
-	entry.last = entry.first + legacySpan
 	return true
 }
 

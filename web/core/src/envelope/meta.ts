@@ -39,12 +39,8 @@ function validateMeta(meta: Meta): void {
 }
 
 export function encodeMeta(meta: Meta): Uint8Array<ArrayBuffer> {
-  return encodeStoredMeta(meta);
-}
-
-export function encodeStoredMeta(meta: Meta, compressedSize?: number): Uint8Array<ArrayBuffer> {
   validateMeta(meta);
-  const bytes = utf8(canonicalJson(meta, compressedSize));
+  const bytes = utf8(canonicalJson(meta));
   if (bytes.length > MAX_META_BYTES) {
     throw new MetaError('meta exceeds the size limit');
   }
@@ -119,18 +115,14 @@ function validateFileName(name: string): void {
   }
 }
 
-function canonicalJson(meta: Meta, compressedSize?: number): string {
-  let json = compressedSize === undefined ? '{"v":1' : '{"v":2';
+function canonicalJson(meta: Meta): string {
+  let json = '{"v":1';
   if (meta.text !== undefined) {
     json += `,"text":${JSON.stringify(meta.text)}`;
   }
   if (meta.file !== undefined) {
     const { name, mime, size } = meta.file;
-    json += `,"file":{"name":${JSON.stringify(name)},"mime":${JSON.stringify(mime)},"size":${String(size)}`;
-    if (compressedSize !== undefined) {
-      json += `,"encoding":"gzip","encoded_size":${String(compressedSize)}`;
-    }
-    json += '}';
+    json += `,"file":{"name":${JSON.stringify(name)},"mime":${JSON.stringify(mime)},"size":${String(size)}}`;
   }
   return `${json}}`;
 }

@@ -338,9 +338,6 @@ export const messages: Catalog = {
   'transparency.stores.ended.title': 'Depois que a mensagem termina',
   'transparency.stores.ended':
     'A mensagem termina com a última abertura, a exclusão pelo destinatário, o cancelamento, o fim da validade ou a remoção pelo operador. O servidor então descarta primeiro a chave da mensagem armazenada, de modo que nem o que restar dela no disco pode ser lido. O registro selado da mensagem encerrada é guardado por no máximo {days}: como e quando ela terminou e quando foi aberta pela primeira vez.',
-  'transparency.stores.reports.title': 'Denúncias de abuso',
-  'transparency.stores.reports':
-    'Denúncias seladas com a chave pública do operador, de modo que o próprio servidor não consegue lê-las: data, ID da mensagem, motivo sem chaves de links e sem códigos longos, declaração de boa-fé e o e-mail, se o denunciante o informou, por no máximo {days}. O número de denúncias por mensagem fica no registro selado dela.',
   'transparency.stores.counters.title': 'Contadores sem endereços',
   'transparency.stores.counters':
     'Guarda os totais diários de mensagens criadas por mais {days} após o fim do dia, e os desafios de uso único já utilizados, só por alguns minutos.',
