@@ -103,23 +103,39 @@ func (u *upstream) last(t *testing.T) http.Header {
 	return u.requests[len(u.requests)-1]
 }
 
-func freePort(t *testing.T) int {
+// freePorts keeps every port bound until it has picked them all, so the system never hands out one port twice.
+func freePorts(t *testing.T) [2]int {
+	t.Helper()
+	var (
+		ports [2]int
+		held  []io.Closer
+	)
+	for i := range ports {
+		listener, packets := bindFreePort(t)
+		held = append(held, listener, packets)
+		ports[i] = listener.Addr().(*net.TCPAddr).Port
+	}
+	for _, bound := range held {
+		_ = bound.Close()
+	}
+	return ports
+}
+
+func bindFreePort(t *testing.T) (net.Listener, net.PacketConn) {
 	t.Helper()
 	for range 20 {
 		listener, err := net.Listen("tcp", "127.0.0.1:0")
 		if err != nil {
 			t.Fatal(err)
 		}
-		port := listener.Addr().(*net.TCPAddr).Port
-		_ = listener.Close()
-		packets, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", port))
+		packets, err := net.ListenPacket("udp", listener.Addr().String())
 		if err == nil {
-			_ = packets.Close()
-			return port
+			return listener, packets
 		}
+		_ = listener.Close()
 	}
 	t.Fatal("no free port")
-	return 0
+	return nil, nil
 }
 
 func rewrite(value any, apply func(key string, value any) any) any {
@@ -173,7 +189,8 @@ func startCaddyWith(
 	if err = json.Unmarshal(adapted, &config); err != nil {
 		t.Fatal(err)
 	}
-	httpPort, httpsPort := freePort(t), freePort(t)
+	ports := freePorts(t)
+	httpPort, httpsPort := ports[0], ports[1]
 	storage := t.TempDir()
 	config["storage"] = map[string]any{"module": "file_system", "root": storage}
 	applications := config["apps"].(map[string]any)
