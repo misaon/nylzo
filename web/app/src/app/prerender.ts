@@ -43,6 +43,41 @@ export function agentsMarkdown(): string {
   return agentsGuide(new Translator('en').translate);
 }
 
+const WIKI_URL = `${REPOSITORY_URL}/wiki`;
+
+// The format of llmstxt.org.
+export function llmsText(): string {
+  const { translate, plural } = new Translator('en');
+  const days = plural('count.day', LONGEST_TTL_DAYS);
+  return [
+    '# Nylzo',
+    '',
+    `> ${translate('seo.description')}`,
+    '',
+    `${translate('how.title')} ${translate('how.lead')}`,
+    '',
+    '## Pages',
+    '',
+    `- [${translate('footer.create')}](/)`,
+    `- [${translate('title.agents')}](/agents.md)`,
+    '- [Limits and retention of this instance (JSON)](/.well-known/nylzo/transparency.json)',
+    '',
+    '## Documentation',
+    '',
+    `- [Source code on GitHub](${REPOSITORY_URL})`,
+    `- [Protocol specification](${WIKI_URL}/Protocol)`,
+    `- [Security model](${WIKI_URL}/Security-model)`,
+    `- [${translate('nav.selfhost')}](${WIKI_URL}/Self-hosting)`,
+    `- [Command-line tool](${WIKI_URL}/CLI)`,
+    '',
+    `## ${translate('faq.eyebrow')}`,
+    '',
+    ...FAQ_KEYS.flatMap((key) => [`### ${translate(`${key}.question`)}`, '', translate(`${key}.answer`, { days }), '']),
+  ]
+    .join('\n')
+    .replaceAll('\u{A0}', ' ');
+}
+
 function escapeAttribute(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
 }
@@ -85,7 +120,7 @@ function structuredData(language: Language, translator: Translator, logo: string
         '@type': 'Organization',
         ...organization,
         name: 'Nylzo',
-        url: REPOSITORY_URL,
+        url: absolute('/'),
         logo: absolute(logo),
         sameAs: [REPOSITORY_URL],
       },

@@ -85,6 +85,7 @@ type verifier struct {
 	server      *client.Client
 	local       webclient.Build
 	pages       webclient.Pages
+	publicURL   string
 	version     string
 	allowed     map[string]bool
 	// contactKnown is false when the transparency document could not be read; only the allowlist needs it.
@@ -214,15 +215,22 @@ func (v *verifier) comparePages(ctx context.Context, search *comparison) (int, e
 }
 
 func (v *verifier) compareAssets(ctx context.Context, search *comparison) (int, error) {
-	for _, name := range slices.Sorted(maps.Keys(v.local.Assets)) {
-		asset := v.local.Assets[name]
+	files := map[string]webclient.Asset{}
+	for name, asset := range v.local.Assets {
+		files["/assets/"+name] = asset
+	}
+	for name, file := range v.local.RootFiles {
+		files["/"+name] = file
+	}
+	for _, path := range slices.Sorted(maps.Keys(files)) {
+		file := files[path]
 		for _, encoding := range encodings {
-			if err := search.note(v.asset(ctx, name, &asset, encoding)); err != nil {
+			if err := search.note(v.file(ctx, path, &file, encoding)); err != nil {
 				return 0, err
 			}
 		}
 	}
-	return len(v.local.Assets), nil
+	return len(files), nil
 }
 
 // release reads the served manifest; without the version of this binary no file can be compared.
@@ -264,7 +272,7 @@ func (v *verifier) manifest(ctx context.Context, served *webclient.Manifest) err
 	if err != nil {
 		return err
 	}
-	v.pages = pages
+	v.pages, v.publicURL = pages, served.PublicURL
 	servedJSON, _ := json.Marshal(served)
 	expectedJSON, _ := json.Marshal(v.local.Manifest(v.version, served.PublicURL, v.pages, v.information))
 	if !bytes.Equal(servedJSON, expectedJSON) {
@@ -294,7 +302,12 @@ func (v *verifier) page(ctx context.Context, path, encoding string) error {
 	if err != nil {
 		return fetchFailed(where, err)
 	}
-	headersErr := v.headers(fetched.Header, webclient.SecurityHeaders(path), "text/html; charset=utf-8", where)
+	headersErr := v.headers(
+		fetched.Header,
+		webclient.SecurityHeaders(v.publicURL, path),
+		"text/html; charset=utf-8",
+		where,
+	)
 	if isDifference(headersErr) {
 		return headersErr
 	}
@@ -329,15 +342,14 @@ func allowlist(values []string, expected webclient.Page, where string) error {
 	}
 }
 
-func (v *verifier) asset(ctx context.Context, name string, asset *webclient.Asset, encoding string) error {
-	path := "/assets/" + name
+func (v *verifier) file(ctx context.Context, path string, asset *webclient.Asset, encoding string) error {
 	where := describe(path, encoding)
 	limit := int64(max(len(asset.Body), len(asset.Gzip))) + maxPageBytes
 	fetched, err := v.server.Fetch(ctx, path, encoding, limit)
 	if err != nil {
 		return fetchFailed(where, err)
 	}
-	headersErr := v.headers(fetched.Header, webclient.SecurityHeaders(path), asset.ContentType, where)
+	headersErr := v.headers(fetched.Header, webclient.SecurityHeaders(v.publicURL, path), asset.ContentType, where)
 	if isDifference(headersErr) {
 		return headersErr
 	}

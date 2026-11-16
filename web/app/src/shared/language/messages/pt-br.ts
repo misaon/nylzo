@@ -470,7 +470,7 @@ export const messages: Catalog = {
 
   'hero.title': 'Um segredo que {accent}',
   'hero.title.accent': 'se abre uma só vez',
-  'seo.title': 'Como enviar uma senha com segurança: link criptografado de uso único | Nylzo',
+  'seo.title': 'Como enviar uma senha com segurança: link de uso único | Nylzo',
   'seo.description':
     'Envie uma senha, uma chave de API ou um arquivo por um link que só abre uma vez. A criptografia já acontece no seu navegador. Gratuito e sem cadastro.',
   'seo.image': 'Logotipo do Nylzo em um céu estrelado',

@@ -21,6 +21,7 @@ const (
 	assetsDirectory = "dist/assets"
 	agentsGuideFile = "agents.md"
 	faviconFile     = "favicon.ico"
+	llmsFile        = "llms.txt"
 )
 
 var (
@@ -61,6 +62,7 @@ func isStatusTemplate(name string) bool {
 var rootFiles = map[string]string{
 	agentsGuideFile: "text/markdown; charset=utf-8",
 	faviconFile:     "image/vnd.microsoft.icon",
+	llmsFile:        "text/plain; charset=utf-8",
 }
 
 var assetTypes = map[string]string{

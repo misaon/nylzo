@@ -11,18 +11,27 @@ const (
 	SecurityTextPath      = "/.well-known/security.txt"
 	projectAdvisories     = "https://github.com/misaon/nylzo/security/advisories/new"
 	projectSecurityPolicy = "https://github.com/misaon/nylzo/blob/main/SECURITY.md"
+	officialHost          = "nylzo.com"
 )
+
+// official holds for the project's own instance. Every other instance serves the same text, so only this one may
+// appear in search results (D134).
+func official(publicURL string) bool {
+	parsed, err := url.Parse(publicURL)
+	return err == nil && parsed.Scheme == "https" && parsed.Hostname() == officialHost &&
+		(parsed.Port() == "" || parsed.Port() == "443")
+}
 
 func Robots(publicURL string) []byte {
 	body := "User-agent: *\nDisallow: /api/\n"
-	if publicURL != "" {
+	if official(publicURL) {
 		body += "\nSitemap: " + publicURL + "/sitemap.xml\n"
 	}
 	return []byte(body)
 }
 
 func Sitemap(publicURL string) []byte {
-	if publicURL == "" {
+	if !official(publicURL) {
 		return nil
 	}
 	var links strings.Builder

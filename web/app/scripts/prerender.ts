@@ -12,6 +12,7 @@ interface HomeAssets {
 interface Prerender {
   readonly homeTemplates: (index: string, assets: HomeAssets) => ReadonlyMap<string, string>;
   readonly agentsMarkdown: () => string;
+  readonly llmsText: () => string;
   readonly statusTemplates: (index: string) => ReadonlyMap<string, string>;
 }
 
@@ -40,6 +41,7 @@ for (const [language, page] of pages) {
   writeFileSync(path.join(distribution, `home.${language}.html`), page);
 }
 writeFileSync(path.join(distribution, 'agents.md'), prerender.agentsMarkdown());
+writeFileSync(path.join(distribution, 'llms.txt'), prerender.llmsText());
 const statusPages = prerender.statusTemplates(index);
 for (const [name, page] of statusPages) {
   writeFileSync(path.join(distribution, name), page);

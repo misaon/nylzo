@@ -48,17 +48,17 @@ func NewHandler(build Build, publicURL, contact string, information buildinfo.In
 	securityText := SecurityText(publicURL, contact, information.Date)
 	mux.HandleFunc("GET "+SecurityTextPath, serveBody("text/plain; charset=utf-8", securityText))
 	mux.HandleFunc("GET "+ManifestPath, serveBody("application/json; charset=utf-8", manifest))
-	return frontendHeaders(mux), nil
+	return frontendHeaders(publicURL, mux), nil
 }
 
 // HandlePages routes every path of PagePaths to the handler that page returns, and a home page address
-// without its trailing slash, such as /cs, to that home page.
+// without its trailing slash or with capitals in its tag, such as /cs or /pt-BR/, to that home page.
 func HandlePages(mux *http.ServeMux, handler func(path string) http.HandlerFunc) {
 	for _, path := range PagePaths {
 		mux.HandleFunc("GET "+pagePattern(path), handler(path))
 	}
 	for from, to := range homeRedirects {
-		mux.HandleFunc("GET "+from, func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("GET "+pagePattern(from), func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, to, http.StatusPermanentRedirect)
 		})
 	}
@@ -154,12 +154,9 @@ func fromAnotherSite(r *http.Request) bool {
 	return (site == "cross-site" || site == "same-site") && r.Header.Get("Sec-Fetch-Dest") != destinationDocument
 }
 
-func frontendHeaders(next http.Handler) http.Handler {
+func frontendHeaders(publicURL string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		SetSecurityHeaders(
-			w.Header(),
-			(r.Method == http.MethodGet || r.Method == http.MethodHead) && IsHomePath(r.URL.Path),
-		)
+		SetSecurityHeaders(w.Header(), Indexable(publicURL, r.Method, r.URL.Path))
 		if fromAnotherSite(r) {
 			w.WriteHeader(http.StatusForbidden)
 			return

@@ -485,7 +485,7 @@ export const messages: Catalog = {
   'hero.title.accent': 'nur einmal öffnet',
   'seo.title': 'Passwort sicher senden: verschlüsselter Einmal-Link | Nylzo',
   'seo.description':
-    'Senden Sie ein Passwort, einen API-Schlüssel oder eine Datei über einen Link, der sich nur einmal öffnet. Verschlüsselt wird schon in Ihrem Browser. Kostenlos und ohne Registrierung.',
+    'Senden Sie ein Passwort, einen API-Schlüssel oder eine Datei per Link, der sich nur einmal öffnet. Verschlüsselt im Browser, kostenlos und ohne Registrierung.',
   'seo.image': 'Nylzo-Logo vor einem Sternenhimmel',
 
   'compose.placeholder': 'Hierher gehört, was nicht im Chat bleiben soll…',

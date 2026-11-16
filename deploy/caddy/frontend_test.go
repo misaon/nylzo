@@ -85,7 +85,6 @@ func TestFrontendIsIndependentOfTheBackend(t *testing.T) {
 				check("/assets/"+name, asset.Body)
 			}
 			check("/robots.txt", webclient.Robots("https://localhost"))
-			check("/sitemap.xml", webclient.Sitemap("https://localhost"))
 			response, getErr := client.Get("https://" + address + webclient.ManifestPath)
 			if getErr != nil {
 				t.Fatal(getErr)
@@ -442,7 +441,12 @@ func TestCrawlersReachOnlyPublicDocumentsOverClassicalTLS(t *testing.T) {
 				for _, path := range public {
 					response := do(http.MethodGet, path, nil)
 					_ = response.Body.Close()
-					if got := response.Header.Values("Content-Security-Policy"); response.StatusCode != http.StatusOK ||
+					status := http.StatusOK
+					if path == "/sitemap.xml" {
+						// Only the official instance has a sitemap (D134); the gate still lets the request through.
+						status = http.StatusNotFound
+					}
+					if got := response.Header.Values("Content-Security-Policy"); response.StatusCode != status ||
 						!slices.Equal(got, []string{pagePolicies[path], policy}) {
 						t.Errorf("%s %s: status %d, policies %q", transport, path, response.StatusCode, got)
 					}

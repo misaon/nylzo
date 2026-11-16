@@ -87,7 +87,7 @@ func checkSecurityHeaders(t *testing.T, name string, response testResponse, inde
 	}
 	if robots := response.Header.Get("X-Robots-Tag"); indexable != (robots == "") ||
 		(!indexable && robots != "noindex, nofollow") {
-		t.Fatalf("%s: X-Robots-Tag = %q, only the home pages may be indexed (D80, D82)", name, robots)
+		t.Fatalf("%s: X-Robots-Tag = %q, only official home pages and images may be indexed (D134)", name, robots)
 	}
 	if csp := response.Header.Get("Content-Security-Policy"); !strings.HasPrefix(
 		response.Header.Get("Content-Type"),
@@ -106,7 +106,18 @@ func TestSecurityHeadersAndStaticPolicy(t *testing.T) {
 			"/api/v1/messages/" + core.NewID().String(), "/healthz", "/nope",
 		} {
 			response, _ := harness.do(&testRequest{method: http.MethodGet, path: path})
-			checkSecurityHeaders(t, path, response, path == "/" || path == "/cs/")
+			checkSecurityHeaders(t, path, response, false)
+		}
+		official := baseSettings(pepperA, nil)
+		official.PublicURL = "https://nylzo.com"
+		indexed := newHarness(t, official, WithWebFiles(builtClient(t)))
+		for path, indexable := range map[string]bool{
+			"/": true, "/cs/": true, "/assets/favicon-d4.svg": true, "/assets/favicon-e5.png": true,
+			"/favicon.ico": true, "/sent": false, "/transparency": false, "/agents.md": false,
+			"/m/" + core.NewID().String(): false, "/r": false, "/robots.txt": false, "/nope": false,
+		} {
+			response, _ := indexed.do(&testRequest{method: http.MethodGet, path: path})
+			checkSecurityHeaders(t, "official "+path, response, indexable)
 		}
 		const allowlist = `(response-origin "https://github.com/misaon/nylzo" "https://github.com/misaon/nylzo/*")`
 		for path, want := range map[string]string{
@@ -127,7 +138,7 @@ func TestSecurityHeadersAndStaticPolicy(t *testing.T) {
 			status    int
 			indexable bool
 		}{
-			{&testRequest{method: http.MethodHead, path: "/"}, http.StatusOK, true},
+			{&testRequest{method: http.MethodHead, path: "/"}, http.StatusOK, false},
 			{&testRequest{method: http.MethodPost, path: "/"}, http.StatusMethodNotAllowed, false},
 			{&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: prefetch}, http.StatusServiceUnavailable, false},
 			{
@@ -260,6 +271,7 @@ func builtClient(t *testing.T) fstest.MapFS {
 		"dist/assets/favicon-e5.png":   {Data: []byte("\x89PNG\r\n\x1a\n")},
 		"dist/agents.md":               {Data: []byte(agentsGuide)},
 		"dist/favicon.ico":             {Data: []byte("\x00\x00\x01\x00")},
+		"dist/llms.txt":                {Data: []byte("# Nylzo\n")},
 	}
 	for _, language := range []string{"en", "cs", "de", "es", "fr", "id", "it", "ja", "pl", "pt-BR", "sk", "zh-Hans"} {
 		files["dist/home."+language+".html"] = &fstest.MapFile{Data: []byte(builtHome(language))}
@@ -334,6 +346,7 @@ func TestBuiltClientIsServed(t *testing.T) {
 		"/assets/favicon-e5.png":   "image/png",
 		"/agents.md":               "text/markdown; charset=utf-8",
 		"/favicon.ico":             "image/vnd.microsoft.icon",
+		"/llms.txt":                "text/plain; charset=utf-8",
 	} {
 		asset := harness.get(path, nil)
 		if asset.StatusCode != http.StatusOK || asset.Header.Get("Content-Type") != contentType || asset.body == "" {
@@ -387,14 +400,17 @@ func TestHomePagesHaveTheirOwnAddresses(t *testing.T) {
 			t.Fatalf("%s: %d %s", path, page.StatusCode, page.body)
 		}
 	}
-	for path, location := range map[string]string{"/cs": "/cs/", "/cs?utm=1": "/cs/", "/pt-br": "/pt-br/"} {
+	for path, location := range map[string]string{
+		"/cs": "/cs/", "/cs?utm=1": "/cs/", "/pt-br": "/pt-br/", "/pt-BR/": "/pt-br/", "/pt-BR": "/pt-br/",
+		"/zh-Hans/": "/zh-hans/",
+	} {
 		redirect := harness.fetch(path, nil, false)
 		if redirect.StatusCode != http.StatusPermanentRedirect || redirect.Header.Get("Location") != location ||
 			redirect.Header.Get("X-Robots-Tag") != "noindex, nofollow" {
 			t.Fatalf("%s: %d %q %v", path, redirect.StatusCode, redirect.Header.Get("Location"), redirect.Header)
 		}
 	}
-	for _, path := range []string{"/en/", "/cs/sent", "/cs/x", "/CS/", "/pt-BR/", "/zh/", "/report"} {
+	for _, path := range []string{"/en/", "/cs/sent", "/cs/x", "/CS/", "/pt-BR/x", "/PT-BR/", "/zh/", "/report"} {
 		if missing := harness.get(path, nil); missing.StatusCode != http.StatusNotFound {
 			t.Fatalf("%s: %d", path, missing.StatusCode)
 		}
@@ -448,10 +464,15 @@ func TestRobotsSitemapAndManifest(t *testing.T) {
 	settings.PublicURL = "https://nylzo.example"
 	settings.Version = "v1.2.3"
 	with := newHarness(t, settings, WithWebFiles(builtClient(t)))
-	sitemap := with.get("/sitemap.xml", nil)
+	if sitemap := with.get("/sitemap.xml", nil); sitemap.StatusCode != http.StatusNotFound {
+		t.Fatalf("sitemap.xml of an instance other than the official one: %d (D134)", sitemap.StatusCode)
+	}
+	official := baseSettings(pepperA, nil)
+	official.PublicURL = "https://nylzo.com"
+	sitemap := newHarness(t, official, WithWebFiles(builtClient(t))).get("/sitemap.xml", nil)
 	if sitemap.StatusCode != http.StatusOK ||
 		sitemap.Header.Get("Content-Type") != "application/xml; charset=utf-8" ||
-		sitemap.body != string(webclient.Sitemap(settings.PublicURL)) {
+		sitemap.body != string(webclient.Sitemap(official.PublicURL)) {
 		t.Fatalf("sitemap.xml: %d %q", sitemap.StatusCode, sitemap.Header.Get("Content-Type"))
 	}
 	manifest := with.get(webclient.ManifestPath, nil)

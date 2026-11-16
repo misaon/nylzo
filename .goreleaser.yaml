@@ -86,6 +86,7 @@ checksum:
     - glob: internal/server/web/dist/*.html
     - glob: internal/server/web/dist/*.md
     - glob: internal/server/web/dist/*.ico
+    - glob: internal/server/web/dist/*.txt
     - glob: internal/server/web/dist/assets/*
     - glob: .host-bundle/nylzo-host_{{ .Version }}.tar
 

@@ -1,24 +1,44 @@
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 type Family = "ipv4Prefix" | "ipv6Prefix";
 
 type Source = { readonly url: string; readonly families: readonly Family[] };
 
+const both: readonly Family[] = ["ipv4Prefix", "ipv6Prefix"];
+
 export const sources: readonly Source[] = [
-  { url: "https://developers.google.com/static/crawling/ipranges/common-crawlers.json", families: ["ipv4Prefix", "ipv6Prefix"] },
-  { url: "https://developers.google.com/static/crawling/ipranges/user-triggered-fetchers-google.json", families: ["ipv4Prefix", "ipv6Prefix"] },
+  { url: "https://developers.google.com/static/crawling/ipranges/common-crawlers.json", families: both },
+  { url: "https://developers.google.com/static/crawling/ipranges/special-crawlers.json", families: both },
+  { url: "https://developers.google.com/static/crawling/ipranges/user-triggered-fetchers-google.json", families: both },
   { url: "https://www.bing.com/toolbox/bingbot.json", families: ["ipv4Prefix"] },
-  { url: "https://search.seznam.cz/ipranges/seznambot.json", families: ["ipv4Prefix", "ipv6Prefix"] },
+  { url: "https://search.seznam.cz/ipranges/seznambot.json", families: both },
+  { url: "https://openai.com/searchbot.json", families: both },
+  { url: "https://openai.com/chatgpt-user.json", families: both },
+  { url: "https://openai.com/gptbot.json", families: both },
+  { url: "https://www.perplexity.ai/perplexitybot.json", families: both },
+  { url: "https://www.perplexity.ai/perplexity-user.json", families: both },
+  { url: "https://claude.com/crawling/bots.json", families: both },
+  { url: "https://search.developer.apple.com/applebot.json", families: both },
+  { url: "https://duckduckgo.com/duckduckbot.json", families: both },
+  { url: "https://duckduckgo.com/duckassistbot.json", families: both },
+  { url: "https://index.commoncrawl.org/ccbot.json", families: both },
+  { url: "https://mistral.ai/mistralai-index-ips.json", families: both },
+  { url: "https://mistral.ai/mistralai-user-ips.json", families: both },
 ];
+
+// A shared Microsoft block that the ChatGPT-User list names, far wider than a crawler needs; left out of every source.
+const leftOut: readonly string[] = ["9.129.0.0/16"];
 
 export const listPath = fileURLToPath(new URL("../deploy/caddy/crawlers.json", import.meta.url));
 
 const shortestPrefix: Record<Family, number> = { ipv4Prefix: 20, ipv6Prefix: 48 };
 
 // A source that suddenly lists far more than the crawlers use today stops the refresh for a person to look at.
-const mostPrefixes = 4000;
-const mostIPv4Addresses = 65_536n;
+const mostPrefixes = 8000;
+const mostIPv4Addresses = 131_072n;
+// One that suddenly lists far fewer, such as a truncated download, would take crawlers off the list.
+const fewestShareInTenths = 7n;
 
 const nonGlobalIPv4 = [
   "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24",
@@ -52,7 +72,7 @@ function ipv6(text: string): bigint | undefined {
   return all.reduce((value, group) => (value << 16n) | BigInt(`0x${group}`), 0n);
 }
 
-function parseNetwork(family: Family, text: string): Network {
+function parseNetwork(family: Family, text: string, shortest = shortestPrefix[family]): Network {
   const [address, length, extra] = text.toLowerCase().split("/");
   const bits = family === "ipv4Prefix" ? 32 : 128;
   const value = address === undefined ? undefined : family === "ipv4Prefix" ? ipv4(address) : ipv6(address);
@@ -63,8 +83,8 @@ function parseNetwork(family: Family, text: string): Network {
   if (value & ((1n << BigInt(bits - prefixLength)) - 1n)) {
     throw new Error(`${text} is not a network address`);
   }
-  if (prefixLength < shortestPrefix[family]) {
-    throw new Error(`${text} is wider than /${shortestPrefix[family]}`);
+  if (prefixLength < shortest) {
+    throw new Error(`${text} is wider than /${shortest}`);
   }
   return { family, address: value, length: prefixLength, text: text.toLowerCase() };
 }
@@ -83,8 +103,13 @@ function checkGlobal(network: Network): void {
     return;
   }
   const global = { family: network.family, address: 1n << 125n, length: 3, text: "2000::/3" } as const;
-  const documentation = { family: network.family, address: 0x20010db8n << 96n, length: 32, text: "2001:db8::/32" } as const;
-  if (!contains(global, network) || contains(documentation, network)) {
+  // Teredo and 6to4 addresses carry an arbitrary IPv4 host inside them.
+  const special = [
+    { family: network.family, address: 0x20010db8n << 96n, length: 32, text: "2001:db8::/32" },
+    { family: network.family, address: 0x20010000n << 96n, length: 32, text: "2001::/32" },
+    { family: network.family, address: 0x2002n << 112n, length: 16, text: "2002::/16" },
+  ] as const;
+  if (!contains(global, network) || special.some((reserved) => contains(reserved, network))) {
     throw new Error(`${network.text} is not a public address range`);
   }
 }
@@ -94,11 +119,12 @@ function parseReserved(family: Family, text: string): Network {
   return { family, address: ipv4(address!)!, length: Number(length), text };
 }
 
-export function rangesOf(document: unknown, families: readonly Family[]): Network[] {
+export function rangesOf(document: unknown, families: readonly Family[], dropped: string[] = []): Network[] {
   const prefixes: unknown = typeof document === "object" && document !== null ? Reflect.get(document, "prefixes") : undefined;
   if (!Array.isArray(prefixes) || prefixes.length === 0) {
     throw new Error("the list has no prefixes");
   }
+  const excluded = leftOut.map((text) => parseNetwork(text.includes(":") ? "ipv6Prefix" : "ipv4Prefix", text, 0));
   const networks: Network[] = [];
   for (const entry of prefixes) {
     const keys = typeof entry === "object" && entry !== null ? Object.keys(entry) : [];
@@ -113,6 +139,11 @@ export function rangesOf(document: unknown, families: readonly Family[]): Networ
     if (!families.includes(family)) {
       continue;
     }
+    const candidate = parseNetwork(family, text, 0);
+    if (excluded.some((outer) => contains(outer, candidate))) {
+      dropped.push(candidate.text);
+      continue;
+    }
     const network = parseNetwork(family, text);
     checkGlobal(network);
     networks.push(network);
@@ -123,11 +154,11 @@ export function rangesOf(document: unknown, families: readonly Family[]): Networ
   return networks;
 }
 
-export function crawlerList(documents: readonly unknown[]): { sources: string[]; prefixes: string[] } {
+export function crawlerList(documents: readonly unknown[], dropped: string[] = []): { sources: string[]; prefixes: string[] } {
   const networks = documents.flatMap((document, index) => {
     const source = sources[index]!;
     try {
-      return rangesOf(document, source.families);
+      return rangesOf(document, source.families, dropped);
     } catch (error) {
       throw new Error(`${source.url}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
     }
@@ -147,15 +178,44 @@ export function crawlerList(documents: readonly unknown[]): { sources: string[];
   return { sources: sources.map((source) => source.url), prefixes: ordered.map((network) => network.text) };
 }
 
-async function download(url: string): Promise<unknown> {
-  const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(30_000) });
-  if (!response.ok) {
-    throw new Error(`${url}: HTTP ${response.status}`);
+function coverage(prefixes: readonly string[]): { prefixes: bigint; ipv4Addresses: bigint } {
+  const ipv4Addresses = prefixes
+    .filter((prefix) => !prefix.includes(":"))
+    .reduce((sum, prefix) => sum + (1n << BigInt(32 - parseNetwork("ipv4Prefix", prefix).length)), 0n);
+  return { prefixes: BigInt(prefixes.length), ipv4Addresses };
+}
+
+export function checkShrink(committed: readonly string[], refreshed: readonly string[]): void {
+  const before = coverage(committed);
+  const after = coverage(refreshed);
+  if (after.prefixes * 10n < before.prefixes * fewestShareInTenths || after.ipv4Addresses * 10n < before.ipv4Addresses * fewestShareInTenths) {
+    throw new Error(
+      `the sources list ${after.prefixes} prefixes and ${after.ipv4Addresses} IPv4 addresses, ` +
+        `far fewer than the ${before.prefixes} and ${before.ipv4Addresses} of the committed list`,
+    );
   }
-  return response.json();
+}
+
+async function download(url: string): Promise<unknown> {
+  try {
+    const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    return await response.json();
+  } catch (error) {
+    throw new Error(`${url}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+  }
 }
 
 if (import.meta.main) {
   const documents = await Promise.all(sources.map((source) => download(source.url)));
-  writeFileSync(listPath, `${JSON.stringify(crawlerList(documents), null, 2)}\n`);
+  const dropped: string[] = [];
+  const refreshed = crawlerList(documents, dropped);
+  for (const prefix of dropped) {
+    console.warn(`left out ${prefix}, which lies inside a block left out on purpose`);
+  }
+  const committed = Reflect.get(JSON.parse(readFileSync(listPath, "utf8")) as object, "prefixes") as string[];
+  checkShrink(committed, refreshed.prefixes);
+  writeFileSync(listPath, `${JSON.stringify(refreshed, null, 2)}\n`);
 }

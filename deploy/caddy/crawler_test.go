@@ -32,6 +32,7 @@ func TestCrawlerMatchesOnlyThePublishedRanges(t *testing.T) {
 	published := crawler.prefixes[0].Addr()
 	for address, want := range map[string]bool{
 		netip.AddrPortFrom(published, 443).String():                          true,
+		netip.AddrPortFrom(published.Next(), 443).String():                   true,
 		netip.AddrPortFrom(netip.AddrFrom16(published.As16()), 443).String(): true,
 		"127.0.0.1:443": false,
 		netip.AddrPortFrom(netip.MustParseAddr("2001:db8::1"), 443).String():               false,

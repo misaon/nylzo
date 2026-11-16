@@ -1,7 +1,7 @@
 import { expect, test } from './support/fixtures.ts';
 import { chooseLanguage, openApp } from './support/pages.ts';
 import { holdRoute } from './support/routes.ts';
-import { BASE_URL } from './support/servers.ts';
+import { BASE_URL, OFFICIAL_BASE_URL } from './support/servers.ts';
 import { watchViolations } from './support/watchers.ts';
 
 const HOMES = [
@@ -11,13 +11,15 @@ const HOMES = [
 ];
 
 for (const home of HOMES) {
-  test(`${home.path} comes prerendered in ${home.language} with its search and preview tags and shows its content without JavaScript (D82 to D84)`, async ({
+  test(`${home.path} comes prerendered in ${home.language} with its search and preview tags, may be indexed only on the official instance and shows its content without JavaScript (D82 to D84, D134)`, async ({
     request,
     newPage,
   }) => {
     const response = await request.get(home.path);
     expect(response.status()).toBe(200);
-    expect(response.headers()['x-robots-tag']).toBeUndefined();
+    expect(response.headers()['x-robots-tag']).toBe('noindex, nofollow');
+    const official = await request.get(`${OFFICIAL_BASE_URL}${home.path}`);
+    expect(official.headers()['x-robots-tag']).toBeUndefined();
     const html = await response.text();
     expect(html).toContain(`<html lang="${home.language}">`);
     expect(html.match(/<h1[\s>]/gu)).toHaveLength(1);
@@ -36,9 +38,15 @@ for (const home of HOMES) {
       '@graph'
     ];
     const node = (type: string) => graph.find((entry) => entry['@type'] === type);
-    expect([node('WebSite')?.url, node('WebApplication')?.url]).toEqual([`${BASE_URL}/`, `${BASE_URL}${home.path}`]);
-    const logo = await request.get(node('Organization')?.logo ?? '');
+    expect([node('Organization')?.url, node('WebSite')?.url, node('WebApplication')?.url]).toEqual([
+      `${BASE_URL}/`,
+      `${BASE_URL}/`,
+      `${BASE_URL}${home.path}`,
+    ]);
+    const logoPath = new URL(node('Organization')?.logo ?? '').pathname;
+    const logo = await request.get(`${OFFICIAL_BASE_URL}${logoPath}`);
     expect(logo.headers()['content-type']).toBe('image/png');
+    expect(logo.headers()['x-robots-tag']).toBeUndefined();
 
     const page = await newPage({ javaScriptEnabled: false });
     await page.goto(home.path);
