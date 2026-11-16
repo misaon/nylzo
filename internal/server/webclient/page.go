@@ -62,6 +62,7 @@ var publicDocuments = slices.Concat(homePaths(), slices.Sorted(maps.Keys(homeRed
 	transparencyPath,
 	agentsPath,
 	"/" + agentsGuideFile,
+	"/" + faviconFile,
 	robotsPath,
 	sitemapPath,
 	SecurityTextPath,

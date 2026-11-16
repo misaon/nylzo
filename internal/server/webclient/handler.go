@@ -12,9 +12,10 @@ import (
 )
 
 type frontend struct {
-	pages    Pages
-	previews map[string][]byte
-	assets   map[string]Asset
+	pages     Pages
+	previews  map[string][]byte
+	assets    map[string]Asset
+	rootFiles map[string]Asset
 }
 
 func NewHandler(build Build, publicURL, contact string, information buildinfo.Info) (http.Handler, error) {
@@ -28,13 +29,20 @@ func NewHandler(build Build, publicURL, contact string, information buildinfo.In
 		return nil, err
 	}
 	manifest, _ := json.Marshal(build.Manifest(information.Version, publicURL, pages, information))
-	site := &frontend{pages: pages, previews: previewPages(publicURL, build.Assets), assets: build.Assets}
+	site := &frontend{
+		pages:     pages,
+		previews:  previewPages(publicURL, build.Assets),
+		assets:    build.Assets,
+		rootFiles: build.RootFiles,
+	}
 	mux := http.NewServeMux()
 	HandlePages(mux, site.page)
 	mux.HandleFunc("GET "+AdminPath, site.serveAdmin)
 	mux.HandleFunc("GET /", site.serveNotFound)
 	mux.HandleFunc("GET /assets/{name}", site.serveAsset)
-	mux.HandleFunc("GET /"+agentsGuideFile, serveIfBuilt(build.AgentsGuide))
+	for name := range rootFiles {
+		mux.HandleFunc("GET /"+name, site.serveRootFile)
+	}
 	mux.HandleFunc("GET "+robotsPath, serveBody("text/plain; charset=utf-8", Robots(publicURL)))
 	mux.HandleFunc("GET "+sitemapPath, serveBody("application/xml; charset=utf-8", Sitemap(publicURL)))
 	securityText := SecurityText(publicURL, contact, information.Date)
@@ -131,14 +139,13 @@ func serveBody(contentType string, body []byte) http.HandlerFunc {
 	}
 }
 
-func serveIfBuilt(asset *Asset) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if asset == nil {
-			http.NotFound(w, r)
-			return
-		}
-		asset.Serve(w, r)
+func (f *frontend) serveRootFile(w http.ResponseWriter, r *http.Request) {
+	file, ok := f.rootFiles[strings.TrimPrefix(r.URL.Path, "/")]
+	if !ok {
+		http.NotFound(w, r)
+		return
 	}
+	file.Serve(w, r)
 }
 
 // No page or file of the client is a subresource of another site, so from one only a navigation may arrive.
