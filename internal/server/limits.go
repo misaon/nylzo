@@ -52,12 +52,27 @@ func (s *Server) bucketsOf(r *http.Request) *clientBuckets {
 	return s.newClientBuckets(r)
 }
 
+type admission int
+
+const (
+	allowed admission = iota
+	// clientRefused means the client or its range sent more than its own share.
+	clientRefused
+	// instanceBusy means the whole instance is at its rate, whoever asks.
+	instanceBusy
+)
+
 // allowAPI asks the token buckets in order, so a refused source or range takes no later token.
-func (s *Server) allowAPI(buckets *clientBuckets) bool {
+func (s *Server) allowAPI(buckets *clientBuckets) admission {
 	now := time.Now()
-	return s.sourceLimiter.Allow(buckets.source, now) &&
-		s.rangeLimiter.Allow(buckets.addressRange, now) &&
-		s.instance.Allow(buckets.addressRange, now)
+	switch {
+	case !s.sourceLimiter.Allow(buckets.source, now), !s.rangeLimiter.Allow(buckets.addressRange, now):
+		return clientRefused
+	case !s.instance.Allow(buckets.addressRange, now):
+		return instanceBusy
+	default:
+		return allowed
+	}
 }
 
 func (s *Server) allowRead(w http.ResponseWriter, r *http.Request) bool {
@@ -86,7 +101,7 @@ func (s *Server) countHourly(w http.ResponseWriter, r *http.Request, hit *rateli
 	addressRange.Kind, addressRange.Bucket = hit.Kind+":h:c", buckets.addressRange
 	addressRange.Limit, addressRange.BytesLimit = hit.Limit*coarse, hit.BytesLimit*coarse
 	if retry := s.counters.Count([]ratelimit.Hit{source, addressRange}, now); retry > 0 {
-		writeRateLimited(w, retry)
+		s.refuseLimited(w, r, hit.Kind, retry)
 		return false
 	}
 	return true

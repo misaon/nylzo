@@ -18,7 +18,7 @@ const (
 // WantsPage reports whether a browser navigates to the address, so a status page answers instead of a bare status.
 func WantsPage(r *http.Request) bool {
 	if destination := r.Header.Get("Sec-Fetch-Dest"); destination != "" {
-		return destination == "document"
+		return destination == destinationDocument
 	}
 	return strings.Contains(r.Header.Get("Accept"), "text/html")
 }

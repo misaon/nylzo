@@ -19,6 +19,7 @@ import (
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
+	"github.com/misaon/nylzo/internal/server/statistics"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -52,6 +53,14 @@ type transparencyResponse struct {
 	Limits    api.InstanceLimits    `json:"limits"`
 	Rates     transparencyRates     `json:"rates"`
 	Retention transparencyRetention `json:"retention"`
+	Visits    transparencyVisits    `json:"visits"`
+}
+
+// transparencyVisits tells whether this instance counts visits and how long it keeps the counts.
+type transparencyVisits struct {
+	Counted       bool  `json:"counted"`
+	HourlySeconds int64 `json:"hourly_s"`
+	DailySeconds  int64 `json:"daily_s"`
 }
 
 type transparencyRates struct {
@@ -258,6 +267,11 @@ func (s *Server) handleTransparency(w http.ResponseWriter, _ *http.Request) {
 			TombstoneSeconds:    int64(store.TombstoneTTL / time.Second),
 			DailyCounterSeconds: int64(day.PurgeAt().Sub(day.End) / time.Second),
 		},
+	}
+	response.Visits = transparencyVisits{
+		Counted:       s.counts.Enabled(),
+		HourlySeconds: int64(statistics.HourlyRetention / time.Second),
+		DailySeconds:  int64(statistics.DailyRetention / time.Second),
 	}
 	if operator := s.settings.Operator; operator != (config.Operator{}) {
 		response.Operator = &operator

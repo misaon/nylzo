@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
+	"slices"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/adminstore"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
 	"github.com/misaon/nylzo/internal/server/logging"
@@ -199,8 +201,11 @@ func openStore(
 	databasePath := filepath.Join(dataDirectory, databaseFile)
 	narrowed, err := datadir.Secure(datadir.Layout{
 		Directory: dataDirectory,
-		Files:     []string{databasePath, databasePath + "-wal", databasePath + "-shm"},
-		Trees:     []string{filepath.Join(dataDirectory, disk.Directory)},
+		Files: slices.Concat(
+			[]string{databasePath, databasePath + "-wal", databasePath + "-shm"},
+			adminstore.Files(adminStorePath(dataDirectory)),
+		),
+		Trees: []string{filepath.Join(dataDirectory, disk.Directory)},
 	})
 	if narrowed > 0 {
 		logger.WarnContext(ctx, "permissions-narrowed", "entries", narrowed)
@@ -422,7 +427,9 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 			"notice", "another process had the database open, so the log headers still count earlier writes",
 		)
 	}
-	instance, err := startInstance(ctx, &settings, database, blobs, logger)
+	opened := withAdminStore(ctx, settings.DataDirectory, database, blobs, logger)
+	defer opened.close()
+	instance, err := startInstance(ctx, &settings, opened, logger)
 	if err != nil {
 		return err
 	}
@@ -434,20 +441,19 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	})
 	if !database.LogResetSkipped() {
 		if returnErr := instance.ReturnUnstoredCreates(ctx); returnErr != nil {
+			instance.Close()
 			return returnErr
 		}
 	}
 	listener, err := new(net.ListenConfig).Listen(ctx, "tcp", settings.Listen)
 	if err != nil {
+		instance.Close()
 		return err
 	}
 	logPlainListener(ctx, logger, listener.Addr(), len(settings.TrustedProxies))
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
-	var sweeper sync.WaitGroup
-	sweeper.Go(func() { instance.RunSweeper(ctx) })
-	sweeper.Go(func() { instance.RunHousekeeping(ctx) })
-	sweeper.Go(func() { instance.RunRatchet(ctx) })
+	sweeper := startWorkers(ctx, instance)
 	httpServer := instance.HTTPServer()
 	served := make(chan error, 1)
 	go func() { served <- httpServer.Serve(transport.SecureEarlyErrors(listener)) }()
@@ -463,20 +469,64 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 		logger.InfoContext(ctx, "shutdown", "drain", shutdownTimeout.String())
 		err = shutdown(ctx, httpServer, shutdownTimeout, logger)
 	}
-	waitFor(ctx, &sweeper, shutdownTimeout, logger)
+	waitFor(ctx, sweeper, shutdownTimeout, logger)
 	instance.Close()
 	return err
+}
+
+func startWorkers(ctx context.Context, instance *server.Server) *sync.WaitGroup {
+	var workers sync.WaitGroup
+	for _, run := range []func(context.Context){
+		instance.RunSweeper, instance.RunHousekeeping, instance.RunRatchet, instance.RunUsage,
+	} {
+		workers.Go(func() { run(ctx) })
+	}
+	return &workers
+}
+
+type stores struct {
+	database *sqlite.Store
+	blobs    *disk.Blobs
+	admin    *adminstore.Store
+}
+
+// withAdminStore opens the store of the admin area. The server takes messages without it: a file it cannot open
+// only switches the admin area and its counting off.
+func withAdminStore(
+	ctx context.Context,
+	dataDirectory string,
+	database *sqlite.Store,
+	blobs *disk.Blobs,
+	logger *slog.Logger,
+) *stores {
+	admin, err := adminstore.Open(ctx, adminStorePath(dataDirectory))
+	if err != nil {
+		logger.ErrorContext(ctx, "admin-store-unavailable", "err", logging.ErrorText(err))
+		admin = nil
+	}
+	return &stores{database: database, blobs: blobs, admin: admin}
+}
+
+func (s *stores) close() {
+	if s.admin != nil {
+		s.admin.Close()
+	}
 }
 
 // startInstance seals the stored rows with the pepper before the server takes a request (spec §5.2).
 func startInstance(
 	ctx context.Context,
 	settings *config.Server,
-	database *sqlite.Store,
-	blobs *disk.Blobs,
+	opened *stores,
 	logger *slog.Logger,
 ) (*server.Server, error) {
-	instance, err := server.New(settings, database, blobs, server.WithLogger(logger))
+	instance, err := server.New(
+		settings,
+		opened.database,
+		opened.blobs,
+		server.WithLogger(logger),
+		server.WithAdminStore(opened.admin),
+	)
 	clear(settings.Pepper)
 	clear(settings.PepperPrevious)
 	if err != nil {
@@ -485,6 +535,9 @@ func startInstance(
 	if err = instance.SealRows(ctx); err != nil {
 		instance.Close()
 		return nil, err
+	}
+	if err = instance.StartCounting(ctx); err != nil {
+		logger.ErrorContext(ctx, "admin-counts", "err", logging.ErrorText(err))
 	}
 	return instance, nil
 }

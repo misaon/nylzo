@@ -36,10 +36,25 @@ test(
   },
 );
 
+test('only the admin page may create and use a passkey of the origin', async ({ page }) => {
+  const policies = new Map<string, string[]>();
+  for (const path of ['/', '/admin']) {
+    const response = await openApp(page, path);
+    policies.set(path, response?.headers()['permissions-policy']?.split(', ') ?? []);
+  }
+  for (const feature of ['publickey-credentials-create', 'publickey-credentials-get']) {
+    expect(policies.get('/')).toContain(`${feature}=()`);
+    expect(policies.get('/admin')).toContain(`${feature}=(self)`);
+  }
+  expect(policies.get('/admin')?.filter((feature) => !feature.startsWith('publickey-credentials-'))).toEqual(
+    policies.get('/')?.filter((feature) => !feature.startsWith('publickey-credentials-')),
+  );
+});
+
 test('every page links only where its connection allowlist admits, and code in a page cannot navigate anywhere else', async ({
   page,
 }) => {
-  for (const path of ['/', '/cs/', '/sent', '/transparency', '/terms', '/agents', '/no-such-page']) {
+  for (const path of ['/', '/cs/', '/sent', '/transparency', '/terms', '/agents', '/no-such-page', '/admin']) {
     const response = await openApp(page, path);
     const allowlist = response?.headers()['connection-allowlist'] ?? '';
     expect(allowlist).toMatch(/^\(response-origin "/u);

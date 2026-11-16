@@ -20,6 +20,8 @@ const (
 
 	PurposeRead   = "read"
 	PurposeManage = "manage"
+	// PurposeAdmin signs a request of the operator's admin session (spec section 6.8).
+	PurposeAdmin = "admin"
 
 	AuthScheme   = "Nylzo-Sig"
 	requestLabel = "nylzo/v3/request"

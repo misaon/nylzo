@@ -338,6 +338,9 @@ export const messages: Catalog = {
   'transparency.stores.addresses.title': 'IP adresy',
   'transparency.stores.addresses':
     'Neukladá ich. Limity na adresu uchováva len v\u{A0}pamäti, ktorá sa nikdy neodkladá na disk, a\u{A0}po reštarte ich zabudne.',
+  'transparency.stores.visits.title': 'Návštevnosť bez adries',
+  'transparency.stores.visits':
+    'Server sám počíta návštevy verejných stránok, bez cookies a\u{A0}bez ukladania adries: koľko prišlo ľudí, koľko robotov a\u{A0}z\u{A0}akých krajín. Hodinové súčty uchováva {hourly}, denné {daily}. Stránku so správou nepočíta nikdy. Adresu klienta, ktorého odmietol niektorý limit, drží hodinu iba v\u{A0}pamäti, aby ju prevádzkovateľ videl.',
   'transparency.stores.enforced.title': 'Platnosť stráži aj kryptografia',
   'transparency.stores.enforced':
     'Platnosť a\u{A0}počet otvorení stráži server. Najneskôr minútu po skončení platnosti navyše vymaže časť kľúča, ktorú správa potrebuje, takže ju potom neotvorí ani kópia dát. Kópia vytvorená skôr správu bez odkazu neprečíta.',

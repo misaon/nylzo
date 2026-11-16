@@ -189,6 +189,18 @@ func TestConnectionAllowlistAdmitsOnlyTheOperatorContact(t *testing.T) {
 	) {
 		t.Fatalf("the transparency page carries %q", got)
 	}
+	withAdmin := builtClient(t)
+	withAdmin["dist/admin.html"] = &fstest.MapFile{Data: []byte(builtIndex)}
+	adminPages, err := load(t, withAdmin).Render("https://nylzo.example", "security@example.org")
+	if err != nil {
+		t.Fatal(err)
+	}
+	response = httptest.NewRecorder()
+	adminPages["admin.html"].Serve(response, httptest.NewRequest(http.MethodGet, webclient.AdminPath, http.NoBody))
+	admin := strings.TrimSuffix(webclient.ConnectionAllowlist("security@example.org"), ")") + ` "https://db-ip.com/")`
+	if got := response.Header().Get("Connection-Allowlist"); got != admin {
+		t.Fatalf("the admin page carries %q, want the attribution of its country table as the one further address", got)
+	}
 	for _, unsafe := range []string{
 		"javascript:alert(1)", "http://example.org/", "mailto:a@b.example", `https://example.org/"`,
 		"https://user@example.org/", "https://example.org/#top", "https://example.org/a(b)", "https://example.org:0/",

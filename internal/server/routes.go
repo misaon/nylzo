@@ -57,10 +57,15 @@ func (s *Server) routes() http.Handler {
 	onMessageID("POST "+message+api.CancelAction, s.handleCancel)
 	onMessageID("GET "+message+api.StatusAction, s.handleStatus)
 	onMessage("HEAD "+message+api.StatusAction, handleAPINotFound)
+	mux.HandleFunc("POST "+api.VisitsPath, s.handleVisit)
+	mux.HandleFunc("POST "+api.DocumentVisitsPath, s.handleDocumentVisit)
+	if s.admin != nil {
+		s.admin.Register(mux)
+	}
 	mux.HandleFunc(api.Prefix, handleAPINotFound)
 	mux.HandleFunc("GET "+api.TransparencyPath, s.handleTransparency)
 	mux.HandleFunc("GET "+api.HealthPath, handleHealth)
-	mux.Handle("/", s.frontend)
+	mux.Handle("/", s.countDocuments(s.frontend))
 	routed := logging.Route(mux)
 	return s.requestCounts.Requests(inSecretMode(transport.CloseUnreadBodies(
 		s.noticeForwarded(securityHeaders(crossorigin.Guard(
@@ -177,16 +182,21 @@ func prefetchGuard(next http.Handler) http.Handler {
 
 func (s *Server) throttle(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !isAPI(r) {
+		if !isAPI(r) || s.fromEdge(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
 		buckets := s.newClientBuckets(r)
-		if !s.allowAPI(buckets) {
-			writeRateLimited(w, throttleRetry)
+		r = withClientBuckets(r, buckets)
+		admitted := s.allowAPI(buckets)
+		if admitted == allowed {
+			next.ServeHTTP(w, r)
 			return
 		}
-		next.ServeHTTP(w, withClientBuckets(r, buckets))
+		if admitted == clientRefused {
+			s.noteRefusal(r, reasonRequests)
+		}
+		writeRateLimited(w, throttleRetry)
 	})
 }
 

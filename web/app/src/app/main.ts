@@ -13,6 +13,7 @@ import {
 import type { Language } from '../shared/language/language.ts';
 import { takeHandoff } from '../shared/local-client/handoff.ts';
 import { homeLanguage, screenOf } from './pages.ts';
+import type { Screen } from './pages.ts';
 
 const FONT_WAIT_MS = 1500;
 const PAINT_WAIT_MS = 1000;
@@ -47,6 +48,14 @@ async function contentPainted(): Promise<void> {
 async function loadApp(language: Language) {
   const [start] = await Promise.all([import('./start.ts'), loadCatalog(language)]);
   return start;
+}
+
+// Loaded only on a counted screen, so a page that shows a message holds no code that reports a visit.
+async function watchVisit(screen: Exclude<Screen, 'read'>): Promise<void> {
+  try {
+    const { watchBrowserVisit } = await import('../shared/visits/visits.ts');
+    watchBrowserVisit(screen);
+  } catch {}
 }
 
 async function boot(): Promise<void> {
@@ -85,6 +94,9 @@ async function boot(): Promise<void> {
     mount(App, options);
   }
   document.documentElement.dataset['ready'] = '';
+  if (screen !== 'read') {
+    void watchVisit(screen);
+  }
   void tidy();
 }
 

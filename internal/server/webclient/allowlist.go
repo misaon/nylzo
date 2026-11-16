@@ -15,6 +15,14 @@ var patternLiteral = regexp.MustCompile(`^[A-Za-z0-9_/.~%@!&,;=-]$`)
 // The addresses the client links to; a link that redirects fails, because the allowlist refuses redirects.
 var linkedAddresses = []string{`"https://github.com/misaon/nylzo"`, `"https://github.com/misaon/nylzo/*"`}
 
+// attributionAddress is where the admin page credits the source of its country table, as its licence asks.
+const attributionAddress = `"https://db-ip.com/"`
+
+// adminAllowlist is the allowlist of the admin page, which alone links the attribution.
+func adminAllowlist(contact string) string {
+	return strings.TrimSuffix(ConnectionAllowlist(contact), ")") + " " + attributionAddress + ")"
+}
+
 // ConnectionAllowlist lets a page reach only its origin, the repository and the operator's contact, so injected
 // code cannot carry a secret elsewhere by a navigation, a DNS prefetch, a redirect or WebRTC.
 func ConnectionAllowlist(contact string) string {

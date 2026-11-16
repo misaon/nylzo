@@ -101,6 +101,7 @@ Check the HTTPS instance and its `/transparency` page. Run `nylzo verify-client 
 - Docker Engine's default IPv6 firewall support is required. Without IPv6 on the `edge` network, Docker's userland proxy can make all IPv6 users share one source-address rate-limit bucket. Docker Desktop also proxies incoming traffic and can collapse source addresses; use Linux with Docker Engine for production.
 - The global daily cap defaults to 2,000 creations. Proof of work starts at 1,000; at the cap, creation returns 503 while reading continues. Address limits reset with the process, so the global cap protects disk capacity against clients rotating addresses.
 - A maximum-size message is about 5.4 MB and may live for seven days. Budget up to eight daily caps of stored messages: about 86 GB at 2,000 creations per day. Adjust the cap for your disk. Below the 1 GiB free-space reserve, creation stops while reading, cancellation, and deletion continue.
+- Caddy serves `/admin` like every page that is not public, only over X25519MLKEM768. For each page it serves that counts as a visit, it reports the visit to Nylzo through the same proxy, after the page is sent, with only the client address and `User-Agent`; a queue of 256 reports drops the rest, and Nylzo counts them only while an admin passkey exists. The Compose file sets `NYLZO_EDGE_REPORTS=1` for this; behind any other reverse proxy leave it unset, because such a proxy would let clients send reports themselves. A deployment whose Compose file predates the admin area needs that line added: without it Nylzo refuses the reports, Caddy pauses them, and robots that name themselves, scripts and unconfirmed views stay at zero while people are still counted. `admin.db` lives in `nylzo-data`, so a volume backup includes it.
 - Both containers use the `local` log driver with at most three 10 MB files. Caddy's access logging and error loggers containing request details are disabled, preventing proxy failures from logging addresses, message paths, or `X-Nylzo-*` headers. Startup and certificate logs remain. Keep `http.log`, `http.handlers` and `http.stdlib` excluded and add no `log` directive to a site: a `log` block with any setting, `format` or `level` included, becomes an access log of its own that the exclusions do not reach. Caddy redacts `Authorization` but not `X-Nylzo-*`, and a logged `X-Nylzo-Lease` lets anyone with the link download a message without spending an open. The `nylzo` adapter refuses a Caddyfile that does any of this or uses `tracing`, the FastCGI transport or `insecure_secrets_log`, and the frontend does not start from a Caddyfile loaded without that adapter. For the same reason Nylzo and its Caddy refuse to start with `GODEBUG=http2debug=1` or `=2`, and Caddy also with `QLOGDIR`, which makes it write HTTP/3 headers to files.
 - Caddy reuses idle upstream connections for at most 25 seconds, below Nylzo's 30-second idle timeout. It removes `Server` and `Via` headers, including on errors and HTTP redirects, and closes requests for other hosts without an HTTP response. Caddy supplies the frontend's CSP and security headers. Backend responses pass through a data-only boundary: only JSON, encrypted blob bytes and plain-text health responses are accepted; redirects, unexpected content types and encoded bodies are rejected. Rejected upstream replies are closed before their bodies are read, and successful bodyless acknowledgements remain HTTP 204. Only content length, retry timing and the three protocol headers are forwarded. Cookies, refreshes, resource hints, service-worker permissions and backend security policies are discarded.
 
@@ -117,6 +118,16 @@ docker compose exec -T nylzo /ko-app/nylzo takedown < approved-ids.txt
 Run commands in the running container with `docker compose exec`. A `docker compose run nylzo` container takes Nylzo's fixed address, so it fails while Nylzo runs and receives Caddy's API requests while Nylzo is stopped. Never `docker cp` or `docker compose cp` anything into the Nylzo container: Docker 28 and older let a compromised container redirect such a copy onto host files (GHSA-vp62-88p7-qqf5, GHSA-x86f-5xw2-fm2r).
 
 Takedown deletes the server's message blob without reading its content. See [Operations](Operations.md#takedown).
+
+## Set up the admin area
+
+To add a passkey for the admin area at `/admin`, run from the deployment directory and open the printed link within 15 minutes:
+
+```sh
+docker compose exec -T nylzo /ko-app/nylzo admin-enroll
+```
+
+`admin-passkeys` lists the passkeys and `admin-reset` removes them all, run the same way. The server counts visits only while a passkey exists. See [Operations](Operations.md#admin-area).
 
 ## Maintenance
 

@@ -29,6 +29,11 @@ func (p Proxies) ClientAddress(r *http.Request) netip.Addr {
 	return p.forwardedFor(r, peer)
 }
 
+// FromTrustedProxy tells whether the peer of the request is one of the proxies the server trusts.
+func (p Proxies) FromTrustedProxy(r *http.Request) bool {
+	return p.trusts(PeerAddress(r.RemoteAddr))
+}
+
 // realIP trusts only a private peer without a proxy list, so a connection that bypasses the ingress cannot pick its bucket.
 func (p Proxies) realIP(r *http.Request, peer netip.Addr) netip.Addr {
 	values := r.Header.Values("X-Real-IP")

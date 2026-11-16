@@ -57,6 +57,18 @@ type Handshake struct {
 	RetryAfter   int64  `json:"retry_after"`
 }
 
+// Visit is the body of a visit signal (spec section 6.7).
+type Visit struct {
+	Signal     string `json:"signal"`
+	Page       string `json:"page"`
+	Navigation bool   `json:"navigation,omitempty"`
+}
+
+// DocumentVisits answers a report of the edge and tells it whether the instance counts visits at all.
+type DocumentVisits struct {
+	Counted bool `json:"counted"`
+}
+
 type Challenge struct {
 	Challenge string `json:"challenge"`
 	ExpiresAt string `json:"expires_at"`

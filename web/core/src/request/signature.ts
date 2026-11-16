@@ -11,8 +11,9 @@ export const PUBLIC_KEY_LENGTH = 32;
 export const CHALLENGE_LENGTH = 36;
 export const PURPOSE_READ = 'read';
 export const PURPOSE_MANAGE = 'manage';
+export const PURPOSE_ADMIN = 'admin';
 
-export type Purpose = typeof PURPOSE_READ | typeof PURPOSE_MANAGE;
+export type Purpose = typeof PURPOSE_READ | typeof PURPOSE_MANAGE | typeof PURPOSE_ADMIN;
 
 const AUTHORIZATION_SCHEME = 'Nylzo-Sig';
 const REQUEST_LABEL = 'nylzo/v3/request';

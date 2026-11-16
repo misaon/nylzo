@@ -59,6 +59,7 @@ export {
   parseChallenge,
   PUBLIC_KEY_LENGTH,
   type Purpose,
+  PURPOSE_ADMIN,
   PURPOSE_MANAGE,
   PURPOSE_READ,
   type RequestComponents,

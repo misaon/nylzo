@@ -43,8 +43,10 @@ func TestFrontendIsIndependentOfTheBackend(t *testing.T) {
 	} {
 		t.Run(configuration, func(t *testing.T) {
 			var requests atomic.Int64
-			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				requests.Add(1)
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !isVisitReport(r) {
+					requests.Add(1)
+				}
 				w.Header().Set("Content-Type", "text/html")
 				_, _ = io.WriteString(w, `<script>globalThis.compromised=true</script>`)
 			}))
@@ -240,7 +242,9 @@ func TestMaintenanceFileTurnsPagesAndDataAway(t *testing.T) {
 		t.Run(configuration, func(t *testing.T) {
 			var requests atomic.Int64
 			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				requests.Add(1)
+				if !isVisitReport(r) {
+					requests.Add(1)
+				}
 				w.Header().Set("Content-Type", "text/plain")
 				_, _ = io.WriteString(w, "ok")
 			}))
@@ -363,7 +367,10 @@ func TestCrawlersReachOnlyPublicDocumentsOverClassicalTLS(t *testing.T) {
 	} {
 		t.Run(configuration, func(t *testing.T) {
 			var requests atomic.Int64
-			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if isVisitReport(r) {
+					return
+				}
 				requests.Add(1)
 				w.Header().Set("Content-Type", "application/json")
 				_, _ = io.WriteString(w, `{}`)

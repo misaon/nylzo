@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 
 	"github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/caddyconfig/caddyfile"
@@ -18,11 +19,13 @@ import (
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server/operatoraddress"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
 const (
+	notFoundBody        = `{"error":"not_found"}`
 	frontendHandler     = "nylzo_frontend"
 	loggingCheckedField = "logging_checked"
 )
@@ -57,13 +60,18 @@ type Frontend struct {
 	handler         http.Handler
 	pages           webclient.Pages
 	classicalPolicy string
+	reportHost      string
+	visits          chan visitReport
+	visitsPaused    atomic.Int64
+	visitBudget     *ratelimit.Limiter
 }
 
 func (*Frontend) CaddyModule() caddy.ModuleInfo {
 	return caddy.ModuleInfo{ID: "http.handlers.nylzo_frontend", New: func() caddy.Module { return new(Frontend) }}
 }
 
-func (f *Frontend) Provision(_ caddy.Context) error {
+//nolint:gocritic // hugeParam: caddy.Provisioner fixes the signature.
+func (f *Frontend) Provision(ctx caddy.Context) error {
 	if err := refuseHeaderDumps(); err != nil {
 		return err
 	}
@@ -96,8 +104,11 @@ func (f *Frontend) Provision(_ caddy.Context) error {
 	if f.pages, err = build.Render(f.PublicURL, f.Contact); err != nil {
 		return err
 	}
-	f.handler, err = webclient.NewHandler(build, f.PublicURL, f.Contact, information)
-	return err
+	if f.handler, err = webclient.NewHandler(build, f.PublicURL, f.Contact, information); err != nil {
+		return err
+	}
+	f.startReports(ctx)
+	return nil
 }
 
 func (f *Frontend) UnmarshalCaddyfile(dispenser *caddyfile.Dispenser) error {
@@ -135,6 +146,14 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyh
 	}
 	maintenance := f.underMaintenance()
 	switch {
+	case r.URL.Path == api.DocumentVisitsPath:
+		// Only the frontend reports the pages it served; a client that names the address gets the answer of any
+		// address the API does not have.
+		webclient.SetSecurityHeaders(w.Header(), false)
+		w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(notFoundBody))
+		return nil
 	case r.URL.Path == api.HealthPath:
 		return next.ServeHTTP(&dataResponse{ResponseWriter: w, header: make(http.Header), path: r.URL.Path}, r)
 	case strings.HasPrefix(r.URL.Path, api.Prefix) || r.URL.Path == api.TransparencyPath:
@@ -149,6 +168,9 @@ func (f *Frontend) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyh
 		return nil
 	default:
 		f.handler.ServeHTTP(w, r)
+		if !maintenance {
+			f.reportVisit(r, next)
+		}
 		return nil
 	}
 }

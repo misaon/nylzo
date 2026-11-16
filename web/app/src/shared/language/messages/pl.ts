@@ -376,6 +376,9 @@ export const messages: Catalog = {
   'transparency.stores.addresses.title': 'Adresy IP',
   'transparency.stores.addresses':
     'Nie przechowuje ich. Limity dla poszczególnych adresów trzyma tylko w\u{A0}pamięci, która nigdy nie trafia na dysk, i\u{A0}po restarcie o\u{A0}nich zapomina.',
+  'transparency.stores.visits.title': 'Odwiedziny bez adresów',
+  'transparency.stores.visits':
+    'Serwer sam liczy odwiedziny stron publicznych, bez plików cookie i\u{A0}bez zapisywania adresów: ile przyszło osób, ile robotów i\u{A0}z\u{A0}jakich krajów. Sumy godzinowe przechowuje przez {hourly}, dzienne przez {daily}. Strony z\u{A0}wiadomością nie liczy nigdy. Adres klienta, którego odrzucił któryś limit, trzyma przez godzinę tylko w\u{A0}pamięci, żeby operator mógł go zobaczyć.',
   'transparency.stores.enforced.title': 'Ważności pilnuje też kryptografia',
   'transparency.stores.enforced':
     'Ważności i\u{A0}liczby otwarć pilnuje serwer. Najpóźniej minutę po wygaśnięciu ważności usuwa też część klucza, której wiadomość potrzebuje, więc potem nie otworzy jej nawet kopia danych. Kopia wykonana wcześniej nie odczyta wiadomości bez linku.',

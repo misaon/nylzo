@@ -61,19 +61,22 @@ type Server struct {
 	Pepper                 []byte
 	PepperPrevious         []byte
 	TrustedProxies         []netip.Prefix
-	ProxyMode              string
-	SweepInterval          time.Duration
-	Limits                 Limits
-	Rates                  Rates
-	PoWDifficulty          int
-	PoWConcurrency         int
-	MaxStreams             int
-	MinFreeBytes           int64
-	Operator               Operator
-	PublicURL              string
-	Version                string
-	Build                  buildinfo.Info
-	Development            Development
+	// EdgeReports tells that the trusted proxy is the nylzo frontend, which reports the pages it serves and keeps
+	// clients off the address it reports to.
+	EdgeReports    bool
+	ProxyMode      string
+	SweepInterval  time.Duration
+	Limits         Limits
+	Rates          Rates
+	PoWDifficulty  int
+	PoWConcurrency int
+	MaxStreams     int
+	MinFreeBytes   int64
+	Operator       Operator
+	PublicURL      string
+	Version        string
+	Build          buildinfo.Info
+	Development    Development
 }
 
 // Development holds the opt-outs a developer machine needs; each one weakens what a stolen server reveals.

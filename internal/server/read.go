@@ -21,6 +21,7 @@ import (
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
 	"github.com/misaon/nylzo/internal/server/logging"
+	"github.com/misaon/nylzo/internal/server/statistics"
 	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -327,6 +328,7 @@ func (s *Server) handleAck(w http.ResponseWriter, r *http.Request) {
 	if !leased.record.HasBlob() {
 		s.leaseTimers.Cancel(leased.record.Row.Locator)
 	}
+	s.count(statistics.MetricOpened, 1)
 	w.WriteHeader(http.StatusNoContent)
 }
 

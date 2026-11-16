@@ -332,6 +332,9 @@ export const messages = {
   'transparency.stores.addresses.title': 'IP adresy',
   'transparency.stores.addresses':
     'Neukládá je. Limity na adresu uchovává jen v\u{A0}paměti, která se nikdy neodkládá na disk, a\u{A0}po restartu je zapomene.',
+  'transparency.stores.visits.title': 'Návštěvnost bez adres',
+  'transparency.stores.visits':
+    'Server sám počítá návštěvy veřejných stránek, bez cookies a\u{A0}bez ukládání adres: kolik přišlo lidí, kolik robotů a\u{A0}z\u{A0}jakých zemí. Hodinové součty uchovává {hourly}, denní {daily}. Stránku se zprávou nepočítá nikdy. Adresu klienta, kterého odmítl některý limit, drží hodinu jen v\u{A0}paměti, aby ji provozovatel viděl.',
   'transparency.stores.enforced.title': 'Platnost hlídá i\u{A0}kryptografie',
   'transparency.stores.enforced':
     'Platnost a\u{A0}počet otevření hlídá server. Nejpozději minutu po skončení platnosti navíc smaže část klíče, kterou zpráva potřebuje, takže ji pak neotevře ani kopie dat. Kopie pořízená dřív zprávu bez odkazu nepřečte.',

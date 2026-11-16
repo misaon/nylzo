@@ -61,8 +61,14 @@ for (const [name, data] of bundled) {
     checkStyles(data.toString(), name, bundled);
   }
 }
+// The admin page and the public pages name only their own scripts in their import maps.
+const ADMIN_ASSET = '/assets/admin-';
+const publicAssets = new Map([...bundled].filter(([name]) => !name.startsWith(ADMIN_ASSET)));
+const adminAssets = new Map([...bundled].filter(([name]) => name.startsWith(ADMIN_ASSET) || !name.endsWith('.js')));
 const homePages = [...pages.keys()].map((language) => `home.${language}.html`);
 for (const name of ['index.html', ...homePages, ...statusPages.keys()]) {
   const file = path.join(distribution, name);
-  writeFileSync(file, secureHtml(readFileSync(file, 'utf8'), bundled));
+  writeFileSync(file, secureHtml(readFileSync(file, 'utf8'), publicAssets));
 }
+const adminPage = path.join(distribution, 'admin.html');
+writeFileSync(adminPage, secureHtml(readFileSync(adminPage, 'utf8'), adminAssets));

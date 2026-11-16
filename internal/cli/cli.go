@@ -58,6 +58,20 @@ var (
 )
 
 func commands() []subcommand {
+	return slices.Concat(clientCommands(), operatorCommands(), []subcommand{
+		{
+			"verify-client",
+			"check that a server sends the same web client as this nylzo",
+			verifyclient.Run,
+			harden.Off,
+			endsBySignal,
+		},
+		{"version", "print the version", runVersion, harden.Off, endsBySignal},
+	})
+}
+
+// clientCommands work with a message on any computer.
+func clientCommands() []subcommand {
 	return []subcommand{
 		{
 			"create",
@@ -90,6 +104,12 @@ func commands() []subcommand {
 		{"status", "show the state of a message from its manage token", messages.RunStatus, harden.Full, endsBySignal},
 		{"cancel", "end a message with its manage token", messages.RunCancel, harden.Full, endsBySignal},
 		{"burn", "delete the remaining opens of a message from its link", messages.RunBurn, harden.Full, endsBySignal},
+	}
+}
+
+// operatorCommands run on the server host and read its data directory.
+func operatorCommands() []subcommand {
+	return []subcommand{
 		{
 			"serve",
 			"run the server with the embedded web client",
@@ -113,13 +133,26 @@ func commands() []subcommand {
 			endsBySignal,
 		},
 		{
-			"verify-client",
-			"check that a server sends the same web client as this nylzo",
-			verifyclient.Run,
-			harden.Off,
+			"admin-enroll",
+			"print a one-time link that adds a passkey to the admin area, on the server host",
+			operator.RunAdminEnroll,
+			harden.Full,
 			endsBySignal,
 		},
-		{"version", "print the version", runVersion, harden.Off, endsBySignal},
+		{
+			"admin-passkeys",
+			"list the passkeys of the admin area, on the server host",
+			operator.RunAdminPasskeys,
+			harden.Full,
+			endsBySignal,
+		},
+		{
+			"admin-reset",
+			"remove every passkey of the admin area, on the server host",
+			operator.RunAdminReset,
+			harden.Full,
+			endsBySignal,
+		},
 	}
 }
 

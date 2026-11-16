@@ -7,6 +7,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/seal"
+	"github.com/misaon/nylzo/internal/server/statistics"
 	"github.com/misaon/nylzo/internal/store"
 )
 
@@ -52,6 +53,7 @@ func (s *Server) answerEnding(
 	case final != requested:
 		writeGone(w, string(final))
 	default:
+		s.count(statistics.MetricEnded, 1)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

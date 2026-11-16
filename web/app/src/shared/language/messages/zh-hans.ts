@@ -315,6 +315,9 @@ export const messages: Catalog = {
   'transparency.stores.counters': '每日创建的消息数量在当天结束后再保留 {days}；已使用的一次性挑战只保留几分钟。',
   'transparency.stores.addresses.title': 'IP 地址',
   'transparency.stores.addresses': '不存储。针对单个地址的限制只保存在永不交换到磁盘的内存中，重启后即不再保留。',
+  'transparency.stores.visits.title': '不保存地址的访问统计',
+  'transparency.stores.visits':
+    '服务器自行统计公开页面的访问量，不使用 Cookie，也不保存地址：统计的是来了多少人、多少机器人，以及来自哪些国家。每小时的合计保留 {hourly}，每日的合计保留 {daily}。显示消息的页面从不计入。被某项限制拒绝的客户端，其地址仅在内存中保留一小时，供运营者查看。',
   'transparency.stores.enforced.title': '有效期也由密码学保障',
   'transparency.stores.enforced':
     '有效期和打开次数由服务器把关。此外，服务器最迟会在有效期结束一分钟后删除消息所需的一部分密钥，此后即使有数据副本也无法打开消息。更早获取的副本，没有链接也读不了消息。',

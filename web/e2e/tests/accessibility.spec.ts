@@ -1,6 +1,7 @@
 import { AxeBuilder } from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 
+import { addPasskeyAuthenticator, withEnrollmentLink } from './support/admin.ts';
 import { expect, test } from './support/fixtures.ts';
 import { createMessageThroughApi } from './support/messages.ts';
 import {
@@ -11,7 +12,7 @@ import {
   openApp,
   showMessage,
 } from './support/pages.ts';
-import { BASE_URL } from './support/servers.ts';
+import { BASE_URL, POW_BASE_URL } from './support/servers.ts';
 
 const PHONE = { viewport: { width: 430, height: 932 }, bypassCSP: true };
 const WCAG = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];
@@ -235,4 +236,26 @@ test('the transparency, terms, agents and not found pages pass axe with 44 px ta
   expect(missing?.status()).toBe(404);
   await expect(page.getByRole('heading', { name: 'This page does not exist', level: 1 })).toBeVisible();
   await expectAccessible(page, 'not found');
+});
+
+test('the admin page set up, enrolling and signing in passes axe with 44 px targets on a phone (AK20)', async ({
+  newPage,
+}) => {
+  const page = await newPage(PHONE);
+  await openApp(page, `${POW_BASE_URL}/admin`);
+  await expect(page.getByRole('heading', { level: 1, name: 'The admin area is not set up yet' })).toBeVisible();
+  await expectAccessible(page, 'admin not set up');
+
+  await addPasskeyAuthenticator(page);
+  await withEnrollmentLink(async (link) => {
+    await openApp(page, link);
+    const create = page.getByRole('button', { name: 'Create passkey' });
+    await expect(create).toBeVisible();
+    await expectAccessible(page, 'admin enrollment');
+    await create.click();
+    await expect(page.getByRole('button', { name: 'Sign out' })).toBeVisible();
+  });
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Sign in with passkey' })).toBeVisible();
+  await expectAccessible(page, 'admin sign-in');
 });

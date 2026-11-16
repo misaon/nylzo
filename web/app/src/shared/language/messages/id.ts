@@ -350,6 +350,9 @@ export const messages: Catalog = {
   'transparency.stores.addresses.title': 'Alamat IP',
   'transparency.stores.addresses':
     'Tidak disimpan. Batas per alamat hanya disimpan di memori yang tidak pernah dipindahkan ke disk, dan dilupakan saat server dimulai ulang.',
+  'transparency.stores.visits.title': 'Jumlah kunjungan tanpa alamat',
+  'transparency.stores.visits':
+    'Server menghitung sendiri kunjungan ke halaman publik, tanpa cookie dan tanpa menyimpan alamat: berapa orang yang datang, berapa robot, dan dari negara mana. Jumlah per jam disimpan selama {hourly}, jumlah harian selama {daily}. Halaman yang menampilkan pesan tidak pernah dihitung. Alamat klien yang ditolak oleh suatu batas disimpan di memori selama satu jam agar operator dapat melihatnya.',
   'transparency.stores.enforced.title': 'Masa berlaku juga dijaga kriptografi',
   'transparency.stores.enforced':
     'Masa berlaku dan jumlah kali dibuka diawasi server. Paling lambat satu menit setelah masa berlaku habis, server juga menghapus bagian kunci yang dibutuhkan pesan, sehingga salinan data pun tidak bisa lagi membukanya. Salinan yang dibuat lebih awal tidak dapat membaca pesan tanpa tautan.',

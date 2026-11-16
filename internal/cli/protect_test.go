@@ -47,6 +47,7 @@ func TestEveryCommandProtectsItsProcessFirst(t *testing.T) {
 		"status": harden.Full, "cancel": harden.Full, "burn": harden.Full,
 		"sweep-once": harden.Full, "store-check": harden.Full,
 		"takedown": harden.Full, "serve": harden.ProcessOnly,
+		"admin-enroll": harden.Full, "admin-passkeys": harden.Full, "admin-reset": harden.Full,
 		"verify-client": harden.Off, "version": harden.Off,
 	}
 	for _, listed := range commands() {

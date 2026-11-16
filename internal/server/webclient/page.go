@@ -105,6 +105,9 @@ func (b Build) Render(publicURL, contact string) (Pages, error) {
 			policy = StatusPolicy(html)
 		}
 		headers := &pageHeaders{policy: policy, allowlist: ConnectionAllowlist(contact)}
+		if name == adminTemplate {
+			headers.allowlist = adminAllowlist(contact)
+		}
 		if pages[name], err = newPage(html, headers); err != nil {
 			return nil, err
 		}

@@ -5,7 +5,7 @@
       "ignoreDependencies": ["@sveltejs/mcp"]
     },
     "app": {
-      "entry": ["src/app/prerender.ts"],
+      "entry": ["src/app/prerender.ts", "src/admin/main.ts"],
       "ignoreDependencies": ["@typescript/native"]
     },
     "e2e": {
