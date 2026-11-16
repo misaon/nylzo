@@ -408,6 +408,9 @@ func TestCrawlersReachOnlyPublicDocumentsOverClassicalTLS(t *testing.T) {
 			for name := range build.Assets {
 				public = append(public, "/assets/"+name)
 			}
+			for name := range build.RootFiles {
+				public = append(public, "/"+name)
+			}
 			pagePolicies := map[string]string{}
 			for _, path := range public {
 				response, getErr := postQuantum.Get("https://" + address + path)

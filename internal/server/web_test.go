@@ -259,6 +259,7 @@ func builtClient(t *testing.T) fstest.MapFS {
 		"dist/assets/favicon-d4.svg":   {Data: []byte(`<svg xmlns="http://www.w3.org/2000/svg"/>`)},
 		"dist/assets/favicon-e5.png":   {Data: []byte("\x89PNG\r\n\x1a\n")},
 		"dist/agents.md":               {Data: []byte(agentsGuide)},
+		"dist/favicon.ico":             {Data: []byte("\x00\x00\x01\x00")},
 	}
 	for _, language := range []string{"en", "cs", "de", "es", "fr", "id", "it", "ja", "pl", "pt-BR", "sk", "zh-Hans"} {
 		files["dist/home."+language+".html"] = &fstest.MapFile{Data: []byte(builtHome(language))}
@@ -332,6 +333,7 @@ func TestBuiltClientIsServed(t *testing.T) {
 		"/assets/favicon-d4.svg":   "image/svg+xml",
 		"/assets/favicon-e5.png":   "image/png",
 		"/agents.md":               "text/markdown; charset=utf-8",
+		"/favicon.ico":             "image/vnd.microsoft.icon",
 	} {
 		asset := harness.get(path, nil)
 		if asset.StatusCode != http.StatusOK || asset.Header.Get("Content-Type") != contentType || asset.body == "" {

@@ -14,13 +14,13 @@ import (
 )
 
 const (
-	EncodingGzip        = "gzip"
-	indexTemplate       = "index.html"
-	placeholderFile     = "placeholder.html"
-	distDirectory       = "dist"
-	assetsDirectory     = "dist/assets"
-	agentsGuideFile     = "agents.md"
-	markdownContentType = "text/markdown; charset=utf-8"
+	EncodingGzip    = "gzip"
+	indexTemplate   = "index.html"
+	placeholderFile = "placeholder.html"
+	distDirectory   = "dist"
+	assetsDirectory = "dist/assets"
+	agentsGuideFile = "agents.md"
+	faviconFile     = "favicon.ico"
 )
 
 var (
@@ -58,6 +58,11 @@ func isStatusTemplate(name string) bool {
 	return slices.Contains(statusTemplateNames, name)
 }
 
+var rootFiles = map[string]string{
+	agentsGuideFile: "text/markdown; charset=utf-8",
+	faviconFile:     "image/vnd.microsoft.icon",
+}
+
 var assetTypes = map[string]string{
 	".json":  "application/json; charset=utf-8",
 	".js":    "text/javascript; charset=utf-8",
@@ -78,10 +83,10 @@ type Asset struct {
 }
 
 type Build struct {
-	Built       bool
-	Templates   map[string]string
-	Assets      map[string]Asset
-	AgentsGuide *Asset
+	Built     bool
+	Templates map[string]string
+	Assets    map[string]Asset
+	RootFiles map[string]Asset
 }
 
 func Load(files fs.FS) (Build, error) {
@@ -89,7 +94,7 @@ func Load(files fs.FS) (Build, error) {
 	if errors.Is(err, fs.ErrNotExist) {
 		return loadPlaceholder(files)
 	}
-	build := Build{Built: true, Templates: map[string]string{}}
+	build := Build{Built: true, Templates: map[string]string{}, RootFiles: map[string]Asset{}}
 	if build.Assets, err = loadAssets(files); err != nil {
 		return Build{}, err
 	}
@@ -106,14 +111,16 @@ func Load(files fs.FS) (Build, error) {
 			return Build{}, err
 		}
 	}
-	guide, err := fs.ReadFile(files, path.Join(distDirectory, agentsGuideFile))
-	if errors.Is(err, fs.ErrNotExist) {
-		return build, nil
+	for name, contentType := range rootFiles {
+		body, readErr := fs.ReadFile(files, path.Join(distDirectory, name))
+		if errors.Is(readErr, fs.ErrNotExist) {
+			continue
+		}
+		if readErr != nil {
+			return Build{}, fmt.Errorf("server: web client %s: %w", name, readErr)
+		}
+		build.RootFiles[name] = Asset{ContentType: contentType, Body: body}
 	}
-	if err != nil {
-		return Build{}, fmt.Errorf("server: web client %s: %w", agentsGuideFile, err)
-	}
-	build.AgentsGuide = &Asset{ContentType: markdownContentType, Body: guide}
 	return build, nil
 }
 
