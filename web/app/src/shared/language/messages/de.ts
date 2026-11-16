@@ -357,6 +357,9 @@ export const messages: Catalog = {
   'transparency.stores.addresses.title': 'IP-Adressen',
   'transparency.stores.addresses':
     'Er speichert sie nicht. Limits pro Adresse hält er nur im Arbeitsspeicher, der nie auf den Datenträger ausgelagert wird, und vergisst sie beim Neustart.',
+  'transparency.stores.visits.title': 'Besuchszahlen ohne Adressen',
+  'transparency.stores.visits':
+    'Der Server zählt die Besuche der öffentlichen Seiten selbst, ohne Cookies und ohne gespeicherte Adressen: wie viele Menschen kamen, wie viele Roboter und aus welchen Ländern. Stündliche Summen bewahrt er {hourly} auf, tägliche {daily}. Die Seite mit einer Nachricht zählt er nie. Die Adresse eines Clients, den ein Limit abgewiesen hat, bleibt eine Stunde im Arbeitsspeicher, damit der Betreiber sie sieht.',
   'transparency.stores.enforced.title': 'Auch Kryptografie sichert die Gültigkeit ab',
   'transparency.stores.enforced':
     'Gültigkeit und Zahl der Aufrufe überwacht der Server. Spätestens eine Minute nach Ablauf der Gültigkeit löscht er außerdem den Teil des Schlüssels, den die Nachricht braucht, sodass sie sich danach auch mit einer Kopie der Daten nicht mehr öffnen lässt. Eine früher angefertigte Kopie kann die Nachricht ohne den Link nicht lesen.',

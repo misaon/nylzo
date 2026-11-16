@@ -16,7 +16,7 @@ To report a message on a public instance that carries fraud, malware or illegal 
 
 ## Scope
 
-In scope: [the protocol](../reference/Protocol.md), both cores and their shared vectors, the server, the `nylzo` CLI, the web client, `deploy/compose` and the release pipeline (signatures, provenance, reproducible builds).
+In scope: [the protocol](../reference/Protocol.md), both cores and their shared vectors, the server with its admin area and visit counting, the `nylzo` CLI, the web client, `deploy/compose` and the release pipeline (signatures, provenance, reproducible builds).
 
 Some limits are known and documented in [the protocol](../reference/Protocol.md) §13, so a report of them alone is not a vulnerability:
 
@@ -25,6 +25,7 @@ Some limits are known and documented in [the protocol](../reference/Protocol.md)
 - Someone with both the link and a copy of the server can guess a weak passphrase offline.
 - Someone who controls the server, or has a copy of it with its pepper, and also has the link can guess a weak passphrase offline while the message lives, as with any single-server password protocol. A recorded request no longer helps since protocol v3 checks the passphrase with OPAQUE; [Passphrase verifier and PAKE](../maintainers/Passphrase-verifier.md) explains the change and what stays.
 - The server sees the padded size of a message and times to the minute.
+- Anyone can send visit signals and inflate the visit counts of an instance's admin area.
 
 A report that shows one of these is worse than documented is welcome.
 

@@ -51,6 +51,7 @@ describe('transparency page', () => {
         powDifficulty: 4,
       },
       retention: { tombstoneSeconds: 86_400, dailyCounterSeconds: 86_400 },
+      visits: { counted: false, hourlySeconds: 0, dailySeconds: 0 },
       files: [],
     };
     api.transparency = load;

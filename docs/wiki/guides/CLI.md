@@ -31,7 +31,7 @@ The CLI requires HTTPS, except for exact localhost and loopback addresses, which
 
 ## Process protection
 
-Every command that may hold a link, passphrase, manage token, message, pepper or epoch key protects its process before it reads anything: `create`, `read`, `open`, `web`, `status`, `cancel` and `burn`, and on the server host `sweep-once`, `store-check` and `takedown`. `serve` takes the first two steps below and then locks its memory itself, refusing to start without the lock (see the [operations guide](Operations.md)). When a step fails, the command stops before it reads a secret.
+Every command that may hold a link, passphrase, manage token, message, pepper or epoch key protects its process before it reads anything: `create`, `read`, `open`, `web`, `status`, `cancel` and `burn`, and on the server host `sweep-once`, `store-check`, `takedown`, `admin-enroll`, `admin-passkeys` and `admin-reset`. `serve` takes the first two steps below and then locks its memory itself, refusing to start without the lock (see the [operations guide](Operations.md)). When a step fails, the command stops before it reads a secret.
 
 First, the command sets its core file limit to 0, so a crash writes no core file.
 
@@ -117,6 +117,16 @@ The result applies only to that invocation. A malicious server can recognize the
 ## Version and build identity
 
 `nylzo version` and `nylzo --version` print the application version. `nylzo version --json` additionally prints the source commit, source commit date, and modified-source flag. Release builds derive their version from the signed tag; local builds identify development source explicitly. Version output identifies a build but does not authenticate it: verify the release signatures and provenance as described in [versioning and releases](../maintainers/Releasing.md).
+
+## Admin area of a server
+
+```sh
+nylzo admin-enroll
+nylzo admin-passkeys
+nylzo admin-reset
+```
+
+Run these on the server host. `admin-enroll` prints a one-time link that adds a passkey to the instance's admin area, `admin-passkeys` lists the passkeys, and `admin-reset` removes them all. They read `NYLZO_DATA_DIR` like `sweep-once`; the [operations guide](Operations.md#admin-area) describes them.
 
 ## Agent use and exit codes
 

@@ -16,6 +16,7 @@ const PAGES = [
   '/r',
   '/m/AAAAAAAAAAAAAAAAAAAAAA',
   '/no-such-page',
+  '/admin',
 ];
 const HASHES = / 'sha384-[A-Za-z0-9+/]+={0,2}'/gu;
 

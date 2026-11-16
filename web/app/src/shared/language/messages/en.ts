@@ -336,6 +336,9 @@ export const messages: Catalog = {
   'transparency.stores.addresses.title': 'IP addresses',
   'transparency.stores.addresses':
     'It does not store them. Per-address limits live only in memory that is never swapped to disk, and are forgotten on restart.',
+  'transparency.stores.visits.title': 'Visit counts without addresses',
+  'transparency.stores.visits':
+    'The server counts visits to the public pages itself, with no cookies and no stored addresses: how many people came, how many robots, and from which countries. It keeps hourly totals for {hourly} and daily totals for {daily}. It never counts the page that shows a message. The address of a client that a limit refused stays in memory for one hour, so the operator can see it.',
   'transparency.stores.enforced.title': 'Cryptography enforces expiry too',
   'transparency.stores.enforced':
     'The server enforces expiry and the open limit. No later than a minute after a message expires it also erases the part of the key the message needs, so even a copy of the data can no longer open it. A copy taken earlier cannot read the message without the link.',

@@ -9,10 +9,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/server"
+	"github.com/misaon/nylzo/internal/server/adminstore"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -62,8 +64,11 @@ func checkDataDirectory(ctx context.Context, settings *config.Server, output io.
 	databasePath := filepath.Join(dataDirectory, databaseFile)
 	err := datadir.Check(datadir.Layout{
 		Directory: dataDirectory,
-		Files:     []string{databasePath, databasePath + "-wal", databasePath + "-shm"},
-		Trees:     []string{filepath.Join(dataDirectory, disk.Directory)},
+		Files: slices.Concat(
+			[]string{databasePath, databasePath + "-wal", databasePath + "-shm"},
+			adminstore.Files(adminStorePath(dataDirectory)),
+		),
+		Trees: []string{filepath.Join(dataDirectory, disk.Directory)},
 	})
 	if err != nil {
 		return err

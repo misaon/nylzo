@@ -93,11 +93,15 @@
     seconds % SECONDS_PER_DAY === 0 ? days(seconds) : formatDuration(seconds, translator.language);
   const limit = (value: number) => (value === 0 ? translate('transparency.limits.none') : String(value));
 
-  function stored({ retention }: Transparency): readonly Entry[] {
+  function stored({ retention, visits }: Transparency): readonly Entry[] {
     const entry = (
-      name: 'content' | 'metadata' | 'keys' | 'ended' | 'enforced' | 'counters' | 'addresses',
+      name: 'content' | 'metadata' | 'keys' | 'ended' | 'enforced' | 'counters' | 'addresses' | 'visits',
       text: string,
     ) => ({ title: translate(`transparency.stores.${name}.title`), text });
+    const counted = translate('transparency.stores.visits', {
+      hourly: days(visits.hourlySeconds),
+      daily: days(visits.dailySeconds),
+    });
     return [
       entry('content', translate('transparency.stores.content')),
       entry('metadata', translate('transparency.stores.metadata')),
@@ -106,6 +110,7 @@
       entry('enforced', translate('transparency.stores.enforced')),
       entry('counters', translate('transparency.stores.counters', { days: days(retention.dailyCounterSeconds) })),
       entry('addresses', translate('transparency.stores.addresses')),
+      ...(visits.counted ? [entry('visits', counted)] : []),
     ];
   }
 

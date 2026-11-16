@@ -77,6 +77,12 @@ func (s *Store) PurgeRows(ctx context.Context, now time.Time, limit int) (int, e
 	)
 }
 
+func (s *Store) CountBlobReferences(ctx context.Context) (int, error) {
+	var named int
+	err := s.reader.QueryRowContext(ctx, `SELECT COUNT(*) FROM messages WHERE blob_ref IS NOT NULL`).Scan(&named)
+	return named, err
+}
+
 func (s *Store) KnownBlobReferences(ctx context.Context) (map[string]struct{}, error) {
 	rows, err := s.reader.QueryContext(ctx, `SELECT blob_ref FROM messages WHERE blob_ref IS NOT NULL`)
 	if err != nil {

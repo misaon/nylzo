@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { gzipSync } from 'node:zlib';
 
@@ -37,15 +37,15 @@ function preloadFonts(): Plugin {
     apply: 'build',
     enforce: 'post',
     generateBundle(_, bundle) {
-      const index = bundle['index.html'];
-      if (index?.type !== 'asset' || typeof index.source !== 'string') {
-        return;
-      }
       const links = Object.keys(bundle)
         .filter((name) => PRELOADED_FONTS.test(name))
         .toSorted((first, second) => first.localeCompare(second))
         .map((name) => `<link rel="preload" href="/${name}" as="font" type="font/woff2" crossorigin>`);
-      index.source = index.source.replace('</head>', () => `${links.join('\n')}\n</head>`);
+      for (const page of Object.values(bundle)) {
+        if (page.type === 'asset' && page.fileName.endsWith('.html') && typeof page.source === 'string') {
+          page.source = page.source.replace('</head>', () => `${links.join('\n')}\n</head>`);
+        }
+      }
     },
   };
 }
@@ -102,28 +102,37 @@ function precompress(): Plugin {
   return {
     name: 'nylzo-precompress',
     apply: 'build',
-    writeBundle({ dir = outputDirectory }) {
-      const assets = path.join(dir, 'assets');
-      for (const name of readdirSync(assets)) {
+    writeBundle({ dir = outputDirectory }, bundle) {
+      for (const name of Object.keys(bundle)) {
         if (!PRECOMPRESSED.test(name)) {
           continue;
         }
-        const compressed = gzipSync(readFileSync(path.join(assets, name)), { level: 9 });
+        const compressed = gzipSync(readFileSync(path.join(dir, name)), { level: 9 });
         compressed[9] = GZIP_OS_UNKNOWN;
-        writeFileSync(path.join(assets, `${name}.gz`), compressed);
+        writeFileSync(path.join(dir, `${name}.gz`), compressed);
       }
     },
   };
 }
 
-export default defineConfig(({ isSsrBuild }) => ({
+// The admin page builds in a pass of its own into the same directory, so no public page shares a chunk or a
+// stylesheet with it; its scripts and stylesheet carry the admin- prefix.
+const ADMIN_MODE = 'admin';
+
+function adminAssetName({ names }: { readonly names: readonly string[] }): string {
+  return names.some((name) => name.endsWith('.css'))
+    ? 'assets/admin-[name]-[hash][extname]'
+    : 'assets/[name]-[hash][extname]';
+}
+
+export default defineConfig(({ isSsrBuild, mode }) => ({
   plugins: [
     tailwindcss(),
     svelte(),
     ...(isSsrBuild
       ? []
       : [
-          buildMetadata(),
+          ...(mode === ADMIN_MODE ? [] : [buildMetadata()]),
           preloadFonts(),
           staticImportsOnlyFromEntry(),
           onlyApprovedTrustedTypesPolicies(),
@@ -135,7 +144,17 @@ export default defineConfig(({ isSsrBuild }) => ({
   build: {
     ...(!isSsrBuild && { target: BROWSER_TARGETS }),
     outDir: outputDirectory,
-    emptyOutDir: true,
+    emptyOutDir: mode !== ADMIN_MODE,
+    ...(mode === ADMIN_MODE && {
+      rolldownOptions: {
+        input: path.resolve(import.meta.dirname, 'admin.html'),
+        output: {
+          entryFileNames: 'assets/admin-[hash].js',
+          chunkFileNames: 'assets/admin-[name]-[hash].js',
+          assetFileNames: adminAssetName,
+        },
+      },
+    }),
     assetsInlineLimit: 0,
     cssCodeSplit: false,
     modulePreload: false,

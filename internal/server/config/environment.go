@@ -116,6 +116,7 @@ func (s *Server) variables() []variable {
 		{"NYLZO_OPERATOR", text(&s.Operator.Name)},
 		{"NYLZO_CONTACT", text(&s.Operator.Contact)},
 		{"NYLZO_HOSTING", text(&s.Operator.Hosting)},
+		{"NYLZO_EDGE_REPORTS", boolInto(&s.EdgeReports)},
 		{"NYLZO_ALLOW_SWAP", boolInto(&s.Development.AllowSwap)},
 		{"NYLZO_ALLOW_UNERASABLE_STORAGE", boolInto(&s.Development.AllowUnerasableStorage)},
 		{"NYLZO_ALLOW_UNERASED_MEMORY", boolInto(&s.Development.AllowUnerasedMemory)},

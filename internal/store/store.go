@@ -211,6 +211,8 @@ type Store interface {
 	Messages
 	Counters
 	Checkpoint(ctx context.Context) error
+	// CountBlobReferences counts the rows that name a blob: the stored messages and the dummy row.
+	CountBlobReferences(ctx context.Context) (int, error)
 }
 
 // BlobInfo names a stored blob and the blob_purge_at its file carries.

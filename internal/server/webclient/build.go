@@ -98,7 +98,7 @@ func Load(files fs.FS) (Build, error) {
 			return Build{}, err
 		}
 	}
-	for _, name := range statusTemplateNames {
+	for _, name := range append([]string{adminTemplate}, statusTemplateNames...) {
 		if _, statErr := fs.Stat(files, path.Join(distDirectory, name)); errors.Is(statErr, fs.ErrNotExist) {
 			continue
 		}

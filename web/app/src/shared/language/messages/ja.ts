@@ -340,6 +340,9 @@ export const messages: Catalog = {
   'transparency.stores.addresses.title': 'IPアドレス',
   'transparency.stores.addresses':
     '保存しません。アドレスごとの制限は、ディスクに書き出されることのないメモリ上にのみ保持し、再起動すると忘れます。',
+  'transparency.stores.visits.title': 'アドレスを保存しない訪問数',
+  'transparency.stores.visits':
+    'サーバーは公開ページへの訪問を自ら数えます。Cookie は使わず、アドレスも保存しません。数えるのは、人の訪問数、ロボットの訪問数、訪問元の国です。1時間ごとの合計は{hourly}間、1日ごとの合計は{daily}間保持します。メッセージを表示するページは数えません。制限によって拒否されたクライアントのアドレスは、運営者が確認できるよう1時間だけメモリに保持します。',
   'transparency.stores.enforced.title': '有効期限は暗号でも守られる',
   'transparency.stores.enforced':
     '有効期限と開封回数はサーバーが管理しています。さらに、有効期限の終了から遅くとも1分以内に、メッセージに必要な鍵の一部を消去するため、それ以降はデータのコピーがあってもメッセージを開封できません。それより前に取得したコピーでも、リンクがなければメッセージは読めません。',

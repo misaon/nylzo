@@ -21,6 +21,7 @@ import (
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
+	"github.com/misaon/nylzo/internal/server/adminstore"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/datadir"
 	"github.com/misaon/nylzo/internal/store"
@@ -377,7 +378,12 @@ func TestServeSealsTheWrapsOfThePreviousPepperBeforeItListens(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	instance, err := startInstance(t.Context(), &settings, database, blobs, slog.New(slog.DiscardHandler))
+	instance, err := startInstance(
+		t.Context(),
+		&settings,
+		&stores{database: database, blobs: blobs},
+		slog.New(slog.DiscardHandler),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,5 +477,46 @@ func TestServeErasesTheAbuseReportsOfEarlierReleases(t *testing.T) {
 		if _, err = os.Lstat(filepath.Join(directory, name)); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("%s is still in the data directory: %v", name, err)
 		}
+	}
+}
+
+// A start that fails after it took the carried counts back sets them aside again, so they wait for the next start.
+func TestAFailedStartKeepsTheCarriedCounts(t *testing.T) {
+	directory := t.TempDir()
+	taken, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer taken.Close()
+	variables := map[string]string{
+		"NYLZO_DATA_DIR":    directory,
+		"NYLZO_PEPPER_FILE": pepperFile(t),
+		"NYLZO_LISTEN":      taken.Addr().String(),
+	}
+	if first := run(t, "", variables, nil, RunServe); first.code != 1 {
+		t.Fatalf("serve on a taken port: %d %s", first.code, first.stderr)
+	}
+	path := filepath.Join(directory, adminstore.FileName)
+	admin, err := adminstore.Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	today := adminstore.Daily.Start(time.Now())
+	if err = admin.Carry(t.Context(), []adminstore.Count{{Start: today, Metric: "visitors", Value: 41}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = admin.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if second := run(t, "", variables, nil, RunServe); second.code != 1 {
+		t.Fatalf("serve on a taken port: %d %s", second.code, second.stderr)
+	}
+	if admin, err = adminstore.Open(t.Context(), path); err != nil {
+		t.Fatal(err)
+	}
+	defer admin.Close()
+	carried, err := admin.TakeCarried(t.Context())
+	if err != nil || len(carried) != 1 || carried[0].Value != 41 {
+		t.Fatalf("after the failed start the carried counts are %v, %v", carried, err)
 	}
 }

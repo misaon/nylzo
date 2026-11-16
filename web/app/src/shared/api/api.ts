@@ -56,6 +56,12 @@ export interface Transparency {
     readonly tombstoneSeconds: number;
     readonly dailyCounterSeconds: number;
   };
+  // What the instance counts about visits; an instance of an earlier release names none and counts none.
+  readonly visits: {
+    readonly counted: boolean;
+    readonly hourlySeconds: number;
+    readonly dailySeconds: number;
+  };
   readonly files: readonly ClientFile[];
 }
 
@@ -429,7 +435,7 @@ export function createApi(options: ApiOptions = {}): Api {
         fetchJson('/.well-known/nylzo/transparency.json'),
         fetchJson('/.well-known/nylzo/client.json'),
       ]);
-      const { limits, rates, retention } = report;
+      const { limits, rates, retention, visits } = report;
       if (
         !isObject(limits) ||
         !isObject(rates) ||
@@ -455,6 +461,13 @@ export function createApi(options: ApiOptions = {}): Api {
           tombstoneSeconds: integer(retention, 'tombstone_s'),
           dailyCounterSeconds: integer(retention, 'daily_counter_s'),
         },
+        visits: isObject(visits)
+          ? {
+              counted: visits['counted'] === true,
+              hourlySeconds: integer(visits, 'hourly_s'),
+              dailySeconds: integer(visits, 'daily_s'),
+            }
+          : { counted: false, hourlySeconds: 0, dailySeconds: 0 },
         files: clientFiles(manifest),
       };
     },

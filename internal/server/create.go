@@ -26,6 +26,7 @@ import (
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
+	"github.com/misaon/nylzo/internal/server/statistics"
 	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -211,7 +212,7 @@ func (s *Server) reserveCreate(
 ) (func(context.Context), bool) {
 	if retry := s.limitCreate(now, s.bucketsOf(r), request.header.Size); retry > 0 {
 		closeAfterResponse(w, r)
-		writeRateLimited(w, retry)
+		s.refuseLimited(w, r, reasonCreate, retry)
 		return nil, false
 	}
 	gate, err := s.globalGate(r.Context(), now)
@@ -423,6 +424,7 @@ func (s *Server) storeMessage(
 			http.StatusCreated,
 			map[string]string{"id": request.id.String(), "expires_at": formatTime(message.ExpiresAt)},
 		)
+		s.count(statistics.MetricCreated, 1)
 		return true
 	}
 	if deleteErr := s.blobs.Delete(context.WithoutCancel(r.Context()), blob.reference); deleteErr != nil {

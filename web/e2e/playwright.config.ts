@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-import { BASE_URL, OFFICIAL_BASE_URL, POW_BASE_URL } from './tests/support/servers.ts';
+import { ADMIN_BASE_URL, BASE_URL, OFFICIAL_BASE_URL, POW_BASE_URL } from './tests/support/servers.ts';
 
 const ci = Boolean(process.env['CI']);
 const crossBrowser = /@cross-browser/u;
@@ -8,7 +8,7 @@ const crossBrowser = /@cross-browser/u;
 function server(baseUrl: string, profile: string) {
   return {
     command: `bun serve.ts ${new URL(baseUrl).port} ${profile}`,
-    url: `${baseUrl}/healthz`,
+    url: `http://127.0.0.1:${new URL(baseUrl).port}/healthz`,
     reuseExistingServer: !ci,
     timeout: 180_000,
   };
@@ -29,5 +29,10 @@ export default defineConfig({
     { name: 'firefox', use: devices['Desktop Firefox'], grep: crossBrowser },
     { name: 'webkit', use: devices['Desktop Safari'], grep: crossBrowser },
   ],
-  webServer: [server(BASE_URL, 'default'), server(POW_BASE_URL, 'pow'), server(OFFICIAL_BASE_URL, 'official')],
+  webServer: [
+    server(BASE_URL, 'default'),
+    server(POW_BASE_URL, 'pow'),
+    server(OFFICIAL_BASE_URL, 'official'),
+    server(ADMIN_BASE_URL, 'admin'),
+  ],
 });

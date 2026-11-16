@@ -348,6 +348,9 @@ export const messages: Catalog = {
   'transparency.stores.addresses.title': 'Indirizzi IP',
   'transparency.stores.addresses':
     'Non li salva. I limiti per indirizzo sono tenuti solo in una memoria che non viene mai trasferita su disco e vengono dimenticati al riavvio.',
+  'transparency.stores.visits.title': 'Visite senza indirizzi',
+  'transparency.stores.visits':
+    'Il server conta da sé le visite alle pagine pubbliche, senza cookie e senza salvare indirizzi: quante persone sono arrivate, quanti robot e da quali paesi. Conserva i totali orari per {hourly} e quelli giornalieri per {daily}. Non conta mai la pagina che mostra un messaggio. L’indirizzo di un client respinto da un limite resta in memoria per un’ora, così che il gestore possa vederlo.',
   'transparency.stores.enforced.title': 'Anche la crittografia fa rispettare la scadenza',
   'transparency.stores.enforced':
     'Validità e numero di aperture li controlla il server. Al più tardi un minuto dopo la scadenza elimina inoltre la parte della chiave che serve al messaggio, così poi non lo apre più nemmeno una copia dei dati. Una copia fatta prima, senza il link, non permette di leggere il messaggio.',

@@ -17,13 +17,18 @@ import (
 	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/secretmode"
+	"github.com/misaon/nylzo/internal/server/adminapi"
+	"github.com/misaon/nylzo/internal/server/adminstore"
 	"github.com/misaon/nylzo/internal/server/config"
 	"github.com/misaon/nylzo/internal/server/diskspace"
+	"github.com/misaon/nylzo/internal/server/hostusage"
 	"github.com/misaon/nylzo/internal/server/leasetimer"
 	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
+	"github.com/misaon/nylzo/internal/server/statistics"
 	"github.com/misaon/nylzo/internal/server/sweep"
+	"github.com/misaon/nylzo/internal/server/visits"
 	"github.com/misaon/nylzo/internal/server/web"
 	"github.com/misaon/nylzo/internal/server/webclient"
 	"github.com/misaon/nylzo/internal/store"
@@ -91,6 +96,15 @@ type Server struct {
 	eventCounts   *logging.Events
 	events        *slog.Logger
 	handler       http.Handler
+	adminStore    *adminstore.Store
+	admin         *adminapi.API
+	counts        *statistics.Counts
+	visits        *visits.Tracker
+	usage         *hostusage.Sampler
+	refusals      *ratelimit.Refusals
+	// documentReports is the one budget of the edge's reports about served pages.
+	documentReports *ratelimit.Limiter
+	countries       *countries
 }
 
 func New(settings *config.Server, storage store.Store, blobs store.Blobs, options ...Option) (*Server, error) {
@@ -133,11 +147,19 @@ func New(settings *config.Server, storage store.Store, blobs store.Blobs, option
 	server.work = proof.NewWork(ring, storage, settings.PoWConcurrency)
 	server.idTokens = proof.NewIDTokens(ring)
 	server.disk = diskspace.NewReserver(settings.DataDirectory, settings.MinFreeBytes, diskspace.Free, server.events)
+	server.setUpAdmin()
 	server.handler = server.routes()
 	return server, nil
 }
 
+// Close counts the pages that still wait for a sign of a person as unconfirmed and keeps the counts for the next
+// start, so a restart loses none.
 func (s *Server) Close() {
+	now := time.Now()
+	s.visits.Stop(now)
+	if err := s.counts.Stop(context.Background(), now); err != nil {
+		s.logger.Error("admin-counts", "err", logging.ErrorText(err))
+	}
 	s.leaseTimers.Stop()
 	s.epochs.Close()
 }
@@ -234,13 +256,15 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 		if window.Ended(now) {
 			s.flushCounts(ctx)
 		}
-		if today := ratelimit.Day(now).Start; !today.Equal(day) {
-			day = today
+		newDay := !ratelimit.Day(now).Start.Equal(day)
+		if newDay {
+			day = ratelimit.Day(now).Start
 			s.addressKey.Rotate()
 			s.forgetAddresses()
 		} else {
 			s.purgeRateTables(now)
 		}
+		s.keepAdmin(ctx, now, newDay)
 		s.purgeChallenges(now)
 		eraseUnreachableSecrets()
 	}
@@ -310,6 +334,7 @@ func (s *Server) forgetAddresses() {
 func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := time.Now()
 	report, err := sweep.Run(ctx, s.store, s.blobs, now)
+	s.count(statistics.MetricExpired, int64(report.Blobs))
 	return report, errors.Join(err, s.advanceRatchet(now))
 }
 

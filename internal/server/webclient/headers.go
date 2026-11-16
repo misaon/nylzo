@@ -21,6 +21,17 @@ const integrityPolicyHeader = "Integrity-Policy"
 
 const immutableAsset = "max-age=31536000, immutable"
 
+const (
+	permissionsPolicyHeader = "Permissions-Policy"
+	adminTemplate           = "admin.html"
+)
+
+// adminPermissionsPolicy lets the admin page, and no other, create and use a passkey of this origin.
+var adminPermissionsPolicy = strings.NewReplacer(
+	"publickey-credentials-create=()", "publickey-credentials-create=(self)",
+	"publickey-credentials-get=()", "publickey-credentials-get=(self)",
+).Replace(securityHeaders[permissionsPolicyHeader])
+
 var securityHeaders = map[string]string{
 	"Referrer-Policy":              "no-referrer",
 	integrityPolicyHeader:          "blocked-destinations=(script)",
@@ -30,7 +41,7 @@ var securityHeaders = map[string]string{
 	"Cross-Origin-Embedder-Policy": "require-corp",
 	"Cross-Origin-Resource-Policy": "same-origin",
 	"Strict-Transport-Security":    "max-age=63072000; includeSubDomains; preload",
-	"Permissions-Policy":           "accelerometer=(), autoplay=(), bluetooth=(), browsing-topics=(), camera=(), captured-surface-control=(), ch-ua-high-entropy-values=(), clipboard-read=(), clipboard-write=(self), compute-pressure=(), deferred-fetch=(), deferred-fetch-minimal=(), digital-credentials-create=(), digital-credentials-get=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), identity-credentials-get=(), idle-detection=(), keyboard-map=(), language-detector=(), language-model=(), local-fonts=(), local-network=(), local-network-access=(), loopback-network=(), magnetometer=(), media-playback-while-not-visible=(), microphone=(), midi=(), on-device-speech-recognition=(), otp-credentials=(), payment=(), picture-in-picture=(), private-state-token-issuance=(), private-state-token-redemption=(), publickey-credentials-create=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), speaker-selection=(), storage-access=(), summarizer=(), sync-xhr=(), translator=(), unload=(), usb=(), web-app-installation=(), web-share=(self), window-management=(), xr-spatial-tracking=()",
+	permissionsPolicyHeader:        "accelerometer=(), autoplay=(), bluetooth=(), browsing-topics=(), camera=(), captured-surface-control=(), ch-ua-high-entropy-values=(), clipboard-read=(), clipboard-write=(self), compute-pressure=(), deferred-fetch=(), deferred-fetch-minimal=(), digital-credentials-create=(), digital-credentials-get=(), display-capture=(), encrypted-media=(), fullscreen=(), gamepad=(), geolocation=(), gyroscope=(), hid=(), identity-credentials-get=(), idle-detection=(), keyboard-map=(), language-detector=(), language-model=(), local-fonts=(), local-network=(), local-network-access=(), loopback-network=(), magnetometer=(), media-playback-while-not-visible=(), microphone=(), midi=(), on-device-speech-recognition=(), otp-credentials=(), payment=(), picture-in-picture=(), private-state-token-issuance=(), private-state-token-redemption=(), publickey-credentials-create=(), publickey-credentials-get=(), screen-wake-lock=(), serial=(), speaker-selection=(), storage-access=(), summarizer=(), sync-xhr=(), translator=(), unload=(), usb=(), web-app-installation=(), web-share=(self), window-management=(), xr-spatial-tracking=()",
 }
 
 var previewAgents = []string{
@@ -44,6 +55,9 @@ func SecurityHeaders(requestPath string) map[string]string {
 	headers := maps.Clone(securityHeaders)
 	if !IsHomePath(requestPath) {
 		headers["X-Robots-Tag"] = robotsTag
+	}
+	if requestPath == AdminPath {
+		headers[permissionsPolicyHeader] = adminPermissionsPolicy
 	}
 	if name, ok := strings.CutPrefix(requestPath, "/assets/"); ok && cachedForever(assetTypes[path.Ext(name)]) {
 		headers["Cache-Control"] = immutableAsset

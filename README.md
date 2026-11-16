@@ -34,6 +34,7 @@
 - Text up to 100 KiB and files up to 5 MiB, encrypted on your device before upload.
 - Links expire after at most 7 days and after the number of opens you set. Add a passphrase, cancel a link you sent, or let the recipient delete the message.
 - One Go binary holds the `nylzo` CLI and the web client, and runs the server on Linux and macOS with SQLite and file storage.
+- An instance's operator can sign in to `/admin` with a passkey to see visit and message counts, server load and refused clients. The server counts visits itself, without cookies or stored IP addresses.
 - Signed releases with build provenance and reproducible archives. `nylzo verify-client` compares the web client an instance serves with the signed release.
 
 ## How it works

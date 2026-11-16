@@ -31,6 +31,7 @@ func NewHandler(build Build, publicURL, contact string, information buildinfo.In
 	site := &frontend{pages: pages, previews: previewPages(publicURL, build.Assets), assets: build.Assets}
 	mux := http.NewServeMux()
 	HandlePages(mux, site.page)
+	mux.HandleFunc("GET "+AdminPath, site.serveAdmin)
 	mux.HandleFunc("GET /", site.serveNotFound)
 	mux.HandleFunc("GET /assets/{name}", site.serveAsset)
 	mux.HandleFunc("GET /"+agentsGuideFile, serveIfBuilt(build.AgentsGuide))
@@ -97,6 +98,18 @@ func (f *frontend) serveNotFound(w http.ResponseWriter, r *http.Request) {
 	f.pages[indexTemplate].ServeStatus(w, r, http.StatusNotFound)
 }
 
+// serveAdmin answers with the operator's page, the one page that may ask the browser for a passkey; a build
+// without it has no such address.
+func (f *frontend) serveAdmin(w http.ResponseWriter, r *http.Request) {
+	page, built := f.pages[adminTemplate]
+	if !built {
+		f.serveNotFound(w, r)
+		return
+	}
+	w.Header().Set(permissionsPolicyHeader, adminPermissionsPolicy)
+	page.Serve(w, r)
+}
+
 func (f *frontend) serveAsset(w http.ResponseWriter, r *http.Request) {
 	asset, ok := f.assets[r.PathValue("name")]
 	if !ok {
@@ -131,7 +144,7 @@ func serveIfBuilt(asset *Asset) http.HandlerFunc {
 // No page or file of the client is a subresource of another site, so from one only a navigation may arrive.
 func fromAnotherSite(r *http.Request) bool {
 	site := r.Header.Get("Sec-Fetch-Site")
-	return (site == "cross-site" || site == "same-site") && r.Header.Get("Sec-Fetch-Dest") != "document"
+	return (site == "cross-site" || site == "same-site") && r.Header.Get("Sec-Fetch-Dest") != destinationDocument
 }
 
 func frontendHeaders(next http.Handler) http.Handler {

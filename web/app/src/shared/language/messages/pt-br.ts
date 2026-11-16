@@ -344,6 +344,9 @@ export const messages: Catalog = {
   'transparency.stores.addresses.title': 'Endereços IP',
   'transparency.stores.addresses':
     'Não os armazena. Mantém os limites por endereço apenas em uma memória que nunca é gravada no disco, e os esquece ao reiniciar.',
+  'transparency.stores.visits.title': 'Visitas sem endereços',
+  'transparency.stores.visits':
+    'O servidor conta por conta própria as visitas às páginas públicas, sem cookies e sem armazenar endereços: quantas pessoas vieram, quantos robôs e de quais países. Guarda os totais por hora por {hourly} e os diários por {daily}. Nunca conta a página que mostra uma mensagem. O endereço de um cliente recusado por um limite fica uma hora na memória, para que o operador possa vê-lo.',
   'transparency.stores.enforced.title': 'A criptografia também controla a validade',
   'transparency.stores.enforced':
     'O servidor controla a validade e o número de aberturas. Além disso, no máximo um minuto depois que a mensagem expira, ele apaga a parte da chave de que ela precisa, então nem uma cópia dos dados consegue mais abri-la. Uma cópia feita antes não lê a mensagem sem o link.',

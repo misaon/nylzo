@@ -181,7 +181,7 @@ function faceRanges(css: string, family: string): Map<string, number[]> {
 }
 
 describe('Czech font subsets (D86)', () => {
-  const css = readFileSync(new URL('../app.css', import.meta.url), 'utf8');
+  const css = readFileSync(new URL('../styles/fonts.css', import.meta.url), 'utf8');
 
   it.each(FAMILIES)('$name comes from the same font release as the packaged latin-ext file', ({ file }) => {
     const packaged = new URL(
@@ -195,9 +195,9 @@ describe('Czech font subsets (D86)', () => {
 
   it.each(FAMILIES)('$name sends Czech letters to the subset and nothing else twice', ({ file, name }) => {
     const faces = faceRanges(css, name);
-    const czech = faces.get(`../fonts/${file}-czech.woff2`);
+    const czech = faces.get(`../../fonts/${file}-czech.woff2`);
     const extended =
-      faces.get(`../node_modules/@fontsource-variable/${file}/files/${file}-latin-ext-wght-normal.woff2`) ?? [];
+      faces.get(`../../node_modules/@fontsource-variable/${file}/files/${file}-latin-ext-wght-normal.woff2`) ?? [];
     expect(czech).toEqual(CZECH);
     expect(extended.filter((code) => CZECH.includes(code))).toEqual([]);
     const covered = new Set([...extended, ...CZECH]);
