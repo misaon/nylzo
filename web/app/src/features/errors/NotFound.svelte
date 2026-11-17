@@ -19,7 +19,7 @@
     <StatusNumeral first="4" last="4" tone="current" glyph="compass" />
     <h1
       id="{id}-title"
-      class="mt-8 animate-rise font-display text-page font-light text-balance text-ink [animation-delay:80ms] sm:mt-10 md:text-page-lg"
+      class="mt-8 animate-rise-visible font-display text-page font-light text-balance text-ink [animation-delay:80ms] sm:mt-10 md:text-page-lg"
     >
       {translate('error.notFound.title')}
     </h1>

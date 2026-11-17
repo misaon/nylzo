@@ -15,6 +15,11 @@ export function memoryStore(
   /* oxlint-disable typescript/require-await -- the methods stay async like SentStore, so a refused write rejects the promise as with IndexedDB */
   return {
     records,
+    async get(id) {
+      check();
+      const record = records.get(id);
+      return record && { ...record };
+    },
     async list() {
       check();
       return Array.from(records.values(), (record) => ({ ...record }));

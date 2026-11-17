@@ -26,7 +26,7 @@
     </p>
     <h1
       id="{id}-title"
-      class="mt-5 animate-rise font-display text-page font-light text-balance text-ink [animation-delay:120ms] md:text-page-lg"
+      class="mt-5 animate-rise-visible font-display text-page font-light text-balance text-ink [animation-delay:120ms] md:text-page-lg"
     >
       {translate('maintenance.title')}
     </h1>

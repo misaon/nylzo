@@ -55,7 +55,8 @@
     outline: 2px solid var(--color-aegis-300);
     outline-offset: 3px;
   }
-  [id] {
+  [id],
+  main :focus {
     scroll-margin-top: 6rem;
   }
   @media (width < 48rem) {

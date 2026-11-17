@@ -56,7 +56,7 @@
     readonly={composer.busy}
     placeholder={translate('compose.placeholder')}
     aria-invalid={composer.problemOf.content !== undefined || composer.problemOf.text !== undefined}
-    aria-describedby={noticeId}
+    aria-describedby={composer.problemNotice === '' ? undefined : noticeId}
     class={[
       'block min-h-[200px] w-full resize-none rounded-t-card bg-transparent px-6 pt-6 pb-14 text-lead text-ink caret-aegis-300 transition-opacity duration-500 outline-none placeholder:text-ink-mute md:min-h-[280px] md:text-lead-lg',
       composer.phase === 'encrypting' ? 'opacity-0' : 'opacity-100',
@@ -122,6 +122,7 @@
       composer.phase === 'encrypting' ? 'opacity-100' : 'opacity-0',
     ]}
     aria-hidden="true"
+    data-paused={composer.phase !== 'encrypting' || undefined}
   >
     <CipherNoise text={composer.cipher} />
     <div class="absolute inset-0 flex flex-col items-center justify-center px-4">
@@ -144,6 +145,7 @@
       composer.dragging ? 'opacity-100' : 'opacity-0',
     ]}
     aria-hidden="true"
+    data-paused={!composer.dragging || undefined}
   >
     <span class="absolute inset-0 bg-[radial-gradient(55%_65%_at_50%_50%,oklch(0.56_0.19_258/0.22),transparent_72%)]"
     ></span>

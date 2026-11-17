@@ -165,7 +165,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': 'strona Przejrzystość',
   'terms.other.law':
     'Niniejsze warunki i\u{A0}korzystanie z\u{A0}usługi podlegają prawu czeskiemu, a\u{A0}spory rozstrzygają właściwe sądy czeskie. Nie narusza to bezwzględnie obowiązujących przepisów państwa, w\u{A0}którym mieszkasz, ani twojego prawa do wniesienia pozwu w\u{A0}innym miejscu, jeśli pozwala na to prawo.',
-  'nav.label': 'Nawigacja główna',
+  'nav.label': 'Główna',
 
   'create.title': 'Nowa wiadomość',
   'create.text': 'Treść wiadomości',

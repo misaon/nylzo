@@ -6,6 +6,7 @@
   import { FocusTargets } from '../../../../shared/ui/focus/focus.ts';
   import { arrowTarget } from '../../../../shared/ui/focus/roving-focus.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
+  import { pauseOffscreen } from '../../../../shared/ui/reveal/offscreen.ts';
   import { reveal, REVEAL_INDEXES } from '../../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import IconTile from '../../../../shared/ui/tile/IconTile.svelte';
@@ -37,7 +38,7 @@
 
 <span id="vlastni-server" class="block" aria-hidden="true"></span>
 
-<section id="self-host" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="host-title">
+<section id="self-host" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="host-title" {@attach pauseOffscreen}>
   <div class="mx-auto grid max-w-page items-center gap-10 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] lg:gap-16">
     <div {@attach reveal}>
       <SectionIntro id="host-title" eyebrow={translate('host.eyebrow')} title={translate('host.title')} />
@@ -118,7 +119,7 @@
           role="tabpanel"
           aria-labelledby="host-tab-{tab}"
           tabindex="0"
-          class="stack overflow-x-auto p-4 text-caption tabular-nums outline-2 -outline-offset-2 outline-transparent transition [--reveal-delay:620ms] [--reveal-step:170ms] focus-visible:-outline-offset-2 focus-visible:outline-aegis-300 md:text-body-sm"
+          class="stack overflow-x-auto p-4 text-caption tabular-nums -outline-offset-2 outline-transparent transition [--reveal-delay:620ms] [--reveal-step:170ms] not-forced-colors:outline-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aegis-300 md:text-body-sm"
         >
           {#each tabs as id (id)}
             {const lines = $derived(installLines(id, domain))}
@@ -128,6 +129,7 @@
                 id === tab ? 'opacity-100 delay-180' : 'pointer-events-none opacity-0 ease-in',
               ]}
               aria-hidden={id !== tab}
+              data-paused={id !== tab || undefined}
             >
               {#each lines as tokens, row (row)}
                 <p

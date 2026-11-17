@@ -47,7 +47,6 @@
       'col-start-1 row-start-1 -my-px overflow-y-clip transition-[opacity,height,padding] duration-500 [interpolate-size:allow-keywords]',
       failed ? 'h-auto py-px opacity-100' : 'pointer-events-none h-0 py-0 opacity-0',
     ]}
-    inert={!failed}
   >
     <ServiceCallout id="{noticeId}-failure" message={composer.failureNotice} class="mx-auto max-w-column">
       {#snippet action()}
@@ -72,7 +71,6 @@
       'absolute inset-x-0 top-1/2 flex -translate-y-1/2 flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center fade-swap',
       rememberedShown ? 'opacity-100' : 'pointer-events-none opacity-0',
     ]}
-    inert={!rememberedShown}
   >
     <p role="status" class={['text-balance', composer.remembered === 'failed' ? 'text-rose-300' : 'text-ink-mute']}>
       <Icon
@@ -80,7 +78,7 @@
         class="mr-2 inline-block size-4 shrink-0 align-[-3px] text-aegis-300"
       />{rememberedText}
     </p>
-    <a href="/sent" class={ARROW_LINK}>
+    <a href="/sent" class={ARROW_LINK} inert={!rememberedShown}>
       {translate('created.status_link')}
       <Icon name="arrowRight" class="size-3.5" stroke={2} animated />
     </a>

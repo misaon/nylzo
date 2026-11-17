@@ -13,6 +13,10 @@ const LIVE_INTERVAL_MS = 5000;
 const OVERVIEW_INTERVAL_MS = 60_000;
 const LONGEST_RETRY_MS = 60_000;
 
+function retryDelay(failures: number): number {
+  return Math.min(LIVE_INTERVAL_MS * 2 ** failures, LONGEST_RETRY_MS);
+}
+
 interface Environment {
   readonly client: AdminClient;
   readonly now: () => number;
@@ -53,6 +57,8 @@ export class AdminArea {
   #again = false;
   #interval = LIVE_INTERVAL_MS;
   #overviewAt = 0;
+  #overviewFailures = 0;
+  #overviewRetryAt = 0;
 
   constructor(environment: Environment) {
     this.#environment = environment;
@@ -136,6 +142,7 @@ export class AdminArea {
       return;
     }
     this.range = range;
+    this.#overviewRetryAt = 0;
     this.wake();
   }
 
@@ -165,6 +172,8 @@ export class AdminArea {
     this.failed = false;
     this.stale = false;
     this.#interval = LIVE_INTERVAL_MS;
+    this.#overviewFailures = 0;
+    this.#overviewRetryAt = 0;
     this.expiresAt = undefined;
     this.notice = notice;
     this.stage = 'signIn';
@@ -174,8 +183,10 @@ export class AdminArea {
     this.#refreshing = true;
     this.#again = false;
     const range = this.range;
+    const now = this.#environment.now();
     const overviewDue =
-      this.overview?.range !== range || this.#environment.now() - this.#overviewAt >= OVERVIEW_INTERVAL_MS;
+      now >= this.#overviewRetryAt &&
+      (this.overview?.range !== range || now - this.#overviewAt >= OVERVIEW_INTERVAL_MS);
     let loaded: readonly boolean[] = [];
     try {
       loaded = await Promise.all([
@@ -211,9 +222,14 @@ export class AdminArea {
     const current = this.#session === session;
     if (current) {
       const [overviewLoaded = false, liveLoaded = false] = loaded;
-      this.failed = !overviewLoaded || !liveLoaded;
+      // A range chosen during the refresh asks for its own overview; the old range's answer sets no backoff.
+      if (overviewDue && range === this.range) {
+        this.#overviewFailures = overviewLoaded ? 0 : this.#overviewFailures + 1;
+        this.#overviewRetryAt = overviewLoaded ? 0 : this.#environment.now() + retryDelay(this.#overviewFailures);
+      }
+      this.failed = this.#overviewFailures > 0 || !liveLoaded;
       this.stale = !liveLoaded;
-      this.#interval = this.failed ? Math.min(this.#interval * 2, LONGEST_RETRY_MS) : LIVE_INTERVAL_MS;
+      this.#interval = liveLoaded ? LIVE_INTERVAL_MS : Math.min(this.#interval * 2, LONGEST_RETRY_MS);
     }
     if (this.#again) {
       this.wake();

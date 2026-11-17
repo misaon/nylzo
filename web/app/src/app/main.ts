@@ -1,5 +1,3 @@
-import { hydrate, mount } from 'svelte';
-
 import '../app.css';
 import { prepareWorker } from '../shared/kdf/worker-source.ts';
 import { loadCatalog } from '../shared/language/catalog.ts';
@@ -63,7 +61,7 @@ async function boot(): Promise<void> {
   const path = location.pathname;
   const screen = screenOf(path);
   if (screen === 'create' || screen === 'read') {
-    void prepareWorker();
+    void prepareWorker(screen === 'create' ? 'low' : 'auto');
   }
   const preferences = browserPreferences();
   const homePage = homeLanguage(path);
@@ -84,15 +82,10 @@ async function boot(): Promise<void> {
   if (document.body.firstElementChild) {
     await contentPainted();
   }
-  const { App, prepare, tidy } = await (appModules ?? loadApp(language));
+  const { prepare, show, tidy } = await (appModules ?? loadApp(language));
   await delay(0);
   prepare();
-  const options = { target: document.body, props: { start: { path, language } } };
-  if (document.body.firstElementChild) {
-    hydrate(App, options);
-  } else {
-    mount(App, options);
-  }
+  show(path, language);
   document.documentElement.dataset['ready'] = '';
   if (screen !== 'read') {
     void watchVisit(screen);

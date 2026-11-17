@@ -217,7 +217,7 @@
 <p
   role="status"
   aria-live="polite"
-  class={cancelled?.outcome === 'cancelled' ? 'sr-only' : 'mb-4 text-body text-aegis-200 empty:hidden'}
+  class={status === '' || cancelled?.outcome === 'cancelled' ? 'sr-only' : 'mb-4 text-body text-aegis-200'}
 >
   {status}
 </p>

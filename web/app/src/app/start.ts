@@ -1,9 +1,20 @@
+import { hydrate, mount } from 'svelte';
+
+import type { Language } from '../shared/language/language.ts';
 import { servedByLocalClient } from '../shared/local-client/instance-origin.ts';
 import { browserDatabases } from '../shared/sent-records/indexed-database.ts';
 import { keepPurgingSentRecords } from '../shared/sent-records/sent-store.ts';
+import App from './App.svelte';
 import { forgetRetiredRecovery } from './retired-recovery.ts';
 
-export { default as App } from './App.svelte';
+export function show(path: string, language: Language): void {
+  const options = { target: document.body, props: { start: { path, language } } };
+  if (document.body.firstElementChild) {
+    hydrate(App, options);
+  } else {
+    mount(App, options);
+  }
+}
 
 export function prepare(): void {
   if (!servedByLocalClient()) {

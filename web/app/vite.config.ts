@@ -15,6 +15,8 @@ const outputDirectory = path.resolve(import.meta.dirname, '../../internal/server
 const developmentApi = process.env['NYLZO_DEV_API'] ?? 'http://127.0.0.1:8080';
 const GZIP_OS_UNKNOWN = 255;
 const PRELOADED_FONTS = /^assets\/(?:geist|sora)-(?:latin-wght-normal|latin-ext-wght-normal|czech)-[\w-]+\.woff2$/u;
+// Admin text is English or Czech, which need no latin-ext glyph.
+const ADMIN_PRELOADED_FONTS = /^assets\/(?:geist|sora)-(?:latin-wght-normal|czech)-[\w-]+\.woff2$/u;
 const PRECOMPRESSED = /\.(?:js|css)$/u;
 // The oldest browsers the client runs in: Safari from the TLS handshake the deployment profiles require
 // (X25519MLKEM768), Chrome, Edge and Firefox from Uint8Array.prototype.toBase64, which has no fallback.
@@ -31,14 +33,14 @@ function buildMetadata(): Plugin {
   };
 }
 
-function preloadFonts(): Plugin {
+function preloadFonts(fonts: RegExp): Plugin {
   return {
     name: 'nylzo-preload-fonts',
     apply: 'build',
     enforce: 'post',
     generateBundle(_, bundle) {
       const links = Object.keys(bundle)
-        .filter((name) => PRELOADED_FONTS.test(name))
+        .filter((name) => fonts.test(name))
         .toSorted((first, second) => first.localeCompare(second))
         .map((name) => `<link rel="preload" href="/${name}" as="font" type="font/woff2" crossorigin>`);
       for (const page of Object.values(bundle)) {
@@ -133,7 +135,7 @@ export default defineConfig(({ isSsrBuild, mode }) => ({
       ? []
       : [
           ...(mode === ADMIN_MODE ? [] : [buildMetadata()]),
-          preloadFonts(),
+          preloadFonts(mode === ADMIN_MODE ? ADMIN_PRELOADED_FONTS : PRELOADED_FONTS),
           staticImportsOnlyFromEntry(),
           onlyApprovedTrustedTypesPolicies(),
           precompress(),

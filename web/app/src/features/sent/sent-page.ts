@@ -147,8 +147,7 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
   }
 
   async function stored(id: string): Promise<SentRecord | undefined> {
-    const saved = (await homes.get(id)?.list()) ?? [];
-    const found = saved.find((record) => record.id === id);
+    const found = await homes.get(id)?.get(id);
     if (!found) {
       drop(id);
     }

@@ -1611,6 +1611,17 @@
       "problem": "repetitive"
     },
     {
+      "name": "repetition of exactly half the length",
+      "passphrase": "kq7v-xm2pkq7v-xm2p",
+      "accepted": false,
+      "problem": "repetitive"
+    },
+    {
+      "name": "near repetition that breaks at the end",
+      "passphrase": "qv2z7vmqv2z7vmq2",
+      "accepted": true
+    },
+    {
       "name": "alphabet",
       "passphrase": "abcdefghijklmno",
       "accepted": false,

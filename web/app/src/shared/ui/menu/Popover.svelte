@@ -2,6 +2,7 @@
   import type { Snippet } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
   import type { ClassValue } from 'svelte/elements';
+  import { on } from 'svelte/events';
 
   interface Props {
     readonly id: string;
@@ -10,15 +11,18 @@
     readonly class?: ClassValue;
     readonly from?: 'above' | 'below';
     readonly onclose: () => void;
+    readonly ondismiss: () => void;
     readonly children: Snippet;
   }
 
-  const { id, label, open, class: className, from = 'above', onclose, children }: Props = $props();
+  const { id, label, open, class: className, from = 'above', onclose, ondismiss, children }: Props = $props();
 
   const focusFirst: Attachment<HTMLElement> = (element) => {
     if (open) {
       element
-        .querySelector<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled)')
+        .querySelector<HTMLElement>(
+          'button:not(:disabled, [aria-disabled="true"]), input:not(:disabled), textarea:not(:disabled)',
+        )
         ?.focus();
     }
   };
@@ -30,6 +34,16 @@
     event.stopPropagation();
     onclose();
   }
+
+  // The menu holds the trigger too, so focus that leaves from either one closes it.
+  const dismissOnLeave: Attachment<HTMLElement> = (element) => {
+    const menu = element.closest<HTMLElement>('[data-menu]') ?? element.parentElement ?? element;
+    return on(menu, 'focusout', (event) => {
+      if (open && event.relatedTarget instanceof Node && !menu.contains(event.relatedTarget)) {
+        ondismiss();
+      }
+    });
+  };
 </script>
 
 <div
@@ -40,6 +54,7 @@
   inert={!open}
   {onkeydown}
   {@attach focusFirst}
+  {@attach dismissOnLeave}
   class={[
     'absolute z-30 rounded-pane glass-pop',
     open

@@ -3,6 +3,7 @@
   import { VERIFIED_CLIENTS_URL } from '../../../shared/shell/repository.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import { ARROW_LINK } from '../../../shared/ui/link/link-classes.ts';
+  import { pauseOffscreen } from '../../../shared/ui/reveal/offscreen.ts';
   import { reveal, REVEAL_INDEXES } from '../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../shared/ui/section/SectionIntro.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
@@ -35,7 +36,12 @@
 <span id="hranice" class="block" aria-hidden="true"></span>
 <span id="limits" class="block" aria-hidden="true"></span>
 
-<section id="operations" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="operations-title">
+<section
+  id="operations"
+  class="px-4 py-28 sm:px-6 md:py-40"
+  aria-labelledby="operations-title"
+  {@attach pauseOffscreen}
+>
   <div class="glass mx-auto max-w-page reveal-rise overflow-hidden rounded-card p-6 md:p-10" {@attach reveal}>
     <div
       class="pointer-events-none absolute -top-32 -right-24 size-96 reveal-glow rounded-full bg-[radial-gradient(closest-side,oklch(0.56_0.19_258/0.14),transparent)] [--reveal-delay:200ms]"

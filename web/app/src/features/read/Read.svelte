@@ -37,7 +37,7 @@
     <div class="mx-auto flex max-w-column flex-col items-center text-center">
       <p class="animate-rise text-eyebrow text-aegis-300 uppercase" aria-hidden="true">{translate('read.title')}</p>
       <h1
-        class="mt-3 animate-rise font-display text-hero font-light text-balance [animation-delay:80ms] md:text-hero-lg"
+        class="mt-3 animate-rise-visible font-display text-hero font-light text-balance [animation-delay:80ms] md:text-hero-lg"
       >
         {translate(ended ? 'open.title.ended' : 'open.title')}
       </h1>

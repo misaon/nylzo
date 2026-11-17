@@ -23,6 +23,7 @@
 
   const { title, label, usage, values, waiting, tone, current, detail }: Props = $props();
   const { translate, format } = getDashboardTools();
+  const times = $derived(usage.map((point) => point.at));
 </script>
 
 <div class={[CARD, 'flex min-w-0 flex-col']}>
@@ -43,6 +44,7 @@
       class="mt-4 h-44"
       {label}
       area={{ label: title, values, tone }}
+      keys={times}
       ticks={PERCENT_TICKS}
       formatValue={format.percent}
       formatTick={format.percent}

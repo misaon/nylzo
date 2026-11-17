@@ -1,7 +1,6 @@
 import { EncodingError } from '../errors.ts';
 
-const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
-const EIGHT_BITS = 0b1111_1111;
+const URL_ALPHABET = /^[\w-]*$/u;
 
 function encodedLength(byteLength: number): number {
   return Math.ceil((byteLength * 4) / 3);
@@ -15,29 +14,17 @@ export function decodeBase64url(text: string): Uint8Array<ArrayBuffer> {
   return decodeBase64urlExact(text, Math.floor((text.length * 3) / 4));
 }
 
+// fromBase64 skips ASCII whitespace and has no strict unpadded mode, so the alphabet check and the padding come first.
 export function decodeBase64urlExact(text: string, byteLength: number): Uint8Array<ArrayBuffer> {
-  if (text.length !== encodedLength(byteLength)) {
+  if (text.length !== encodedLength(byteLength) || !URL_ALPHABET.test(text)) {
     throw new EncodingError();
   }
-  const decoded = new Uint8Array(byteLength);
-  let accumulator = 0;
-  let bits = 0;
-  let written = 0;
-  for (const character of text) {
-    const value = ALPHABET.indexOf(character);
-    if (value === -1) {
-      throw new EncodingError();
-    }
-    accumulator = ((accumulator & EIGHT_BITS) << 6) | value;
-    bits += 6;
-    if (bits < 8) {
-      continue;
-    }
-    bits -= 8;
-    decoded[written++] = (accumulator >> bits) & EIGHT_BITS;
-  }
-  if ((accumulator & ((1 << bits) - 1)) !== 0) {
+  try {
+    return Uint8Array.fromBase64(text.padEnd(Math.ceil(text.length / 4) * 4, '='), {
+      alphabet: 'base64url',
+      lastChunkHandling: 'strict',
+    });
+  } catch {
     throw new EncodingError();
   }
-  return decoded;
 }

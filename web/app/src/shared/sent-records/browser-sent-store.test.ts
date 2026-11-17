@@ -28,6 +28,7 @@ describe('persistent sent records', () => {
 
   it('reads, forgets and clears without creating a database nobody asked for', async () => {
     expect(await store.list()).toEqual([]);
+    expect(await store.get(record.id)).toBeUndefined();
     await store.remove(record.id);
     await store.clear();
     expect(await factory.databases()).toEqual([]);
@@ -96,9 +97,10 @@ describe('persistent sent records', () => {
   });
 
   it.each([
-    ['a malformed key', { publicKey: 'invalid' }],
-    ['the end an older client marked', { endedAt: NOW }],
-  ])('removes a stored record with %s instead of listing it', async (_case, change) => {
+    ['list', 'a malformed key', { publicKey: 'invalid' }],
+    ['list', 'the end an older client marked', { endedAt: NOW }],
+    ['get', 'a malformed key', { publicKey: 'invalid' }],
+  ] as const)('%s removes a stored record with %s instead of returning it', async (reader, _problem, change) => {
     await store.put(record);
     const database = await openDatabase(factory, 'nylzo', () => {
       throw new Error('must not recreate stores');
@@ -109,7 +111,8 @@ describe('persistent sent records', () => {
     const stored: unknown = await requestResult(records.get(record.id));
     await requestResult(records.put(Object.assign({}, stored, change)));
     await done;
-    await expect(store.list()).resolves.toEqual([]);
+    const returned = reader === 'list' ? await store.list() : await store.get(record.id);
+    expect(returned ?? []).toEqual([]);
     const read = database.transaction('sent', 'readonly');
     await expect(requestResult(read.objectStore('sent').get(record.id))).resolves.toBeUndefined();
     database.close();
