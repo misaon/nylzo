@@ -50,10 +50,11 @@ var previewAgents = []string{
 	"pinterestbot", "redditbot", "mastodon", "signal", "viber", "yahoo! slurp", "duckduckbot", "petalbot",
 }
 
-// SecurityHeaders lists the headers every response for requestPath carries besides its Content-Security-Policy.
-func SecurityHeaders(requestPath string) map[string]string {
+// SecurityHeaders lists the headers every response for requestPath of the instance at publicURL carries besides its
+// Content-Security-Policy.
+func SecurityHeaders(publicURL, requestPath string) map[string]string {
 	headers := maps.Clone(securityHeaders)
-	if !IsHomePath(requestPath) {
+	if !Indexable(publicURL, http.MethodGet, requestPath) {
 		headers["X-Robots-Tag"] = robotsTag
 	}
 	if requestPath == AdminPath {
@@ -63,6 +64,21 @@ func SecurityHeaders(requestPath string) map[string]string {
 		headers["Cache-Control"] = immutableAsset
 	}
 	return headers
+}
+
+// Indexable holds for the home pages and the images of the official instance; every other response carries noindex.
+func Indexable(publicURL, method, requestPath string) bool {
+	if method != http.MethodGet && method != http.MethodHead || !official(publicURL) {
+		return false
+	}
+	return isHomePath(requestPath) || isImage(requestPath)
+}
+
+func isImage(requestPath string) bool {
+	if name, ok := strings.CutPrefix(requestPath, "/assets/"); ok {
+		return !strings.Contains(name, "/") && strings.HasPrefix(assetTypes[path.Ext(name)], "image/")
+	}
+	return strings.HasPrefix(rootFiles[strings.TrimPrefix(requestPath, "/")], "image/")
 }
 
 // cachedForever holds for the types every page loads with Subresource Integrity under a content-hashed name.

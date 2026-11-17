@@ -43,9 +43,16 @@ var homeRedirects = homeRedirectPaths()
 
 func homeRedirectPaths() map[string]string {
 	redirects := map[string]string{}
-	for _, path := range homePaths() {
-		if path != "/" {
-			redirects[strings.TrimSuffix(path, "/")] = path
+	for _, language := range languages {
+		home := homePath(language.tag)
+		if home == "/" {
+			continue
+		}
+		for _, from := range []string{home, "/" + language.tag + "/"} {
+			if from != home {
+				redirects[from] = home
+			}
+			redirects[strings.TrimSuffix(from, "/")] = home
 		}
 	}
 	return redirects
@@ -63,6 +70,7 @@ var publicDocuments = slices.Concat(homePaths(), slices.Sorted(maps.Keys(homeRed
 	agentsPath,
 	"/" + agentsGuideFile,
 	"/" + faviconFile,
+	"/" + llmsFile,
 	robotsPath,
 	sitemapPath,
 	SecurityTextPath,
@@ -76,7 +84,7 @@ func IsPublicDocument(path string) bool {
 	return slices.Contains(publicDocuments, path)
 }
 
-func IsHomePath(path string) bool {
+func isHomePath(path string) bool {
 	_, ok := homeTemplates[path]
 	return ok
 }

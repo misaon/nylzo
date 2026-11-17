@@ -43,7 +43,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BRANCH: automation/crawler-ranges
-          TITLE: "fix(deploy): update the published search engine crawler ranges"
+          TITLE: "fix(deploy): update the published crawler ranges"
         run: |
           file=deploy/caddy/crawlers.json
           open=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
@@ -66,5 +66,5 @@ jobs:
             | gh api graphql --input - > /dev/null
           if [ -z "$open" ]; then
             gh pr create --head "$BRANCH" --base main --title "$TITLE" \
-              --body "The weekly refresh of the Google, Bing and Seznam crawler ranges that may use X25519 (docs/wiki/guides/Security-model.md#transport). Check the diff for ranges that are not crawler addresses; they reach production with the next release."
+              --body "The weekly refresh of the search engine and AI crawler ranges that may use X25519 (docs/wiki/guides/Security-model.md#transport). Check the diff for ranges that are not crawler addresses; they reach production with the next release."
           fi

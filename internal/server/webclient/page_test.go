@@ -16,6 +16,7 @@ import (
 	"testing/fstest"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
+	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
 
@@ -132,10 +133,12 @@ func TestRobotsAndSitemap(t *testing.T) {
 	if robots := string(webclient.Robots("")); robots != "User-agent: *\nDisallow: /api/\n" {
 		t.Fatalf("robots.txt without a public URL: %q", robots)
 	}
-	if webclient.Sitemap("") != nil {
-		t.Fatal("a sitemap without a public URL")
+	for _, other := range []string{"", "https://nylzo.example:8443", "https://www.nylzo.com", "http://localhost:8080"} {
+		if webclient.Sitemap(other) != nil || string(webclient.Robots(other)) != "User-agent: *\nDisallow: /api/\n" {
+			t.Fatalf("%q is not the official instance, so it offers no sitemap (D134)", other)
+		}
 	}
-	const publicURL = "https://nylzo.example:8443"
+	const publicURL = "https://nylzo.com"
 	if robots := string(
 		webclient.Robots(publicURL),
 	); robots != "User-agent: *\nDisallow: /api/\n\nSitemap: "+publicURL+"/sitemap.xml\n" {
@@ -159,6 +162,41 @@ func TestRobotsAndSitemap(t *testing.T) {
 	want.WriteString("</urlset>\n")
 	if sitemap := string(webclient.Sitemap(publicURL)); sitemap != want.String() {
 		t.Fatalf("sitemap.xml:\n%s", sitemap)
+	}
+}
+
+func TestOnlyTheOfficialHomePagesAndImagesMayBeIndexed(t *testing.T) {
+	t.Parallel()
+	for _, testCase := range []struct {
+		publicURL, method, path string
+		indexable               bool
+	}{
+		{"https://nylzo.com", http.MethodGet, "/", true},
+		{"https://nylzo.com:443", http.MethodHead, "/zh-hans/", true},
+		{"https://nylzo.com", http.MethodGet, "/assets/og-image-a1.png", true},
+		{"https://nylzo.com", http.MethodGet, "/assets/favicon-b2.svg", true},
+		{"https://nylzo.com", http.MethodGet, "/favicon.ico", true},
+		{"https://nylzo.com", http.MethodPost, "/", false},
+		{"https://nylzo.com", http.MethodGet, "/transparency", false},
+		{"https://nylzo.com", http.MethodGet, "/m/" + core.NewID().String(), false},
+		{"https://nylzo.com", http.MethodGet, "/r", false},
+		{"https://nylzo.com", http.MethodGet, "/assets/index-c3.js", false},
+		{"https://nylzo.com", http.MethodGet, "/assets/nested/logo.png", false},
+		{"https://nylzo.com", http.MethodGet, "/agents.md", false},
+		{"https://nylzo.com", http.MethodGet, "/llms.txt", false},
+		{"https://nylzo.com", http.MethodGet, "/pt-BR/", false},
+		{"https://nylzo.example", http.MethodGet, "/", false},
+		{"https://www.nylzo.com", http.MethodGet, "/", false},
+		{"https://nylzo.com:8443", http.MethodGet, "/", false},
+		{"", http.MethodGet, "/assets/og-image-a1.png", false},
+	} {
+		if got := webclient.Indexable(testCase.publicURL, testCase.method, testCase.path); got != testCase.indexable {
+			t.Errorf("%s %s %s: indexable %v (D134)", testCase.publicURL, testCase.method, testCase.path, got)
+		}
+		headers := webclient.SecurityHeaders(testCase.publicURL, testCase.path)
+		if testCase.method == http.MethodGet && (headers["X-Robots-Tag"] == "") != testCase.indexable {
+			t.Errorf("%s %s: SecurityHeaders disagree with Indexable", testCase.publicURL, testCase.path)
+		}
 	}
 }
 
@@ -311,7 +349,7 @@ func TestEveryPageRejectsThirdPartyScriptsAndAnalyticsConnections(t *testing.T) 
 	t.Parallel()
 	const contact = "security@example.org"
 	build := load(t, builtClient(t))
-	shared := webclient.SecurityHeaders("/")
+	shared := webclient.SecurityHeaders("", "/")
 	for _, publicURL := range []string{"https://nylzo.com", "https://nylzo.com:443", "https://nylzo.example", ""} {
 		pages, err := build.Render(publicURL, contact)
 		if err != nil {

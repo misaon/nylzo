@@ -73,9 +73,11 @@ func crawlerPrefixes() ([]netip.Prefix, error) {
 	return prefixes, nil
 }
 
-// Crawler matches a handshake from the address ranges search engines publish for their crawlers.
+// Crawler matches a handshake from the address ranges search engines and AI services publish for their crawlers.
 type Crawler struct {
-	prefixes []netip.Prefix
+	prefixes  []netip.Prefix
+	published map[netip.Prefix]struct{}
+	lengths   []int
 }
 
 func (*Crawler) CaddyModule() caddy.ModuleInfo {
@@ -87,8 +89,17 @@ func (*Crawler) CaddyModule() caddy.ModuleInfo {
 
 func (c *Crawler) Provision(_ caddy.Context) error {
 	var err error
-	c.prefixes, err = crawlerPrefixes()
-	return err
+	if c.prefixes, err = crawlerPrefixes(); err != nil {
+		return err
+	}
+	c.published = make(map[netip.Prefix]struct{}, len(c.prefixes))
+	for _, prefix := range c.prefixes {
+		c.published[prefix] = struct{}{}
+		c.lengths = append(c.lengths, prefix.Bits())
+	}
+	slices.Sort(c.lengths)
+	c.lengths = slices.Compact(c.lengths)
+	return nil
 }
 
 func (c *Crawler) Match(hello *tls.ClientHelloInfo) bool {
@@ -100,7 +111,14 @@ func (c *Crawler) Match(hello *tls.ClientHelloInfo) bool {
 		return false
 	}
 	ip := address.Addr().Unmap()
-	return slices.ContainsFunc(c.prefixes, func(prefix netip.Prefix) bool { return prefix.Contains(ip) })
+	for _, length := range c.lengths {
+		if prefix, prefixErr := ip.Prefix(length); prefixErr == nil {
+			if _, ok := c.published[prefix]; ok {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // CrawlerSites carries the option to the adapter; under any other adapter it stops Caddy from starting.

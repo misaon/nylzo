@@ -27,7 +27,7 @@ func DocumentVisit(r *http.Request) (api.Visit, bool) {
 		return api.Visit{}, false
 	}
 	page, counted := countedPages[r.URL.Path]
-	if IsHomePath(r.URL.Path) {
+	if isHomePath(r.URL.Path) {
 		page, counted = api.PageHome, true
 	}
 	if !counted {

@@ -484,7 +484,7 @@ export const messages: Catalog = {
 
   'hero.title': 'Un secret qui ne s’ouvre {accent}',
   'hero.title.accent': 'qu’une fois',
-  'seo.title': 'Envoyer un mot de passe en toute sécurité\u{A0}: lien chiffré à usage unique | Nylzo',
+  'seo.title': 'Envoyer un mot de passe en sécurité\u{A0}: lien à usage unique | Nylzo',
   'seo.description':
     'Envoyez un mot de passe, une clé API ou un fichier par un lien qui ne s’ouvre qu’une fois. Le chiffrement se fait dès votre navigateur. Gratuit et sans inscription.',
   'seo.image': 'Le logo Nylzo sur un ciel étoilé',

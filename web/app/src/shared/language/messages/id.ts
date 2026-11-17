@@ -476,7 +476,7 @@ export const messages: Catalog = {
 
   'hero.title': 'Rahasia yang {accent}',
   'hero.title.accent': 'hanya terbuka sekali',
-  'seo.title': 'Cara aman mengirim kata sandi: tautan terenkripsi sekali pakai | Nylzo',
+  'seo.title': 'Kirim kata sandi dengan aman: tautan sekali pakai | Nylzo',
   'seo.description':
     'Kirim kata sandi, kunci API, atau file lewat tautan yang hanya bisa dibuka sekali. Enkripsi sudah dilakukan di browser Anda. Gratis dan tanpa pendaftaran.',
   'seo.image': 'Logo Nylzo di langit malam berbintang',

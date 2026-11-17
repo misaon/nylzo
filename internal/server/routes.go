@@ -68,7 +68,7 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("/", s.countDocuments(s.frontend))
 	routed := logging.Route(mux)
 	return s.requestCounts.Requests(inSecretMode(transport.CloseUnreadBodies(
-		s.noticeForwarded(securityHeaders(crossorigin.Guard(
+		s.noticeForwarded(securityHeaders(s.settings.PublicURL, crossorigin.Guard(
 			s.settings.PublicURL,
 			http.HandlerFunc(refuseCrossOrigin),
 			s.seeChallenges(prefetchGuard(s.throttle(routed))),
@@ -106,10 +106,9 @@ func refuseCrossOrigin(w http.ResponseWriter, _ *http.Request) {
 	writeError(w, http.StatusForbidden, api.ErrorCrossOrigin)
 }
 
-func securityHeaders(next http.Handler) http.Handler {
+func securityHeaders(publicURL string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		indexable := (r.Method == http.MethodGet || r.Method == http.MethodHead) && webclient.IsHomePath(r.URL.Path)
-		webclient.SetSecurityHeaders(w.Header(), indexable)
+		webclient.SetSecurityHeaders(w.Header(), webclient.Indexable(publicURL, r.Method, r.URL.Path))
 		next.ServeHTTP(w, r)
 	})
 }
