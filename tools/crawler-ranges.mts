@@ -1,5 +1,6 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 type Family = "ipv4Prefix" | "ipv6Prefix";
 
@@ -78,7 +79,7 @@ function parseNetwork(family: Family, text: string, shortest = shortestPrefix[fa
   const value = address === undefined ? undefined : family === "ipv4Prefix" ? ipv4(address) : ipv6(address);
   const prefixLength = length !== undefined && /^\d{1,3}$/u.test(length) ? Number(length) : Number.NaN;
   if (value === undefined || extra !== undefined || !(prefixLength >= 0 && prefixLength <= bits)) {
-    throw new Error(`${text} is not an ${family === "ipv4Prefix" ? "IPv4" : "IPv6"} prefix`);
+    throw new Error(`${JSON.stringify(text)} is not an ${family === "ipv4Prefix" ? "IPv4" : "IPv6"} prefix`);
   }
   if (value & ((1n << BigInt(bits - prefixLength)) - 1n)) {
     throw new Error(`${text} is not a network address`);
@@ -154,28 +155,81 @@ export function rangesOf(document: unknown, families: readonly Family[], dropped
   return networks;
 }
 
-export function crawlerList(documents: readonly unknown[], dropped: string[] = []): { sources: string[]; prefixes: string[] } {
-  const networks = documents.flatMap((document, index) => {
-    const source = sources[index]!;
-    try {
-      return rangesOf(document, source.families, dropped);
-    } catch (error) {
-      throw new Error(`${source.url}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
-    }
-  });
+export type CrawlerList = { readonly sources: Readonly<Record<string, readonly string[]>>; readonly prefixes: readonly string[] };
+
+export type Download = { readonly document: unknown } | { readonly failure: string };
+
+export type Kept = { readonly url: string; readonly failure: string };
+
+function message(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function ordered(networks: readonly Network[]): Network[] {
   const unique = new Map(networks.map((network) => [`${network.family}:${network.address}/${network.length}`, network]));
-  const ordered = [...unique.values()].toSorted(
+  return [...unique.values()].toSorted(
     (left, right) =>
       left.family.localeCompare(right.family) ||
       (left.address < right.address ? -1 : left.address > right.address ? 1 : left.length - right.length),
   );
-  const ipv4Addresses = ordered
+}
+
+function asDocument(prefixes: readonly string[]): unknown {
+  return { prefixes: prefixes.map((prefix) => (prefix.includes(":") ? { ipv6Prefix: prefix } : { ipv4Prefix: prefix })) };
+}
+
+function committedRanges(committed: CrawlerList, url: string): readonly string[] | undefined {
+  return Object.hasOwn(committed.sources, url) ? committed.sources[url] : undefined;
+}
+
+// A source that does not download keeps its committed ranges, so one vendor's outage never holds back the others.
+export function crawlerList(
+  downloads: readonly Download[],
+  committed: CrawlerList,
+  dropped: string[] = [],
+): { list: CrawlerList; kept: Kept[] } {
+  const kept: Kept[] = [];
+  const perSource = sources.map((source, index) => {
+    const download = downloads[index]!;
+    try {
+      if ("document" in download) {
+        return ordered(rangesOf(download.document, source.families, dropped));
+      }
+      const previous = committedRanges(committed, source.url);
+      if (previous === undefined) {
+        throw new Error(`${download.failure}, and the committed list holds no ranges of it to keep`);
+      }
+      kept.push({ url: source.url, failure: download.failure });
+      return ordered(rangesOf(asDocument(previous), source.families, dropped));
+    } catch (error) {
+      throw new Error(`${source.url}: ${message(error)}`, { cause: error });
+    }
+  });
+  const union = ordered(perSource.flat());
+  const ipv4Addresses = union
     .filter((network) => network.family === "ipv4Prefix")
     .reduce((sum, network) => sum + (1n << BigInt(32 - network.length)), 0n);
-  if (ordered.length > mostPrefixes || ipv4Addresses > mostIPv4Addresses) {
-    throw new Error(`the sources list ${ordered.length} prefixes and ${ipv4Addresses} IPv4 addresses, more than the ceiling`);
+  if (union.length > mostPrefixes || ipv4Addresses > mostIPv4Addresses) {
+    throw new Error(`the sources list ${union.length} prefixes and ${ipv4Addresses} IPv4 addresses, more than the ceiling`);
   }
-  return { sources: sources.map((source) => source.url), prefixes: ordered.map((network) => network.text) };
+  const list = {
+    sources: Object.fromEntries(sources.map((source, index) => [source.url, perSource[index]!.map((network) => network.text)])),
+    prefixes: union.map((network) => network.text),
+  };
+  return { list, kept };
+}
+
+export function readCrawlerList(text: string): CrawlerList {
+  const value: unknown = JSON.parse(text);
+  const strings = (entry: unknown): entry is string[] => Array.isArray(entry) && entry.every((item) => typeof item === "string");
+  const listed = typeof value === "object" && value !== null ? value : {};
+  const ranges: unknown = Reflect.get(listed, "sources");
+  const prefixes: unknown = Reflect.get(listed, "prefixes");
+  const bySource = typeof ranges === "object" && ranges !== null && !Array.isArray(ranges) && Object.values(ranges).every(strings);
+  if (!bySource || !strings(prefixes)) {
+    throw new Error(`${listPath} does not hold the ranges of each source and their union`);
+  }
+  return { sources: ranges as Record<string, string[]>, prefixes };
 }
 
 function coverage(prefixes: readonly string[]): { prefixes: bigint; ipv4Addresses: bigint } {
@@ -185,37 +239,69 @@ function coverage(prefixes: readonly string[]): { prefixes: bigint; ipv4Addresse
   return { prefixes: BigInt(prefixes.length), ipv4Addresses };
 }
 
-export function checkShrink(committed: readonly string[], refreshed: readonly string[]): void {
+function shrunk(subject: string, committed: readonly string[], refreshed: readonly string[]): string[] {
   const before = coverage(committed);
   const after = coverage(refreshed);
-  if (after.prefixes * 10n < before.prefixes * fewestShareInTenths || after.ipv4Addresses * 10n < before.ipv4Addresses * fewestShareInTenths) {
-    throw new Error(
-      `the sources list ${after.prefixes} prefixes and ${after.ipv4Addresses} IPv4 addresses, ` +
-        `far fewer than the ${before.prefixes} and ${before.ipv4Addresses} of the committed list`,
-    );
+  const kept = (share: bigint, whole: bigint) => share * 10n >= whole * fewestShareInTenths;
+  if (kept(after.prefixes, before.prefixes) && kept(after.ipv4Addresses, before.ipv4Addresses)) {
+    return [];
   }
+  return [
+    `${subject} ${after.prefixes} prefixes and ${after.ipv4Addresses} IPv4 addresses, ` +
+      `far fewer than the ${before.prefixes} and ${before.ipv4Addresses} of the committed list`,
+  ];
 }
 
-async function download(url: string): Promise<unknown> {
+// Checked per source too, because a truncated small list hardly moves the total.
+export function shrinkage(committed: CrawlerList, refreshed: CrawlerList): string[] {
+  return [
+    ...sources.flatMap(({ url }) => {
+      const before = committedRanges(committed, url);
+      const after = committedRanges(refreshed, url);
+      return before === undefined || after === undefined ? [] : shrunk(`${url} lists`, before, after);
+    }),
+    ...shrunk("the sources list", committed.prefixes, refreshed.prefixes),
+  ];
+}
+
+export async function download(url: string): Promise<Download> {
   try {
     const response = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(30_000) });
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      return { failure: `HTTP ${response.status}` };
     }
-    return await response.json();
+    return { document: await response.json() };
   } catch (error) {
-    throw new Error(`${url}: ${error instanceof Error ? error.message : String(error)}`, { cause: error });
+    return { failure: message(error) };
   }
 }
 
+export function warning(text: string): string {
+  return `::warning title=Crawler ranges::${text.replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A")}`;
+}
+
 if (import.meta.main) {
-  const documents = await Promise.all(sources.map((source) => download(source.url)));
+  const { values } = parseArgs({ options: { "accept-shrink": { type: "boolean", default: false } } });
+  const committed = readCrawlerList(readFileSync(listPath, "utf8"));
+  const downloads = await Promise.all(sources.map((source) => download(source.url)));
   const dropped: string[] = [];
-  const refreshed = crawlerList(documents, dropped);
+  const { list, kept } = crawlerList(downloads, committed, dropped);
   for (const prefix of dropped) {
     console.warn(`left out ${prefix}, which lies inside a block left out on purpose`);
   }
-  const committed = Reflect.get(JSON.parse(readFileSync(listPath, "utf8")) as object, "prefixes") as string[];
-  checkShrink(committed, refreshed.prefixes);
-  writeFileSync(listPath, `${JSON.stringify(refreshed, null, 2)}\n`);
+  const shrinks = shrinkage(committed, list);
+  if (shrinks.length > 0 && !values["accept-shrink"]) {
+    throw new Error(`${shrinks.join("; ")}. Compare them with the published lists; --accept-shrink proposes them anyway`);
+  }
+  for (const finding of shrinks) {
+    console.log(warning(`accepted: ${finding}`));
+  }
+  for (const { url, failure } of kept) {
+    console.log(warning(`${url} did not download (${failure}), so its committed ranges stay`));
+  }
+  writeFileSync(listPath, `${JSON.stringify(list, null, 2)}\n`);
+  const output = process.env["GITHUB_OUTPUT"];
+  if (output !== undefined) {
+    appendFileSync(output, `kept=${kept.map(({ url }) => url).join(" ")}\n`);
+  }
 }

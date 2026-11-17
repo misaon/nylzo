@@ -4,6 +4,11 @@ on:
   schedule:
     - cron: "41 6 * * 1"
   workflow_dispatch:
+    inputs:
+      accept-shrink:
+        description: Propose sources that list far fewer ranges than their committed ones, after comparing them with the published lists
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -28,9 +33,13 @@ jobs:
         with:
           tools: bun
           cache: none
-      # A failed or suspicious download stops here and the committed list stays as it is.
+      # A suspicious list stops here and the committed list stays as it is; a source that does not download keeps its own committed ranges.
       - name: Download and check the published ranges
-        run: bun tools/crawler-ranges.mts
+        id: refresh
+        env:
+          ACCEPT_SHRINK: ${{ inputs.accept-shrink == true }}
+        run: |
+          if [ "$ACCEPT_SHRINK" = true ]; then bun tools/crawler-ranges.mts --accept-shrink; else bun tools/crawler-ranges.mts; fi
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app
         with:
@@ -44,6 +53,8 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           BRANCH: automation/crawler-ranges
           TITLE: "fix(deploy): update the published crawler ranges"
+          KEPT: ${{ steps.refresh.outputs.kept }}
+          ACCEPT_SHRINK: ${{ inputs.accept-shrink == true }}
         run: |
           file=deploy/caddy/crawlers.json
           open=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')
@@ -52,8 +63,17 @@ jobs:
             exit 0
           fi
           git diff --stat -- "$file"
+          run="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body="The weekly refresh of the search engine and AI crawler ranges that may use X25519 (docs/wiki/guides/Security-model.md#transport). Check the diff for ranges that are not crawler addresses; they reach production with the next release."
+          if [ -n "$KEPT" ]; then
+            body+=$'\n\n'"These sources did not download in [the latest run](${run}), so they keep their committed ranges: ${KEPT// /, }."
+          fi
+          if [ "$ACCEPT_SHRINK" = true ]; then
+            body+=$'\n\n'"[The latest run](${run}) was started by hand to accept sources that list far fewer ranges than before; its warnings name them."
+          fi
           proposed=$(gh api "repos/${GITHUB_REPOSITORY}/contents/${file}?ref=${BRANCH}" --jq .content 2> /dev/null | base64 --decode | sha256sum || true)
-          if [ -n "$open" ] && [ "$proposed" = "$(sha256sum < "$file")" ]; then exit 0; fi
+          describe() { gh api --method PATCH "repos/${GITHUB_REPOSITORY}/pulls/${open}" -f body="$body" > /dev/null; }
+          if [ -n "$open" ] && [ "$proposed" = "$(sha256sum < "$file")" ]; then describe; exit 0; fi
           head=$(git rev-parse HEAD)
           gh api --method PATCH "repos/${GITHUB_REPOSITORY}/git/refs/heads/${BRANCH}" -f sha="$head" -F force=true > /dev/null 2>&1 \
             || gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" -f ref="refs/heads/${BRANCH}" -f sha="$head" > /dev/null
@@ -65,6 +85,15 @@ jobs:
                 message: {headline: $title}, fileChanges: {additions: [{path: $path, contents: $contents}]}}}}' \
             | gh api graphql --input - > /dev/null
           if [ -z "$open" ]; then
-            gh pr create --head "$BRANCH" --base main --title "$TITLE" \
-              --body "The weekly refresh of the search engine and AI crawler ranges that may use X25519 (docs/wiki/guides/Security-model.md#transport). Check the diff for ranges that are not crawler addresses; they reach production with the next release."
+            gh pr create --head "$BRANCH" --base main --title "$TITLE" --body "$body"
+          else
+            describe
           fi
+      # A source that did not download needs a person, so the run fails after the other sources are proposed.
+      - name: Fail when a source kept its committed ranges
+        if: steps.refresh.outputs.kept != ''
+        env:
+          KEPT: ${{ steps.refresh.outputs.kept }}
+        run: |
+          echo "::error title=Crawler ranges::These sources did not download and keep their committed ranges: ${KEPT// /, }. The warnings of the first step say why."
+          exit 1

@@ -63,6 +63,33 @@ jobs:
           fi
           echo "The tap offers formula ${formula} and manifest ${manifest}; the latest release is ${tag}."
 
+  indexing:
+    name: nylzo.com stays indexable
+    if: github.repository == 'misaon/nylzo' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *')
+    # The instance accepts only X25519MLKEM768, which needs OpenSSL 3.5 or newer in curl.
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+        with:
+          egress-policy: audit
+      - name: The home pages carry no X-Robots-Tag or robots meta tag and the sitemap answers
+        run: |
+          failed=0
+          for path in / /cs/ /sitemap.xml; do
+            url="https://nylzo.com${path}"
+            code=$(curl -sS --proto '=https' --curves X25519MLKEM768 --max-redirs 0 --max-time 30 \
+              --dump-header headers --output body --write-out '%{http_code}' "$url") || code=failed
+            if [ "$code" != 200 ]; then
+              echo "::error::${url} answered ${code}, not 200."
+              failed=1
+            elif [ "$path" != /sitemap.xml ] && { grep -qi '^x-robots-tag:' headers || grep -Eqi '<meta[^>]+name="?robots' body; }; then
+              echo "::error::${url} tells search engines not to index it."
+              failed=1
+            fi
+          done
+          exit "$failed"
+
   host:
     name: Authenticated host readiness
     if: vars.NYLZO_HOST_MONITOR_ENABLED == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_run'
