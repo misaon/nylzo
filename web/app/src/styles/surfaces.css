@@ -36,6 +36,7 @@
 @utility ring-light {
   position: absolute;
   inset: -1px;
+  container-type: size;
   border-radius: inherit;
   padding: 1px;
   overflow: hidden;
@@ -49,7 +50,7 @@
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 300%;
+  width: calc(hypot(100cqw, 100cqh) + 4px);
   aspect-ratio: 1;
   translate: -50% -50%;
   background: conic-gradient(

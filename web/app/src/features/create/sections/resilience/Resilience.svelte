@@ -3,6 +3,7 @@
 
   import { getTranslator } from '../../../../shared/language/translator.svelte.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
+  import { pauseOffscreen } from '../../../../shared/ui/reveal/offscreen.ts';
   import { reveal, REVEAL_INDEXES } from '../../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import Switch from '../../../../shared/ui/switch/Switch.svelte';
@@ -13,6 +14,7 @@
 
   const translator = getTranslator();
   const { translate } = translator;
+  const id = $props.id();
 
   const TICK_MS = 100;
   const VISIBLE_THRESHOLD = 0.35;
@@ -71,7 +73,7 @@
 
 <span id="odolnost" class="block" aria-hidden="true"></span>
 
-<section id="resilience" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="brute-title">
+<section id="resilience" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="brute-title" {@attach pauseOffscreen}>
   <div class="mx-auto max-w-page">
     <div class="mx-auto max-w-[640px] text-center" {@attach reveal}>
       <SectionIntro id="brute-title" eyebrow={translate('brute.eyebrow')} title={translate('brute.title')} />
@@ -94,21 +96,21 @@
             <div class="mt-4 grid gap-2" role="radiogroup" aria-labelledby="brute-attacker">
               {#each ATTACKERS as item, index (item.id)}
                 {const selected = $derived(item.id === attacker)}
-                <button
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  onclick={() => {
-                    if (!selected) {
-                      restart(() => (attacker = item.id));
-                    }
-                  }}
+                <label
                   class={[
-                    'flex w-full reveal-focus items-center gap-4 rounded-pane px-4 py-3 text-left ring-1 transition [--reveal-blur:4px] [--reveal-delay:250ms] [--reveal-y:8px]',
+                    'flex w-full reveal-focus items-center gap-4 rounded-pane px-4 py-3 text-left ring-1 outline-offset-3 outline-transparent transition select-none [--reveal-blur:4px] [--reveal-delay:250ms] [--reveal-y:8px] not-forced-colors:outline-2 has-focus-visible:outline-2 has-focus-visible:outline-aegis-300',
                     REVEAL_INDEXES[index],
                     selected ? 'bg-aegis-500/12 ring-aegis-300/50' : 'bg-white/4 ring-white/12 hover:bg-white/6',
                   ]}
                 >
+                  <input
+                    type="radio"
+                    name="{id}-attacker"
+                    value={item.id}
+                    checked={selected}
+                    onchange={() => restart(() => (attacker = item.id))}
+                    class="sr-only min-h-0 min-w-0"
+                  />
                   <IconTile icon={item.id} tone={selected ? 'current' : 'neutral'} size="medium" />
                   <span class="min-w-0 flex-1">
                     <span class="flex flex-wrap items-center gap-x-2 gap-y-1 text-body text-ink">
@@ -135,7 +137,7 @@
                   {:else}
                     <span class="size-5 shrink-0" aria-hidden="true"></span>
                   {/if}
-                </button>
+                </label>
               {/each}
             </div>
           </div>
@@ -143,13 +145,17 @@
             type="button"
             role="switch"
             aria-checked={quantum}
+            aria-labelledby="{id}-quantum"
+            aria-describedby="{id}-quantum-note"
             onclick={() => restart(() => (quantum = !quantum))}
             class="flex reveal-focus items-center gap-4 rounded-pane p-5 text-left well transition [--reveal-blur:4px] [--reveal-delay:250ms] [--reveal-index:5] [--reveal-y:8px] hover:bg-white/4"
           >
             <span class="mt-0.5"><Switch on={quantum} size="large" /></span>
             <span>
-              <span class="block text-body text-ink">{translate('brute.quantum')}</span>
-              <span class="mt-1.5 block text-caption text-pretty text-ink-mute">{translate('brute.quantum.note')}</span>
+              <span id="{id}-quantum" class="block text-body text-ink">{translate('brute.quantum')}</span>
+              <span id="{id}-quantum-note" class="mt-1.5 block text-caption text-pretty text-ink-mute"
+                >{translate('brute.quantum.note')}</span
+              >
             </span>
           </button>
         </div>

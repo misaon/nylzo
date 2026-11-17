@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Overview, Range } from '../../api/types.ts';
   import ColumnChart from '../../charts/ColumnChart.svelte';
-  import { timeTicks } from '../../charts/geometry/time.ts';
+  import { periodNumbers, timeTicks } from '../../charts/geometry/time.ts';
   import { SWATCHES } from '../../charts/tones.ts';
   import { getDashboardTools } from '../context.ts';
   import { timelineOf, trend } from '../overview.ts';
@@ -26,6 +26,7 @@
   const { overview, range, loading }: Props = $props();
   const { translate, format } = getDashboardTools();
   const timeline = $derived(timelineOf(overview));
+  const periods = $derived(periodNumbers(timeline));
   const quiet = $derived(!loading && EVENTS.every((event) => overview.totals[event.metric] === 0));
   const series = $derived(
     EVENTS.map((event) => ({
@@ -73,6 +74,7 @@
       class="mt-4 h-52 sm:h-60"
       label={translate('dashboard.messages.chart')}
       {series}
+      keys={periods}
       hint={quiet ? translate('dashboard.empty') : undefined}
       formatValue={format.count}
       formatTick={format.compact}

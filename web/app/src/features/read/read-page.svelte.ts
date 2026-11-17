@@ -98,7 +98,7 @@ export class ReadPage {
   #revealTimer: ReturnType<typeof setInterval> | undefined;
   #countdownTimer: ReturnType<typeof setInterval> | undefined;
   readonly #settleTimer: ReturnType<typeof setTimeout>;
-  #shownUntil = 0;
+  #shownUntil = { monotonic: 0, wall: 0 };
   readonly #reader: Reader;
   readonly #translator: Translator;
 
@@ -116,7 +116,8 @@ export class ReadPage {
   deleting = $state(false);
   burned = $state.raw<Burned>();
   opening = $state(false);
-  revealText = $state<string>();
+  revealHead = $state<string>();
+  revealRest = $state('');
   marked = $state.raw<MarkedText>();
   confirmingCopy = $state(false);
   clipboard = $state<'cleared' | 'copied' | 'untouched'>('untouched');
@@ -320,7 +321,8 @@ export class ReadPage {
     if (this.#countdownTimer === undefined) {
       return;
     }
-    const left = (this.#shownUntil - performance.now()) / 1000;
+    // The monotonic clock stops while the device sleeps; the wall clock does not.
+    const left = Math.min(this.#shownUntil.monotonic - performance.now(), this.#shownUntil.wall - Date.now()) / 1000;
     if (left > 0) {
       this.secondsLeft = Math.ceil(left);
       return;
@@ -524,7 +526,7 @@ export class ReadPage {
     this.showPassphrase = false;
     this.passphrase = '';
     this.#pending = undefined;
-    this.revealText = undefined;
+    this.#clearReveal();
     this.marked = undefined;
     this.confirmingCopy = false;
     clearInterval(this.#revealTimer);
@@ -544,7 +546,7 @@ export class ReadPage {
     if (next.view !== 'revealed') {
       clearInterval(this.#revealTimer);
       this.#stopCountdown();
-      this.revealText = undefined;
+      this.#clearReveal();
       this.marked = undefined;
       return;
     }
@@ -559,7 +561,8 @@ export class ReadPage {
 
   #startCountdown(): void {
     this.#stopCountdown();
-    this.#shownUntil = performance.now() + SHOWN_SECONDS * 1000;
+    const span = SHOWN_SECONDS * 1000;
+    this.#shownUntil = { monotonic: performance.now() + span, wall: Date.now() + span };
     this.secondsLeft = SHOWN_SECONDS;
     this.#countdownTimer = setInterval(this.checkCountdown, COUNTDOWN_TICK_MS);
   }
@@ -574,21 +577,35 @@ export class ReadPage {
     clearInterval(this.#revealTimer);
     this.marked = revealed === undefined ? undefined : markHiddenCharacters(revealed);
     const text = this.marked?.shown;
-    this.revealText = text;
+    this.revealHead = text;
+    this.revealRest = '';
     if (text !== undefined && !prefersReducedMotion.current) {
       const started = performance.now();
-      const characters = charactersOf(text.slice(0, SCRAMBLED_CHARACTERS));
-      const rest = text.slice(characters.join('').length);
-      this.revealText = scramble(characters, 0) + rest;
+      const cut = Math.min(text.length, SCRAMBLED_CHARACTERS);
+      const astral = cut < text.length && (text.codePointAt(cut - 1) ?? 0) > 0xff_ff;
+      const characters = charactersOf(text.slice(0, astral ? cut + 1 : cut));
+      const head = characters.join('');
+      this.revealRest = text.slice(head.length);
+      this.revealHead = scramble(characters, 0);
       this.#revealTimer = setInterval(() => {
         const progress = Math.min(1, (performance.now() - started) / REVEAL_MS);
-        this.revealText = progress >= 1 ? text : scramble(characters, progress) + rest;
+        this.revealHead = progress >= 1 ? head : scramble(characters, progress);
         if (progress >= 1) {
           clearInterval(this.#revealTimer);
         }
       }, REVEAL_TICK_MS);
     }
     await this.focus.focusAfterUpdate('revealedTitle');
+  }
+
+  // A getter, not $derived: a derived that nothing reads any more keeps its last value, the decrypted text.
+  get revealText(): string | undefined {
+    return this.revealHead === undefined ? undefined : this.revealHead + this.revealRest;
+  }
+
+  #clearReveal(): void {
+    this.revealHead = undefined;
+    this.revealRest = '';
   }
 
   #startTimeline(): void {
@@ -598,8 +615,13 @@ export class ReadPage {
     if (active && [this.focus.get('readyArea'), this.focus.get('bar')].some((element) => element?.contains(active))) {
       this.focus.focus('readTitle');
     }
+    let noiseStep = -1;
     this.timeline.start(() => {
-      this.noise = randomText(NOISE_CHARACTERS + Math.floor(this.timeline.paced.progress * NOISE_GROWTH));
+      const { step, progress } = this.timeline.paced;
+      if (!prefersReducedMotion.current || step !== noiseStep) {
+        noiseStep = step;
+        this.noise = randomText(NOISE_CHARACTERS + Math.floor(progress * NOISE_GROWTH));
+      }
       const next = this.#pending;
       if (!next || !this.timeline.paced.finished) {
         return;

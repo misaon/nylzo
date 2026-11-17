@@ -80,6 +80,7 @@
     label={title}
     {open}
     onclose={() => composer.closeMenu(menu)}
+    ondismiss={() => (composer.menu = undefined)}
     class={['inset-x-0 top-full mt-2 p-1.5 sm:inset-x-auto sm:left-0', className]}
   >
     {@render children()}

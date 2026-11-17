@@ -26,6 +26,7 @@ describe('canonical base64url (spec 1.1)', () => {
     ['the standard alphabet', '+AAAAAAAAAAAAAAAAAAAAA', 16],
     ['a slash', '/AAAAAAAAAAAAAAAAAAAAA', 16],
     ['a space', 'AAAAAAAAAA AAAAAAAAAAA', 16],
+    ['spaces between groups', 'AAAA AAAA AAAA AAAA AA', 16],
     ['a newline', 'AAAAAAAAAAAAAAAAAAAAA\n', 16],
     ['a non-ASCII letter', 'AAAAAAAAAAAAAAAAAAAAAé', 16],
     ['an empty string', '', 16],

@@ -24,7 +24,11 @@
   );
 </script>
 
-<div class={['overflow-hidden fade-swap', panelClasses(page.phase === 'opening', page.phase)]} aria-hidden="true">
+<div
+  class={['overflow-hidden fade-swap', panelClasses(page.phase === 'opening', page.phase)]}
+  aria-hidden="true"
+  data-paused={page.phase !== 'opening' || undefined}
+>
   <CipherNoise text={page.noise} />
   <div class="relative flex h-full flex-col items-center justify-center px-4 py-12">
     <PipelineRing

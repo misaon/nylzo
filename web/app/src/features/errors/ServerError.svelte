@@ -15,7 +15,7 @@
     <StatusNumeral first="5" last="0" tone="danger" glyph="server" />
     <h1
       id="{id}-title"
-      class="mt-8 animate-rise font-display text-page font-light text-balance text-ink [animation-delay:80ms] sm:mt-10 md:text-page-lg"
+      class="mt-8 animate-rise-visible font-display text-page font-light text-balance text-ink [animation-delay:80ms] sm:mt-10 md:text-page-lg"
     >
       {translate('error.server.title')}
     </h1>

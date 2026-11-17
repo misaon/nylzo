@@ -14,12 +14,13 @@
     readonly share: number | undefined;
     readonly tone: Tone;
     readonly history?: readonly number[] | undefined;
+    readonly keys?: readonly number[] | undefined;
     readonly reserve?: number | undefined;
     // The detail runs to two lines once it is known, so the tile keeps room for them.
     readonly tall?: boolean;
   }
 
-  const { icon, label, value, detail, share, tone, history, reserve, tall = false }: Props = $props();
+  const { icon, label, value, detail, share, tone, history, keys, reserve, tall = false }: Props = $props();
 </script>
 
 <div class={[TILE, 'flex min-w-0 flex-col gap-2.5 p-4']}>
@@ -31,6 +32,6 @@
     <p class="text-title font-medium text-ink tabular-nums">{value}</p>
   </div>
   <Track value={share ?? 0} {tone} {reserve} />
-  <Sparkline values={history ?? []} {tone} maximum={1} class="h-8" />
+  <Sparkline values={history ?? []} {keys} {tone} maximum={1} class="h-8" />
   <p class={[NOTE, 'mt-auto', tall && 'min-h-10']}>{detail}</p>
 </div>

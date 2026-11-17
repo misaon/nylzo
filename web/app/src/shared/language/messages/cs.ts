@@ -126,7 +126,7 @@ export const messages = {
   'terms.other.privacy.link': 'stránka Transparentnost',
   'terms.other.law':
     'Podmínky a\u{A0}užívání služby se řídí českým právem a\u{A0}spory rozhodují příslušné české soudy. Tím nejsou dotčeny kogentní předpisy státu, kde žijete, ani vaše právo žalovat jinde, kde to zákon dovolí.',
-  'nav.label': 'Hlavní navigace',
+  'nav.label': 'Hlavní',
 
   'create.title': 'Nová zpráva',
   'create.text': 'Text zprávy',

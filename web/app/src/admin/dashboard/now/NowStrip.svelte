@@ -25,6 +25,7 @@
   const memory = $derived(
     live.usageSupported && latest && latest.memoryTotal > 0 ? latest.memoryUsed / latest.memoryTotal : undefined,
   );
+  const usageTimes = $derived(live.usage.map((point) => point.at));
   const processorHistory = $derived(live.usage.map((point) => Math.max(0, point.processor)));
   const memoryHistory = $derived(
     live.usage.map((point) => (point.memoryTotal > 0 ? point.memoryUsed / point.memoryTotal : 0)),
@@ -104,6 +105,7 @@
       share={processor}
       tone="people"
       history={processorHistory}
+      keys={usageTimes}
     />
     <UsageTile
       icon="rack"
@@ -118,6 +120,7 @@
       share={memory}
       tone="robots"
       history={memoryHistory}
+      keys={usageTimes}
     />
     <UsageTile
       icon="storage"

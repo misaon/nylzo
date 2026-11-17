@@ -122,7 +122,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': '“透明度”页面',
   'terms.other.law':
     '本条款及本服务的使用适用捷克法律，争议由有管辖权的捷克法院裁决。这不影响你居住国的强制性法律规定，也不影响你在法律允许的情况下在其他地方提起诉讼的权利。',
-  'nav.label': '主导航',
+  'nav.label': '主要',
 
   'create.title': '新消息',
   'create.text': '消息文本',

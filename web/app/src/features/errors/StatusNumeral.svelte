@@ -12,7 +12,7 @@
 </script>
 
 <div
-  class="flex animate-rise items-center justify-center font-display text-[120px] leading-none font-extralight tracking-[-0.04em] tabular-nums sm:text-[216px]"
+  class="flex animate-rise-visible items-center justify-center font-display text-[120px] leading-none font-extralight tracking-[-0.04em] tabular-nums sm:text-[216px]"
   aria-hidden="true"
 >
   <span class="numeral-glass">{first}</span>

@@ -31,8 +31,16 @@ export function privatePassphrase(shown: boolean): HTMLInputAttributes {
   return { ...PRIVATE_PASSPHRASE, autocomplete: shown ? 'off' : 'one-time-code' };
 }
 
+const IME_PROCESS_KEY_CODE = 229;
+
 export function submitOnEnter(event: KeyboardEvent): void {
-  if (event.key !== 'Enter' || event.isComposing || !(event.currentTarget instanceof HTMLElement)) {
+  if (
+    event.key !== 'Enter' ||
+    event.isComposing ||
+    // oxlint-disable-next-line typescript/no-deprecated -- Safari delivers the Enter that confirms an IME conversion after compositionend, so only keyCode 229 marks it.
+    event.keyCode === IME_PROCESS_KEY_CODE ||
+    !(event.currentTarget instanceof HTMLElement)
+  ) {
     return;
   }
   event.preventDefault();

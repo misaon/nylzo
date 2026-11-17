@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getTranslator } from '../../../../shared/language/translator.svelte.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
+  import { pauseOffscreen } from '../../../../shared/ui/reveal/offscreen.ts';
   import { reveal, REVEAL_INDEXES } from '../../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../../shared/ui/section/SectionIntro.svelte';
   import HowDiagram from './HowDiagram.svelte';
@@ -12,7 +13,12 @@
 
 <span id="jak" class="block" aria-hidden="true"></span>
 
-<section id="how-it-works" class="px-4 pt-14 pb-28 sm:px-6 md:pt-16 md:pb-40" aria-labelledby="how-it-works-title">
+<section
+  id="how-it-works"
+  class="px-4 pt-14 pb-28 sm:px-6 md:pt-16 md:pb-40"
+  aria-labelledby="how-it-works-title"
+  {@attach pauseOffscreen}
+>
   <div class="mx-auto max-w-page">
     <div class="mx-auto max-w-[640px] text-center" {@attach reveal}>
       <SectionIntro id="how-it-works-title" eyebrow={translate('how.eyebrow')} title={translate('how.title')} />

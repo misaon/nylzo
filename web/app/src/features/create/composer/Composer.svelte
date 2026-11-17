@@ -6,6 +6,7 @@
   import { getScreenWork } from '../../../shared/navigation/screen-work.ts';
   import { getSessionSentStore } from '../../../shared/sent-records/session-sent-store.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import { pauseOffscreen } from '../../../shared/ui/reveal/offscreen.ts';
   import CreatedPanel from '../created/CreatedPanel.svelte';
   import { Composer } from './composer.svelte.ts';
   import ComposerBar from './ComposerBar.svelte';
@@ -52,7 +53,13 @@
 
 <span id="napsat" class="block" aria-hidden="true"></span>
 
-<section id="create" class="px-4 pt-10 sm:px-6 md:pt-16" aria-labelledby="{id}-title" {@attach composer.start}>
+<section
+  id="create"
+  class="px-4 pt-10 sm:px-6 md:pt-16"
+  aria-labelledby="{id}-title"
+  {@attach composer.start}
+  {@attach pauseOffscreen}
+>
   <div class="mx-auto max-w-column text-center">
     <p class="mb-3 animate-rise text-eyebrow text-aegis-300 uppercase">{translate('hero.eyebrow')}</p>
     <h1 class="animate-rise-visible font-display text-hero font-light text-balance md:text-hero-lg">

@@ -76,6 +76,7 @@ async function sendVisit(body: string): Promise<void> {
       headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
       body,
       keepalive: true,
+      priority: 'low',
       credentials: 'omit',
       cache: 'no-store',
       redirect: 'error',

@@ -133,7 +133,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': 'halaman Transparansi',
   'terms.other.law':
     'Ketentuan ini dan penggunaan layanan tunduk pada hukum Ceko, dan sengketa diputus oleh pengadilan Ceko yang berwenang. Hal ini tidak mengesampingkan ketentuan hukum yang bersifat memaksa di negara tempat Anda tinggal maupun hak Anda untuk menggugat di tempat lain apabila diizinkan oleh hukum.',
-  'nav.label': 'Navigasi utama',
+  'nav.label': 'Utama',
 
   'create.title': 'Pesan baru',
   'create.text': 'Teks pesan',

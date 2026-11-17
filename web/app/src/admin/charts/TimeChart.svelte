@@ -14,6 +14,7 @@
     readonly label: string;
     readonly area: ChartSeries;
     readonly line?: ChartSeries | undefined;
+    readonly keys?: readonly number[] | undefined;
     readonly ticks?: Ticks | undefined;
     readonly class?: ClassValue;
     readonly hint?: string | undefined;
@@ -34,6 +35,7 @@
     label,
     area,
     line,
+    keys,
     ticks,
     class: className,
     hint,
@@ -52,8 +54,8 @@
   const count = $derived(area.values.length);
   const scale = $derived(ticks ?? niceTicks(Math.max(0, ...area.values, ...(line?.values ?? []))));
   const top = tweenedNumber(() => scale.max);
-  const areaValues = tweenedSeries(() => area.values);
-  const lineValues = tweenedSeries(() => line?.values ?? []);
+  const areaValues = tweenedSeries(() => area.values, { keys: () => keys });
+  const lineValues = tweenedSeries(() => line?.values ?? [], { keys: () => keys });
   const left = LEFT;
   const right = $derived(Math.max(LEFT + 1, width - RIGHT));
   const bottom = $derived(Math.max(TOP + 1, height - BOTTOM));

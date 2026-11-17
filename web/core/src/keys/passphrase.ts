@@ -114,12 +114,22 @@ function codePoints(text: string): string[] {
 }
 
 function repeatsShorterPart(characters: readonly string[]): boolean {
-  for (let period = 1; period <= characters.length / 2; period++) {
-    if (characters.every((character, index) => index < period || character === characters[index - period])) {
-      return true;
-    }
+  if (characters.length < 2) {
+    return false;
   }
-  return false;
+  const borders = new Uint32Array(characters.length);
+  let border = 0;
+  for (let index = 1; index < characters.length; index++) {
+    while (border > 0 && characters[index] !== characters[border]) {
+      border = borders[border - 1] ?? 0;
+    }
+    if (characters[index] === characters[border]) {
+      border++;
+    }
+    borders[index] = border;
+  }
+  const shortestPeriod = characters.length - border;
+  return shortestPeriod <= characters.length / 2;
 }
 
 function followsSequence(text: string): boolean {

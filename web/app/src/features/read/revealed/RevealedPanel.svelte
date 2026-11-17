@@ -40,7 +40,12 @@
           <Icon name="unlock" class="size-5" />
         </span>
         <div class="min-w-0">
-          <h3 {@attach page.focus.attach('revealedTitle')} tabindex="-1" class="text-title-sm text-ink outline-none">
+          <h3
+            id="{id}-revealed-title"
+            {@attach page.focus.attach('revealedTitle')}
+            tabindex="-1"
+            class="text-title-sm text-ink outline-none"
+          >
             {translate('revealed.title')}
           </h3>
           <p class="truncate text-caption text-ink-mute">{translate('open.revealed.sub')}</p>
@@ -85,12 +90,16 @@
             <span class="pointer-events-none absolute -inset-1 opacity-20 blur-[6px]" aria-hidden="true">
               <span class={['absolute inset-1 rounded-pane p-[2px]', FRAME_LINE]}></span>
             </span>
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
             <pre
+              tabindex="0"
+              role="region"
+              aria-labelledby="{id}-revealed-title"
               translate="no"
               class="max-h-[320px] min-h-[136px] overflow-auto rounded-pane bg-[linear-gradient(180deg,oklch(1_0_0/0.06),oklch(1_0_0/0.025))] px-5 py-4 font-sans text-lead break-words whitespace-pre-wrap text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.06),0_18px_40px_-18px_oklch(0.05_0.03_275/0.9)] sm:min-h-[160px] sm:px-6 sm:py-5 md:max-h-[360px] md:text-lead-lg">{#if settled && page.marked}{#each page.marked.pieces as piece (piece.key)}{#if piece.hidden}<mark
                       class="mx-px rounded-[4px] bg-rose-500/15 px-1 text-micro text-rose-200 ring-1 ring-rose-300/40"
                       >{piece.text}</mark
-                    >{:else}{piece.text}{/if}{/each}{:else}{page.revealText}{/if}</pre>
+                    >{:else}{piece.text}{/if}{/each}{:else}<span>{page.revealHead}</span>{page.revealRest}{/if}</pre>
             <span
               class={['pointer-events-none absolute inset-0 rounded-pane p-px opacity-45', FRAME_LINE]}
               aria-hidden="true"

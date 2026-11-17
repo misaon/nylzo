@@ -130,7 +130,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': 'página Transparência',
   'terms.other.law':
     'Estes termos e o uso do serviço são regidos pelo direito tcheco, e os litígios são decididos pelos tribunais tchecos competentes. Isso não afeta as normas imperativas do país onde você reside nem o seu direito de propor ação em outro lugar, quando a lei permitir.',
-  'nav.label': 'Navegação principal',
+  'nav.label': 'Principal',
 
   'create.title': 'Nova mensagem',
   'create.text': 'Texto da mensagem',

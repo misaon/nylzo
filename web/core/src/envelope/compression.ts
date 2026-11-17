@@ -31,49 +31,37 @@ export async function decompressAttachment(file: Uint8Array, size: number): Prom
       controller.enqueue(arrayBufferBacked(chunk));
     },
   });
-  const stream = source.pipeThrough(new DecompressionStream('gzip'));
-  const output = await readBounded(stream, size);
-  if (output?.length !== size) {
-    output?.fill(0);
-    throw new PlaintextError();
-  }
-  return output;
+  return readExactly(source.pipeThrough(new DecompressionStream('gzip')), size);
 }
 
-async function readBounded(
-  stream: ReadableStream<Uint8Array>,
-  limit: number,
-): Promise<Uint8Array<ArrayBuffer> | undefined> {
+async function readExactly(stream: ReadableStream<Uint8Array>, size: number): Promise<Uint8Array<ArrayBuffer>> {
   const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
+  const output = new Uint8Array(size);
+  let written = 0;
   try {
     for (;;) {
       const chunk = await reader.read();
       if (chunk.done) {
         break;
       }
-      size += chunk.value.length;
-      if (size > limit) {
+      const end = written + chunk.value.length;
+      if (end > size) {
         chunk.value.fill(0);
         await reader.cancel();
-        return undefined;
+        throw new PlaintextError();
       }
-      chunks.push(chunk.value);
+      output.set(chunk.value, written);
+      chunk.value.fill(0);
+      written = end;
     }
-    const output = new Uint8Array(size);
-    let offset = 0;
-    for (const chunk of chunks) {
-      output.set(chunk, offset);
-      offset += chunk.length;
+    if (written !== size) {
+      throw new PlaintextError();
     }
     return output;
   } catch {
+    output.fill(0);
     throw new PlaintextError();
   } finally {
-    for (const chunk of chunks) {
-      chunk.fill(0);
-    }
     reader.releaseLock();
   }
 }

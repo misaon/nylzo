@@ -95,6 +95,7 @@
     {open}
     from={placement === 'footer' ? 'below' : 'above'}
     onclose={() => (open = false)}
+    ondismiss={() => (open = false)}
     class={[
       'w-max max-w-[calc(100vw-2rem)] p-1.5',
       placement === 'footer' ? 'bottom-full left-0 mb-2 sm:right-0 sm:left-auto' : 'top-full right-0 mt-2',

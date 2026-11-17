@@ -132,7 +132,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': 'página Transparencia',
   'terms.other.law':
     'Estas condiciones y el uso del servicio se rigen por el derecho checo, y los litigios los resuelven los tribunales checos competentes. Ello no afecta a las normas imperativas del país en el que resides ni a tu derecho a demandar en otro lugar cuando la ley lo permita.',
-  'nav.label': 'Navegación principal',
+  'nav.label': 'Principal',
 
   'create.title': 'Nuevo mensaje',
   'create.text': 'Texto del mensaje',

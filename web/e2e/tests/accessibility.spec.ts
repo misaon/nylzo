@@ -189,20 +189,34 @@ test('keyboard focus on the comparison table and the self-host commands draws th
     probe.remove();
     return `solid 2px ${color}`;
   });
-  for (const region of [page.locator('#comparison').getByRole('region'), page.locator('#host-panel')]) {
+  const comparison = page.locator('#comparison').getByRole('region');
+  const host = page.locator('#host-panel');
+  for (const [region, outlined] of [
+    [comparison, comparison.locator('xpath=..')],
+    [host, host],
+  ] as const) {
     await region.focus();
     await page.keyboard.press('Shift+Tab');
     await page.keyboard.press('Tab');
     await expect(region).toBeFocused();
     await expect
       .poll(() =>
-        region.evaluate((element) => {
+        outlined.evaluate((element) => {
           const style = getComputedStyle(element);
           return `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor}`;
         }),
       )
       .toBe(ring);
   }
+});
+
+test('with reduced motion nothing keeps moving on the home page (WCAG 2.3.3)', async ({ page }) => {
+  await openApp(page, '/');
+  await expect
+    .poll(() =>
+      page.evaluate(() => document.getAnimations().filter((animation) => animation.playState === 'running').length),
+    )
+    .toBe(0);
 });
 
 test('with reduced motion the confirmation backdrop appears without a fade (WCAG 2.3.3)', async ({ page }) => {
