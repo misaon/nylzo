@@ -9,6 +9,7 @@ const LISTING_TIMEOUT_MS = 2000;
 const RECHECK_MS = 60 * 60 * 1000;
 
 export interface SentStore {
+  get: (id: string) => Promise<SentRecord | undefined>;
   list: () => Promise<SentRecord[]>;
   put: (record: SentRecord) => Promise<void>;
   remove: (id: string) => Promise<void>;
@@ -102,10 +103,25 @@ export function browserSentStore(
     }
   }
 
+  async function usableRecord(value: unknown): Promise<SentRecord | undefined> {
+    const record = recordFrom(value);
+    const brokenId = record ? undefined : storedId(value);
+    if (brokenId !== undefined) {
+      await withRecords('readwrite', async (records) => requestResult(records.delete(brokenId)));
+    }
+    return record;
+  }
+
   return {
     close() {
       closed = true;
       release();
+    },
+    async get(id) {
+      if (!(await databaseCreated())) {
+        return;
+      }
+      return usableRecord(await withRecords('readonly', async (records) => requestResult<unknown>(records.get(id))));
     },
     async list() {
       if (!(await databaseCreated())) {
@@ -114,12 +130,9 @@ export function browserSentStore(
       const values = await withRecords('readonly', async (records) => requestResult(records.getAll()));
       const kept: SentRecord[] = [];
       for (const value of values) {
-        const record = recordFrom(value);
-        const brokenId = record ? undefined : storedId(value);
+        const record = await usableRecord(value);
         if (record) {
           kept.push(record);
-        } else if (brokenId !== undefined) {
-          await withRecords('readwrite', async (records) => requestResult(records.delete(brokenId)));
         }
       }
       return kept;

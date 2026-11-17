@@ -18,6 +18,12 @@ export function periodStart(timeline: Timeline, index: number): number {
   return timeline.from + index * timeline.resolutionSeconds;
 }
 
+// Hour and day numbers of the same years never meet, so a chart that changes resolution matches no period.
+export function periodNumbers(timeline: Timeline): number[] {
+  const first = Math.round(timeline.from / timeline.resolutionSeconds);
+  return Array.from({ length: timeline.count }, (_, i) => first + i);
+}
+
 function fitting(steps: readonly number[], spacing: number, gap: number): number {
   return steps.find((step) => step * spacing >= gap) ?? steps.at(-1) ?? 1;
 }

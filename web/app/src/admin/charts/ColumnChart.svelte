@@ -4,13 +4,14 @@
   import ChartTooltip from './ChartTooltip.svelte';
   import { bandIndex, steppedIndex } from './geometry/pointer.ts';
   import { groupSeries, niceTicks, sum } from './geometry/scale.ts';
-  import { tweenedNumber, tweenedSeries } from './motion.svelte.ts';
+  import { tweenedLayers, tweenedNumber } from './motion.svelte.ts';
   import { FILLS } from './tones.ts';
   import type { ChartSeries, TooltipRow } from './tones.ts';
 
   interface Props {
     readonly label: string;
     readonly series: readonly ChartSeries[];
+    readonly keys?: readonly number[] | undefined;
     readonly class?: ClassValue;
     readonly hint?: string | undefined;
     readonly formatValue: (value: number) => string;
@@ -31,6 +32,7 @@
   const {
     label,
     series,
+    keys,
     class: className,
     hint,
     formatValue,
@@ -55,7 +57,8 @@
   const totals = $derived(Array.from({ length: groups }, (_, i) => sum(grouped.map((values) => values[i] ?? 0))));
   const scale = $derived(niceTicks(Math.max(0, ...totals)));
   const top = tweenedNumber(() => scale.max);
-  const heights = tweenedSeries(() => grouped.flat());
+  // A group of several periods takes in other periods when the window moves, so only single periods match.
+  const heights = tweenedLayers(() => grouped, { keys: () => (groupSize === 1 ? keys : undefined) });
   const band = $derived(groups === 0 ? 0 : (right - left) / groups);
   const columnWidth = $derived(Math.max(1.5, band * COLUMN_SHARE));
   const shown = $derived(Math.min(active ?? groups - 1, groups - 1));
@@ -86,7 +89,7 @@
   ): { readonly y: number; readonly height: number; readonly tone: string; readonly key: string }[] {
     let base = 0;
     return series.map((entry, layer) => {
-      const value = heights.current[layer * groups + group] ?? 0;
+      const value = heights.current[layer]?.[group] ?? 0;
       const segment = {
         y: yAt(base + value),
         height: Math.max(0, yAt(base) - yAt(base + value) - (base > 0 ? 1.5 : 0)),

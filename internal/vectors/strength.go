@@ -41,6 +41,8 @@ var strengthCases = []Strength{
 	{"six distinct characters repeated", "abcdefabcdefabc", false, keys.PassphraseRepetitive},
 	{"repetition hidden by letter case", "ABCDEFabcdefABC", false, keys.PassphraseRepetitive},
 	{"part of a repetition", "abcdefgabcdefgab", false, keys.PassphraseRepetitive},
+	{"repetition of exactly half the length", "kq7v-xm2pkq7v-xm2p", false, keys.PassphraseRepetitive},
+	{"near repetition that breaks at the end", "qv2z7vmqv2z7vmq2", true, ""},
 	{"alphabet", "abcdefghijklmno", false, keys.PassphraseSequential},
 	{"alphabet backwards", "onmlkjihgfedcba", false, keys.PassphraseSequential},
 	{"digits across zero", "567890123456789", false, keys.PassphraseSequential},

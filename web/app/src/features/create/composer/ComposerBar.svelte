@@ -48,13 +48,13 @@
           class="peer absolute inset-0 z-10 h-full w-full cursor-pointer opacity-0"
           onchange={(event) => composer.pickFile(event.currentTarget.files?.[0])}
           aria-invalid={composer.problemOf.file !== undefined}
-          aria-describedby={noticeId}
+          aria-describedby={composer.problemNotice === '' ? undefined : noticeId}
         />
         <label
           for="{id}-file"
           class={[
             CHIP_LAYOUT,
-            'outline-2 outline-offset-2 outline-transparent peer-hover:bg-white/10 peer-hover:text-ink peer-focus-visible:outline-aegis-300',
+            'outline-offset-2 outline-transparent not-forced-colors:outline-2 peer-hover:bg-white/10 peer-hover:text-ink peer-focus-visible:outline-2 peer-focus-visible:outline-aegis-300',
             attachTone,
           ]}
         >

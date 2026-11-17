@@ -127,7 +127,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': '「透明性」ページ',
   'terms.other.law':
     '本規約および本サービスの利用にはチェコ法が適用され、紛争は管轄権を有するチェコの裁判所が解決します。ただし、お住まいの国の強行規定、および法律が認める場合に他の場所で訴えを提起するあなたの権利は、これによって妨げられません。',
-  'nav.label': 'メインナビゲーション',
+  'nav.label': 'メイン',
 
   'create.title': '新しいメッセージ',
   'create.text': 'メッセージ本文',

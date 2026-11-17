@@ -143,7 +143,7 @@ test(
       }
     }
 
-    const navigation = page.getByRole('navigation', { name: 'Main navigation', exact: true });
+    const navigation = page.getByRole('navigation', { name: 'Main', exact: true });
     for (const fragment of ['how-it-works', 'security', 'resilience', 'comparison']) {
       await expect(navigation.locator(`a[href="#${fragment}"]`)).toBeAttached();
     }

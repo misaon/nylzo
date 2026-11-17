@@ -166,7 +166,7 @@
         <div class="rounded-card well max-sm:p-2">
           <div class="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3 sm:p-2 sm:pl-4">
             <div
-              class="flex min-w-0 flex-1 items-center gap-3 rounded-pane px-2 py-1 text-left outline-2 outline-offset-3 outline-transparent transition has-[input:focus-visible]:outline-aegis-300 sm:p-0"
+              class="flex min-w-0 flex-1 items-center gap-3 rounded-pane px-2 py-1 text-left outline-offset-3 outline-transparent transition not-forced-colors:outline-2 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-aegis-300 sm:p-0"
             >
               <Icon name="lock" class="size-4 shrink-0 text-aegis-300" />
               <div class="relative min-h-11 min-w-0 flex-1">
@@ -294,12 +294,12 @@
           {@attach focus.attach('clipboard')}
           role="status"
           tabindex="-1"
+          data-idle={clipboard === 'untouched' ? '' : undefined}
           class={[
-            'absolute inset-x-0 top-0 flex flex-col items-center justify-center gap-x-3 gap-y-1 fade-swap outline-none max-sm:static max-sm:mt-3 max-sm:overflow-y-clip max-sm:[transition-property:opacity,transform,translate,height,margin-top] max-sm:duration-200 max-sm:[interpolate-size:allow-keywords] max-sm:inert:mt-0 max-sm:inert:h-0 sm:flex-row',
+            'absolute inset-x-0 top-0 flex flex-col items-center justify-center gap-x-3 gap-y-1 fade-swap outline-none max-sm:static max-sm:mt-3 max-sm:overflow-y-clip max-sm:[transition-property:opacity,transform,translate,height,margin-top] max-sm:duration-200 max-sm:[interpolate-size:allow-keywords] max-sm:data-idle:mt-0 max-sm:data-idle:h-0 sm:flex-row',
             clipboard === 'untouched' ? 'pointer-events-none opacity-0' : 'opacity-100',
             clipboard === 'failed' && 'text-rose-300',
           ]}
-          inert={clipboard === 'untouched'}
         >
           <span class="text-pretty">{clipboard === 'untouched' ? '' : clipboardText}</span>
           {#if clipboard === 'copied'}
@@ -361,7 +361,9 @@
           onremember(label, keepChosen);
         }}
       >
-        <label class="flex h-11 min-w-0 flex-1 items-center rounded-control px-3.5 well sm:w-56 sm:flex-none md:h-9">
+        <label
+          class="flex h-11 min-w-0 flex-1 items-center rounded-control px-3.5 well outline-offset-3 outline-transparent transition not-forced-colors:outline-2 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-aegis-300 sm:w-56 sm:flex-none md:h-9"
+        >
           <span class="sr-only">{translate('created.track.label')}</span>
           <input
             type="text"

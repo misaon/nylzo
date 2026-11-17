@@ -424,6 +424,16 @@ describe('read page interactions', () => {
     expect(revokeSavedFiles).toHaveBeenCalledOnce();
   });
 
+  it('forgets an opened message when the device slept past the shown time (D124)', () => {
+    const page = new ReadPage(new Translator('en'));
+    notify({ view: 'revealed', text: 'secret', file, burnable: false, opensRemaining: 0 });
+    const shown = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(shown + (SHOWN_SECONDS + 1) * 1000);
+    page.checkCountdown();
+    expect(reader.clear).toHaveBeenCalledExactlyOnceWith({ view: 'timed_out' });
+    expect(page.revealText).toBeUndefined();
+  });
+
   it('shows metadata and end-state facts in the selected language', () => {
     const translator = new Translator('cs');
     const page = new ReadPage(translator);

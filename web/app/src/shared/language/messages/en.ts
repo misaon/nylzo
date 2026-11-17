@@ -129,7 +129,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': 'Transparency page',
   'terms.other.law':
     'These terms and the use of the service are governed by Czech law, and the competent Czech courts decide disputes. This does not affect the mandatory law of the country where you live or your right to sue elsewhere where the law allows it.',
-  'nav.label': 'Main navigation',
+  'nav.label': 'Main',
 
   'create.title': 'New message',
   'create.text': 'Message text',

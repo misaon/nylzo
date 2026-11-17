@@ -39,7 +39,7 @@ function importMapIntegrity(url: string): string | undefined {
   return typeof value === 'string' ? value : undefined;
 }
 
-async function fetchVerified(): Promise<Blob> {
+async function fetchVerified(priority: RequestPriority): Promise<Blob> {
   const integrity = importMapIntegrity(kdfWorkerUrl);
   if (integrity === undefined && !import.meta.env.DEV) {
     throw new WorkerSourceError('the page names no hash for the key derivation worker');
@@ -48,6 +48,7 @@ async function fetchVerified(): Promise<Blob> {
     ...(integrity !== undefined && { integrity }),
     cache: 'no-store',
     credentials: 'omit',
+    priority,
     redirect: 'error',
     referrerPolicy: 'no-referrer',
     signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
@@ -58,8 +59,8 @@ async function fetchVerified(): Promise<Blob> {
   return new Blob([await response.arrayBuffer()], { type: 'text/javascript' });
 }
 
-async function loadWorkerSource(): Promise<Blob> {
-  verified.source ??= fetchVerified();
+async function loadWorkerSource(priority: RequestPriority = 'auto'): Promise<Blob> {
+  verified.source ??= fetchVerified(priority);
   try {
     return await verified.source;
   } catch (error) {
@@ -68,9 +69,9 @@ async function loadWorkerSource(): Promise<Blob> {
   }
 }
 
-export async function prepareWorker(): Promise<void> {
+export async function prepareWorker(priority: RequestPriority = 'auto'): Promise<void> {
   try {
-    await loadWorkerSource();
+    await loadWorkerSource(priority);
   } catch {}
 }
 

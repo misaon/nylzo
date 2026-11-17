@@ -63,6 +63,7 @@
 <dialog
   class="confirm w-[min(26rem,calc(100vw-2rem))] max-w-none rounded-card p-6 text-center glass-pop"
   aria-labelledby={id}
+  aria-describedby={message ? `${id}-message` : undefined}
   {@attach modal}
   oncancel={() => void report(false)}
   onclose={() => void report(false)}
@@ -78,7 +79,7 @@
   </span>
   <h2 {id} class="mt-4 text-title text-pretty text-ink">{title}</h2>
   {#if message}
-    <p class="mt-1.5 text-body text-pretty text-ink-soft">{message}</p>
+    <p id="{id}-message" class="mt-1.5 text-body text-pretty text-ink-soft">{message}</p>
   {/if}
   <div class="mt-6 grid grid-cols-2 gap-2">
     <Button variant="ghost" onclick={() => void report(false)}>{dismissLabel}</Button>

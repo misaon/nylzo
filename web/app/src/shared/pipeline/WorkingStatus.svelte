@@ -23,6 +23,7 @@
     shown ? 'opacity-100' : 'pointer-events-none opacity-0',
   ]}
   aria-hidden={!shown}
+  data-paused={!shown || undefined}
 >
   <progress class="absolute inset-0 h-full w-full progress-glow" max="1" value={progress} aria-hidden="true"></progress>
   <span

@@ -227,6 +227,7 @@ function statusTemplate(index: string, page: StatusPage, language: Language): st
   html = replaceOnce(html, /<meta\s+name="description"[^>]*>\s*/u, '');
   html = replaceOnce(html, /<title>[^<]*<\/title>/u, head.trim());
   html = replaceOnce(html, MODULE_SCRIPT, '').replaceAll(MODULE_PRELOAD, '');
+  html = fontPreloads(html, language);
   return replaceOnce(html, '<body></body>', `<body>${body}</body>`);
 }
 

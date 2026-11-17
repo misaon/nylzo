@@ -528,9 +528,14 @@ export class Composer {
     this.proving = false;
     this.cipher = cipherText(plain, 0);
     this.phase = 'encrypting';
+    let cipherStep = -1;
     this.timeline.start(() => {
-      this.cipher = cipherText(plain, this.timeline.paced.progress);
-      if (this.timeline.paced.finished && this.#pending) {
+      const { step, progress, finished } = this.timeline.paced;
+      if (!prefersReducedMotion.current || step !== cipherStep) {
+        cipherStep = step;
+        this.cipher = cipherText(plain, progress);
+      }
+      if (finished && this.#pending) {
         this.#finish(this.#pending);
       }
     });

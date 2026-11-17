@@ -109,6 +109,7 @@
   dialog.confirm {
     margin: auto;
     color: var(--color-ink);
+    overscroll-behavior: contain;
     transition:
       opacity 0.3s var(--ease-silk),
       translate 0.3s var(--ease-silk),
@@ -125,6 +126,8 @@
       }
     }
     &::backdrop {
+      overflow: hidden;
+      overscroll-behavior: contain;
       background: oklch(0.08 0.02 275 / 0.7);
       backdrop-filter: blur(6px);
     }

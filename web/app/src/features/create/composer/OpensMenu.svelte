@@ -29,10 +29,10 @@
     <div class="flex items-center justify-between">
       <button
         type="button"
-        disabled={composer.opensMax <= 1}
+        aria-disabled={composer.opensMax <= 1}
         onclick={() => (composer.opensMax = Math.max(1, composer.opensMax - 1))}
         aria-label={translate('compose.opens.less')}
-        class="group/action button-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition disabled:opacity-40 md:size-9"
+        class="group/action button-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition aria-disabled:opacity-40 md:size-9"
       >
         <Icon name="minus" class="size-4 shrink-0" animated />
       </button>
@@ -44,10 +44,10 @@
       </div>
       <button
         type="button"
-        disabled={composer.opensMax >= composer.maxOpens}
+        aria-disabled={composer.opensMax >= composer.maxOpens}
         onclick={() => (composer.opensMax = Math.min(composer.maxOpens, composer.opensMax + 1))}
         aria-label={translate('compose.opens.more')}
-        class="group/action button-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition disabled:opacity-40 md:size-9"
+        class="group/action button-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition aria-disabled:opacity-40 md:size-9"
       >
         <Icon name="plus" class="size-4 shrink-0" animated />
       </button>

@@ -134,7 +134,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': 'pagina Trasparenza',
   'terms.other.law':
     'I presenti termini e l’uso del servizio sono disciplinati dal diritto ceco e le controversie sono decise dai tribunali cechi competenti. Restano salve le norme imperative dello Stato in cui vivi e il tuo diritto di agire in giudizio altrove, ove la legge lo consenta.',
-  'nav.label': 'Navigazione principale',
+  'nav.label': 'Principale',
 
   'create.title': 'Nuovo messaggio',
   'create.text': 'Testo del messaggio',

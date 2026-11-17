@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import { pauseOffscreen } from '../../../shared/ui/reveal/offscreen.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../shared/ui/section/SectionIntro.svelte';
 
@@ -41,7 +42,7 @@
   ] as const;
 </script>
 
-<section id="technology" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="tech-title">
+<section id="technology" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="tech-title" {@attach pauseOffscreen}>
   <div class="mx-auto grid max-w-page gap-x-16 gap-y-12 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] lg:gap-y-10">
     <div class="lg:self-end" {@attach reveal}>
       <SectionIntro id="tech-title" eyebrow={translate('tech.eyebrow')} title={translate('tech.title')} />

@@ -135,7 +135,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': 'page Transparence',
   'terms.other.law':
     'Les présentes conditions et l’utilisation du service sont régies par le droit tchèque, et les litiges relèvent des tribunaux tchèques compétents. Cela ne porte pas atteinte aux dispositions impératives de l’État dans lequel vous résidez ni à votre droit d’agir en justice ailleurs lorsque la loi le permet.',
-  'nav.label': 'Navigation principale',
+  'nav.label': 'Principale',
 
   'create.title': 'Nouveau message',
   'create.text': 'Texte du message',

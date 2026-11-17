@@ -8,6 +8,7 @@
 
   interface Props {
     readonly values: readonly number[];
+    readonly keys?: readonly number[] | undefined;
     readonly tone: Tone;
     readonly overlay?: readonly number[] | undefined;
     readonly maximum?: number | undefined;
@@ -18,11 +19,12 @@
   const HEIGHT = 40;
   const INSET = 3;
 
-  const { values, tone, overlay, maximum, class: className }: Props = $props();
+  const { values, keys, tone, overlay, maximum, class: className }: Props = $props();
   const id = $props.id();
   const top = tweenedNumber(() => maximum ?? Math.max(1, ...values, ...(overlay ?? [])), 700);
-  const main = tweenedSeries(() => values, 700);
-  const second = tweenedSeries(() => overlay ?? [], 700);
+  const motion = { keys: () => keys, onlyLatestChanges: true, milliseconds: 700 };
+  const main = tweenedSeries(() => values, motion);
+  const second = tweenedSeries(() => overlay ?? [], motion);
 
   function points(series: readonly number[]): { x: number; y: number }[] {
     const last = Math.max(1, series.length - 1);

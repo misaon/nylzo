@@ -55,14 +55,12 @@
       <Icon name="arrowRight" class="size-3.5 shrink-0" stroke={2} />
       {translate('compare.hint')}
     </p>
-    <div class="glass mt-4 reveal-rise overflow-hidden rounded-card md:mt-12" {@attach reveal}>
+    <div
+      class="glass mt-4 reveal-rise overflow-hidden rounded-card outline-offset-3 outline-transparent transition-[outline-color] not-forced-colors:outline-2 has-focus-visible:outline-2 has-focus-visible:outline-aegis-300 md:mt-12"
+      {@attach reveal}
+    >
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-      <div
-        class="overflow-x-auto outline-2 -outline-offset-2 outline-transparent transition focus-visible:-outline-offset-2 focus-visible:outline-aegis-300"
-        role="region"
-        aria-labelledby="compare-title"
-        tabindex="0"
-      >
+      <div class="overflow-x-auto outline-none" role="region" aria-labelledby="compare-title" tabindex="0">
         <table
           class="w-full min-w-182 table-fixed border-collapse text-left [--reveal-delay:150ms] [--reveal-step:45ms] md:min-w-0"
         >

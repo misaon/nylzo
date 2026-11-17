@@ -127,7 +127,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': 'stránka Transparentnosť',
   'terms.other.law':
     'Podmienky a\u{A0}používanie služby sa riadia českým právom a\u{A0}o\u{A0}sporoch rozhodujú príslušné české súdy. Tým nie sú dotknuté kogentné predpisy štátu, v\u{A0}ktorom žijete, ani vaše právo žalovať inde, kde to zákon dovoľuje.',
-  'nav.label': 'Hlavná navigácia',
+  'nav.label': 'Hlavná',
 
   'create.title': 'Nová správa',
   'create.text': 'Text správy',

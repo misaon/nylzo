@@ -704,6 +704,12 @@
   }
 }
 
+[data-paused] *,
+[data-paused] *::before,
+[data-paused] *::after {
+  animation-play-state: paused;
+}
+
 @keyframes sheen {
   0%,
   55% {

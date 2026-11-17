@@ -90,6 +90,7 @@
     panelClasses(page.phase === 'ready', page.phase),
   ]}
   inert={page.phase !== 'ready'}
+  data-paused={page.phase !== 'ready' || undefined}
 >
   <span class="relative grid size-20 place-items-center" aria-hidden="true">
     <span
@@ -125,7 +126,7 @@
         >
           <div
             class={[
-              'flex min-w-0 flex-1 items-center gap-3 rounded-pane py-1 pr-1 pl-4 outline-2 outline-offset-3 outline-transparent transition has-[input:focus-visible]:outline-aegis-300 max-sm:well sm:p-0',
+              'flex min-w-0 flex-1 items-center gap-3 rounded-pane py-1 pr-1 pl-4 outline-offset-3 outline-transparent transition not-forced-colors:outline-2 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-aegis-300 max-sm:well sm:p-0',
               passphraseAlert &&
                 'max-sm:shadow-[0_0_24px_-8px_oklch(0.65_0.2_15/0.7)] max-sm:outline-1 max-sm:-outline-offset-1 max-sm:outline-rose-300/70',
             ]}
@@ -139,7 +140,7 @@
               {...privatePassphrase(page.showPassphrase)}
               placeholder={translate('open.passphrase.placeholder')}
               aria-invalid={passphraseAlert !== ''}
-              aria-describedby="{id}-passphrase-hint {id}-passphrase-alert"
+              aria-describedby={passphraseAlert === '' ? `${id}-passphrase-hint` : `${id}-passphrase-alert`}
               oninput={page.typed}
               onkeydown={submitOnEnter}
               class="h-11 min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-mute md:h-10"

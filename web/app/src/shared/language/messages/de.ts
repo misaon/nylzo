@@ -134,7 +134,7 @@ export const messages: Catalog = {
   'terms.other.privacy.link': 'Seite Transparenz',
   'terms.other.law':
     'Für diese Bedingungen und die Nutzung des Dienstes gilt tschechisches Recht, über Streitigkeiten entscheiden die zuständigen tschechischen Gerichte. Davon unberührt bleiben zwingende Vorschriften des Staates, in dem Sie leben, sowie Ihr Recht, an einem anderen Ort zu klagen, wo das Gesetz es erlaubt.',
-  'nav.label': 'Hauptnavigation',
+  'nav.label': 'Hauptmenü',
 
   'create.title': 'Neue Nachricht',
   'create.text': 'Nachrichtentext',

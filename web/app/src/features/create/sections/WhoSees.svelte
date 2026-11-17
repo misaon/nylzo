@@ -1,6 +1,7 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import { pauseOffscreen } from '../../../shared/ui/reveal/offscreen.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../shared/ui/section/SectionIntro.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
@@ -13,7 +14,7 @@
   const LABEL = 'text-eyebrow text-ink-mute uppercase';
 </script>
 
-<section id="security" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="who-title">
+<section id="security" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="who-title" {@attach pauseOffscreen}>
   <div class="mx-auto max-w-page">
     <div class="mx-auto max-w-[640px] text-center" {@attach reveal}>
       <SectionIntro id="who-title" eyebrow={translate('who.eyebrow')} title={translate('who.title')} />

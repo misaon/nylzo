@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Overview, Range } from '../../api/types.ts';
-  import { SECONDS_PER_DAY, timeTicks } from '../../charts/geometry/time.ts';
+  import { periodNumbers, SECONDS_PER_DAY, timeTicks } from '../../charts/geometry/time.ts';
   import ShareBar from '../../charts/ShareBar.svelte';
   import TimeChart from '../../charts/TimeChart.svelte';
   import { SWATCHES } from '../../charts/tones.ts';
@@ -21,6 +21,7 @@
   const { overview, range, loading }: Props = $props();
   const { translate, format } = getDashboardTools();
   const timeline = $derived(timelineOf(overview));
+  const periods = $derived(periodNumbers(timeline));
   const totals = $derived(overview.totals);
 
   // Visitors are counted by the day only, so the hours of a short range have no line of them, and its days are
@@ -81,6 +82,7 @@
       line={daily
         ? { label: translate('dashboard.traffic.visitors'), values: overview.series.visitors, tone: 'visitors' }
         : undefined}
+      keys={periods}
       hint={quiet ? translate('dashboard.empty') : undefined}
       formatValue={format.count}
       formatTick={format.compact}

@@ -2,6 +2,7 @@
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import type { IconName } from '../../../shared/ui/icon/icons.ts';
+  import { pauseOffscreen } from '../../../shared/ui/reveal/offscreen.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
   import { TRUST_LOGO_GRID, TRUST_LOGOS } from './trust-logos.ts';
 
@@ -36,6 +37,7 @@
   aria-label={translate('trust.label')}
   class="relative px-4 pt-20 pb-24 sm:px-6 md:pt-28 md:pb-32"
   {@attach reveal}
+  {@attach pauseOffscreen}
 >
   <svg class="absolute size-0" aria-hidden="true" focusable="false">
     <defs>
