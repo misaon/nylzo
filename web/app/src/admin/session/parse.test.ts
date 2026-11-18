@@ -64,6 +64,7 @@ describe('parseLive', () => {
     usage_supported: true,
     usage: [{ at: 1, processor: -1, load: 0.25, memory_used: 5, memory_total: 0, process_bytes: 7 }],
     refused: [{ client: '2001:db8::/64', country: '', reasons: null, count: 3, first: 1, last: 2 }],
+    refused_version: 4,
   };
 
   it('keeps unknown processor figures negative and reads null reasons as none', () => {
@@ -76,7 +77,9 @@ describe('parseLive', () => {
       memoryTotal: 0,
       processBytes: 7,
     });
-    expect(parsed.refused[0]?.reasons).toEqual({});
+    expect(parsed.refused?.[0]?.reasons).toEqual({});
+    expect(parsed.refusedVersion).toBe(4);
+    expect(parseLive({ ...live, refused: undefined }).refused).toBeUndefined();
     expect(parsed.sessionExpiresAt).toBe(1_700_000_900);
   });
 
