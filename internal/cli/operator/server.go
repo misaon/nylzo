@@ -192,7 +192,7 @@ func openStore(
 	open func(context.Context, string) (*sqlite.Store, error),
 	logger *slog.Logger,
 ) (*sqlite.Store, *disk.Blobs, error) {
-	if err := os.MkdirAll(dataDirectory, 0o700); err != nil {
+	if err := os.MkdirAll(dataDirectory, 0o700); err != nil { //nolint:forbidigo // the server data directory
 		return nil, nil, err
 	}
 	if err := requireErasable([]string{dataDirectory}, development, logger); err != nil {
