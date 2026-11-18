@@ -52,11 +52,11 @@ function header(name: string, size: number, directory: boolean) {
 }
 
 export function archive(sources: Map<string, string>) {
-  const names = [...sources.keys()].sort();
+  const names = [...sources.keys()].toSorted();
   for (const name of names) assert.match(name, /^(manifest|units|[a-z]+\/[A-Za-z0-9.-]+)$/u, `Unexpected bundle path ${name}`);
-  const directories = [...new Set(names.filter(name => name.includes("/")).map(name => name.split("/")[0]!))].sort();
+  const directories = [...new Set(names.filter(name => name.includes("/")).map(name => name.split("/")[0]!))].toSorted();
   const parts: Buffer[] = [];
-  for (const name of [...directories.map(directory => `${directory}/`), ...names].sort()) {
+  for (const name of [...directories.map(directory => `${directory}/`), ...names].toSorted()) {
     if (name.endsWith("/")) {
       parts.push(header(name, 0, true));
       continue;
@@ -70,7 +70,7 @@ export function archive(sources: Map<string, string>) {
 
 if (import.meta.main) {
   const output = process.argv[2];
-  assert(output?.endsWith(".tar"), "Usage: bun tools/deploy/bundle.mts OUTPUT.tar");
+  assert(output !== undefined && output.endsWith(".tar"), "Usage: bun tools/deploy/bundle.mts OUTPUT.tar");
   await mkdir(path.dirname(path.resolve(output)), { recursive: true });
   await writeFile(output, archive(await hostSources()));
   console.log(`Wrote the host bundle to ${output}`);

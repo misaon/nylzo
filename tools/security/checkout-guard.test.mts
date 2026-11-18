@@ -6,7 +6,7 @@ import test from "node:test";
 type Step = { env?: Record<string, string>; run?: string };
 
 const steps = (Bun.YAML.parse(readFileSync(".github/actions/setup/action.yml", "utf8")) as { runs: { steps: Step[] } }).runs.steps;
-const guard = steps.find((step) => step.env?.DEFAULT_BRANCH !== undefined)?.run ?? "";
+const guard = steps.find((step) => step.env?.["DEFAULT_BRANCH"] !== undefined)?.run ?? "";
 
 function checkout(event: string, ref: string) {
   return spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", guard], {

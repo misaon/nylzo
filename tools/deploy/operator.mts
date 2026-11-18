@@ -16,7 +16,7 @@ export async function credential(name: string) {
 }
 
 export async function encryption(root: string) {
-  if (process.env.TF_ENCRYPTION) return process.env.TF_ENCRYPTION;
+  if (process.env["TF_ENCRYPTION"]) return process.env["TF_ENCRYPTION"];
   const passphrase = await privateFile(path.join(root, "state-encryption.key"));
   assert(passphrase.length >= 64);
   return `key_provider "pbkdf2" "operator" { passphrase = ${JSON.stringify(passphrase)} }\nmethod "aes_gcm" "operator" { keys = key_provider.pbkdf2.operator }\nstate {\nmethod = method.aes_gcm.operator\nenforced = true\n}\nplan {\nmethod = method.aes_gcm.operator\nenforced = true\n}`;
@@ -41,6 +41,11 @@ export function client(token: string, service: "hetzner" | "cloudflare" = "hetzn
     assert(response.ok, `${service} API returned HTTP ${response.status}; credential and response contents were omitted`);
     return response.json();
   };
+}
+
+function field(value: unknown, name: string): unknown {
+  if (value === null || value === undefined) throw new TypeError(`The cloud API response holds no ${name}`);
+  return Reflect.get(Object(value), name);
 }
 
 const releaseAsset = (release: string, name: string) => `https://github.com/misaon/nylzo/releases/download/${release}/${name}`;
@@ -81,10 +86,10 @@ export function execute(directory: string, environment: NodeJS.ProcessEnv, argum
 
 // CI keeps OpenTofu state in S3-compatible object storage; the operator laptop keeps it in the private directory.
 export function remoteState(site: string, kind: string, environment: NodeJS.ProcessEnv = process.env) {
-  const bucket = environment.NYLZO_STATE_BUCKET;
+  const bucket = environment["NYLZO_STATE_BUCKET"];
   if (bucket === undefined || bucket === "") return undefined;
-  const endpoint = environment.NYLZO_STATE_ENDPOINT ?? "";
-  const region = environment.NYLZO_STATE_REGION ?? "";
+  const endpoint = environment["NYLZO_STATE_ENDPOINT"] ?? "";
+  const region = environment["NYLZO_STATE_REGION"] ?? "";
   assert.match(bucket, /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/u, "NYLZO_STATE_BUCKET must be an S3 bucket name");
   assert.match(endpoint, /^https:\/\/[a-z0-9.-]{1,253}$/u, "NYLZO_STATE_ENDPOINT must be an https:// origin");
   assert.match(region, /^[a-z0-9-]{2,32}$/u, "NYLZO_STATE_REGION must name the storage region");
@@ -109,10 +114,10 @@ export function remoteState(site: string, kind: string, environment: NodeJS.Proc
 // The newest snapshot that createImage labelled for this Flatcar version and architecture.
 export async function verifiedImage(token: string, version: string, architecture: string) {
   const selector = encodeURIComponent(`nylzo-verified-image=true,nylzo-flatcar-version=${version},nylzo-architecture=${architecture}`);
-  const { images } = await client(token)(`/images?type=snapshot&label_selector=${selector}`);
+  const images = field(await client(token)(`/images?type=snapshot&label_selector=${selector}`), "images");
   assert(Array.isArray(images), "Hetzner returned no image list");
   const available = images.filter((image: any) => image.status === "available" && Number.isSafeInteger(image.id) && image.id > 0)
-    .sort((left: any, right: any) => Date.parse(right.created) - Date.parse(left.created));
+    .toSorted((left: any, right: any) => Date.parse(right.created) - Date.parse(left.created));
   assert(available.length > 0, `No verified Flatcar ${version} ${architecture} image exists; apply the image stack first`);
   return { id: available[0].id as number, version, architecture };
 }
@@ -184,14 +189,14 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
     variables = { account_id: site.cloudflareAccountId, zone: site.dnsZone ?? site.domain, domain: site.domain, ipv4_address: outputs.ipv4_address.value, ipv6_address: outputs.ipv6_address.value, acme_account_uri: site.acmeAccountUri ?? "" };
   }
   await writeFile(path.join(directory, "deployment.auto.tfvars.json"), JSON.stringify(variables), { mode: 0o600 });
-  if (kind === "dns") environment.CLOUDFLARE_API_TOKEN = await credential("CLOUDFLARE_API_TOKEN");
-  else environment.HCLOUD_TOKEN = await credential("HCLOUD_TOKEN");
+  if (kind === "dns") environment["CLOUDFLARE_API_TOKEN"] = await credential("CLOUDFLARE_API_TOKEN");
+  else environment["HCLOUD_TOKEN"] = await credential("HCLOUD_TOKEN");
   return prepared;
 }
 
 const hash = (contents: Uint8Array | string) => createHash("sha256").update(contents).digest("hex");
 export async function inputs(directory: string) {
-  const names = (await readdir(directory)).filter(name => name.endsWith(".tf") || name.endsWith(".tfvars.json") || name === "user-data" || name === ".terraform.lock.hcl").sort();
+  const names = (await readdir(directory)).filter(name => name.endsWith(".tf") || name.endsWith(".tfvars.json") || name === "user-data" || name === ".terraform.lock.hcl").toSorted();
   return hash((await Promise.all(names.map(async name => `${name}:${hash(await readFile(path.join(directory, name)))}`))).join("\n"));
 }
 
@@ -203,10 +208,12 @@ async function waitUntil(read: () => Promise<boolean>, attempts = 120) {
   throw new Error("Cloud operation timed out; inspect its status before retrying");
 }
 
+const recordText = (record: any) => String(record.content ?? "").replace(/^"|"$/gu, "");
+
 export async function importDns(prepared: Awaited<ReturnType<typeof prepare>>) {
   const { site, directory, environment } = prepared;
-  const api = client(environment.CLOUDFLARE_API_TOKEN!, "cloudflare");
-  const { result: zones } = await api(`/zones?name=${site.dnsZone ?? site.domain}`);
+  const api = client(environment["CLOUDFLARE_API_TOKEN"]!, "cloudflare");
+  const zones = field(await api(`/zones?name=${site.dnsZone ?? site.domain}`), "result");
   assert(Array.isArray(zones) && zones.length <= 1, "Ambiguous Cloudflare zone");
   if (zones.length === 0) return;
   const zone = zones[0];
@@ -214,19 +221,18 @@ export async function importDns(prepared: Awaited<ReturnType<typeof prepare>>) {
   assert.match(zone.id, /^[a-f0-9]{32}$/u);
   const imports: [string, string][] = [["cloudflare_zone.zone", zone.id], ["cloudflare_universal_ssl_setting.zone", zone.id]];
   const records = async (name: string, type: string) => {
-    const { result } = await api(`/zones/${zone.id}/dns_records?name=${name}&type=${type}`);
+    const result = field(await api(`/zones/${zone.id}/dns_records?name=${name}&type=${type}`), "result");
     assert(Array.isArray(result));
     return result;
   };
-  const text = (record: any) => String(record.content ?? "").replace(/^"|"$/gu, "");
   const managed: [string, string, string, (record: any) => boolean][] = [
     ['cloudflare_dns_record.addresses["A"]', site.domain, "A", () => true],
     ['cloudflare_dns_record.addresses["AAAA"]', site.domain, "AAAA", () => true],
     ["cloudflare_dns_record.certificate_authority", site.domain, "CAA", record => record.data?.tag === "issue"],
     ["cloudflare_dns_record.no_wildcard_certificates", site.domain, "CAA", record => record.data?.tag === "issuewild"],
     ["cloudflare_dns_record.null_mail_exchanger", site.domain, "MX", () => true],
-    ["cloudflare_dns_record.no_mail_senders", site.domain, "TXT", record => text(record).startsWith("v=spf1")],
-    ["cloudflare_dns_record.reject_spoofed_mail", `_dmarc.${site.domain}`, "TXT", record => text(record).startsWith("v=DMARC1")],
+    ["cloudflare_dns_record.no_mail_senders", site.domain, "TXT", record => recordText(record).startsWith("v=spf1")],
+    ["cloudflare_dns_record.reject_spoofed_mail", `_dmarc.${site.domain}`, "TXT", record => recordText(record).startsWith("v=DMARC1")],
   ];
   if ((site.dnsZone ?? site.domain) === site.domain) managed.push(["cloudflare_dns_record.www[0]", `www.${site.domain}`, "CNAME", () => true]);
   for (const [resource, name, type, selected] of managed) {
@@ -242,31 +248,32 @@ export async function importDns(prepared: Awaited<ReturnType<typeof prepare>>) {
 
 export async function createImage(prepared: Awaited<ReturnType<typeof prepare>>) {
   const { root, directory, environment, site } = prepared;
-  const api = client(environment.HCLOUD_TOKEN!);
+  const api = client(environment["HCLOUD_TOKEN"]!);
   const id = Number(execute(directory, environment, ["output", "-raw", "server_id"], true));
   assert(Number.isSafeInteger(id) && id > 0);
   try {
     await waitUntil(async () => {
-      const { server } = await api(`/servers/${id}`);
-      assert.equal(server.labels.purpose, "image-builder");
-      assert.equal(server.name, `${site.name}-image-builder`);
-      assert.equal(server.server_type.architecture, site.architecture === "amd64" ? "x86" : "arm");
-      return server.status === "off";
+      const server = field(await api(`/servers/${id}`), "server");
+      assert.equal(field(field(server, "labels"), "purpose"), "image-builder");
+      assert.equal(field(server, "name"), `${site.name}-image-builder`);
+      assert.equal(field(field(server, "server_type"), "architecture"), site.architecture === "amd64" ? "x86" : "arm");
+      return field(server, "status") === "off";
     });
     const created = await api(`/servers/${id}/actions/create_image`, {
       type: "snapshot", description: `Nylzo verified Flatcar ${toolchain.flatcar} ${site.architecture}`,
       labels: { "nylzo-verified-image": "true", "nylzo-flatcar-version": toolchain.flatcar, "nylzo-architecture": site.architecture },
     });
-    assert(Number.isSafeInteger(created.image.id) && created.image.id > 0);
+    const imageId = field(field(created, "image"), "id");
+    assert(typeof imageId === "number" && Number.isSafeInteger(imageId) && imageId > 0);
     await waitUntil(async () => {
-      const { image } = await api(`/images/${created.image.id}`);
-      if (image.status === "creating") return false;
-      assert.equal(image.status, "available");
-      assert.equal(image.type, "snapshot");
+      const image = field(await api(`/images/${imageId}`), "image");
+      if (field(image, "status") === "creating") return false;
+      assert.equal(field(image, "status"), "available");
+      assert.equal(field(image, "type"), "snapshot");
       return true;
     });
-    await writeFile(path.join(root, "image.json"), JSON.stringify({ id: created.image.id, version: toolchain.flatcar, architecture: site.architecture, builder: id, created: new Date().toISOString(), signingKey: "F88CFEDEFF29A5B4D9523864E25D9AED0593B34A", factoryInputs: await inputs(directory) }), { mode: 0o600 });
-    console.log(`Verified Flatcar image ${created.image.id} is ready.`);
+    await writeFile(path.join(root, "image.json"), JSON.stringify({ id: imageId, version: toolchain.flatcar, architecture: site.architecture, builder: id, created: new Date().toISOString(), signingKey: "F88CFEDEFF29A5B4D9523864E25D9AED0593B34A", factoryInputs: await inputs(directory) }), { mode: 0o600 });
+    console.log(`Verified Flatcar image ${imageId} is ready.`);
   } finally {
     execute(directory, environment, ["destroy", "-auto-approve", "-input=false"]);
   }

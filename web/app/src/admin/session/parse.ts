@@ -2,7 +2,7 @@ import { ResponseError } from '../../shared/api/api-errors.ts';
 import { integer, isObject, text } from '../../shared/api/responses.ts';
 import type { Json } from '../../shared/api/responses.ts';
 import { RANGES, TIMELINE_METRICS } from '../api/types.ts';
-import type { Live, Overview, Range, RefusedClient, Share, TimelineMetric, UsagePoint } from '../api/types.ts';
+import type { LiveUpdate, Overview, Range, RefusedClient, Share, TimelineMetric, UsagePoint } from '../api/types.ts';
 
 function objectAt(json: Json, key: string): Json {
   const value = json[key];
@@ -149,7 +149,7 @@ function refusedClient(entry: unknown): RefusedClient {
   };
 }
 
-export function parseLive(json: Json): Live {
+export function parseLive(json: Json): LiveUpdate {
   const usageSupported = json['usage_supported'];
   if (typeof usageSupported !== 'boolean') {
     throw new ResponseError('field usage_supported is not a boolean');
@@ -161,6 +161,7 @@ export function parseLive(json: Json): Live {
     sessionExpiresAt: integer(json, 'session_expires_at'),
     usageSupported,
     usage: listAt(json, 'usage').map((entry) => usagePoint(entry)),
-    refused: listAt(json, 'refused').map((entry) => refusedClient(entry)),
+    refused: json['refused'] === undefined ? undefined : listAt(json, 'refused').map((entry) => refusedClient(entry)),
+    refusedVersion: json['refused_version'] === undefined ? undefined : integer(json, 'refused_version'),
   };
 }

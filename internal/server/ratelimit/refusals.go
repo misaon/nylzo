@@ -29,6 +29,7 @@ type Refused struct {
 type Refusals struct {
 	mutex   sync.Mutex
 	clients map[netip.Prefix]*Refused
+	version int64
 }
 
 func NewRefusals() *Refusals {
@@ -58,6 +59,14 @@ func (r *Refusals) Note(address netip.Addr, reason string, now time.Time) {
 	entry.Reasons[reason]++
 	entry.Count++
 	entry.Last = now
+	r.version++
+}
+
+// Version changes with every change of the list, so a reader that holds the list of a version need not fetch it again.
+func (r *Refusals) Version() int64 {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+	return r.version
 }
 
 // List copies the entries, the latest refusal first.
@@ -79,13 +88,18 @@ func (r *Refusals) List() []Refused {
 func (r *Refusals) Purge(now time.Time) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
+	held := len(r.clients)
 	r.clients = Rebuilt(r.clients, func(entry *Refused) bool { return now.Sub(entry.Last) < refusalMemory })
+	if len(r.clients) != held {
+		r.version++
+	}
 }
 
 func (r *Refusals) Reset() {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	r.clients = make(map[netip.Prefix]*Refused)
+	r.version++
 }
 
 func (r *Refusals) dropOldest() {

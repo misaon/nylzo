@@ -18,7 +18,7 @@ test("boot health rejects missing host isolation, kernel policy, host firewall, 
     const settings = join(directory, "host.env");
     writeFileSync(settings, "PUBLIC_ACCESS=true\n");
     const absent = join(directory, "absent");
-    const run = (input: any, storage: Record<string, string> = {}) => spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/host-policy")], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, POLICY_STATE: JSON.stringify(input), NYLZO_RUNTIME_PROFILE: resolve("deploy/hetzner-flatcar/host/system/runtime.json"), NYLZO_HOST_SETTINGS: settings, NYLZO_TANG_CONFIGURATION: absent, NYLZO_STORAGE_IMAGE: absent, ...storage } });
+    const run = (input: any, storage: Record<string, string> = {}) => spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/host-policy")], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env["PATH"]}`, POLICY_STATE: JSON.stringify(input), NYLZO_RUNTIME_PROFILE: resolve("deploy/hetzner-flatcar/host/system/runtime.json"), NYLZO_HOST_SETTINGS: settings, NYLZO_TANG_CONFIGURATION: absent, NYLZO_STORAGE_IMAGE: absent, ...storage } });
     assert.equal(run(state).status, 0);
     assert.equal(run({ ...state, versions: "Engine=29.10.0\ncontainerd=v2.5.0\nrunc=1.6.0" }).status, 0);
     const changes = [

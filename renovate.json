@@ -261,6 +261,16 @@
       "enabled": false
     },
     {
+      "description": "whatwg-url 0.8.0 renamed its module to github.com/nationallibraryofnorway/whatwg-url, and go-urlpattern in the Caddy module still imports the old path.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchPackageNames": [
+        "github.com/nlnwa/whatwg-url"
+      ],
+      "allowedVersions": "<0.8.0"
+    },
+    {
       "description": "Only maintenance branches still pin the official Caddy image in Compose.",
       "matchBaseBranches": [
         "main"

@@ -12,6 +12,7 @@ const metadata = '[[ "$(curl --fail --silent --max-time 3 http://169.254.169.254
 if (!contents.includes(metadata)) throw new Error("Installer identity check changed; review the VM fixture");
 script.contents.source = "data:;base64," + gzipSync(contents.replace(metadata, '[[ "$EXPECTED_BUILDER_NAME" = "nylzo-test-image-builder" ]]')).toString("base64");
 const unit = installer.systemd.units[0]!;
+if (!("contents" in unit)) throw new Error("The installer unit has no contents; review the VM fixture");
 unit.contents = unit.contents.replace("[Service]\n", "[Service]\nStandardOutput=journal+console\nStandardError=journal+console\n");
 installer.systemd.units.push({ name: "nylzo-image-debug.service", enabled: true, contents: "[Unit]\nAfter=nylzo-image-install.service\n[Service]\nType=oneshot\nExecStart=/usr/bin/journalctl --no-pager -b -u nylzo-image-install.service\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n[Install]\nWantedBy=multi-user.target\n" } as any);
 const destination = `${process.argv[3]}/usr/share/oem`;

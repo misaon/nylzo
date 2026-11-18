@@ -107,7 +107,7 @@ func TestStoreCheckPassesAReleaseAndWritesNothing(t *testing.T) {
 }
 
 func TestStoreCheckRefusesWhatServeRefuses(t *testing.T) {
-	for _, version := range []int{4, 6, 9} {
+	for _, version := range []int{4, 6, 8, 10} {
 		t.Run(fmt.Sprintf("schema %d", version), func(t *testing.T) {
 			directory := t.TempDir()
 			database, err := sql.Open("sqlite", "file:"+filepath.Join(directory, "nylzo.db"))

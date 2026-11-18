@@ -47,7 +47,7 @@ for (const [name, contents] of sources) {
 const { ignition } = await render(site, sources);
 const decode = (file: any) => gunzipSync(Buffer.from(file.contents.source.split(",")[1], "base64")).toString();
 const replace = (filename: string, contents: string) => {
-  const file = ignition.storage.files.find(file => file.path === filename)!;
+  const file = ignition.storage.files.find(candidate => candidate.path === filename)!;
   file.contents.source = "data:;base64," + gzipSync(contents).toString("base64");
 };
 const environment = ignition.storage.files.find(file => file.path === "/etc/nylzo/service.env")!;
@@ -68,5 +68,6 @@ ignition.systemd.units.push({ name: "nylzo-vm-debug.timer", enabled: true, conte
 // Without default dependencies a failure before sysinit.target cannot pull that target, and with it the failed unit, back in.
 ignition.systemd.units.push({ name: "nylzo-vm-failure.service", enabled: false, contents: "[Unit]\nDefaultDependencies=no\n[Service]\nType=oneshot\nExecStart=/usr/bin/journalctl --no-pager -b -n 150 -u nylzo* -u caddy -u docker\nExecStart=/usr/bin/systemctl --no-block poweroff\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n" });
 const host = ignition.systemd.units.find(unit => unit.name === "nylzo-host.service")!;
+if (!("contents" in host)) throw new Error("nylzo-host.service has no contents; review the VM fixture");
 host.contents = host.contents.replace("[Service]\n", "[Service]\nStandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n") + "\n[Unit]\nOnFailure=nylzo-vm-failure.service\n";
 await writeFile(process.argv[3]!, JSON.stringify(ignition));

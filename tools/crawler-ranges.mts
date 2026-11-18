@@ -190,16 +190,16 @@ export function crawlerList(
 ): { list: CrawlerList; kept: Kept[] } {
   const kept: Kept[] = [];
   const perSource = sources.map((source, index) => {
-    const download = downloads[index]!;
+    const attempt = downloads[index]!;
     try {
-      if ("document" in download) {
-        return ordered(rangesOf(download.document, source.families, dropped));
+      if ("document" in attempt) {
+        return ordered(rangesOf(attempt.document, source.families, dropped));
       }
       const previous = committedRanges(committed, source.url);
       if (previous === undefined) {
-        throw new Error(`${download.failure}, and the committed list holds no ranges of it to keep`);
+        throw new Error(`${attempt.failure}, and the committed list holds no ranges of it to keep`);
       }
-      kept.push({ url: source.url, failure: download.failure });
+      kept.push({ url: source.url, failure: attempt.failure });
       return ordered(rangesOf(asDocument(previous), source.families, dropped));
     } catch (error) {
       throw new Error(`${source.url}: ${message(error)}`, { cause: error });
@@ -219,9 +219,10 @@ export function crawlerList(
   return { list, kept };
 }
 
+const strings = (entry: unknown): entry is string[] => Array.isArray(entry) && entry.every((item) => typeof item === "string");
+
 export function readCrawlerList(text: string): CrawlerList {
   const value: unknown = JSON.parse(text);
-  const strings = (entry: unknown): entry is string[] => Array.isArray(entry) && entry.every((item) => typeof item === "string");
   const listed = typeof value === "object" && value !== null ? value : {};
   const ranges: unknown = Reflect.get(listed, "sources");
   const prefixes: unknown = Reflect.get(listed, "prefixes");
@@ -239,11 +240,12 @@ function coverage(prefixes: readonly string[]): { prefixes: bigint; ipv4Addresse
   return { prefixes: BigInt(prefixes.length), ipv4Addresses };
 }
 
+const keepsEnough = (share: bigint, whole: bigint) => share * 10n >= whole * fewestShareInTenths;
+
 function shrunk(subject: string, committed: readonly string[], refreshed: readonly string[]): string[] {
   const before = coverage(committed);
   const after = coverage(refreshed);
-  const kept = (share: bigint, whole: bigint) => share * 10n >= whole * fewestShareInTenths;
-  if (kept(after.prefixes, before.prefixes) && kept(after.ipv4Addresses, before.ipv4Addresses)) {
+  if (keepsEnough(after.prefixes, before.prefixes) && keepsEnough(after.ipv4Addresses, before.ipv4Addresses)) {
     return [];
   }
   return [

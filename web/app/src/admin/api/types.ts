@@ -100,3 +100,9 @@ export interface Live {
   /** Clients a limit refused within the last hour, latest first. */
   readonly refused: readonly RefusedClient[];
 }
+
+/** One answer of the live route: the usage samples after the newest the page holds, the refused clients only when they changed. */
+export interface LiveUpdate extends Omit<Live, 'refused'> {
+  readonly refused: readonly RefusedClient[] | undefined;
+  readonly refusedVersion: number | undefined;
+}

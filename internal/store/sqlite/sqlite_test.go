@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -81,7 +82,7 @@ func newRecord(opens uint16, passphrase bool) *store.Record {
 		message.KDF = 3
 	}
 	message.Registration = testRegistration
-	message.RegistrationPepperID = 7
+	message.RegistrationPepperID = pepper.ID{7}
 	record := store.NewRecord(
 		seal.NewKey(),
 		seal.LocatorOf(id[:]),
@@ -114,7 +115,7 @@ func claimParameters(now time.Time) store.ClaimParameters {
 	return store.ClaimParameters{
 		Clock:         func() time.Time { return now },
 		LeaseMAC:      core.NewSecret()[:],
-		LeasePepperID: 7,
+		LeasePepperID: pepper.ID{7},
 	}
 }
 

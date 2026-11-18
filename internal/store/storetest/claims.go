@@ -222,6 +222,36 @@ func (f *fixture) takeBackRestoresOnlyItsOwnWait() {
 	}
 }
 
+// Two handshakes of one reader count the fifth and the sixth attempt; when the fifth one's KE3 matches first, the count
+// is back within the free attempts, so the wait that the sixth set goes.
+func (f *fixture) takeBackDropsAWaitTheCountNoLongerReaches() {
+	t := f.t
+	created := f.create(1, oneDay, false)
+	for range store.FreeAttempts - 1 {
+		if _, _, err := f.attempt(created, baseTime); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fifth, _, err := f.attempt(created, baseTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sixth, status, err := f.attempt(created, baseTime)
+	if err != nil || status.RetryAfter == 0 {
+		t.Fatalf("the sixth handshake sets a wait: %+v %v", status, err)
+	}
+	f.takeBack(created, fifth, baseTime)
+	if record := f.get(created); record.Message.FailCountTotal != store.FreeAttempts ||
+		!record.Message.NextAttemptAt.IsZero() {
+		t.Fatalf("a wait outlived the count that set it: %+v", record.Message)
+	}
+	f.takeBack(created, sixth, baseTime)
+	if record := f.get(created); record.Message.FailCountTotal != store.FreeAttempts-1 ||
+		!record.Message.NextAttemptAt.IsZero() {
+		t.Fatalf("after both KE3s: %+v", record.Message)
+	}
+}
+
 func (f *fixture) endedMessagesCountNoAttempt() {
 	t := f.t
 	created := f.create(1, oneDay, true)

@@ -6,9 +6,11 @@ import { request } from "node:https";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
 import { readHostStatus, requireClientAuthentication, validateHostStatus } from "../security/monitor-host.mts";
 
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
+const lookup = (_: string, options: any, callback: any) => options.all ? callback(null, [{ address: "127.0.0.1", family: 4 }]) : callback(null, "127.0.0.1", 4);
 const docker = (...args: string[]) => execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000 });
 
 test("Caddy serves host status only to the pinned mTLS identity, isolated from the public listener", { skip: !available, timeout: 600000 }, async () => {
@@ -57,30 +59,29 @@ test("Caddy serves host status only to the pinned mTLS identity, isolated from t
     status(healthy);
     let ca = "";
     for (let attempt = 0; attempt < 40; attempt++) {
-      try { ca = docker("exec", name, "cat", "/data/caddy/pki/authorities/local/root.crt"); break; } catch { await new Promise(resolve => setTimeout(resolve, 250)); }
+      try { ca = docker("exec", name, "cat", "/data/caddy/pki/authorities/local/root.crt"); break; } catch { await sleep(250); }
     }
     const diagnostic = ca ? "" : spawnSync("docker", ["logs", name], { encoding: "utf8", timeout: 10000 });
     assert(ca, typeof diagnostic === "string" ? diagnostic : diagnostic.stdout + diagnostic.stderr);
     const ports = JSON.parse(docker("inspect", name))[0].NetworkSettings.Ports;
     const publicPort = ports["14443/tcp"][0].HostPort;
     const monitorPort = ports["8443/tcp"][0].HostPort;
-    const raw = (port: string, identity = {}, path = "/healthz", host = "nylzo.test") => new Promise<{ status: number; text: string }>((resolve, reject) => {
+    const raw = (port: string, identity = {}, path = "/healthz", host = "nylzo.test") => new Promise<{ status: number; text: string }>((fulfill, reject) => {
       const outgoing = request({ hostname: "127.0.0.1", port, servername: "nylzo.test", path, headers: { host }, ca, ...identity, agent: false }, response => {
-        let text = ""; response.on("data", chunk => text += chunk); response.on("error", reject); response.on("end", () => resolve({ status: response.statusCode!, text }));
+        let text = ""; response.on("data", chunk => text += chunk); response.on("error", reject); response.on("end", () => fulfill({ status: response.statusCode!, text }));
       });
       outgoing.setTimeout(10000, () => outgoing.destroy(new Error("TLS fixture timed out")));
       outgoing.on("error", reject); outgoing.end();
     });
     let publicResponse;
     for (let attempt = 0; attempt < 40; attempt++) {
-      try { publicResponse = await raw(publicPort); break; } catch { await new Promise(resolve => setTimeout(resolve, 250)); }
+      try { publicResponse = await raw(publicPort); break; } catch { await sleep(250); }
     }
     assert.deepEqual(publicResponse, { status: 200, text: "public application" });
     await assert.rejects(raw(monitorPort));
     await assert.rejects(raw(monitorPort, foreign));
     assert.equal((await raw(monitorPort, { cert: publicClient, key }, "/not-a-status-route")).status, 404);
     assert.equal((await raw(monitorPort, { cert: publicClient, key }, "/healthz", "other.test")).status, 421);
-    const lookup = (_: string, options: any, callback: any) => options.all ? callback(null, [{ address: "127.0.0.1", family: 4 }]) : callback(null, "127.0.0.1", 4);
     const url = new URL(`https://nylzo.test:${monitorPort}/healthz`);
     await assert.rejects(readHostStatus(url, { cert: publicClient, key }, { lookup }), "The client must verify server trust");
     await assert.rejects(requireClientAuthentication(url, { lookup }), "A server trust failure is not proof of client authentication");
