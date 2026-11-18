@@ -4,7 +4,6 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { verifyDeepmergePatch } from '../web-install/deepmerge-patch.ts';
 import { assessSourceDependencies, npmLockfiles, scannedLockfiles } from './assessment.ts';
 import { collectGoImports } from './go-imports.ts';
 import { arrayAt, objectAt } from './json-values.ts';
@@ -25,7 +24,6 @@ mkdirSync(reportDirectory, { recursive: true });
 
 const release = requestedRelease();
 const policy = parseScaPolicy(readJson(path.join(repositoryRoot, 'security/sca-policy.json')));
-const patchEvidence = [verifyDeepmergePatch()];
 const scannedLicenses = [...policy.allowedLicenses, ...policy.toolingAllowedLicenses].filter(
   (license) => !license.includes(' OR '),
 );
@@ -53,8 +51,7 @@ const npmRuntime = Object.fromEntries(
 writeJson(path.join(reportDirectory, 'npm-runtime.json'), npmRuntime);
 
 const now = new Date();
-const statements = assessSourceDependencies(report, policy, imports, now, patchEvidence, npmRuntime);
-writeJson(path.join(reportDirectory, 'patch-evidence.json'), patchEvidence);
+const statements = assessSourceDependencies(report, policy, imports, now, npmRuntime);
 
 const commit = git('rev-parse', 'HEAD');
 assert.match(commit, /^[\da-f]{40}$/u, 'HEAD must be a full commit hash');

@@ -8,7 +8,7 @@ type Assessment = { id: string; lockfile: string; reviewUntil: string };
 type IgnoredVulnerability = { id: string; ignoreUntil: Temporal.Instant };
 
 const root = join(import.meta.dirname, "../..");
-const policy = JSON.parse(readFileSync(join(root, "security/sca-policy.json"), "utf8")) as { fixed: Assessment[]; notAffected: Assessment[] };
+const policy = JSON.parse(readFileSync(join(root, "security/sca-policy.json"), "utf8")) as { notAffected: Assessment[] };
 
 function ignoredIn(file: string): string[] {
   const { IgnoredVulns = [] } = Bun.TOML.parse(readFileSync(join(root, file), "utf8")) as { IgnoredVulns?: IgnoredVulnerability[] };
@@ -17,7 +17,7 @@ function ignoredIn(file: string): string[] {
 
 test("Scorecard ignores exactly the vulnerabilities the SCA policy assessed, until their review dates", () => {
   const expected = new Map<string, string[]>();
-  for (const assessment of [...policy.fixed, ...policy.notAffected]) {
+  for (const assessment of policy.notAffected) {
     const file = join(dirname(assessment.lockfile), "osv-scanner.toml");
     expected.set(file, [...(expected.get(file) ?? []), `${assessment.id} until ${Temporal.Instant.from(assessment.reviewUntil).toString()}`].sort());
   }

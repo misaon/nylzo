@@ -11,7 +11,7 @@ const repositoryRoot = path.resolve(import.meta.dirname, '../..');
 const workspaces = ['web', 'automation'];
 
 export function assessedAdvisories(policy: ScaPolicy, lockfile: string, now: Date): string[] {
-  return [...policy.fixed, ...policy.notAffected]
+  return policy.notAffected
     .filter((assessment) => assessment.lockfile === lockfile && Date.parse(assessment.reviewUntil) > now.getTime())
     .map((assessment) => assessment.id);
 }
