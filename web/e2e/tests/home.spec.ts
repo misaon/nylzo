@@ -32,7 +32,7 @@ for (const home of HOMES) {
     const image = /<meta property="og:image" content="([^"]+)">/u.exec(html)?.[1] ?? '';
     expect(image.startsWith(`${BASE_URL}/assets/`)).toBe(true);
     const preview = await request.get(image);
-    expect(preview.headers()['content-type']).toBe('image/png');
+    expect(preview.headers()['content-type']).toBe('image/jpeg');
     const structured = /<script type="application\/ld\+json">([^<]+)<\/script>/u.exec(html)?.[1] ?? '';
     const graph = (JSON.parse(structured) as { '@graph': { '@type': string; url?: string; logo?: string }[] })[
       '@graph'

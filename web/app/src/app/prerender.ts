@@ -184,7 +184,7 @@ function seoHead(language: Language, image: OgImage, logo: string): string {
     `<link rel="alternate" hreflang="x-default" href="${absolute(homePath(DEFAULT_LANGUAGE))}">`,
     meta('og:url', absolute(homePath(language))),
     meta('og:image', absolute(image.path)),
-    meta('og:image:type', 'image/png'),
+    meta('og:image:type', 'image/jpeg'),
     meta('og:image:width', String(image.width)),
     meta('og:image:height', String(image.height)),
     meta('og:image:alt', translate('seo.image')),

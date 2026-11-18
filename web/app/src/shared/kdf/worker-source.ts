@@ -25,7 +25,7 @@ const workerPolicy =
         },
       });
 
-const verified: { source?: Promise<Blob> } = {};
+const verified: { source?: Promise<Blob>; failed?: true } = {};
 
 function importMapIntegrity(url: string): string | undefined {
   const map = document.querySelector('script[type="importmap"]')?.textContent;
@@ -46,7 +46,8 @@ async function fetchVerified(priority: RequestPriority): Promise<Blob> {
   }
   const response = await fetch(kdfWorkerUrl, {
     ...(integrity !== undefined && { integrity }),
-    cache: 'no-store',
+    // An immutable cache entry that failed its check would fail every later start too.
+    cache: verified.failed ? 'reload' : 'default',
     credentials: 'omit',
     priority,
     redirect: 'error',
@@ -65,6 +66,7 @@ async function loadWorkerSource(priority: RequestPriority = 'auto'): Promise<Blo
     return await verified.source;
   } catch (error) {
     delete verified.source;
+    verified.failed = true;
     throw error;
   }
 }

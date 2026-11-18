@@ -20,7 +20,7 @@ const INDEX = `<!doctype html>
 <body></body>
 </html>
 `;
-const IMAGE = { path: '/assets/og-image-a1.png', width: 1200, height: 630 };
+const IMAGE = { path: '/assets/og-image-a1.jpg', width: 1200, height: 630 };
 const ASSETS = { image: IMAGE };
 const WITH_CZECH_LETTERS = new Set(['cs', 'sk']);
 const WITH_EXTENDED_LETTERS = new Set(['pl', 'sk']);

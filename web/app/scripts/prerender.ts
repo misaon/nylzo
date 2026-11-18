@@ -24,14 +24,23 @@ function hashedName(prefix: string, extension: string, data: Buffer | string): s
   return `${prefix}-${createHash('sha256').update(data).digest('base64url').slice(0, 8)}.${extension}`;
 }
 
-const imageFile = readFileSync(path.join(root, 'icons/og-image.png'));
-const imageName = hashedName('og-image', 'png', imageFile);
+function jpegSize(data: Buffer): { readonly width: number; readonly height: number } {
+  for (let offset = 2; offset + 9 <= data.length; offset += 2 + data.readUInt16BE(offset + 2)) {
+    const marker = data.readUInt8(offset + 1);
+    if (data.readUInt8(offset) !== 0xff) {
+      break;
+    }
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { height: data.readUInt16BE(offset + 5), width: data.readUInt16BE(offset + 7) };
+    }
+  }
+  throw new Error('og-image.jpg has no frame header');
+}
+
+const imageFile = readFileSync(path.join(root, 'icons/og-image.jpg'));
+const imageName = hashedName('og-image', 'jpg', imageFile);
 writeFileSync(path.join(assets, imageName), imageFile);
-const image = {
-  path: `/assets/${imageName}`,
-  width: imageFile.readUInt32BE(16),
-  height: imageFile.readUInt32BE(20),
-};
+const image = { path: `/assets/${imageName}`, ...jpegSize(imageFile) };
 
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- This module was generated from our typed prerender entry point by the preceding Vite SSR build.
 const prerender = (await import(pathToFileURL(path.join(root, '.prerender/prerender.js')).href)) as Prerender;

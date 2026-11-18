@@ -36,7 +36,7 @@ func previewHTML(language language, publicURL, image string) string {
 func previewPages(publicURL string, assets map[string]Asset) map[string][]byte {
 	image := ""
 	for _, name := range slices.Sorted(maps.Keys(assets)) {
-		if strings.HasPrefix(name, "og-image-") && strings.HasSuffix(name, ".png") {
+		if strings.HasPrefix(name, "og-image-") && strings.HasSuffix(name, ".jpg") {
 			image = name
 			break
 		}
