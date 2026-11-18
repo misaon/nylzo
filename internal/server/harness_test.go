@@ -1045,7 +1045,7 @@ func (m *testMessage) register() error {
 	if err != nil {
 		return err
 	}
-	serverKeys, _, err := testRing.OPAQUEKeys(m.id[:], testRing.CurrentID())
+	serverKeys, err := testRing.OPAQUEKeys(m.id[:], testRing.CurrentID())
 	if err != nil {
 		return err
 	}

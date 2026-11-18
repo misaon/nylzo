@@ -105,16 +105,12 @@ type openLink struct {
 	kdf        core.KDF
 	secret     [core.SecretLen]byte
 	objectHash [core.ObjectHashLen]byte
-	keys       linkKeys
-}
-
-type linkKeys struct {
-	R [core.SeedLen]byte
+	readSeed   [core.SeedLen]byte
 }
 
 func (l *openLink) wipe() {
 	clear(l.secret[:])
-	clear(l.keys.R[:])
+	clear(l.readSeed[:])
 }
 
 func parseOpenLink(raw string) (openLink, error) {
@@ -143,7 +139,7 @@ func parseOpenLink(raw string) (openLink, error) {
 		objectHash: parsed.ObjectHash,
 	}
 	parsed.Wipe()
-	if link.keys.R, err = keys.DeriveRead(link.id, &link.secret); err != nil {
+	if link.readSeed, err = keys.DeriveRead(link.id, &link.secret); err != nil {
 		link.wipe()
 		return openLink{}, err
 	}
@@ -337,7 +333,7 @@ func acknowledge(
 	link *openLink,
 	lease string,
 ) {
-	if err := server.Ack(ctx, link.id, &link.keys.R, lease); err != nil && !client.IsKind(err, api.ErrorGone) {
+	if err := server.Ack(ctx, link.id, &link.readSeed, lease); err != nil && !client.IsKind(err, api.ErrorGone) {
 		fmt.Fprintf(
 			environment.Stderr,
 			"%s: warning: the server did not confirm the read; it frees the message when the lease ends\n",
@@ -384,7 +380,7 @@ func unlockClaim(
 	link *openLink,
 	source passphraseSource,
 ) (*unlockedClaim, error) {
-	metadata, err := server.Metadata(ctx, link.id, &link.keys.R)
+	metadata, err := server.Metadata(ctx, link.id, &link.readSeed)
 	if err != nil {
 		return nil, err
 	}
@@ -685,7 +681,7 @@ func handshake(ctx context.Context, server *client.Client, link *openLink, passw
 	secretmode.Do(func() {
 		var config opaque.Config
 		if config, err = keys.OPAQUEConfig(link.id, link.kdf); err == nil {
-			login, err = server.LogIn(ctx, link.id, &link.keys.R, link.kdf, password, &config)
+			login, err = server.LogIn(ctx, link.id, &link.readSeed, link.kdf, password, &config)
 		}
 	})
 	return login, err
@@ -716,7 +712,7 @@ func fetchEnvelope(
 	login *client.Login,
 	size int64,
 ) (client.Envelope, string, error) {
-	claimed, err := server.Claim(ctx, link.id, &link.keys.R, login, size)
+	claimed, err := server.Claim(ctx, link.id, &link.readSeed, login, size)
 	if err == nil {
 		return claimed.Envelope, claimed.Lease, nil
 	}
@@ -724,7 +720,7 @@ func fetchEnvelope(
 		return client.Envelope{}, "", err
 	}
 	for range blobRetries {
-		fetched, blobErr := server.Blob(ctx, link.id, &link.keys.R, claimed.Lease, size)
+		fetched, blobErr := server.Blob(ctx, link.id, &link.readSeed, claimed.Lease, size)
 		if blobErr == nil {
 			return fetched, claimed.Lease, nil
 		}
