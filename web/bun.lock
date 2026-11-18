@@ -81,9 +81,6 @@
     },
   },
   "trustedDependencies": [],
-  "patchedDependencies": {
-    "deepmerge@4.3.1": "patches/deepmerge@4.3.1.patch",
-  },
   "overrides": {
     "eslint": "10.14.0",
     "minimatch": "11.0.8",
