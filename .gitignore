@@ -43,7 +43,6 @@ node_modules/
 /skills-lock.json
 /docs/*
 !/docs/wiki/
-/tools/r13/
 /spec/protocol.md
 /assets/brand/README.md
 /assets/readme/README.md

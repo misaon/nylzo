@@ -27,7 +27,6 @@ A source is an IPv4 address or IPv6 /64, a range an IPv4 /24 or IPv6 /48. Durati
 | `NYLZO_EPOCH_DIR` | `$NYLZO_DATA_DIR/epoch` | Epoch seed; put it on a tmpfs |
 | `NYLZO_PUBLIC_URL` | unset | Public origin such as `https://nylzo.example` |
 | `NYLZO_TRUSTED_PROXIES` | unset | Proxy addresses or CIDRs allowed to set `X-Forwarded-For` |
-| `NYLZO_PROXY_MODE` | unset | `scaleway` reads one `X-Real-IP` from a trusted or private address |
 | `NYLZO_EDGE_REPORTS` | off | `1` only behind Nylzo's Caddy, which reports visits |
 | `NYLZO_OPERATOR`, `NYLZO_CONTACT`, `NYLZO_HOSTING` | unset | Transparency page, up to 200 bytes each; contact is one e-mail or `https://` address, the same for Caddy |
 | `NYLZO_GLOBAL_DAILY_CREATES` | `0` (off) | Messages per UTC day. Past half the cap proof of work rises, and at the cap creation answers 503. A range may take a twentieth, an IPv4 /16 or IPv6 /32 a fifth |

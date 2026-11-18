@@ -723,46 +723,28 @@ func TestUsedForwardingHeadersDoNotWarn(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
 		harness.statusFrom(&testRequest{method: http.MethodGet, path: "/api/v1/instance", address: "198.51.100.7"})
-		scaleway := baseSettings(pepperA, nil)
-		scaleway.ProxyMode = config.ProxyModeScaleway
-		scalewayHarness := newHarness(t, scaleway)
-		scalewayHarness.statusFrom(
-			&testRequest{
-				method:  http.MethodGet,
-				path:    "/api/v1/instance",
-				headers: map[string]string{"X-Real-IP": "198.51.100.7", "X-Forwarded-For": "203.0.113.1"},
-			},
-		)
 		harness.server.flushCounts(t.Context())
-		scalewayHarness.server.flushCounts(t.Context())
-		for _, logs := range []string{harness.logs.String(), scalewayHarness.logs.String()} {
-			if strings.Contains(logs, "forwarded-header-ignored") {
-				t.Fatalf("a header the server used must not warn: %s", logs)
-			}
+		if logs := harness.logs.String(); strings.Contains(logs, "forwarded-header-ignored") {
+			t.Fatalf("a header the server used must not warn: %s", logs)
 		}
 	})
 }
 
 func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
 	t.Parallel()
-	scaleway := baseSettings(pepperA, nil)
-	scaleway.ProxyMode = config.ProxyModeScaleway
 	for _, testCase := range []struct {
-		name     string
-		settings config.Server
-		headers  map[string]string
-		header   string
+		name    string
+		headers map[string]string
+		header  string
 	}{
-		{"scaleway without X-Real-IP", *scaleway, map[string]string{"X-Forwarded-For": "203.0.113.1"}, "X-Forwarded-For"},
-		{"scaleway with an unusable X-Real-IP", *scaleway, map[string]string{"X-Real-IP": "not an address"}, "X-Real-IP"},
-		{"trusted proxy with only X-Real-IP", *baseSettings(pepperA, nil), map[string]string{"X-Real-IP": "203.0.113.1"}, "X-Real-IP"},
-		{"trusted proxy with only Forwarded", *baseSettings(pepperA, nil), map[string]string{"Forwarded": "for=203.0.113.1"}, "Forwarded"},
-		{"trusted proxy with an unreadable X-Forwarded-For", *baseSettings(pepperA, nil), map[string]string{"X-Forwarded-For": "not an address"}, "X-Forwarded-For"},
+		{"trusted proxy with only X-Real-IP", map[string]string{"X-Real-IP": "203.0.113.1"}, "X-Real-IP"},
+		{"trusted proxy with only Forwarded", map[string]string{"Forwarded": "for=203.0.113.1"}, "Forwarded"},
+		{"trusted proxy with an unreadable X-Forwarded-For", map[string]string{"X-Forwarded-For": "not an address"}, "X-Forwarded-For"},
 	} {
 		t.Run(testCase.name, func(t *testing.T) {
 			t.Parallel()
 			synctest.Test(t, func(t *testing.T) {
-				harness := newHarness(t, &testCase.settings)
+				harness := newHarness(t, baseSettings(pepperA, nil))
 				harness.statusFrom(
 					&testRequest{method: http.MethodGet, path: "/api/v1/instance", headers: testCase.headers},
 				)

@@ -8,21 +8,14 @@ import (
 	"strings"
 )
 
-var (
-	forwardingHeaders  = []string{"X-Forwarded-For", "X-Real-IP", "Forwarded"}
-	sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
-)
+var forwardingHeaders = []string{"X-Forwarded-For", "X-Real-IP", "Forwarded"}
 
 type Proxies struct {
-	Trusted    []netip.Prefix
-	ReadRealIP bool
+	Trusted []netip.Prefix
 }
 
 func (p Proxies) ClientAddress(r *http.Request) netip.Addr {
 	peer := PeerAddress(r.RemoteAddr)
-	if p.ReadRealIP {
-		return p.realIP(r, peer)
-	}
 	if !p.trusts(peer) {
 		return peer
 	}
@@ -32,22 +25,6 @@ func (p Proxies) ClientAddress(r *http.Request) netip.Addr {
 // FromTrustedProxy tells whether the peer of the request is one of the proxies the server trusts.
 func (p Proxies) FromTrustedProxy(r *http.Request) bool {
 	return p.trusts(PeerAddress(r.RemoteAddr))
-}
-
-// realIP trusts only a private peer without a proxy list, so a connection that bypasses the ingress cannot pick its bucket.
-func (p Proxies) realIP(r *http.Request, peer netip.Addr) netip.Addr {
-	values := r.Header.Values("X-Real-IP")
-	if len(values) != 1 {
-		return peer
-	}
-	if len(p.Trusted) > 0 && !p.trusts(peer) || len(p.Trusted) == 0 && !privatePeer(peer) {
-		return peer
-	}
-	address, err := netip.ParseAddr(strings.TrimSpace(values[0]))
-	if err != nil {
-		return peer
-	}
-	return address.Unmap()
 }
 
 func (p Proxies) forwardedFor(r *http.Request, peer netip.Addr) netip.Addr {
@@ -62,11 +39,6 @@ func (p Proxies) forwardedFor(r *http.Request, peer netip.Addr) netip.Addr {
 		}
 	}
 	return peer
-}
-
-func privatePeer(address netip.Addr) bool {
-	return address.IsLoopback() || address.IsPrivate() || address.IsLinkLocalUnicast() ||
-		sharedAddressSpace.Contains(address)
 }
 
 func (p Proxies) trusts(address netip.Addr) bool {
