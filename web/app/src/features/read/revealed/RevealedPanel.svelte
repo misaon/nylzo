@@ -90,6 +90,7 @@
             <span class="pointer-events-none absolute -inset-1 opacity-20 blur-[6px]" aria-hidden="true">
               <span class={['absolute inset-1 rounded-pane p-[2px]', FRAME_LINE]}></span>
             </span>
+            <!-- Long text scrolls, so keyboard users must be able to focus it. -->
             <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
             <pre
               tabindex="0"

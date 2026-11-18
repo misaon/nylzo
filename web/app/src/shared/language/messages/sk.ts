@@ -794,7 +794,7 @@ export const messages: Catalog = {
   'tech.crypto.title': 'Šifrovanie',
   'tech.crypto.text': 'AES\u{2011}256\u{2011}GCM a\u{A0}postkvantové TLS',
   'tech.server.title': 'Server',
-  'tech.server.text': 'Go a\u{A0}SQLite, len 6\u{A0}priamych závislostí',
+  'tech.server.text': 'Go a\u{A0}SQLite, len 7\u{A0}priamych závislostí',
   'tech.web.title': 'Web',
   'tech.web.text': 'Svelte\u{A0}5, odtlačky SHA\u{2011}384 a\u{A0}žiadne cookies',
   'tech.release.title': 'Vývoj a\u{A0}vydania',

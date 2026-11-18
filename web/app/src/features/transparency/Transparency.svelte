@@ -384,6 +384,7 @@
         </div>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{translate('transparency.files')}</p>
         <div class="relative mt-3 rounded-pane well">
+          <!-- The file list scrolls, so keyboard users must be able to focus it. -->
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div
             class="max-h-72 overflow-auto px-4 py-1.5"

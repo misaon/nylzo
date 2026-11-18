@@ -792,7 +792,7 @@ export const messages: Catalog = {
   'tech.crypto.title': '暗号化',
   'tech.crypto.text': 'AES\u{2011}256\u{2011}GCMとポスト量子TLS',
   'tech.server.title': 'サーバー',
-  'tech.server.text': 'GoとSQLite、直接の依存関係はわずか6つ',
+  'tech.server.text': 'GoとSQLite、直接の依存関係はわずか7つ',
   'tech.web.title': 'Web',
   'tech.web.text': 'Svelte 5、SHA\u{2011}384ハッシュ、Cookieなし',
   'tech.release.title': '開発とリリース',
