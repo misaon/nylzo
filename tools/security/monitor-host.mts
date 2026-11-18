@@ -79,11 +79,11 @@ export async function requireClientAuthentication(url: URL, connection: Pick<Req
 
 if (import.meta.main) {
   try {
-    const cert = process.env.MONITOR_CERT ?? await privateFile(process.env.MONITOR_CERT_FILE!);
-    const key = process.env.MONITOR_KEY ?? await privateFile(process.env.MONITOR_KEY_FILE!);
-    const result = await readHostStatus(new URL(process.env.URL!), { cert, key }, hostConnection(process.env.MONITOR_ADDRESS));
+    const cert = process.env["MONITOR_CERT"] ?? await privateFile(process.env["MONITOR_CERT_FILE"]!);
+    const key = process.env["MONITOR_KEY"] ?? await privateFile(process.env["MONITOR_KEY_FILE"]!);
+    const result = await readHostStatus(new URL(process.env["URL"]!), { cert, key }, hostConnection(process.env["MONITOR_ADDRESS"]));
     validateHostStatus(result);
-    await requireClientAuthentication(new URL(process.env.URL!), hostConnection(process.env.MONITOR_ADDRESS));
+    await requireClientAuthentication(new URL(process.env["URL"]!), hostConnection(process.env["MONITOR_ADDRESS"]));
     console.log("Authenticated host policy, services, disk reserve, and update checks are healthy.");
   } catch {
     // TLS and HTTP errors may include endpoint details. Never print credentials or response bodies.

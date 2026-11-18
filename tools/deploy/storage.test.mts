@@ -20,7 +20,7 @@ test("the data volume step refuses to leave data unencrypted when the profile, T
     const run = (settings: string, storage: Record<string, string> = {}) => {
       rmSync(calls, { force: true });
       const result = spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/application/storage")], { encoding: "utf8", env: {
-        ...process.env, PATH: `${directory}:${process.env.PATH}`,
+        ...process.env, PATH: `${directory}:${process.env["PATH"]}`,
         NYLZO_HOST_SETTINGS: file("host.env", settings), NYLZO_TANG_CONFIGURATION: absent, NYLZO_STORAGE_IMAGE: absent, ...storage,
       } });
       let commands = "";
@@ -70,7 +70,7 @@ test("a retry of volume creation first releases the half-created volume file", (
     writeFileSync(join(directory, "tang.json"), '{"t":2,"pins":{"tang":[]}}');
     writeFileSync(join(directory, "host.env"), "ENCRYPTED_STORAGE_REQUIRED=true\n");
     const result = spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/application/storage")], { encoding: "utf8", env: {
-      ...process.env, PATH: `${directory}:${process.env.PATH}`,
+      ...process.env, PATH: `${directory}:${process.env["PATH"]}`,
       NYLZO_HOST_SETTINGS: join(directory, "host.env"), NYLZO_TANG_CONFIGURATION: join(directory, "tang.json"), NYLZO_STORAGE_IMAGE: image,
     } });
     assert.notEqual(result.status, 0);

@@ -11,7 +11,7 @@ const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(resol
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
 
 test("the host bundle is reproducible and every file has one place and one role on the host", () => {
-  assert.deepEqual(archive(sources), archive(new Map([...sources].reverse())));
+  assert.deepEqual(archive(sources), archive(new Map([...sources].toReversed())));
   const pattern = new RegExp(/^target_pattern='(.+)'$/mu.exec(sources.get("update/activate")!)![1]!, "u");
   const entries = manifestEntries(sources);
   const targets = entries.map(entry => entry.target);
@@ -27,10 +27,10 @@ test("the host bundle is reproducible and every file has one place and one role 
     if (action === "enable" || action === "start") assert(targets.includes(`/etc/systemd/system/${unit}`), `${unit} is enabled but not installed`);
   }
   const sandbox = /^ReadWritePaths=(.+)$/mu.exec(sources.get("update/sandbox.conf")!)![1]!.split(" ");
-  for (const target of targets.filter(target => target.startsWith("/etc/"))) {
+  for (const target of targets.filter(candidate => candidate.startsWith("/etc/"))) {
     assert(sandbox.some(directory => target.startsWith(`${directory}/`)), `the sandboxed updater cannot write ${target}`);
   }
-  for (const name of [...sources.keys()].filter(name => /\.(service|timer)$/u.test(name))) {
+  for (const name of [...sources.keys()].filter(candidate => /\.(service|timer)$/u.test(candidate))) {
     assert.match(sources.get(name)!, /^\[(Unit|Service|Timer)\]$/mu, name);
   }
   for (const name of ["proxy/caddy.service", "application/nylzo.service", "monitoring/nylzo-clock.service", "monitoring/nylzo-heartbeat.service", "system/nylzo-ipv6.service"]) {

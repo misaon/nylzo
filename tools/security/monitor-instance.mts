@@ -8,12 +8,12 @@ import { join, resolve } from "node:path";
 let directory: string | undefined;
 let phase = "configuration";
 try {
-  const server = new URL(process.env.URL!);
+  const server = new URL(process.env["URL"]!);
   assert.equal(server.protocol, "https:");
   assert.equal(server.username + server.password + server.search + server.hash, "");
   assert.equal(server.pathname, "/");
-  const cli = resolve(process.env.NYLZO_MONITOR_CLI ?? "./nylzo");
-  directory = mkdtempSync(join(process.env.RUNNER_TEMP ?? tmpdir(), "nylzo-monitor-"));
+  const cli = resolve(process.env["NYLZO_MONITOR_CLI"] ?? "./nylzo");
+  directory = mkdtempSync(join(process.env["RUNNER_TEMP"] ?? tmpdir(), "nylzo-monitor-"));
   chmodSync(directory, 0o700);
   const link = join(directory, "link");
   const payload = Buffer.from(`Nylzo synthetic availability check ${randomBytes(32).toString("hex")}\n`);

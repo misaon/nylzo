@@ -11,7 +11,7 @@ try {
     await initialize(kind, process.argv[4] ?? ".deploy");
   } else {
     assert(["plan", "apply", "outputs", "migrate"].includes(command!), "Usage: deploy plan|apply|outputs|migrate image|server|dns [SITE_JSON]");
-    assert(command !== "migrate" || process.env.NYLZO_STATE_BUCKET, "Set NYLZO_STATE_BUCKET, NYLZO_STATE_ENDPOINT and NYLZO_STATE_REGION to the bucket that receives the state");
+    assert(command !== "migrate" || process.env["NYLZO_STATE_BUCKET"], "Set NYLZO_STATE_BUCKET, NYLZO_STATE_ENDPOINT and NYLZO_STATE_REGION to the bucket that receives the state");
     // Moving state needs neither the release bundle nor a verified image of the pinned Flatcar.
     const prepared = command === "migrate" ? await workspace(siteFile, kind!) : await prepare(siteFile, kind!);
     const { directory, environment } = prepared;
@@ -25,7 +25,7 @@ try {
       await writeFile(path.join(directory, "review.json"), JSON.stringify({ inputs: await inputs(directory), plan: await planHash(), created: Date.now() }), { mode: 0o600 });
       const shown = JSON.parse(execute(directory, environment, ["show", "-json", plan], true));
       const changes = (shown.resource_changes ?? []).some((change: { change: { actions: string[] } }) => change.change.actions.some(action => action !== "no-op"));
-      if (process.env.GITHUB_OUTPUT) await appendFile(process.env.GITHUB_OUTPUT, `changes=${changes}\n`);
+      if (process.env["GITHUB_OUTPUT"]) await appendFile(process.env["GITHUB_OUTPUT"], `changes=${changes}\n`);
       console.log(changes ? "Review this plan, then use deploy apply with the same arguments. Plans expire after one hour." : "The infrastructure already matches this configuration.");
     } else if (command === "apply") {
       // The plan hashed the zone imports, and CI applies on a fresh runner.

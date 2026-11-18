@@ -58,7 +58,7 @@ export function configuration(input: any) {
     assert.deepEqual(unknown, {}, "Unknown Tang option");
     assert(Array.isArray(servers) && servers.length >= 2 && servers.length <= 5, "Configure two to five Tang servers at different providers");
     for (const server of servers) {
-      assert.deepEqual(Object.keys(server).sort(), ["thumbprint", "url"]);
+      assert.deepEqual(Object.keys(server).toSorted(), ["thumbprint", "url"]);
       assert.match(server.url, /^https?:\/\/[a-z0-9.-]{1,253}(?::[0-9]{1,5})?$/u, "A Tang URL is a scheme, host and optional port");
       assert.match(server.thumbprint, /^[A-Za-z0-9_-]{43}$/u, "A Tang thumbprint is the base64url SHA-256 JWK thumbprint of its signing key");
     }
@@ -83,6 +83,8 @@ export function patchCandidate(current: string, candidate: string) {
   return !!previous && !!next && [...previous.slice(1), ...next.slice(1)].every(value => Number.isSafeInteger(Number(value)) && Number(value) <= 999999999) && previous[1] === next[1] && previous[2] === next[2] && Number(next[3]) > Number(previous[3]);
 }
 
+const application = (value: Buffer | undefined) => assert.match(value?.toString("latin1") ?? "", /^ssh:[!-~]{0,64}$/u, "Invalid security key application");
+
 export function administratorKeyIsHardware(line: unknown) {
   assert.equal(typeof line, "string");
   const match = /^(ssh-ed25519|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com) ([A-Za-z0-9+/]+={0,2})(?: [^\r\n]+)?$/u.exec(line as string);
@@ -100,7 +102,6 @@ export function administratorKeyIsHardware(line: unknown) {
     offset += length;
   }
   assert.equal(fields[0]?.toString("latin1"), type, "Invalid SSH key encoding");
-  const application = (value: Buffer | undefined) => assert.match(value?.toString("latin1") ?? "", /^ssh:[!-~]{0,64}$/u, "Invalid security key application");
   if (type === "sk-ecdsa-sha2-nistp256@openssh.com") {
     assert.equal(fields.length, 4, "Invalid SSH key encoding");
     assert.equal(fields[1]!.toString("latin1"), "nistp256", "Invalid ECDSA SSH key encoding");

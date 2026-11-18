@@ -87,11 +87,11 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
 }
 
 export function checksPassed(results: Record<string, { result: string; outputs?: Record<string, string> }>) {
-  const changes = results.changes;
+  const changes = results["changes"];
   if (changes?.result !== "success") return false;
   let jobs: Record<string, boolean>;
   try {
-    jobs = JSON.parse(changes.outputs?.jobs ?? "");
+    jobs = JSON.parse(changes.outputs?.["jobs"] ?? "");
   } catch {
     return false;
   }
@@ -104,23 +104,23 @@ export function checksPassed(results: Record<string, { result: string; outputs?:
 
 if (import.meta.main) {
   if (process.argv[2] === "check") {
-    if (!checksPassed(JSON.parse(process.env.RESULTS ?? ""))) {
+    if (!checksPassed(JSON.parse(process.env["RESULTS"] ?? ""))) {
       throw new Error("CI failed: a planned job failed, was cancelled, is missing, or was unexpectedly skipped");
     }
   } else {
-    const event = process.env.EVENT ?? "";
-    const forced = process.env.FORCE_FULL_VERIFICATION === "true";
+    const event = process.env["EVENT"] ?? "";
+    const forced = process.env["FORCE_FULL_VERIFICATION"] === "true";
     const files =
       event === "schedule" || event === "workflow_dispatch" || forced
         ? []
-        : changedFiles(process.env.BASE_SHA ?? "", process.env.HEAD_SHA ?? "");
-    const plan = planChecks(files, event, process.env.TRUSTED_COVERAGE === "true");
+        : changedFiles(process.env["BASE_SHA"] ?? "", process.env["HEAD_SHA"] ?? "");
+    const plan = planChecks(files, event, process.env["TRUSTED_COVERAGE"] === "true");
     const output = Object.entries({ ...plan, forced })
       .map(([key, value]) => `${key}=${JSON.stringify(value)}\n`)
       .join("");
-    appendFileSync(process.env.GITHUB_OUTPUT!, output);
+    appendFileSync(process.env["GITHUB_OUTPUT"]!, output);
     appendFileSync(
-      process.env.GITHUB_STEP_SUMMARY!,
+      process.env["GITHUB_STEP_SUMMARY"]!,
       `## Selected checks\n\nFull verification: **${plan.full}**\n\n| Job | Run |\n| --- | --- |\n` +
         Object.entries(plan.jobs)
           .map(([job, required]) => `| ${job} | ${required ? "yes" : "skip"} |\n`)

@@ -59,7 +59,7 @@ test("the heartbeat reports only up or down, and down whenever the host status i
       writeFileSync(join(directory, "status.json"), typeof status === "string" ? status : JSON.stringify(status));
       rmSync(join(directory, "request"), { force: true });
       const result = spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/heartbeat")], { encoding: "utf8", timeout: 10000,
-        env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, NYLZO_HEARTBEAT_URL_FILE: join(directory, "url"), NYLZO_HOST_STATUS: join(directory, "status.json") } });
+        env: { ...process.env, PATH: `${directory}:${process.env["PATH"]}`, NYLZO_HEARTBEAT_URL_FILE: join(directory, "url"), NYLZO_HOST_STATUS: join(directory, "status.json") } });
       return { status: result.status, request: result.status === 0 ? readFileSync(join(directory, "request"), "utf8").trim().split("\n") : [] };
     };
     const now = Math.floor(Date.now() / 1000);
