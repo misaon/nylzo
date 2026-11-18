@@ -16,6 +16,11 @@ const workflowValues: readonly Extraction[] = [
     values: { version: 'version' },
   },
   {
+    name: 'registry',
+    pattern: /^ +image: registry:(?<tag>\d+)@sha256:(?<digest>[a-f\d]{64})$/dgmu,
+    values: { digest: 'opaque', tag: 'fixed' },
+  },
+  {
     name: 'renovate',
     pattern:
       /^ *renovate-image: ghcr\.io\/renovatebot\/renovate:(?<version>\d+\.\d+\.\d+)@sha256:(?<digest>[a-f\d]{64})$/dgmu,
