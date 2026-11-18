@@ -67,7 +67,7 @@ func TestOnlyProfilesZeroAndThreeAreKnown(t *testing.T) {
 	}
 }
 
-func TestAK24ServerProfileMustMatchTheFragment(t *testing.T) {
+func TestServerProfileMustMatchTheFragment(t *testing.T) {
 	t.Parallel()
 	for _, reported := range []int{int(core.KDFNone), int(core.KDFRetired), 1, 257, -255} {
 		err := core.AssertProfile(core.KDFScrypt, reported)

@@ -98,7 +98,7 @@ test("the isolated Flatcar profile runs provisioning checks without unrelated ap
   }
 });
 
-test("a profile Caddyfile runs the Go job, which tests what Caddy logs and lets through (F11)", () => {
+test("a profile Caddyfile runs the Go job, which tests what Caddy logs and lets through", () => {
   for (const [file, profileJob] of [
     ["deploy/compose/Caddyfile", "compose"],
     ["deploy/hetzner-flatcar/host/proxy/Caddyfile", "deployment"],

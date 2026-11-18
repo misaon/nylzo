@@ -34,7 +34,7 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-// F13: a share goes at the deadline of its message. When another process whose clock runs a little ahead has moved
+// A share goes at the deadline of its message. When another process whose clock runs a little ahead has moved
 // the ratchet past it first, a claim answers the state the message has at its deadline and ends nothing early; at the
 // deadline the message is expired, not deleted.
 func TestAShareGoneAtTheDeadlineExpiresTheMessage(t *testing.T) {
@@ -201,9 +201,9 @@ func TestAnInstanceBehindTheRatchetIssuesNoID(t *testing.T) {
 	})
 }
 
-// L3: a lost seed ends the live messages as lost at the first request that finds them, metadata and status included,
+// A lost seed ends the live messages as lost at the first request that finds them, metadata and status included,
 // and the server goes on with a new seed; a damaged seed or a missing directory, which may be a volume that failed to
-// mount, stops it (F21).
+// mount, stops it.
 func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -277,7 +277,7 @@ func TestLostSeedEndsLiveMessagesAndRecovers(t *testing.T) {
 	})
 }
 
-// F18: once NYLZO_EPOCH_DIR names another directory, the epoch directory of the data directory stops the server for as
+// Once NYLZO_EPOCH_DIR names another directory, the epoch directory of the data directory stops the server for as
 // long as it exists, because every backup of the data directory keeps whatever seed it holds, under any name.
 func TestAnEpochDirectoryLeftInTheDataDirectoryStopsTheServer(t *testing.T) {
 	t.Parallel()
@@ -464,7 +464,7 @@ func TestFlowCreateMetadataClaimBlobAck(t *testing.T) {
 	})
 }
 
-func TestAK4ConcurrentClaimsHTTP(t *testing.T) {
+func TestConcurrentClaimsHTTP(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -497,7 +497,7 @@ func TestAK4ConcurrentClaimsHTTP(t *testing.T) {
 	})
 }
 
-func TestAK5PassphrasePolicyHTTP(t *testing.T) {
+func TestPassphrasePolicyHTTP(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -586,7 +586,7 @@ func TestAK5PassphrasePolicyHTTP(t *testing.T) {
 	})
 }
 
-func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
+func TestLeaseExpiryWithoutAck(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -651,7 +651,7 @@ func TestAK6LeaseExpiryWithoutAck(t *testing.T) {
 	})
 }
 
-func TestAK6RequestAfterLeaseExpiryReleasesBlob(t *testing.T) {
+func TestRequestAfterLeaseExpiryReleasesBlob(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -672,7 +672,7 @@ func TestAK6RequestAfterLeaseExpiryReleasesBlob(t *testing.T) {
 	})
 }
 
-func TestAK6SweepAfterRestart(t *testing.T) {
+func TestSweepAfterRestart(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -697,7 +697,7 @@ func TestAK6SweepAfterRestart(t *testing.T) {
 	})
 }
 
-func TestAK7ExpiryLazyAndSweep(t *testing.T) {
+func TestExpiryLazyAndSweep(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -1289,7 +1289,7 @@ func TestTruncatedBlobSpendsNoOpen(t *testing.T) {
 	})
 }
 
-// F14: the server checks the tag of the stored blob before a claim or a download spends anything.
+// The server checks the tag of the stored blob before a claim or a download spends anything.
 func TestChangedBlobSpendsNoOpenOrDownload(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -1365,7 +1365,7 @@ func TestChangedBlobSpendsNoOpenOrDownload(t *testing.T) {
 	})
 }
 
-// F14: a download is judged at the time after the blob check, so a lease that ends during the check counts nothing.
+// A download is judged at the time after the blob check, so a lease that ends during the check counts nothing.
 func TestALeaseThatEndsDuringTheCheckDownloadsNothing(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -1391,7 +1391,7 @@ func TestALeaseThatEndsDuringTheCheckDownloadsNothing(t *testing.T) {
 	})
 }
 
-// F14: a download whose check outlasts the message is refused, although its lease is still active.
+// A download whose check outlasts the message is refused, although its lease is still active.
 func TestADownloadThatWaitsPastExpiryIsRefused(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -1418,7 +1418,7 @@ func TestADownloadThatWaitsPastExpiryIsRefused(t *testing.T) {
 	})
 }
 
-// F14: a check that fails because an ending changed the blob meanwhile answers the ending, not blob-changed.
+// A check that fails because an ending changed the blob meanwhile answers the ending, not blob-changed.
 func TestACheckRacingAnEndingAnswersTheEnding(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -1454,7 +1454,7 @@ func TestACheckRacingAnEndingAnswersTheEnding(t *testing.T) {
 	})
 }
 
-// F14: a claim that the passphrase backoff refuses anyway reads no blob.
+// A claim that the passphrase backoff refuses anyway reads no blob.
 func TestALockedOutClaimReadsNoBlob(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -1482,7 +1482,7 @@ func TestALockedOutClaimReadsNoBlob(t *testing.T) {
 	})
 }
 
-// F14: a blob wrap without its tags would skip the check, so the server serves nothing from it and spends no open.
+// A blob wrap without its tags would skip the check, so the server serves nothing from it and spends no open.
 func TestABlobWrapWithoutTagsOpensNothing(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {

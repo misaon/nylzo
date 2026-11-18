@@ -620,7 +620,7 @@ jobs:
           out=$(mktemp -d)
           printf '%s' "$link" | dist/nylzo read --out "$out" > /dev/null
           cmp "$RUNNER_TEMP/file.bin" "$out"/nylzo-*/file.bin
-      - name: The epoch seed lives on host tmpfs and outlives a recreated container (F18)
+      - name: The epoch seed lives on host tmpfs and outlives a recreated container
         working-directory: deploy/compose
         env:
           SSL_CERT_FILE: ${{ runner.temp }}/root.crt

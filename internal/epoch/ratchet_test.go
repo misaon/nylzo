@@ -79,8 +79,8 @@ func decode(t *testing.T, text string) [32]byte {
 	return [32]byte(decoded)
 }
 
-// F13: a share lives exactly until the deadline that ends its epoch, the instant at which its message expires.
-func TestF3ShareGoesAtItsDeadline(t *testing.T) {
+// A share lives exactly until the deadline that ends its epoch, the instant at which its message expires.
+func TestShareGoesAtItsDeadline(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	ratchet := open(t, directory, start)
@@ -107,8 +107,8 @@ func TestF3ShareGoesAtItsDeadline(t *testing.T) {
 	}
 }
 
-// The seed file must hold nothing that makes the share of a minute that has passed, and it fills whole blocks (L2).
-func TestF3AdvanceOverwritesTheSeedInPlace(t *testing.T) {
+// The seed file must hold nothing that makes the share of a minute that has passed, and it fills whole blocks.
+func TestAdvanceOverwritesTheSeedInPlace(t *testing.T) {
 	t.Parallel()
 	directory := t.TempDir()
 	ratchet := open(t, directory, start)
@@ -171,8 +171,8 @@ func TestRatchetsSharingAFileAgree(t *testing.T) {
 	}
 }
 
-// F12: every hour issues from a new generation, which keeps making its shares up to its last epoch and then goes.
-func TestF12EveryHourIssuesFromANewGeneration(t *testing.T) {
+// Every hour issues from a new generation, which keeps making its shares up to its last epoch and then goes.
+func TestEveryHourIssuesFromANewGeneration(t *testing.T) {
 	t.Parallel()
 	ratchet := open(t, t.TempDir(), start)
 	locator := seal.LocatorOf([]byte("message"))
@@ -290,7 +290,7 @@ func TestAProcessFollowsAReplacementItDidNotSee(t *testing.T) {
 	}
 }
 
-// L3: a missing directory may be a volume that failed to mount, so only an empty one gets a new ratchet.
+// A missing directory may be a volume that failed to mount, so only an empty one gets a new ratchet.
 func TestStartUpRefusesAMissingDirectoryAndADamagedSeedAndReplacesALostOne(t *testing.T) {
 	t.Parallel()
 	missing := filepath.Join(t.TempDir(), "unmounted")
@@ -348,7 +348,7 @@ func TestStartUpRefusesAMissingDirectoryAndADamagedSeedAndReplacesALostOne(t *te
 	}
 }
 
-// L1: the seed opens every message that expires later, so it gets the protection of the pepper.
+// The seed opens every message that expires later, so it gets the protection of the pepper.
 func TestSeedAndDirectoryMustBePrivate(t *testing.T) {
 	t.Parallel()
 	if runtime.GOOS == "windows" {

@@ -103,7 +103,7 @@ func flipped(object []byte, position int) []byte {
 	return tampered
 }
 
-func TestAK8TamperingFailsIntegrity(t *testing.T) {
+func TestTamperingFailsIntegrity(t *testing.T) {
 	t.Parallel()
 	sample := seal(t, "integrity", nil)
 	prefix := envelope.PrefixLen
@@ -166,7 +166,7 @@ func TestAK8TamperingFailsIntegrity(t *testing.T) {
 	}
 }
 
-func TestF1ReaderRejectsAnObjectTheLinkDoesNotPin(t *testing.T) {
+func TestReaderRejectsAnObjectTheLinkDoesNotPin(t *testing.T) {
 	t.Parallel()
 	sample := seal(t, "the original", nil)
 	forged, err := envelope.Seal(&sample.content, envelope.NewHeader(core.KDFNone), sample.id, sample.policy,
@@ -194,7 +194,7 @@ func TestF1ReaderRejectsAnObjectTheLinkDoesNotPin(t *testing.T) {
 	}
 }
 
-func TestF4CommitmentRejectsAnotherKeyBeforeDecrypting(t *testing.T) {
+func TestCommitmentRejectsAnotherKeyBeforeDecrypting(t *testing.T) {
 	t.Parallel()
 	sample := seal(t, "commitment", nil)
 	other := sample.content
@@ -259,7 +259,7 @@ func TestOpenRejectsAnUnsupportedHeader(t *testing.T) {
 	}
 }
 
-func TestF7TextAndFilePadToTheSameLength(t *testing.T) {
+func TestTextAndFilePadToTheSameLength(t *testing.T) {
 	t.Parallel()
 	text := seal(t, strings.Repeat("t", 3000), nil)
 	file := seal(t, "", bytes.Repeat([]byte{7}, 3000))

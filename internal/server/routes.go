@@ -87,7 +87,7 @@ func handleAPINotFound(w http.ResponseWriter, _ *http.Request) {
 }
 
 // inSecretMode runs every API request, which may carry public keys and open record keys, blob keys and erase salts,
-// in secret mode: its registers and stack are erased when it returns, its heap allocations once unreachable (A4-2).
+// in secret mode: its registers and stack are erased when it returns, its heap allocations once unreachable.
 func inSecretMode(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !isAPI(r) {

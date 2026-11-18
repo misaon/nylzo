@@ -176,7 +176,7 @@ func lockedOut(message *Message, now time.Time) (PassphraseError, bool) {
 	return PassphraseError{}, false
 }
 
-// leasesFull caps the active leases, so every record fits one RecordBlock and its length says nothing (A4-4).
+// leasesFull caps the active leases, so every record fits one RecordBlock and its length says nothing.
 func leasesFull(message *Message, now time.Time) (time.Duration, bool) {
 	var active []time.Time
 	for _, lease := range message.Leases {
@@ -291,8 +291,8 @@ func MarkEnding(
 	return ending, err
 }
 
-// End records a cancel or a burn, whose KE3 the caller has checked (F05), then deletes the blob even when the caller
-// has gone.
+// End records a cancel or a burn, whose KE3 the caller has checked, then deletes the blob even when the caller has
+// gone.
 func End(
 	ctx context.Context,
 	messages Messages,

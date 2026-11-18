@@ -176,7 +176,7 @@ func rejectedCases(
 	}
 }
 
-// deadlineRejections change the deadline a reader expects or the flag that seals it in (F13).
+// deadlineRejections change the deadline a reader expects or the flag that seals it in.
 func deadlineRejections(base *sealedCase) []rejection {
 	return []rejection{
 		{

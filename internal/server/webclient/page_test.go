@@ -135,7 +135,7 @@ func TestRobotsAndSitemap(t *testing.T) {
 	}
 	for _, other := range []string{"", "https://nylzo.example:8443", "https://www.nylzo.com", "http://localhost:8080"} {
 		if webclient.Sitemap(other) != nil || string(webclient.Robots(other)) != "User-agent: *\nDisallow: /api/\n" {
-			t.Fatalf("%q is not the official instance, so it offers no sitemap (D134)", other)
+			t.Fatalf("%q is not the official instance, so it offers no sitemap", other)
 		}
 	}
 	const publicURL = "https://nylzo.com"
@@ -191,7 +191,7 @@ func TestOnlyTheOfficialHomePagesAndImagesMayBeIndexed(t *testing.T) {
 		{"", http.MethodGet, "/assets/og-image-a1.png", false},
 	} {
 		if got := webclient.Indexable(testCase.publicURL, testCase.method, testCase.path); got != testCase.indexable {
-			t.Errorf("%s %s %s: indexable %v (D134)", testCase.publicURL, testCase.method, testCase.path, got)
+			t.Errorf("%s %s %s: indexable %v", testCase.publicURL, testCase.method, testCase.path, got)
 		}
 		headers := webclient.SecurityHeaders(testCase.publicURL, testCase.path)
 		if testCase.method == http.MethodGet && (headers["X-Robots-Tag"] == "") != testCase.indexable {

@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// TestTablesKeepOnlyBucketsThatStillLimit covers A4-3: a memory image shows no address bucket of an earlier window,
-// and a new day's key gives the same address another bucket.
+// A memory image shows no address bucket of an earlier window, and a new day's key gives the same address another
+// bucket.
 func TestTablesKeepOnlyBucketsThatStillLimit(t *testing.T) {
 	t.Parallel()
 	key := NewAddressKey()
@@ -34,8 +34,7 @@ func TestTablesKeepOnlyBucketsThatStillLimit(t *testing.T) {
 	}
 }
 
-// TestManyRangesCannotTakeTheInstanceFromAQuietOne covers F4: 40 ranges at 10 requests a second and a bystander at
-// one a second share an instance bucket of 50 a second.
+// 40 ranges at 10 requests a second and a bystander at one a second share an instance bucket of 50 a second.
 func TestManyRangesCannotTakeTheInstanceFromAQuietOne(t *testing.T) {
 	t.Parallel()
 	fair := NewFair(50, 100)
@@ -60,8 +59,8 @@ func TestManyRangesCannotTakeTheInstanceFromAQuietOne(t *testing.T) {
 	}
 }
 
-// TestARangeWithinItsShareGetsThroughWhenRangesOutnumberTheRate covers L5: 200 ranges at one request a second and a
-// bystander that asks once every 25 seconds share an instance bucket of 10 a second for 1000 seconds.
+// 200 ranges at one request a second and a bystander that asks once every 25 seconds share an instance bucket of 10
+// a second for 1000 seconds.
 func TestARangeWithinItsShareGetsThroughWhenRangesOutnumberTheRate(t *testing.T) {
 	t.Parallel()
 	fair := NewFair(10, 20)

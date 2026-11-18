@@ -292,8 +292,8 @@ func TestComposeCaddyfileIsTheHetznerOneWithItsOwnPaths(t *testing.T) {
 	}
 }
 
-// TestCaddyfilesDialTheBackendByAddress covers F19: while the backend is down, Docker passes a lookup of its
-// name to the host's resolvers, so a name could send API requests and their X-Nylzo-* headers to another host.
+// While the backend is down, Docker passes a lookup of its name to the host's resolvers, so a name could send API
+// requests and their X-Nylzo-* headers to another host.
 func TestCaddyfilesDialTheBackendByAddress(t *testing.T) {
 	t.Setenv("NYLZO_DOMAIN", "localhost")
 	t.Setenv("NYLZO_CONTACT", operatorContact)
@@ -584,28 +584,28 @@ func awaitCertificate(t *testing.T, address string, roots *x509.CertPool, name s
 	}
 }
 
-// TestCaddyfilesLogNoRequestSecrets covers F11: a logged X-Nylzo-Lease downloads a blob without an open, and the
-// X-Nylzo-Verifier of protocol v2 tested passphrase guesses, so Caddy logs no protocol header and no message path, over
-// HTTP/2 or HTTP/3, not even at debug level or when the upstream fails.
+// A logged X-Nylzo-Lease downloads a blob without an open, and the X-Nylzo-Verifier of protocol v2 tested passphrase
+// guesses, so Caddy logs no protocol header and no message path, over HTTP/2 or HTTP/3, not even at debug level or
+// when the upstream fails.
 func TestCaddyfilesLogNoRequestSecrets(t *testing.T) {
 	sentinels := map[string]string{
-		"Authorization":            "Nylzo f11-sentinel-authorization",
-		api.CreateHeaderName:       "f11-sentinel-create",
-		api.VerifierHeaderName:     "f11-sentinel-verifier",
-		api.RegistrationHeaderName: "f11-sentinel-registration",
-		api.KE1HeaderName:          "f11-sentinel-ke1",
-		api.KE3HeaderName:          "f11-sentinel-ke3",
-		api.LeaseHeaderName:        "f11-sentinel-lease",
-		api.WorkHeaderName:         "f11-sentinel-pow",
-		api.TTLHeaderName:          "f11-sentinel-ttl",
-		api.ShareKeyHeaderName:     "f11-sentinel-share-key",
+		"Authorization":            "Nylzo sentinel-authorization",
+		api.CreateHeaderName:       "sentinel-create",
+		api.VerifierHeaderName:     "sentinel-verifier",
+		api.RegistrationHeaderName: "sentinel-registration",
+		api.KE1HeaderName:          "sentinel-ke1",
+		api.KE3HeaderName:          "sentinel-ke3",
+		api.LeaseHeaderName:        "sentinel-lease",
+		api.WorkHeaderName:         "sentinel-pow",
+		api.TTLHeaderName:          "sentinel-ttl",
+		api.ShareKeyHeaderName:     "sentinel-share-key",
 	}
 	responses := map[string]string{
-		api.LeaseHeaderName:  "f11-sentinel-response-lease",
-		api.ShareHeaderName:  "f11-sentinel-response-share",
-		api.PolicyHeaderName: "f11-sentinel-response-policy",
+		api.LeaseHeaderName:  "sentinel-response-lease",
+		api.ShareHeaderName:  "sentinel-response-share",
+		api.PolicyHeaderName: "sentinel-response-policy",
 	}
-	const messageID = "f11-sentinel-message-id"
+	const messageID = "sentinel-message-id"
 	burn, claim := api.MessagePath(messageID)+api.BurnAction, api.MessagePath(messageID)+api.ClaimAction
 	// The monitor site is left out: it needs the monitor's client certificate file.
 	for name, profile := range map[string]struct {

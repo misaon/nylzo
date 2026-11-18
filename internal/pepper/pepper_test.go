@@ -50,7 +50,7 @@ func TestEveryPurposeHasItsOwnKey(t *testing.T) {
 	}
 }
 
-func TestAK27RotationKeepsOldMacsValid(t *testing.T) {
+func TestRotationKeepsOldMacsValid(t *testing.T) {
 	input := []byte("token")
 	old := newRing(t, secret(1), nil)
 	tag := old.MAC(pepper.Read, input)

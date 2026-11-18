@@ -45,7 +45,7 @@ func Guard(publicURL string, refuse, next http.Handler) http.Handler {
 }
 
 // sameOriginOrDirect is the Fetch Metadata resource isolation policy: an image or a link on another site must not
-// spend its visitors' read budget (F2). A request without Sec-Fetch-Site comes from a native client.
+// spend its visitors' read budget. A request without Sec-Fetch-Site comes from a native client.
 func sameOriginOrDirect(header http.Header) bool {
 	site := header.Values("Sec-Fetch-Site")
 	return len(site) == 0 || len(site) == 1 && (site[0] == "same-origin" || site[0] == "none")

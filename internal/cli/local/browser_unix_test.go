@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-// TestTheOpenerGetsNoNylzoVariable covers the F07 review: a browser that the opener starts lives on unprotected, so
-// it must not inherit NYLZO_LINK with the key of a link.
+// A browser that the opener starts lives on unprotected, so it must not inherit NYLZO_LINK with the key of a link.
 func TestTheOpenerGetsNoNylzoVariable(t *testing.T) {
 	directory := t.TempDir()
 	opener := filepath.Join(directory, systemOpener("")[0])

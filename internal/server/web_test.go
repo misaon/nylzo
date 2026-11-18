@@ -87,7 +87,7 @@ func checkSecurityHeaders(t *testing.T, name string, response testResponse, inde
 	}
 	if robots := response.Header.Get("X-Robots-Tag"); indexable != (robots == "") ||
 		(!indexable && robots != "noindex, nofollow") {
-		t.Fatalf("%s: X-Robots-Tag = %q, only official home pages and images may be indexed (D134)", name, robots)
+		t.Fatalf("%s: X-Robots-Tag = %q, only official home pages and images may be indexed", name, robots)
 	}
 	if csp := response.Header.Get("Content-Security-Policy"); !strings.HasPrefix(
 		response.Header.Get("Content-Type"),
@@ -187,7 +187,7 @@ func TestSecurityHeadersAndStaticPolicy(t *testing.T) {
 			}
 			if second.Header.Get("Content-Security-Policy") != csp || !bytes.Equal(firstBody, secondBody) ||
 				bytes.Contains(firstBody, []byte("nonce")) {
-				t.Fatalf("%s: two responses differ, so the page cannot be pinned (A3-06)", path)
+				t.Fatalf("%s: two responses differ, so the page cannot be pinned", path)
 			}
 		}
 
@@ -209,7 +209,7 @@ func TestSecurityHeadersAndStaticPolicy(t *testing.T) {
 			if _, page := harness.do(
 				&testRequest{method: http.MethodGet, path: path},
 			); client.Built && bytes.Contains(page, []byte(`name="robots"`)) {
-				t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header (D80)", path)
+				t.Fatalf("%s: the built client HTML must leave robots to the X-Robots-Tag header", path)
 			}
 		}
 		_, home := harness.do(&testRequest{method: http.MethodGet, path: "/"})
@@ -444,7 +444,7 @@ func TestPagesAreTheSameOnEveryResponse(t *testing.T) {
 		sum := sha256.Sum256([]byte(plain.body))
 		if plain.body != again.body || zipped.body != zippedAgain.body || gunzipped(t, zipped.body) != plain.body ||
 			hex.EncodeToString(sum[:]) != published[manifestPath] {
-			t.Fatalf("%s: the page differs between responses or from its manifest entry (A3-06)", path)
+			t.Fatalf("%s: the page differs between responses or from its manifest entry", path)
 		}
 	}
 }
@@ -465,7 +465,7 @@ func TestRobotsSitemapAndManifest(t *testing.T) {
 	settings.Version = "v1.2.3"
 	with := newHarness(t, settings, WithWebFiles(builtClient(t)))
 	if sitemap := with.get("/sitemap.xml", nil); sitemap.StatusCode != http.StatusNotFound {
-		t.Fatalf("sitemap.xml of an instance other than the official one: %d (D134)", sitemap.StatusCode)
+		t.Fatalf("sitemap.xml of an instance other than the official one: %d", sitemap.StatusCode)
 	}
 	official := baseSettings(pepperA, nil)
 	official.PublicURL = "https://nylzo.com"

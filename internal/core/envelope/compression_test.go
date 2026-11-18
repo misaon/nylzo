@@ -73,7 +73,7 @@ func TestCompressionKeepsTheOriginalWhenItCannotHalveTheLength(t *testing.T) {
 }
 
 // The compressed length is a halving class of the original, not the compressed size (spec section 3.2).
-func TestF6CompressedLengthShowsOnlyAHalvingClass(t *testing.T) {
+func TestCompressedLengthShowsOnlyAHalvingClass(t *testing.T) {
 	t.Parallel()
 	file := make([]byte, 1024*1024)
 	rand.Read(file[600*1024:])
@@ -200,7 +200,7 @@ func TestCompressionInteroperabilityVectors(t *testing.T) {
 			}})
 			_, _, openErr := sample.open(compressedObject(t, &sample, string(meta), compressed))
 			if !errors.Is(openErr, envelope.ErrPlaintext) {
-				t.Fatalf("F5: a frame with a reserved flag bit: %v", openErr)
+				t.Fatalf("a frame with a reserved flag bit: %v", openErr)
 			}
 		})
 	}

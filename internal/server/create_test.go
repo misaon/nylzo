@@ -37,7 +37,7 @@ import (
 	"github.com/misaon/nylzo/internal/vectors"
 )
 
-func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
+func TestInstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -78,7 +78,7 @@ func TestF3InstanceIssuesTheShareThatClaimsRecompute(t *testing.T) {
 		harness.mustCreate(message)
 		if _, metadata := harness.metadata(message); metadata["expires_at"] != deadline.Format(time.RFC3339) {
 			t.Fatalf(
-				"F13: the message expires at %v, not at the deadline of its share %v",
+				"the message expires at %v, not at the deadline of its share %v",
 				metadata["expires_at"],
 				deadline,
 			)
@@ -130,7 +130,7 @@ func TestCreateTellsAnOldClientToUpdateAndRefusesAnotherDeadline(t *testing.T) {
 		withoutDeadline.object[2] = 0
 		if response, body := harness.create(withoutDeadline); response.StatusCode != http.StatusBadRequest ||
 			!strings.Contains(string(body), `"bad_request"`) {
-			t.Fatalf("F13: an envelope without the deadline: %d %s", response.StatusCode, body)
+			t.Fatalf("an envelope without the deadline: %d %s", response.StatusCode, body)
 		}
 		for name, change := range map[string]func(*testMessage){
 			"a deadline that has passed": func(message *testMessage) {
@@ -299,7 +299,7 @@ func TestCreateHeaderRules(t *testing.T) {
 	}
 }
 
-func TestAK1CreateCarriesNoSecrets(t *testing.T) {
+func TestCreateCarriesNoSecrets(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -901,7 +901,7 @@ func TestCreateWaitsWhileTheDiskIsNearlyFull(t *testing.T) {
 	})
 }
 
-func TestAK12CreateRateLimitAndGlobalCap(t *testing.T) {
+func TestCreateRateLimitAndGlobalCap(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -923,7 +923,7 @@ func TestAK12CreateRateLimitAndGlobalCap(t *testing.T) {
 	})
 }
 
-// TestAFewRangesCannotFillTheGlobalCap covers F11: each /48 takes at most a twentieth of the day.
+// Each /48 takes at most a twentieth of the day.
 func TestAFewRangesCannotFillTheGlobalCap(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
@@ -952,7 +952,7 @@ func TestAFewRangesCannotFillTheGlobalCap(t *testing.T) {
 	})
 }
 
-func TestAK12GlobalCap(t *testing.T) {
+func TestGlobalCap(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
@@ -1012,7 +1012,7 @@ func TestPoWDifficultyRisesAsTheCapFills(t *testing.T) {
 	}
 }
 
-func TestAK12ForwardedForOnlyFromTrustedProxy(t *testing.T) {
+func TestForwardedForOnlyFromTrustedProxy(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
@@ -1042,7 +1042,7 @@ func TestAK12ForwardedForOnlyFromTrustedProxy(t *testing.T) {
 	})
 }
 
-func TestAK23PrefixBuckets(t *testing.T) {
+func TestPrefixBuckets(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -1402,7 +1402,7 @@ func (b slowPutBlobs) PutExpiring(
 	return b.Blobs.PutExpiring(ctx, reference, bytes.NewReader(received), size, expiresAt)
 }
 
-// F13: the TTL runs from the instance response, so a slow upload keeps the deadline its share was issued for, and an
+// The TTL runs from the instance response, so a slow upload keeps the deadline its share was issued for, and an
 // upload stored at or after that deadline is refused and leaves nothing behind.
 func TestTheDeadlineDoesNotMoveWithTheUpload(t *testing.T) {
 	t.Parallel()
@@ -1543,7 +1543,7 @@ func TestDailyCreateLimitsCountSourcesAndRanges(t *testing.T) {
 	}
 }
 
-// F12: a generation of minutes makes shares until hour Span past the hour that starts it, so an id issued in the last
+// A generation of minutes makes shares until hour Span past the hour that starts it, so an id issued in the last
 // instant of an hour with the longest TTL still gets a deadline its generation covers.
 func TestTheLatestDeadlineFitsTheGenerationSpan(t *testing.T) {
 	t.Parallel()
@@ -1560,7 +1560,7 @@ func TestTheLatestDeadlineFitsTheGenerationSpan(t *testing.T) {
 	}
 }
 
-// F12: an id issued just before an hour ends keeps its generation, so its create in the next hour stores a message
+// An id issued just before an hour ends keeps its generation, so its create in the next hour stores a message
 // that opens.
 func TestAnIDIssuedBeforeTheHourEndsIsCreatedAfterIt(t *testing.T) {
 	t.Parallel()
@@ -1611,7 +1611,7 @@ func TestCreateRefusesAnIDWhoseShareCameFromAnEarlierSeed(t *testing.T) {
 	})
 }
 
-// L5 and F15: a share key the server cannot seal to is malformed, not an internal error, and an X25519 key from before
+// A share key the server cannot seal to is malformed, not an internal error, and an X25519 key from before
 // share suites tells its client to update.
 func TestRefusedShareKeysSpendNothing(t *testing.T) {
 	t.Parallel()

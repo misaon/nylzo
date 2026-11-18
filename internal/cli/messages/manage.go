@@ -93,7 +93,7 @@ func manageClient(environment *command.Environment, file string) (*manageToken, 
 	return &token, server, nil
 }
 
-// RunBurn checks the message before it asks for the passphrase, whose handshake the server needs to delete it (F05).
+// RunBurn checks the message before it asks for the passphrase, whose handshake the server needs to delete it.
 func RunBurn(ctx context.Context, environment *command.Environment, arguments []string) int {
 	flags := command.NewFlags(environment, "burn")
 	linkFile := flags.String("link-file", "", linkFileUsage)

@@ -165,7 +165,7 @@ func Main(arguments []string, environment *command.Environment) {
 	os.Exit(exit.Code)
 }
 
-// Run refuses a link with its key anywhere in the arguments, where other processes could read it (AK14).
+// Run refuses a link with its key anywhere in the arguments, where other processes could read it.
 func Run(arguments []string, environment *command.Environment) Exit {
 	if slices.ContainsFunc(arguments, fragmentLike.MatchString) {
 		fmt.Fprintln(
@@ -248,8 +248,8 @@ func stopOnSignal(pending *stopsignal.Pending, cancel context.CancelCauseFunc) f
 	}
 }
 
-// protect hardens the process before the command reads anything secret, and fails closed without the hook (F07) or
-// with a setting that would log request headers (F11).
+// protect hardens the process before the command reads anything secret, and fails closed without the hook or with a
+// setting that would log request headers.
 func protect(environment *command.Environment, level harden.Level) (int, bool) {
 	if level == harden.Off {
 		return command.ExitOK, true

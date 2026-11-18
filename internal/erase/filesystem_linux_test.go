@@ -43,7 +43,7 @@ func TestATmpfsThatSwapCanReachIsRefused(t *testing.T) {
 	}
 }
 
-// TestRequireInPlaceOnRealExt4 covers the final review's M2 on loop images; it needs root, losetup, mkfs.ext4,
+// TestRequireInPlaceOnRealExt4 runs on loop images; it needs root, losetup, mkfs.ext4,
 // tune2fs and chattr, so it runs in the privileged lab container with NYLZO_TEST_EXT4_LOOP=1.
 func TestRequireInPlaceOnRealExt4(t *testing.T) {
 	if os.Getenv("NYLZO_TEST_EXT4_LOOP") != "1" || os.Geteuid() != 0 {

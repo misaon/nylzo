@@ -64,7 +64,7 @@ func (s *Store) Load(ctx context.Context, locator seal.Locator) (store.Row, erro
 }
 
 // Lookup makes one lookup that finds a row and one that finds none, whether or not the locator is known: an unknown
-// locator gets the stored dummy row, a known one a miss on an absent locator (AK21, F1).
+// locator gets the stored dummy row, a known one a miss on an absent locator (uniform timing).
 func (s *Store) Lookup(ctx context.Context, locator seal.Locator) (store.Row, bool, error) {
 	row, err := s.Load(ctx, locator)
 	switch {
@@ -153,7 +153,7 @@ func rowValues(row *store.Row) []any {
 }
 
 // scanRow reads every row in one shape, with fillers for its NULLs, so a live, an ended and the dummy row cost the
-// same work (AK21, F1).
+// same work (uniform timing).
 func scanRow(scanner *sql.Row) (store.Row, error) {
 	var row store.Row
 	var locator []byte

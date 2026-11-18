@@ -11,7 +11,7 @@ const activeRangeWindow = 10 * time.Second
 // Fair is the instance token bucket. While it is less than half full, it paces each /24 or /48 to one request per
 // (ranges + 1) / rate seconds, where ranges counts those seen in the last ten seconds or still paced. A range that
 // comes when its turn is due takes a token if one is left and otherwise loses the turn, so refused ranges cannot queue
-// up for the spare share and take it from a range that asks for no more than its share (F4). A full table drops the
+// up for the spare share and take it from a range that asks for no more than its share. A full table drops the
 // ranges that no longer count and then an eighth at random, so a flood of ranges cannot lock out a new one.
 type Fair struct {
 	mutex    sync.Mutex
