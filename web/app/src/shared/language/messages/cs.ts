@@ -459,6 +459,7 @@ export const messages = {
 
   'hero.title': 'Tajemství na {accent}',
   'hero.title.accent': 'jedno otevření',
+  'hero.lead': 'Bezpečně pošlete heslo, API klíč nebo soubor odkazem, který se otevře jen jednou.',
   'seo.title': 'Jak bezpečně poslat heslo: jednorázový šifrovaný odkaz | Nylzo',
   'seo.description':
     'Pošlete heslo, API klíč nebo soubor odkazem, který se otevře jen jednou. Šifruje se už ve vašem prohlížeči. Zdarma a\u{A0}bez registrace.',
@@ -880,9 +881,12 @@ export const messages = {
   'about.terms.link': 'podmínkách užívání',
   'faq.eyebrow': 'Časté otázky',
   'faq.title': 'Než pošlete první zprávu',
+  'faq.securely.question': 'Jak bezpečně poslat heslo?',
+  'faq.securely.answer':
+    'Vložte ho do Nylzo a\u{A0}pošlete jen odkaz. Prohlížeč heslo zašifruje dřív, než ho odešle, a\u{A0}po posledním otevření ho server smaže.',
   'faq.unopened.question': 'Co když příjemce odkaz neotevře?',
   'faq.unopened.answer': 'Po skončení platnosti se zpráva smaže sama. Platnost zvolíte od 1\u{A0}hodiny do {days}.',
-  'faq.passphrase.question': 'Jak předat heslo?',
+  'faq.passphrase.question': 'Jak předat heslo ke zprávě?',
   'faq.passphrase.answer': 'Jinou cestou než odkaz. Třeba odkaz e-mailem a\u{A0}heslo telefonem nebo SMS.',
   'faq.save.question': 'Může si příjemce zprávu uložit?',
   'faq.save.answer': 'Ano, zkopírovat ji nebo vyfotit. Posílejte ji jen tomu, komu věříte.',

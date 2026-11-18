@@ -476,6 +476,7 @@ export const messages: Catalog = {
 
   'hero.title': 'Rahasia yang {accent}',
   'hero.title.accent': 'hanya terbuka sekali',
+  'hero.lead': 'Kirim kata sandi, kunci API, atau file dengan aman lewat tautan yang hanya bisa dibuka sekali.',
   'seo.title': 'Kirim kata sandi dengan aman: tautan sekali pakai | Nylzo',
   'seo.description':
     'Kirim kata sandi, kunci API, atau file lewat tautan yang hanya bisa dibuka sekali. Enkripsi sudah dilakukan di browser Anda. Gratis dan tanpa pendaftaran.',
@@ -902,10 +903,13 @@ export const messages: Catalog = {
   'about.terms.link': 'ketentuan penggunaan',
   'faq.eyebrow': 'Pertanyaan umum',
   'faq.title': 'Sebelum Anda mengirim pesan pertama',
+  'faq.securely.question': 'Bagaimana cara mengirim kata sandi dengan aman?',
+  'faq.securely.answer':
+    'Tempelkan di Nylzo dan kirim tautannya saja. Browser Anda mengenkripsinya sebelum dikirim, dan server menghapusnya setelah dibuka terakhir kali.',
   'faq.unopened.question': 'Bagaimana jika penerima tidak membuka tautan?',
   'faq.unopened.answer':
     'Setelah masa berlakunya habis, pesan akan terhapus dengan sendirinya. Anda bisa memilih masa berlaku dari 1\u{A0}jam hingga {days}.',
-  'faq.passphrase.question': 'Bagaimana cara memberikan kata sandi?',
+  'faq.passphrase.question': 'Bagaimana cara memberikan kata sandi pesan?',
   'faq.passphrase.answer':
     'Melalui saluran yang berbeda dari tautan. Misalnya, tautan lewat email dan kata sandi lewat telepon atau SMS.',
   'faq.save.question': 'Bisakah penerima menyimpan pesan?',

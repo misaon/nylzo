@@ -74,6 +74,9 @@
       ]}
       inert={composer.phase === 'done'}
     >
+      <p class="mx-auto mb-6 max-w-[36rem] animate-rise text-body text-pretty text-ink-soft [animation-delay:80ms]">
+        {translate('hero.lead')}
+      </p>
       <ol
         role="list"
         class="mx-auto grid w-full max-w-[360px] animate-rise grid-cols-3 [animation-delay:160ms] sm:flex sm:w-fit sm:max-w-none sm:items-center"

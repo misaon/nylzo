@@ -466,6 +466,7 @@ export const messages: Catalog = {
 
   'hero.title': 'Tajomstvo na {accent}',
   'hero.title.accent': 'jedno otvorenie',
+  'hero.lead': 'Bezpečne pošlite heslo, API kľúč alebo súbor odkazom, ktorý sa otvorí len raz.',
   'seo.title': 'Ako bezpečne poslať heslo: jednorazový šifrovaný odkaz | Nylzo',
   'seo.description':
     'Pošlite heslo, API kľúč alebo súbor odkazom, ktorý sa otvorí len raz. Šifruje sa už vo vašom prehliadači. Zadarmo a\u{A0}bez registrácie.',
@@ -889,10 +890,13 @@ export const messages: Catalog = {
   'about.terms.link': 'podmienkach používania',
   'faq.eyebrow': 'Časté otázky',
   'faq.title': 'Skôr ako pošlete prvú správu',
+  'faq.securely.question': 'Ako bezpečne poslať heslo?',
+  'faq.securely.answer':
+    'Vložte ho do Nylzo a\u{A0}pošlite len odkaz. Prehliadač heslo zašifruje skôr, ako ho odošle, a\u{A0}po poslednom otvorení ho server zmaže.',
   'faq.unopened.question': 'Čo ak príjemca odkaz neotvorí?',
   'faq.unopened.answer':
     'Po skončení platnosti sa správa vymaže sama. Platnosť môžete nastaviť na 1\u{A0}hodinu až {days}.',
-  'faq.passphrase.question': 'Ako odovzdať heslo?',
+  'faq.passphrase.question': 'Ako odovzdať heslo k\u{A0}správe?',
   'faq.passphrase.answer': 'Inou cestou ako odkaz. Napríklad odkaz e-mailom a\u{A0}heslo telefonicky alebo cez SMS.',
   'faq.save.question': 'Môže si príjemca správu uložiť?',
   'faq.save.answer': 'Áno, skopírovať ju alebo odfotiť. Posielajte ju len tomu, komu dôverujete.',

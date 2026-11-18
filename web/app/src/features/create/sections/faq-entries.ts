@@ -1,5 +1,6 @@
 export const FAQ_COLUMNS = [
   [
+    { key: 'faq.securely', order: 'max-md:order-0' },
     { key: 'faq.unopened', order: 'max-md:order-1' },
     { key: 'faq.passphrase', order: 'max-md:order-3' },
     { key: 'faq.save', order: 'max-md:order-5' },

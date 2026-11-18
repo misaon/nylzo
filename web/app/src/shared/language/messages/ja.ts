@@ -466,6 +466,7 @@ export const messages: Catalog = {
 
   'hero.title': '{accent}秘密',
   'hero.title.accent': '一度だけ開ける',
+  'hero.lead': 'パスワード、APIキー、ファイルを、一度だけ開けるリンクで安全に送れます。',
   'seo.title': 'パスワードを安全に送る方法：ワンタイム暗号化リンク | Nylzo',
   'seo.description':
     'パスワード、APIキー、ファイルを、一度だけ開けるリンクで送れます。暗号化はお使いのブラウザで行われます。無料で、登録も不要です。',
@@ -886,10 +887,13 @@ export const messages: Catalog = {
   'about.terms.link': '利用規約',
   'faq.eyebrow': 'よくある質問',
   'faq.title': '最初のメッセージを送る前に',
+  'faq.securely.question': 'パスワードを安全に送るには？',
+  'faq.securely.answer':
+    'Nylzoに貼り付けて、リンクだけを送ってください。ブラウザが送信前に暗号化し、最後に開かれた後でサーバーが削除します。',
   'faq.unopened.question': '受信者がリンクを開かなかったら？',
   'faq.unopened.answer':
     '有効期限が切れると、メッセージは自動的に削除されます。有効期限は1時間から{days}までの間で選べます。',
-  'faq.passphrase.question': 'パスワードはどうやって伝えればよいですか？',
+  'faq.passphrase.question': 'メッセージのパスワードはどうやって伝えればよいですか？',
   'faq.passphrase.answer':
     'リンクとは別の経路で伝えてください。たとえば、リンクはメールで、パスワードは電話やSMSで伝えます。',
   'faq.save.question': '受信者はメッセージを保存できますか？',

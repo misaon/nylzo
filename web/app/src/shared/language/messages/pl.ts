@@ -503,6 +503,7 @@ export const messages: Catalog = {
 
   'hero.title': 'Sekret na {accent}',
   'hero.title.accent': 'jedno otwarcie',
+  'hero.lead': 'Bezpiecznie wyślij hasło, klucz API lub plik linkiem, który otworzy się tylko raz.',
   'seo.title': 'Jak bezpiecznie wysłać hasło: jednorazowy szyfrowany link | Nylzo',
   'seo.description':
     'Wyślij hasło, klucz API lub plik linkiem, który otworzy się tylko raz. Szyfrowanie odbywa się już w\u{A0}twojej przeglądarce. Bezpłatnie i\u{A0}bez rejestracji.',
@@ -935,10 +936,13 @@ export const messages: Catalog = {
   'about.terms.link': 'warunkach korzystania',
   'faq.eyebrow': 'Częste pytania',
   'faq.title': 'Zanim wyślesz pierwszą wiadomość',
+  'faq.securely.question': 'Jak bezpiecznie wysłać hasło?',
+  'faq.securely.answer':
+    'Wklej je w\u{A0}Nylzo i\u{A0}wyślij tylko link. Przeglądarka szyfruje je przed wysłaniem, a\u{A0}serwer usuwa je po ostatnim otwarciu.',
   'faq.unopened.question': 'A\u{A0}co, jeśli odbiorca nie otworzy linku?',
   'faq.unopened.answer':
     'Po wygaśnięciu ważności wiadomość usunie się sama. Najkrótsza ważność to 1\u{A0}godzina, a\u{A0}najdłuższa {days}.',
-  'faq.passphrase.question': 'Jak przekazać hasło?',
+  'faq.passphrase.question': 'Jak przekazać hasło do wiadomości?',
   'faq.passphrase.answer': 'Inną drogą niż link. Na przykład link e-mailem, a\u{A0}hasło telefonicznie lub SMS-em.',
   'faq.save.question': 'Czy odbiorca może zapisać wiadomość?',
   'faq.save.answer': 'Tak, może ją skopiować lub sfotografować. Wysyłaj ją tylko do osób, którym ufasz.',
