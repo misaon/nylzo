@@ -46,7 +46,7 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
+func TestSlowConnectionsAndLyingContentLength(t *testing.T) {
 	harness := newHarness(t, baseSettings(pepperA, nil))
 	address := harness.listen()
 	var connections []net.Conn
@@ -87,7 +87,7 @@ func TestAK22SlowConnectionsAndLyingContentLength(t *testing.T) {
 		t.Fatalf("healthz during slowloris: %v", err)
 	}
 	response.Body.Close()
-	// AK22 requires other requests to be answered within 2 s during a slowloris
+	// Other requests must be answered within 2 s during a slowloris
 	if response.StatusCode != http.StatusOK || time.Since(start) > 2*time.Second {
 		t.Fatalf("healthz %d after %s", response.StatusCode, time.Since(start))
 	}
@@ -346,7 +346,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 		slices.ContainsFunc(blobWriter.writes[1:], func(deadline time.Time) bool {
 			return time.Until(deadline) > window
 		}) {
-		t.Fatalf("F3: every 64 KiB of a response must go out within %v, so a reader that stops frees its slot", window)
+		t.Fatalf("every 64 KiB of a response must go out within %v, so a reader that stops frees its slot", window)
 	}
 
 	id := core.NewID()
@@ -414,7 +414,7 @@ func TestTransfersGetTimeForTheirSize(t *testing.T) {
 		t.Fatalf("the 201 got a write deadline %v after the stored body, want %v", got, writeTimeout)
 	}
 	if len(writer.reads) < 2 || writer.reads[1].Sub(stored) > transport.PaceWindow {
-		t.Fatalf("F7: the body must arrive at the minimum rate, chunk by chunk: %v", writer.reads)
+		t.Fatalf("the body must arrive at the minimum rate, chunk by chunk: %v", writer.reads)
 	}
 }
 
@@ -501,7 +501,7 @@ func TestOneSourceCannotHoldEveryStreamSlot(t *testing.T) {
 		hold(fmt.Sprintf("203.0.113.%d", i))
 	}
 	if got := claim("203.0.113.9"); got != http.StatusServiceUnavailable {
-		t.Fatalf("F3: a fifth stream from one /24: %d, want 503", got)
+		t.Fatalf("a fifth stream from one /24: %d, want 503", got)
 	}
 	if got := claim("2001:db8:1:2::1"); got != http.StatusNotFound {
 		t.Fatalf("an IPv6 source while one /24 holds its share: %d, want 404 after the slot", got)
@@ -598,7 +598,7 @@ func TestRunSweeperStopsWithoutAnError(t *testing.T) {
 	})
 }
 
-// F18: swap turned on after the start reaches the log at every sweep as its own event, and the sweep still runs.
+// Swap turned on after the start reaches the log at every sweep as its own event, and the sweep still runs.
 func TestEpochStorageThatStopsBeingErasableIsLogged(t *testing.T) {
 	t.Parallel()
 	settings := baseSettings(pepperA, nil)
@@ -760,7 +760,7 @@ func TestForwardingHeadersThatLeaveTheProxyAddressWarn(t *testing.T) {
 	}
 }
 
-// TestRequestsAreLoggedAsCountsPerHour covers A4-5, A4-8 and spec §10: no line per request, no latency, no client
+// TestRequestsAreLoggedAsCountsPerHour covers spec §10: no line per request, no latency, no client
 // method, no line before the hour ends, and the routes that act on a message counted together by status class.
 func TestRequestsAreLoggedAsCountsPerHour(t *testing.T) {
 	t.Parallel()
@@ -937,7 +937,7 @@ func (body *unreadableBody) Read([]byte) (int, error) {
 	return 0, io.EOF
 }
 
-// TestABodyThatNeverArrivesIsAnsweredAtOnce covers F5: an early answer closes instead of waiting for the body.
+// An early answer closes instead of waiting for the body.
 func TestABodyThatNeverArrivesIsAnsweredAtOnce(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
@@ -976,7 +976,7 @@ func TestABodyThatNeverArrivesIsAnsweredAtOnce(t *testing.T) {
 	}
 }
 
-// F15: a 1624-character share key plus what a browser and a proxy add stays below the h2c header list limit.
+// A 1624-character share key plus what a browser and a proxy add stays below the h2c header list limit.
 func TestH2CAcceptsAShareKeyWithBrowserHeaders(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
@@ -1000,7 +1000,7 @@ func TestH2CAcceptsAShareKeyWithBrowserHeaders(t *testing.T) {
 	}
 }
 
-// TestHeadersOver12KiBGet431WithTheSecurityHeaders covers A4-9 and F10: net/http answers before any handler runs.
+// net/http answers before any handler runs.
 func TestHeadersOver12KiBGet431WithTheSecurityHeaders(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
@@ -1093,10 +1093,10 @@ func seedCopy(t *testing.T, seed []byte) string {
 	return directory
 }
 
-// TestF3ACopyTakenWhileLiveStaysClosedOnceItsDeadlineHasPassed copies the data directory and the object while a
+// TestACopyTakenWhileLiveStaysClosedOnceItsDeadlineHasPassed copies the data directory and the object while a
 // message lives, lets it expire and the epoch advance, and shows that nothing the attacker can steal from the minute
-// after the deadline on, the link included, opens the copy (spec section 5.6, F13).
-func TestF3ACopyTakenWhileLiveStaysClosedOnceItsDeadlineHasPassed(t *testing.T) {
+// after the deadline on, the link included, opens the copy (spec section 5.6).
+func TestACopyTakenWhileLiveStaysClosedOnceItsDeadlineHasPassed(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
@@ -1184,9 +1184,9 @@ func TestF3ACopyTakenWhileLiveStaysClosedOnceItsDeadlineHasPassed(t *testing.T) 
 	})
 }
 
-// TestF12ASeedCopiedEarlierOpensNoMessageIssuedInALaterHour copies the seed file, lets the hour end and creates a
+// TestASeedCopiedEarlierOpensNoMessageIssuedInALaterHour copies the seed file, lets the hour end and creates a
 // message: its share comes from a generation of fresh entropy that the copy cannot make (spec section 5.6).
-func TestF12ASeedCopiedEarlierOpensNoMessageIssuedInALaterHour(t *testing.T) {
+func TestASeedCopiedEarlierOpensNoMessageIssuedInALaterHour(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		settings := baseSettings(pepperA, nil)
@@ -1292,7 +1292,7 @@ func fileMessage(t *testing.T, content []byte) *testMessage {
 	return message
 }
 
-// TestAnEndedMessageStaysUnreadableWithItsLinkAndAnOlderRow covers A4-1: the file is kept open to read its own blocks.
+// The file is kept open to read its own blocks.
 func TestAnEndedMessageStaysUnreadableWithItsLinkAndAnOlderRow(t *testing.T) {
 	t.Parallel()
 	harness := newHarness(t, baseSettings(pepperA, nil))
@@ -1553,7 +1553,7 @@ func (h *testHarness) stolenCopy() map[string][]byte {
 	return stolen
 }
 
-// checkStolenDatabase covers D101: a row shows its locator, sealed bytes and two rounded cleanup times, nothing else.
+// checkStolenDatabase checks that a row shows its locator, sealed bytes and two rounded cleanup times, nothing else.
 func checkStolenDatabase(t *testing.T, harness *testHarness, created int) {
 	t.Helper()
 	database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.directory, "nylzo.db"))
@@ -1641,7 +1641,7 @@ func column[T any](t *testing.T, database *sql.DB, query string) []T {
 	return values
 }
 
-func TestAK11LogsContainNoSecrets(t *testing.T) {
+func TestLogsContainNoSecrets(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))

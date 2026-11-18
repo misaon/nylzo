@@ -73,7 +73,7 @@ func RunTakedown(ctx context.Context, environment *command.Environment, argument
 	return takeDown(ctx, environment, database, blobs, ids)
 }
 
-// takeDown removes each message without opening its record; readers then see deleted (D63, D101).
+// takeDown removes each message without opening its record; readers then see deleted.
 func takeDown(
 	ctx context.Context,
 	environment *command.Environment,

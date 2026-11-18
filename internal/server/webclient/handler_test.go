@@ -110,7 +110,7 @@ func TestIndependentFrontendKeepsClientIntegrityAndReaderGuards(t *testing.T) {
 	}
 }
 
-// expectedCacheControl caches only scripts and stylesheets, which every page loads with Subresource Integrity (D119).
+// expectedCacheControl caches only scripts and stylesheets, which every page loads with Subresource Integrity.
 func expectedCacheControl(path string, status int) string {
 	if status == http.StatusOK && strings.HasPrefix(path, "/assets/") &&
 		(strings.HasSuffix(path, ".js") || strings.HasSuffix(path, ".css")) {

@@ -32,7 +32,7 @@ import (
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
 
-// The server needs a directory fsync and free space checks, which Windows does not offer (D54).
+// The server needs a directory fsync and free space checks, which Windows does not offer.
 const serverSupported = runtime.GOOS != "windows"
 
 const (

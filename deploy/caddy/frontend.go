@@ -55,7 +55,7 @@ type Frontend struct {
 	Maintenance string `json:"maintenance,omitempty"`
 	// The operator's contact, the same as NYLZO_CONTACT of the server, so its link is the one the pages may reach.
 	Contact string `json:"contact,omitempty"`
-	// LoggingChecked is set by the nylzo adapter after refuseRequestRecording passed (F11).
+	// LoggingChecked is set by the nylzo adapter after refuseRequestRecording passed.
 	LoggingChecked  bool `json:"logging_checked,omitempty"`
 	handler         http.Handler
 	pages           webclient.Pages

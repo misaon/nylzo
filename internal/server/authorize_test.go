@@ -59,7 +59,7 @@ func sameHeaders(left, right map[string][]string) bool {
 
 const medianSlackPercent = 115
 
-func TestAK21UniformNotFoundAndConflict(t *testing.T) {
+func TestUniformNotFoundAndConflict(t *testing.T) {
 	settings := baseSettings(pepperA, nil)
 	settings.Rates.ReadPerHour = 1 << 30
 	settings.Rates.BucketPerSecond = 1 << 20
@@ -172,7 +172,7 @@ func TestAK21UniformNotFoundAndConflict(t *testing.T) {
 		if failure = measureUniformity(t, harness, classes); failure == "" {
 			return
 		}
-		t.Logf("AK21 measuring again after: %s", failure)
+		t.Logf("uniform timing: measuring again after: %s", failure)
 	}
 	t.Fatal(failure)
 }
@@ -206,7 +206,7 @@ func measureUniformity(t *testing.T, harness *testHarness, classes []timingClass
 		medians[classIndex] = classDurations[len(classDurations)/2]
 		p95s[classIndex] = classDurations[len(classDurations)*95/100]
 		t.Logf(
-			"AK21 %-8s %-10s median %s p95 %s",
+			"uniform timing %-8s %-10s median %s p95 %s",
 			classes[classIndex].endpoint,
 			classes[classIndex].name,
 			medians[classIndex],
@@ -230,7 +230,7 @@ func measureUniformity(t *testing.T, harness *testHarness, classes []timingClass
 		if spendsNoChallenge[class.name] {
 			continue
 		}
-		// AK21 timing uniformity is the contract under test
+		// Timing uniformity is the contract under test
 		if medians[classIndex]*100 > minMedian[class.endpoint]*medianSlackPercent {
 			return fmt.Sprintf(
 				"%s %s median %s exceeds %d%% of the fastest equal-work class %s on the same endpoint",
@@ -241,7 +241,7 @@ func measureUniformity(t *testing.T, harness *testHarness, classes []timingClass
 				minMedian[class.endpoint],
 			)
 		}
-		// AK21 timing uniformity is the contract under test
+		// Timing uniformity is the contract under test
 		if p95s[classIndex] > 5*minP95[class.endpoint] {
 			return fmt.Sprintf(
 				"%s %s p95 %s exceeds 5x the fastest equal-work class %s on the same endpoint",
@@ -810,7 +810,7 @@ func TestOnlyAnAuthorizedRequestSettlesAMessage(t *testing.T) {
 	})
 }
 
-func TestAK27PepperRotation(t *testing.T) {
+func TestPepperRotation(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -845,7 +845,7 @@ func TestAK27PepperRotation(t *testing.T) {
 	})
 }
 
-func TestAK27PreviousPepperHorizon(t *testing.T) {
+func TestPreviousPepperHorizon(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -998,8 +998,7 @@ func TestStorageFaultKeepsUniformNotFound(t *testing.T) {
 	})
 }
 
-// TestARefusalTakesTheFloorAndSpendsTheReadBudget covers F1 and A4-4: the answer time of a 404 says nothing about
-// the id, and every signed route counts against the hourly read budget.
+// The answer time of a 404 says nothing about the id, and every signed route counts against the hourly read budget.
 func TestARefusalTakesTheFloorAndSpendsTheReadBudget(t *testing.T) {
 	t.Parallel()
 	settings := baseSettings(pepperA, nil)

@@ -122,9 +122,9 @@ func TestRedirectIsAnError(t *testing.T) {
 	}
 }
 
-// A-04: a difficulty above the spec maximum fails before any key is derived, not after minutes of solving. F13: a
-// deadline that does not end the TTL counted from the issue of the id, or another epoch than its own, is refused before
-// anything is sealed.
+// A difficulty above the spec maximum fails before any key is derived, not after minutes of solving. A deadline that
+// does not end the TTL counted from the issue of the id, or another epoch than its own, is refused before anything is
+// sealed.
 func TestInstanceRefusesWhatTheSpecForbids(t *testing.T) {
 	t.Parallel()
 	creation := &Creation{TTLSeconds: 3600, ShareKey: share.NewKey().PublicKey()}
@@ -217,8 +217,8 @@ func TestServerStringsAreValidated(t *testing.T) {
 	}
 }
 
-// The client takes the state lost, which a server answers for a message whose key it lost (F21), from metadata, status
-// and a gone answer alike.
+// The client takes the state lost, which a server answers for a message whose key it lost, from metadata, status and
+// a gone answer alike.
 func TestTheLostStateIsAccepted(t *testing.T) {
 	t.Parallel()
 	challenge := `{"challenge":"` + core.Encode(
@@ -326,7 +326,7 @@ func TestEnvelopesAreBoundedByTheProtocol(t *testing.T) {
 	}
 }
 
-// F13: the message must expire at the deadline the client sealed.
+// The message must expire at the deadline the client sealed.
 func TestCreateRefusesAnotherExpiry(t *testing.T) {
 	t.Parallel()
 	creator := serve(t, func(w http.ResponseWriter, _ *http.Request) {

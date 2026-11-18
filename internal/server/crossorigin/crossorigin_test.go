@@ -82,7 +82,7 @@ func TestBrowserMutationProtection(t *testing.T) {
 	}
 }
 
-// TestCrossSiteReadsSpendNoBudget covers F2: an image on another site must not reach the API.
+// An image on another site must not reach the API.
 func TestCrossSiteReadsSpendNoBudget(t *testing.T) {
 	t.Parallel()
 	refuse := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) })

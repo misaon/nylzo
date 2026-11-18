@@ -442,7 +442,7 @@ func TestCrawlersReachOnlyPublicDocumentsOverClassicalTLS(t *testing.T) {
 					_ = response.Body.Close()
 					status := http.StatusOK
 					if path == "/sitemap.xml" {
-						// Only the official instance has a sitemap (D134); the gate still lets the request through.
+						// Only the official instance has a sitemap; the gate still lets the request through.
 						status = http.StatusNotFound
 					}
 					if got := response.Header.Values("Content-Security-Policy"); response.StatusCode != status ||
@@ -490,9 +490,9 @@ func TestCrawlersReachOnlyPublicDocumentsOverClassicalTLS(t *testing.T) {
 	}
 }
 
-// TestFrontendRefusesSettingsThatRecordRequestHeaders covers F11: GODEBUG=http2debug prints HTTP/2 headers through the
-// standard logger, which no Caddy log excludes, QLOGDIR, also from --envfile, makes quic-go write HTTP/3 headers, and
-// a configuration that skipped the nylzo adapter skipped its logging checks.
+// GODEBUG=http2debug prints HTTP/2 headers through the standard logger, which no Caddy log excludes, QLOGDIR, also
+// from --envfile, makes quic-go write HTTP/3 headers, and a configuration that skipped the nylzo adapter skipped its
+// logging checks.
 func TestFrontendRefusesSettingsThatRecordRequestHeaders(t *testing.T) {
 	for name, value := range map[string]string{"GODEBUG": "http2debug=2", "QLOGDIR": t.TempDir()} {
 		t.Run(name, func(t *testing.T) {

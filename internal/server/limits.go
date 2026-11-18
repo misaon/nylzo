@@ -108,7 +108,7 @@ func (s *Server) countHourly(w http.ResponseWriter, r *http.Request, hit *rateli
 }
 
 // takeStream holds one of the slots that bound claim and blob responses; it answers 503 when none is free. A claim or
-// a download takes its slot before the signature is checked (D24) and after the checks that cost no lookup, so a
+// a download takes its slot before the signature is checked and after the checks that cost no lookup, so a
 // malformed request never holds one.
 func (s *Server) takeStream(w http.ResponseWriter, r *http.Request) (func(), bool) {
 	buckets := s.bucketsOf(r)

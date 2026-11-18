@@ -183,7 +183,7 @@ func assertPrivate(t *testing.T, path, want string) {
 	}
 }
 
-// F05: a burn leaves an opened message whose last open may still run to the server and refuses an ended one.
+// A burn leaves an opened message whose last open may still run to the server and refuses an ended one.
 func TestBurnChecksTheMessageFirst(t *testing.T) {
 	t.Parallel()
 	link := &openLink{kdf: core.KDFScrypt}

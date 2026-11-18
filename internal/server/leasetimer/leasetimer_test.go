@@ -26,7 +26,7 @@ func TestClosingStopsLeaseTimersAndWaitsForRunningOnes(t *testing.T) {
 		ended := pending.pending[locator("ended")]
 		pending.Cancel(locator("ended"))
 		if ended.key != (seal.Key{}) {
-			t.Fatal("A4-2: a release cancelled by an ending must clear its record key at once")
+			t.Fatal("a release cancelled by an ending must clear its record key at once")
 		}
 		time.Sleep(time.Second)
 		synctest.Wait()

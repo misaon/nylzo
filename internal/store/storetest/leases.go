@@ -43,7 +43,7 @@ func (f *fixture) leasesAndAcks() {
 	}
 }
 
-// aRecordNeverGrows caps the active leases, so the length of a sealed record never tells how many were active (A4-4).
+// aRecordNeverGrows caps the active leases, so the length of a sealed record never tells how many were active.
 func (f *fixture) aRecordNeverGrows() {
 	t := f.t
 	created := f.create(20, oneDay, false)

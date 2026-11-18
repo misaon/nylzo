@@ -38,7 +38,7 @@ func referenceKey(root Seed, first, shareEpoch uint32) [SeedLen]byte {
 	return MinuteKey(&minute)
 }
 
-// F13: the chain of hours and the chain of minutes in each hour make the key of every minute the spec derives, from
+// The chain of hours and the chain of minutes in each hour make the key of every minute the spec derives, from
 // any later minute the generation has moved to, across hour boundaries included.
 func TestAGenerationOfMinutesMakesTheKeyOfEveryLaterMinute(t *testing.T) {
 	t.Parallel()
@@ -73,7 +73,7 @@ func TestAGenerationOfMinutesMakesTheKeyOfEveryLaterMinute(t *testing.T) {
 	}
 }
 
-// F13: once a minute has begun, no seed in memory or in the file yields the key of a minute before it.
+// Once a minute has begun, no seed in memory or in the file yields the key of a minute before it.
 func TestAPassedMinuteLeavesNoSeed(t *testing.T) {
 	t.Parallel()
 	var root Seed
@@ -101,8 +101,8 @@ func TestAPassedMinuteLeavesNoSeed(t *testing.T) {
 	}
 }
 
-// L6: after a failed overwrite the next advance writes again, even within the same minute, and memory has already
-// left the passed minute. F12: no share comes from a generation that the file does not hold yet.
+// After a failed overwrite the next advance writes again, even within the same minute, and memory has already left
+// the passed minute. No share comes from a generation that the file does not hold yet.
 func TestAFailedOverwriteIsWrittenAgainBeforeAShareIsIssued(t *testing.T) {
 	t.Parallel()
 	ratchet := openInternal(t, t.TempDir(), internalStart)

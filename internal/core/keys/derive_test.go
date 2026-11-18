@@ -40,7 +40,7 @@ func TestPassphraseIsCheckedBeforeDerivation(t *testing.T) {
 	}
 }
 
-func TestF3ContentKeysNeedTheShare(t *testing.T) {
+func TestContentKeysNeedTheShare(t *testing.T) {
 	t.Parallel()
 	id, secret, exportKey := core.NewID(), core.NewSecret(), new(keys.ExportKey)
 	if _, err := keys.DeriveContent(id, secret, exportKey, nil); !errors.Is(err, keys.ErrShare) {

@@ -11,7 +11,7 @@ const (
 	trimDivisor     = 8
 )
 
-// Limiter keeps a token bucket per key; it records the last refill to the second only (A4-3).
+// Limiter keeps a token bucket per key; it records the last refill to the second only.
 type Limiter struct {
 	mutex      sync.Mutex
 	rate       float64

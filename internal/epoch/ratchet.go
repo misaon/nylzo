@@ -913,7 +913,7 @@ func zeroed(content []byte) bool {
 	return true
 }
 
-// checkDirectory narrows a directory of this user as the data directory is narrowed (D99), when it may write.
+// checkDirectory narrows a directory of this user as the data directory is narrowed, when it may write.
 func checkDirectory(directory string, narrow bool) error {
 	info, err := os.Lstat(directory)
 	switch {

@@ -13,8 +13,8 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// TestProtectHidesTheProcessFromTheSameUser covers F07: a protected process writes no core file, and another
-// process of the same user can neither read its memory and environment nor attach a debugger.
+// A protected process writes no core file, and another process of the same user can neither read its memory and
+// environment nor attach a debugger.
 func TestProtectHidesTheProcessFromTheSameUser(t *testing.T) {
 	if mayTrace() {
 		t.Skip("CAP_SYS_PTRACE reads and traces any process, protected or not")
@@ -54,8 +54,7 @@ func TestFullProtectionWarnsOnlyWithoutTheLock(t *testing.T) {
 	}
 }
 
-// TestAProcessUnderATracerIsRefused covers the F07 review: a tracer may hold any thread, not just the first, and
-// without /proc nylzo cannot tell.
+// A tracer may hold any thread, not just the first, and without /proc nylzo cannot tell.
 func TestAProcessUnderATracerIsRefused(t *testing.T) {
 	threads := t.TempDir()
 	for thread, tracer := range map[string]string{"100": "0", "101": "0"} {

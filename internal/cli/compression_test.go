@@ -12,8 +12,8 @@ import (
 	"github.com/misaon/nylzo/internal/core/envelope"
 )
 
-// W2-06, F6: only the sender's --compress compresses, whatever the server says.
-func TestF6AttachmentIsCompressedOnlyOnRequest(t *testing.T) {
+// Only the sender's --compress compresses, whatever the server says.
+func TestAttachmentIsCompressedOnlyOnRequest(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)
 	var mutex sync.Mutex

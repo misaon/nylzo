@@ -11,7 +11,7 @@ import (
 	"github.com/misaon/nylzo/internal/store"
 )
 
-// handleBurn deletes a message only after a handshake whose KE3 matches, checked and counted as for a claim (F05).
+// handleBurn deletes a message only after a handshake whose KE3 matches, checked and counted as for a claim.
 func (s *Server) handleBurn(w http.ResponseWriter, r *http.Request) {
 	ke3, ok := parseKE3(w, r)
 	if !ok {

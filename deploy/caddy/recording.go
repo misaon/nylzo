@@ -34,7 +34,7 @@ func refuseHeaderDumps() error {
 	return nil
 }
 
-// refuseRequestRecording rejects a configuration that would record X-Nylzo-* headers or message paths (F11).
+// refuseRequestRecording rejects a configuration that would record X-Nylzo-* headers or message paths.
 func refuseRequestRecording(config map[string]any) error {
 	var refused error
 	walkObjects(config, func(object map[string]any) {

@@ -9,7 +9,7 @@ import (
 )
 
 // Timers keep the record key of a message whose last lease runs until the release at lease end, or until a
-// request ends the message first and Cancel clears the key at once (A4-2); Stop waits for releases already running.
+// request ends the message first and Cancel clears the key at once; Stop waits for releases already running.
 type Timers struct {
 	mutex   sync.Mutex
 	running sync.WaitGroup
