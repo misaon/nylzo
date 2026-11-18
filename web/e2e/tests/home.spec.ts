@@ -1,3 +1,5 @@
+import type { Page } from '@playwright/test';
+
 import { expect, test } from './support/fixtures.ts';
 import { createMessageThroughApi } from './support/messages.ts';
 import { chooseLanguage, createMessageInPage, openApp } from './support/pages.ts';
@@ -107,30 +109,39 @@ test('the language switch moves between / and /cs/ in place, a saved choice wins
   await expect(page).toHaveURL(`${BASE_URL}/`);
 });
 
-for (const tracking of [false, true]) {
-  test(`back after a language switch keeps the chosen language and the draft without loading again${tracking ? ' while the tab tracks a message' : ''}`, async ({
-    newPage,
-  }) => {
-    const page = await newPage({ locale: 'en-US' });
-    if (tracking) {
-      await createMessageInPage(page, { text: 'tracked', remember: 'tab' });
-      await page.getByRole('button', { name: 'New message' }).click();
-    } else {
-      await openApp(page, '/');
-    }
-    await page.getByLabel('Message text').fill('draft that must survive');
-    await page.evaluate(() => {
-      location.hash = 'faq';
-      Object.assign(globalThis, { nylzoSamePage: true });
-    });
-    await chooseLanguage(page, 'Čeština');
-    await expect(page).toHaveURL(`${BASE_URL}/cs/#faq`);
-    await page.goBack();
-    await expect(page).toHaveURL(`${BASE_URL}/cs/`);
-    await expect(page.getByLabel('Text zprávy')).toHaveValue('draft that must survive');
-    expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(true);
+async function switchLanguageWithDraftAndGoBack(page: Page): Promise<void> {
+  await page.getByLabel('Message text').fill('draft that must survive');
+  await page.evaluate(() => {
+    location.hash = 'faq';
+    Object.assign(globalThis, { nylzoSamePage: true });
   });
+  await chooseLanguage(page, 'Čeština');
+  await expect(page).toHaveURL(`${BASE_URL}/cs/#faq`);
+  await page.goBack();
 }
+
+test('back after a language switch keeps the chosen language and the draft without loading again', async ({
+  newPage,
+}) => {
+  const page = await newPage({ locale: 'en-US' });
+  await openApp(page, '/');
+  await switchLanguageWithDraftAndGoBack(page);
+  await expect(page).toHaveURL(`${BASE_URL}/cs/`);
+  await expect(page.getByLabel('Text zprávy')).toHaveValue('draft that must survive');
+  expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(true);
+});
+
+test('back after a language switch keeps the language and the draft while the tab tracks a message', async ({
+  newPage,
+}) => {
+  const page = await newPage({ locale: 'en-US' });
+  await createMessageInPage(page, { text: 'tracked', remember: 'tab' });
+  await page.getByRole('button', { name: 'New message' }).click();
+  await switchLanguageWithDraftAndGoBack(page);
+  await expect(page).toHaveURL(`${BASE_URL}/cs/`);
+  await expect(page.getByLabel('Text zprávy')).toHaveValue('draft that must survive');
+  expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(true);
+});
 
 test('a page whose code fails to load says so and offers to try again', async ({ newPage }) => {
   const page = await newPage({ locale: 'en-US' });
