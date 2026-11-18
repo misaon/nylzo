@@ -88,63 +88,38 @@ host() {
   bash "$current/update/activate" "$current" || true
   return 1
 }
-upstream() {
-  local version="$1" architecture="$2" base archive
-  base="https://github.com/caddyserver/caddy/releases/download/$version/caddy_${version#v}"
-  for suffix in checksums.txt checksums.txt.pem checksums.txt.sig; do download "${base}_${suffix}" "$temporary/upstream-$suffix"; done
-  cosign verify-blob "$temporary/upstream-checksums.txt" --certificate "$temporary/upstream-checksums.txt.pem" --signature "$temporary/upstream-checksums.txt.sig" \
-    --certificate-identity "https://github.com/caddyserver/caddy/.github/workflows/release.yml@refs/tags/$version" \
-    --certificate-oidc-issuer https://token.actions.githubusercontent.com >/dev/null
-  archive="caddy_${version#v}_linux_${architecture}.tar.gz"
-  download "${base}_linux_${architecture}.tar.gz" "$temporary/$archive"
-  (cd "$temporary" && awk -v name="$archive" '$2 == name { print; found++ } END { if (found != 1) exit 1 }' upstream-checksums.txt | sha512sum --check --strict >/dev/null)
-  tar --extract --gzip --file "$temporary/$archive" --to-stdout caddy > "$temporary/caddy"
-}
 caddy() {
-  local release="$1" previous="" candidate directory architecture archive built restart=true
+  local release="$1" previous="" candidate directory architecture archive restart=true
   [[ "$release" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
   [[ ! -s "$state/caddy.tag" ]] || previous=$(cat "$state/caddy.tag")
-  [[ -z "$previous" || "$previous" =~ ^(release-)?v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
-  if [[ "$previous" = release-* ]]; then
+  if [[ -n "$previous" && ! "$previous" =~ ^release-v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+    echo "Caddy $previous is not a Nylzo release build; provision the host from a release that ships one." >&2
+    return 1
+  fi
+  if [[ -n "$previous" ]]; then
     [[ "$previous" != "release-$release" ]] || { systemctl start caddy.service; return; }
     older "${previous#release-}" "$release" || { echo 'Caddy downgrade refused.' >&2; return 1; }
   fi
   checksums "$release"
   architecture=$(jq -r .architecture "$site")
   archive="nylzo-caddy_${release#v}_linux_${architecture}.tar.gz"
-  if listed "$archive"; then
-    candidate="release-$release"
-    download "https://github.com/misaon/nylzo/releases/download/$release/$archive" "$temporary/$archive"
-    matches "$archive"
-    provenance "$temporary/$archive" "$release"
-    tar --extract --gzip --file "$temporary/$archive" --to-stdout caddy > "$temporary/caddy"
-  else
+  if ! listed "$archive"; then
     [[ -n "$previous" ]] || { echo "Release $release ships no Caddy build; provision from a release that does." >&2; return 1; }
-    if [[ "$previous" = release-* ]]; then
-      echo "Release $release ships no Caddy build; Caddy from ${previous#release-} stays installed." >&2
-      systemctl start caddy.service
-      return
-    fi
-    candidate="$previous"
-    [[ ! -s "$state/caddy.approved.tag" ]] || candidate=$(cat "$state/caddy.approved.tag")
-    [[ "$candidate" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || return 1
-    [[ "$candidate" != "$previous" ]] || { systemctl start caddy.service; return; }
-    older "$previous" "$candidate" || { echo 'Caddy downgrade refused.' >&2; return 1; }
-    upstream "$candidate" "$architecture"
+    echo "Release $release ships no Caddy build; Caddy from ${previous#release-} stays installed." >&2
+    systemctl start caddy.service
+    return
   fi
+  candidate="release-$release"
+  download "https://github.com/misaon/nylzo/releases/download/$release/$archive" "$temporary/$archive"
+  matches "$archive"
+  provenance "$temporary/$archive" "$release"
+  tar --extract --gzip --file "$temporary/$archive" --to-stdout caddy > "$temporary/caddy"
   directory="/opt/nylzo/caddy/$candidate"
   mkdir -p /opt/nylzo/caddy "$directory"
   chmod 0755 /opt/nylzo/caddy "$directory"
   cp "$temporary/caddy" "$directory/caddy"
   chmod 0755 "$directory/caddy"
   systemd-run --wait --pipe --collect --uid=caddy --gid=caddy --property=EnvironmentFile=/etc/nylzo/caddy.env "$directory/caddy" validate --config /etc/caddy/Caddyfile --adapter nylzo >/dev/null
-  if [[ "$previous" = v* && "$candidate" = release-* ]]; then
-    built=$(systemd-run --wait --pipe --collect --uid=caddy --gid=caddy "$directory/caddy" version | cut -d ' ' -f 1)
-    if [[ ! "$built" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || older "$built" "$previous"; then
-      echo "Caddy downgrade refused: release $release builds Caddy $built, older than the installed $previous." >&2
-      return 1
-    fi
-  fi
   if [[ -n "$previous" ]] && cmp --silent "$directory/caddy" "/opt/nylzo/caddy/$previous/caddy"; then restart=false; fi
   ln --symbolic --force --no-dereference --no-target-directory "$directory/caddy" /opt/nylzo/bin/caddy.next
   mv -T /opt/nylzo/bin/caddy.next /opt/nylzo/bin/caddy

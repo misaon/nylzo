@@ -73,11 +73,11 @@ An instance's `/transparency` page lists its operator, limits and logging, as th
 
 The deployment profiles accept only TLS 1.3 with the hybrid post-quantum key exchange X25519MLKEM768, so traffic recorded today stays protected against a later quantum computer that breaks X25519 alone. Older clients cannot connect, among them Safari and iOS before 26, Firefox ESR 128, curl built on OpenSSL older than 3.5 and many link-preview bots and uptime monitors.
 
-The one exception is search and AI crawlers, many of which do not offer ML-KEM. Caddy also completes a handshake with X25519 alone from the address ranges these services publish for their crawlers. Such a connection reaches only public pages such as the home pages, `robots.txt` and `sitemap.xml`. Every other request, message links and the API included, gets 403.
+The Hetzner Flatcar profile makes one exception for search and AI crawlers, many of which do not offer ML-KEM. Its Caddy also completes a handshake with X25519 alone from the address ranges these services publish for their crawlers. Such a connection reaches only public pages such as the home pages, `robots.txt` and `sitemap.xml`. Every other request, message links and the API included, gets 403.
 
 Behind TLS, the expiry share travels sealed to a one-time hybrid post-quantum key of the client. An attacker who controls the TLS endpoint can still swap that key while a message is created and learn its share, and could also capture what tests a passphrase during creation. A recording of requests tests no passphrase.
 
-TLS protects only the connection: whoever holds the instance's certificate key sees what the server sees. The Hetzner Flatcar profile uses short-lived certificates and CAA records that limit who may issue them.
+TLS protects only the connection: whoever holds the instance's certificate key sees what the server sees. Both profiles use short-lived certificates, and the Hetzner Flatcar profile adds CAA records that limit who may issue them.
 
 ## What no client protects against
 
