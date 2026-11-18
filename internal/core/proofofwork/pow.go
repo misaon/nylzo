@@ -13,17 +13,19 @@ import (
 )
 
 const (
-	scryptN       = 1 << 14
-	scryptR       = 8
-	scryptP       = 1
-	WindowLen     = 4
-	NonceOffset   = WindowLen
-	NonceLen      = 16
-	TagLen        = 16
-	ChallengeLen  = WindowLen + NonceLen + TagLen
-	CounterLen    = 8
-	MaxDifficulty = 8
+	scryptN      = 1 << 14
+	scryptR      = 8
+	scryptP      = 1
+	WindowLen    = 4
+	NonceOffset  = WindowLen
+	NonceLen     = 16
+	TagLen       = 16
+	ChallengeLen = WindowLen + NonceLen + TagLen
+	CounterLen   = 8
 )
+
+// MaxDifficulty keeps 95 % of solves within the client's 110 s on a device that takes 285 ms per scrypt evaluation.
+const MaxDifficulty = 7
 
 var ErrDifficulty = errors.New("core: proof-of-work difficulty out of range")
 
