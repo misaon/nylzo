@@ -64,6 +64,7 @@
           type="text"
           disabled={!composer.protect}
           {...privatePassphrase(true)}
+          onfocus={composer.reachPassphrase}
           onkeydown={submitOnEnter}
           placeholder={translate('compose.passphrase.placeholder', {
             min: MIN_PASSPHRASE_CHARACTERS,

@@ -167,6 +167,14 @@ describe('message composer interactions', () => {
     expect(form.passphrase).toBe('my own long passphrase');
   });
 
+  it('leaves the passphrase field empty when the sender reaches it before the generated words load', async () => {
+    const form = composer();
+    const toggled = form.toggleProtect();
+    form.reachPassphrase();
+    await toggled;
+    expect(form.passphrase).toBe('');
+  });
+
   it('validates file size immediately, removes obsolete errors and resets the file input', () => {
     const form = composer();
     form.problems = [
