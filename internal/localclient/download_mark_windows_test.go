@@ -25,8 +25,8 @@ import (
 
 const (
 	markedAttachment = "invoice.pdf"
-	linkFragment     = "#a-link-fragment"
 	devtoolsTimeout  = 2 * time.Minute
+	stepTimeout      = 30 * time.Second
 	savePage         = `<!doctype html><title>save</title><button type="button">Save</button><script>
 document.querySelector("button").addEventListener("click", () => {
   const url = URL.createObjectURL(new Blob([new TextEncoder().encode("%PDF-1.7")], { type: "application/octet-stream" }));
@@ -54,7 +54,6 @@ func TestEdgeMarksAFileSavedOnTheOpenAddressAsFromTheInternet(t *testing.T) {
 			for name, value := range webclient.SecurityHeaders("", r.URL.Path) {
 				w.Header().Set(name, value)
 			}
-			w.Header().Del("Content-Security-Policy")
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			_, _ = io.WriteString(w, savePage)
 		}),
@@ -70,15 +69,15 @@ func TestEdgeMarksAFileSavedOnTheOpenAddressAsFromTheInternet(t *testing.T) {
 		"downloadPath": downloads,
 	})
 	tab := browser.newPage(t)
-	tab.call(t, "Page.navigate", map[string]any{"url": address + linkFragment})
+	tab.call(t, "Page.navigate", map[string]any{"url": address})
 	tab.clickTheButton(t)
 	mark := waitForMark(t, filepath.Join(downloads, markedAttachment))
 	t.Logf("Zone.Identifier of a file saved from %s:\n%s", address, mark)
 	if !bytes.Contains(mark, []byte("ZoneId=3")) {
 		t.Fatal("the saved file is not marked as from the Internet zone")
 	}
-	if bytes.Contains(mark, []byte(linkFragment)) {
-		t.Fatal("the mark holds the fragment of the page address")
+	if bytes.Contains(mark, []byte("ReferrerUrl=")) {
+		t.Fatal("the mark names the page, which the local client's Referrer-Policy keeps out")
 	}
 }
 
@@ -116,7 +115,7 @@ type edgeBrowser struct {
 func startEdge(t *testing.T, edge string) *edgeBrowser {
 	t.Helper()
 	profile := t.TempDir()
-	process := exec.CommandContext(t.Context(), edge,
+	process := exec.Command(edge,
 		"--headless=new", "--remote-debugging-port=0", "--user-data-dir="+profile, "--lang=en-US",
 		"--no-first-run", "--no-default-browser-check", "about:blank")
 	if err := process.Start(); err != nil {
@@ -127,24 +126,17 @@ func startEdge(t *testing.T, edge string) *edgeBrowser {
 		_ = process.Wait()
 		close(exited)
 	}()
-	browser := &edgeBrowser{}
 	t.Cleanup(func() {
-		if browser.control != nil {
-			_ = browser.control.send([]byte(`{"id":0,"method":"Browser.close"}`))
-		}
-		select {
-		case <-exited:
-		case <-time.After(10 * time.Second):
-			_ = process.Process.Kill()
-			<-exited
-		}
+		_ = process.Process.Kill()
+		<-exited
 	})
-	deadline := time.Now().Add(time.Minute)
+	deadline := time.Now().Add(stepTimeout)
 	for time.Now().Before(deadline) {
 		if active, err := os.ReadFile(filepath.Join(profile, "DevToolsActivePort")); err == nil {
 			if port, path, found := strings.Cut(strings.TrimSpace(string(active)), "\n"); found {
-				browser.port = port
-				browser.control = dialDevtools(t, "ws://127.0.0.1:"+port+path)
+				browser := &edgeBrowser{port: port, control: dialDevtools(t, "ws://127.0.0.1:"+port+path)}
+				// Runs before the socket closes and before the kill, so Edge lets go of its profile first.
+				t.Cleanup(func() { browser.close(exited) })
 				return browser
 			}
 		}
@@ -154,9 +146,18 @@ func startEdge(t *testing.T, edge string) *edgeBrowser {
 	return nil
 }
 
+func (b *edgeBrowser) close(exited <-chan struct{}) {
+	_ = b.control.connection.SetDeadline(time.Now().Add(stepTimeout))
+	_ = b.control.send([]byte(`{"id":0,"method":"Browser.close"}`))
+	select {
+	case <-exited:
+	case <-time.After(stepTimeout):
+	}
+}
+
 func (b *edgeBrowser) newPage(t *testing.T) *devtools {
 	t.Helper()
-	response, err := (&http.Client{Timeout: devtoolsTimeout}).Do(
+	response, err := (&http.Client{Timeout: stepTimeout}).Do(
 		mustRequest(t, http.MethodPut, "http://127.0.0.1:"+b.port+"/json/new"),
 	)
 	if err != nil {
@@ -251,7 +252,7 @@ func (d *devtools) call(t *testing.T, method string, parameters map[string]any) 
 // clickTheButton clicks as a user would, once the page has loaded its only button.
 func (d *devtools) clickTheButton(t *testing.T) {
 	t.Helper()
-	deadline := time.Now().Add(time.Minute)
+	deadline := time.Now().Add(stepTimeout)
 	for time.Now().Before(deadline) {
 		result := d.call(t, "Runtime.evaluate", map[string]any{
 			"expression":    `document.querySelector("button")?.click() === undefined && document.querySelector("button") !== null`,
