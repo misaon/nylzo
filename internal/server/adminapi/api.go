@@ -96,6 +96,14 @@ func (a *API) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE "+api.AdminPath+"/session", a.signed(a.handleSignOut))
 	mux.HandleFunc("GET "+api.AdminPath+"/overview", a.signed(a.handleOverview))
 	mux.HandleFunc("GET "+api.AdminPath+"/live", a.signed(a.handleLive))
+	for _, path := range []string{api.AdminPath, api.AdminPath + "/overview", api.AdminPath + "/live"} {
+		mux.HandleFunc("HEAD "+path, handleNotFound)
+	}
+}
+
+// handleNotFound answers a HEAD, which ServeMux would otherwise hand to the GET route, before any signed handler.
+func handleNotFound(w http.ResponseWriter, _ *http.Request) {
+	writeError(w, http.StatusNotFound, api.ErrorNotFound)
 }
 
 // Sync counts visits and messages only while a passkey can sign in to see them, and ends the sessions that ran out
