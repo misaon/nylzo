@@ -94,7 +94,7 @@ func newTestServer(t *testing.T, change func(*config.Server)) *testServer {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { storage.Close() })
-	blobs, err := testBlobs(directory)
+	blobs, err := disk.New(directory)
 	if err != nil {
 		t.Fatal(err)
 	}

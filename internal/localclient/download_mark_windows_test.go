@@ -1,9 +1,8 @@
-package cli
+package localclient
 
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/binary"
@@ -17,46 +16,64 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/misaon/nylzo/internal/cli/command"
-	"github.com/misaon/nylzo/internal/server/config"
 )
 
-const markedAttachment = "invoice.pdf"
+const (
+	markedAttachment = "invoice.pdf"
+	savePage         = `<!doctype html><title>save</title><button type="button">Save</button><script>
+document.querySelector("button").addEventListener("click", () => {
+  const url = URL.createObjectURL(new Blob([new TextEncoder().encode("%PDF-1.7")], { type: "application/octet-stream" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "` + markedAttachment + `";
+  link.rel = "noopener";
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+});
+</script>`
+)
 
-// A browser marks what it downloads itself, so only a real Edge shows whether an attachment opened through
-// nylzo open carries the Internet zone mark that SmartScreen and Office check.
-func TestAnAttachmentDownloadedThroughOpenCarriesTheInternetZoneMark(t *testing.T) {
+// nylzo open serves the web client on a random name under localhost, and the browser marks what it saves there. The
+// server refuses Windows, so the page saves a file the way web/app/src/shared/files/save-file.ts saves an attachment.
+func TestEdgeMarksAFileSavedOnTheOpenAddressAsFromTheInternet(t *testing.T) {
 	edge := findEdge(t)
-	instance := newTestServer(t, func(settings *config.Server) { settings.MinFreeBytes = 0 })
-	attachment := filepath.Join(t.TempDir(), markedAttachment)
-	if err := os.WriteFile(attachment, []byte("%PDF-1.7 not a real invoice"), 0o600); err != nil {
+	listeners, err := Listen(t.Context())
+	if err != nil {
 		t.Fatal(err)
 	}
-	link, _ := createText(t, instance, "", "--from-file", attachment)
-	handoff := startOpen(t, instance.url, link)
+	page := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			_, _ = io.WriteString(w, savePage)
+		}),
+		ReadHeaderTimeout: readHeaderTimeout,
+	}
+	go func() { _ = listeners.Serve(page) }()
+	t.Cleanup(func() { _ = page.Close() })
+	address := "http://" + strings.ToLower(rand.Text()) + sessionDomain + ":" + strconv.Itoa(listeners.Port()) + "/"
 	downloads := t.TempDir()
 	browser := startEdge(t, edge)
 	dialDevtools(t, "ws://127.0.0.1:"+browser.port+browser.path).call(t, "Browser.setDownloadBehavior", map[string]any{
 		"behavior": "allow", "downloadPath": downloads,
 	})
-	page := browser.newPage(t)
-	page.call(t, "Page.navigate", map[string]any{"url": handoff})
-	page.click(t, "Show message")
-	page.click(t, "Download attachment")
-	page.click(t, "Download anyway")
+	tab := browser.newPage(t)
+	tab.call(t, "Page.navigate", map[string]any{"url": address})
+	tab.click(t, "Save")
 	saved := waitForFile(t, filepath.Join(downloads, markedAttachment))
 	mark, err := os.ReadFile(saved + ":Zone.Identifier")
 	if err != nil {
-		t.Fatalf("the downloaded attachment has no Zone.Identifier stream: %v", err)
+		t.Fatalf("the saved file has no Zone.Identifier stream: %v", err)
 	}
+	t.Logf("Zone.Identifier of a file saved from %s:\n%s", address, mark)
 	if !bytes.Contains(mark, []byte("ZoneId=3")) {
-		t.Fatalf("the downloaded attachment is not marked as from the Internet zone:\n%s", mark)
+		t.Fatal("the saved file is not marked as from the Internet zone")
 	}
-	t.Logf("Zone.Identifier:\n%s", mark)
 }
 
 func findEdge(t *testing.T) string {
@@ -69,31 +86,6 @@ func findEdge(t *testing.T) string {
 	}
 	t.Skip("Microsoft Edge is not installed")
 	return ""
-}
-
-func startOpen(t *testing.T, server, link string) string {
-	t.Helper()
-	ctx, cancel := context.WithCancel(t.Context())
-	output, input := io.Pipe()
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		defer input.Close()
-		runOpen(ctx, &command.Environment{
-			Stdin: strings.NewReader(link), Stdout: input, Stderr: io.Discard,
-			Getenv: func(string) string { return "" }, Terminal: noTerminal{},
-		}, []string{"--no-browser", "--server", server})
-	}()
-	t.Cleanup(func() {
-		cancel()
-		<-done
-	})
-	line, err := bufio.NewReader(output).ReadString('\n')
-	if err != nil {
-		t.Fatalf("nylzo open printed no address: %v", err)
-	}
-	go func() { _, _ = io.Copy(io.Discard, output) }()
-	return strings.TrimSpace(line)
 }
 
 func waitForFile(t *testing.T, path string) string {

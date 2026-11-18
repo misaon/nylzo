@@ -105,12 +105,10 @@ jobs:
           egress-policy: audit
       - uses: $/.github/actions/setup
         with:
-          tools: go bun
-      - name: Build the client that nylzo open serves
-        run: mise run build:web
-      - name: Cross-compile the private file, download mark, process hardening, stop signal, CLI and entry point tests for Windows
+          tools: go
+      - name: Cross-compile the private file, download mark, process hardening, stop signal, local client and entry point tests for Windows
         run: |
-          for package in internal/privatefile internal/quarantine internal/cli/harden internal/cli/stopsignal internal/cli cmd/nylzo; do
+          for package in internal/privatefile internal/quarantine internal/cli/harden internal/cli/stopsignal internal/localclient cmd/nylzo; do
             GOOS=windows GOARCH=amd64 go test -c -o "$RUNNER_TEMP/windows-tests/${package##*/}.test.exe" "./${package}/"
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -146,10 +144,10 @@ jobs:
             & "$env:RUNNER_TEMP/windows-tests/$test.test.exe" '-test.v' '-test.count=1'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
-      - name: Edge marks an attachment downloaded through nylzo open as from the Internet zone
+      - name: Edge marks a file saved on the nylzo open address as from the Internet zone
         shell: pwsh
         run: |
-          & "$env:RUNNER_TEMP/windows-tests/cli.test.exe" '-test.v' '-test.count=1' '-test.run' '^TestAnAttachmentDownloadedThroughOpenCarriesTheInternetZoneMark$'
+          & "$env:RUNNER_TEMP/windows-tests/localclient.test.exe" '-test.v' '-test.count=1' '-test.run' '^TestEdgeMarksAFileSavedOnTheOpenAddressAsFromTheInternet$'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   macos:
