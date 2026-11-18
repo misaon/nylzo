@@ -56,7 +56,7 @@ A copy of the database, files, logs and configuration holds no key, plaintext, f
 
 Limits that remain:
 
-- Someone with the link and a copy taken before the deadline that includes the pepper and the seed file can guess the passphrase offline at the cost of scrypt per guess. So can the running server. Only the strength of the passphrase protects the message then. A generated passphrase has 80 bits and is out of reach; a chosen one must have at least 15 characters.
+- Someone with the link and a copy taken before the deadline that includes the pepper and the seed file can guess the passphrase offline at the cost of scrypt per guess. So can the running server. Only the strength of the passphrase protects the message then. A generated passphrase has 55 bits, 66 in Chinese, so guessing it takes on average 2^54 scrypt runs of 256 MiB each; a chosen one must have at least 15 characters.
 - A disk image or backup that includes the seed file opens, with the link, every message that was live when it was taken. The deployment profiles keep that file on a tmpfs.
 - When a message ends, the server overwrites the part of its stored file that the decryption key needs before deleting the file, so a disk image taken afterwards opens nothing. This needs a file system that overwrites in place, so on Linux the server accepts only ext4, XFS and tmpfs. SSD remapping and provider snapshots can still keep old blocks, which only an encrypted volume makes unreadable.
 - Restoring an older copy brings back spent opens and cancelled messages, so an operator must not restore one.

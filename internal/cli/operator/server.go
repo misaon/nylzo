@@ -192,7 +192,7 @@ func openStore(
 	open func(context.Context, string) (*sqlite.Store, error),
 	logger *slog.Logger,
 ) (*sqlite.Store, *disk.Blobs, error) {
-	if err := os.MkdirAll(dataDirectory, 0o700); err != nil {
+	if err := os.MkdirAll(dataDirectory, 0o700); err != nil { //nolint:forbidigo // the server data directory
 		return nil, nil, err
 	}
 	if err := requireErasable([]string{dataDirectory}, development, logger); err != nil {
@@ -628,7 +628,7 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 	defer database.Close()
 	now := time.Now()
 	_, err = sweep.Run(ctx, database, blobs, now)
-	err = errors.Join(err, advanceRatchet(&settings, now, logger))
+	err = errors.Join(err, advanceRatchet(&settings, time.Now(), logger))
 	if err != nil {
 		logger.ErrorContext(ctx, "sweep-once", "err", sweep.FirstError(err))
 		return errSweepFailed
@@ -639,9 +639,12 @@ func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Log
 // advanceRatchet erases the epoch keys of the minutes that have passed while serve does not run; it starts no ratchet,
 // and only a directory the operator named must exist.
 func advanceRatchet(settings *config.Server, now time.Time, logger *slog.Logger) error {
-	options := epoch.Options{CheckFileSystem: func(directory string) error {
-		return requireErasable(epoch.ErasablePaths(directory), settings.Development, logger)
-	}}
+	options := epoch.Options{
+		CheckFileSystem: func(directory string) error {
+			return requireErasable(epoch.ErasablePaths(directory), settings.Development, logger)
+		},
+		Replaced: func() { server.LogReplacedGeneration(logger) },
+	}
 	var ratchet *epoch.Ratchet
 	var err error
 	secretmode.Do(func() { ratchet, _, err = epoch.Open(settings.EpochDirectory(), now, options) })

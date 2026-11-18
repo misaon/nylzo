@@ -661,6 +661,7 @@ func TestNoFlagTakesASecret(t *testing.T) {
 		"passphrase-file":          true,
 		"ask-passphrase":           true,
 		"generate-passphrase-file": true,
+		"passphrase-language":      true,
 		"manage-token-file":        true,
 		"print-manage-token":       true,
 		"compress":                 true,
@@ -1232,12 +1233,15 @@ func TestGeneratedPassphraseFile(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)
 	path := filepath.Join(t.TempDir(), "passphrase")
-	link, result := createText(t, instance, "guarded", "--generate-passphrase-file", path)
-	if strings.Contains(result.stderr, "warning") {
-		t.Fatalf("a generated passphrase drew a warning: %q", result.stderr)
+	result := runWith(t, "guarded", map[string]string{command.EnvironmentPassphraseLanguage: "JA"}, nil,
+		"create", "--server", instance.url, "--generate-passphrase-file", path)
+	link, _, _ := strings.Cut(result.stdout, "\n")
+	if result.code != command.ExitOK || strings.Contains(result.stderr, "warning") {
+		t.Fatalf("create with a generated passphrase: exit %d, %q", result.code, result.stderr)
 	}
-	passphrase := strings.TrimSpace(mustRead(t, path))
-	if err := keys.CheckPassphraseStrength(passphrase); err != nil || strings.Contains(result.stdout, passphrase) {
+	passphrase := strings.TrimSuffix(mustRead(t, path), "\n")
+	if err := keys.CheckPassphraseStrength(passphrase); err != nil || strings.Contains(result.stdout, passphrase) ||
+		strings.Count(passphrase, "\u3000") != 4 {
 		t.Fatalf("generated passphrase %q: %v, stdout %q", passphrase, err, result.stdout)
 	}
 	assertPrivateFile(t, path, passphrase+"\n")

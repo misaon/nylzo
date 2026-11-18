@@ -1,6 +1,7 @@
 package messages
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -49,9 +50,14 @@ var (
 		"--generate-passphrase-file: the file system there cannot keep files private; choose a directory on a local disk",
 	)
 	errPassphraseNotWritten = errors.New("--generate-passphrase-file: the passphrase could not be written")
-	errTextNotUTF8          = errors.New("the text on stdin is not valid UTF-8; send binary data with --from-file")
-	errFromFileTooLarge     = errors.New("--from-file must be a regular file")
-	retriedWithNewID        = []string{api.ErrorIDToken, api.ErrorConflict, api.ErrorShareLost, api.ErrorWork}
+	errLanguageNotGenerated = errors.New("--passphrase-language needs --generate-passphrase-file")
+	errUnknownLanguage      = errors.New(
+		"--passphrase-language or " + command.EnvironmentPassphraseLanguage + ": use one of " +
+			strings.Join(keys.PassphraseLanguages, ", "),
+	)
+	errTextNotUTF8      = errors.New("the text on stdin is not valid UTF-8; send binary data with --from-file")
+	errFromFileTooLarge = errors.New("--from-file must be a regular file")
+	retriedWithNewID    = []string{api.ErrorIDToken, api.ErrorConflict, api.ErrorShareLost, api.ErrorWork}
 )
 
 type createOptions struct {
@@ -61,6 +67,7 @@ type createOptions struct {
 	opens       int
 	passphrase  passphraseSource
 	generate    string
+	language    string
 	manageFile  string
 	printManage bool
 	compress    bool
@@ -100,6 +107,13 @@ func createFlags(environment *command.Environment) (*flag.FlagSet, *createOption
 		"generate-passphrase-file",
 		"",
 		"protect the message with a generated passphrase written to this new file that only you can open",
+	)
+	flags.StringVar(
+		&options.language,
+		"passphrase-language",
+		"",
+		"write the generated passphrase in words of this language: "+strings.Join(keys.PassphraseLanguages, ", ")+
+			" (or "+command.EnvironmentPassphraseLanguage+"; default en)",
 	)
 	flags.StringVar(
 		&options.manageFile,
@@ -166,13 +180,22 @@ func RunCreate(ctx context.Context, environment *command.Environment, arguments 
 // chosenPassphrase writes a generated passphrase before the create, so a failed write never leaves an unreadable message.
 func chosenPassphrase(environment *command.Environment, options *createOptions) (string, *generatedPassphrase, error) {
 	if options.generate == "" {
+		if options.language != "" {
+			return "", nil, errLanguageNotGenerated
+		}
 		passphrase, err := createPassphrase(environment, options.passphrase)
 		return passphrase, nil, err
 	}
 	if options.passphrase.given(environment) {
 		return "", nil, errPassphraseSource
 	}
-	generated, err := writeGeneratedPassphrase(options.generate)
+	language, err := passphraseLanguage(
+		cmp.Or(options.language, environment.Getenv(command.EnvironmentPassphraseLanguage), "en"),
+	)
+	if err != nil {
+		return "", nil, err
+	}
+	generated, err := writeGeneratedPassphrase(options.generate, language)
 	if err != nil {
 		return "", nil, err
 	}
@@ -190,8 +213,21 @@ func (g *generatedPassphrase) discard() {
 	}
 }
 
-func writeGeneratedPassphrase(path string) (*generatedPassphrase, error) {
-	passphrase := keys.GeneratePassphrase()
+func passphraseLanguage(tag string) (string, error) {
+	index := slices.IndexFunc(keys.PassphraseLanguages, func(language string) bool {
+		return strings.EqualFold(language, tag)
+	})
+	if index < 0 {
+		return "", errUnknownLanguage
+	}
+	return keys.PassphraseLanguages[index], nil
+}
+
+func writeGeneratedPassphrase(path, language string) (*generatedPassphrase, error) {
+	passphrase, err := keys.GeneratePassphrase(language)
+	if err != nil {
+		return nil, err
+	}
 	file, err := privatefile.Create(path)
 	if err != nil {
 		if errors.Is(err, privatefile.ErrNotPrivate) {

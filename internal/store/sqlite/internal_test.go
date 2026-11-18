@@ -159,3 +159,42 @@ func TestACorruptRowLeavesTheRestOfItsPageToTheSweep(t *testing.T) {
 		t.Fatalf("the purge must remove a corrupt row too: %d %v", purged, purgeErr)
 	}
 }
+
+func TestAScrubThatAnotherWriterOutgrowsIsBusy(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "nylzo.db")
+	scrubbed, err := Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writer, err := Open(t.Context(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Close()
+	if _, err = writer.writer.Exec(`CREATE TABLE padding (filler BLOB)`); err != nil {
+		t.Fatal(err)
+	}
+	scrubbed.beforeScrubGrowth = func() {
+		if _, writeErr := writer.writer.Exec(
+			`WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n
+				WHERE i < (SELECT ifnull(max(slot), 0) + 100 FROM wal_scrub))
+			INSERT INTO padding SELECT zeroblob(?) FROM n`,
+			scrubFillerLen,
+		); writeErr != nil {
+			t.Error(writeErr)
+		}
+	}
+	connection, err := scrubbed.writer.Conn(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = scrubbed.scrubAll(t.Context(), connection)
+	connection.Close()
+	if !errors.Is(err, ErrCheckpointBusy) || !errors.Is(err, errScrubOutgrown) {
+		t.Fatalf("scrub outgrown by another writer: %v, want ErrCheckpointBusy for the outgrown table", err)
+	}
+	if err = scrubbed.Close(); err != nil {
+		t.Fatalf("Close while another writer outgrows the scrub: %v", err)
+	}
+}

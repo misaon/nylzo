@@ -385,6 +385,37 @@ func TestABackwardClockStepIssuesNothing(t *testing.T) {
 	}
 }
 
+// A replacement whose write failed stays pending, so a later load does not bring the generation that a clock ahead
+// started back from the file.
+func TestAFailedWriteKeepsTheReplacementPending(t *testing.T) {
+	t.Parallel()
+	locator := seal.LocatorOf([]byte("message"))
+	ahead := internalStart.Add(3 * time.Hour)
+	shareEpoch := Minute(ahead) + minutesPerHour
+	ratchet := openInternal(t, t.TempDir(), ahead)
+	early, _, err := ratchet.Issue(shareEpoch, locator, ahead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := false
+	ratchet.replace = func(path string, content []byte) error {
+		if !failed {
+			failed = true
+			return errors.New("disk full")
+		}
+		return os.WriteFile(path, content, 0o600)
+	}
+	if err = ratchet.Advance(internalStart); err == nil {
+		t.Fatal("the failing write succeeded")
+	}
+	if err = ratchet.Advance(ahead.Add(-ClockStep)); err != nil {
+		t.Fatal(err)
+	}
+	if issued, _, issueErr := ratchet.Issue(shareEpoch, locator, ahead); issueErr != nil || issued == early {
+		t.Fatalf("a failed write brought back the generation that a clock ahead started: %v", issueErr)
+	}
+}
+
 // A request that read the clock just before the hour ended is still issued after another request moved the ratchet
 // into the next hour, from the generation of the new hour.
 func TestARequestFromTheEndOfTheHourIsIssued(t *testing.T) {
