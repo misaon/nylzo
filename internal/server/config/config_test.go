@@ -62,7 +62,6 @@ func TestFromEnvironmentReadsEveryVariable(t *testing.T) {
 		"NYLZO_PEPPER_FILE":          currentPepperFile,
 		"NYLZO_PEPPER_PREVIOUS_FILE": previousPepperFile,
 		"NYLZO_TRUSTED_PROXIES":      "10.0.0.0/8, 192.0.2.1, ::ffff:172.17.0.1, ::ffff:10.0.0.0/104",
-		"NYLZO_PROXY_MODE":           "scaleway",
 		"NYLZO_SWEEP_INTERVAL":       "15m",
 		"NYLZO_MAX_TTL":              "604800",
 		"NYLZO_MAX_OPENS":            "3",
@@ -84,7 +83,7 @@ func TestFromEnvironmentReadsEveryVariable(t *testing.T) {
 		netip.MustParsePrefix("10.0.0.0/8"),
 	}
 	if settings.Listen != ":9090" || !slices.Equal(settings.TrustedProxies, proxies) ||
-		settings.ProxyMode != config.ProxyModeScaleway || settings.SweepInterval != 15*time.Minute ||
+		settings.SweepInterval != 15*time.Minute ||
 		settings.Limits.MaxTTL != config.MaxTTL || settings.Limits.MaxOpens != 3 ||
 		settings.Limits.MaxObjectBytes() != envelope.ObjectLimit(1048576) || settings.Rates.CreatePerHour != 7 ||
 		settings.Rates.GlobalDailyCreates != 500 || settings.PoWConcurrency != 4 || settings.MinFreeBytes != 0 ||
@@ -106,7 +105,7 @@ func TestFromEnvironmentRefusesInvalidValues(t *testing.T) {
 	}{
 		{"NYLZO_PEPPER", currentPepper},
 		{"NYLZO_PEPPER_PREVIOUS", previousPepper},
-		{"NYLZO_PROXY_MODE", "cloudflare"},
+		{"NYLZO_PROXY_MODE", "scaleway"},
 		{"NYLZO_TRUSTED_PROXIES", "10.0.0.0/33"},
 		{"NYLZO_PASSPHRASE_IP_SCOPE", "on"},
 		{"NYLZO_SWEEP_INTERVAL", "-1"},
