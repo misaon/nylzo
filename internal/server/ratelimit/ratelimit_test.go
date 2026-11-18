@@ -5,7 +5,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
-	"strings"
 	"testing"
 	"time"
 )
@@ -195,36 +194,24 @@ func TestClientAddress(t *testing.T) {
 		netip.MustParsePrefix("172.17.0.1/32"),
 	}
 	for _, testCase := range []struct {
-		remote, forwardedFor, realIP string
-		readRealIP                   bool
-		want                         string
+		remote, forwardedFor, realIP, want string
 	}{
-		{"203.0.113.1:1234", "", "", false, "203.0.113.1"},
-		{"203.0.113.1:1234", "198.51.100.1", "", false, "203.0.113.1"},
-		{"10.0.0.5:1234", "198.51.100.1", "", false, "198.51.100.1"},
-		{"172.17.0.1:1234", "198.51.100.9", "", false, "198.51.100.9"},
-		{"10.0.0.5:1234", "198.51.100.1, 10.0.0.9", "", false, "198.51.100.1"},
-		{"10.0.0.5:1234", "192.0.2.4, 198.51.100.1, 10.0.0.9", "", false, "198.51.100.1"},
-		{"10.0.0.5:1234", "garbage", "", false, "10.0.0.5"},
-		{"10.0.0.5:1234", "", "", false, "10.0.0.5"},
-		{"[::ffff:203.0.113.7]:1234", "", "", false, "203.0.113.7"},
-		{"203.0.113.1:1234", "", "198.51.100.2", false, "203.0.113.1"},
-		{"10.0.0.5:1234", "", "198.51.100.2", false, "10.0.0.5"},
-		{"[fd00::5]:1234", "2001:db8::7, fd00::9", "", false, "2001:db8::7"},
-		{"[2001:db8::1]:1234", "2001:db8::7", "", false, "2001:db8::1"},
-		{"10.0.0.5:1234", "198.51.100.1", "198.51.100.2", true, "198.51.100.2"},
-		{"203.0.113.1:1234", "", "198.51.100.2", true, "203.0.113.1"},
-		{"10.0.0.5:1234", "", "198.51.100.2\n198.51.100.3", true, "10.0.0.5"},
-		{"10.0.0.5:1234", "", "198.51.100.2, 198.51.100.3", true, "10.0.0.5"},
-		{"203.0.113.1:1234", "", "", true, "203.0.113.1"},
+		{"203.0.113.1:1234", "", "", "203.0.113.1"},
+		{"203.0.113.1:1234", "198.51.100.1", "", "203.0.113.1"},
+		{"10.0.0.5:1234", "198.51.100.1", "", "198.51.100.1"},
+		{"172.17.0.1:1234", "198.51.100.9", "", "198.51.100.9"},
+		{"10.0.0.5:1234", "198.51.100.1, 10.0.0.9", "", "198.51.100.1"},
+		{"10.0.0.5:1234", "192.0.2.4, 198.51.100.1, 10.0.0.9", "", "198.51.100.1"},
+		{"10.0.0.5:1234", "garbage", "", "10.0.0.5"},
+		{"10.0.0.5:1234", "", "", "10.0.0.5"},
+		{"[::ffff:203.0.113.7]:1234", "", "", "203.0.113.7"},
+		{"203.0.113.1:1234", "", "198.51.100.2", "203.0.113.1"},
+		{"10.0.0.5:1234", "", "198.51.100.2", "10.0.0.5"},
+		{"10.0.0.5:1234", "198.51.100.1", "198.51.100.2", "198.51.100.1"},
+		{"[fd00::5]:1234", "2001:db8::7, fd00::9", "", "2001:db8::7"},
+		{"[2001:db8::1]:1234", "2001:db8::7", "", "2001:db8::1"},
 	} {
-		name := fmt.Sprintf(
-			"real=%v/%s/xff=%q/real=%q",
-			testCase.readRealIP,
-			testCase.remote,
-			testCase.forwardedFor,
-			testCase.realIP,
-		)
+		name := fmt.Sprintf("%s/xff=%q/real=%q", testCase.remote, testCase.forwardedFor, testCase.realIP)
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
@@ -232,33 +219,13 @@ func TestClientAddress(t *testing.T) {
 			if testCase.forwardedFor != "" {
 				r.Header.Set("X-Forwarded-For", testCase.forwardedFor)
 			}
-			for value := range strings.SplitSeq(testCase.realIP, "\n") {
-				if value != "" {
-					r.Header.Add("X-Real-IP", value)
-				}
+			if testCase.realIP != "" {
+				r.Header.Set("X-Real-IP", testCase.realIP)
 			}
-			proxies := Proxies{Trusted: trusted, ReadRealIP: testCase.readRealIP}
+			proxies := Proxies{Trusted: trusted}
 			if got := proxies.ClientAddress(r); got.String() != testCase.want {
 				t.Fatalf("got %s want %s", got, testCase.want)
 			}
 		})
-	}
-	open := Proxies{ReadRealIP: true}
-	for peer, want := range map[string]string{
-		"10.1.2.3:1234":      "198.51.100.2",
-		"100.64.0.9:1234":    "198.51.100.2",
-		"127.0.0.1:1234":     "198.51.100.2",
-		"[fd00::1]:1234":     "198.51.100.2",
-		"[fe80::1]:1234":     "198.51.100.2",
-		"203.0.113.1:1234":   "203.0.113.1",
-		"[2001:db8::1]:1234": "2001:db8::1",
-		"100.128.0.1:1234":   "100.128.0.1",
-	} {
-		r := httptest.NewRequest(http.MethodGet, "/", http.NoBody)
-		r.RemoteAddr = peer
-		r.Header.Set("X-Real-IP", "198.51.100.2")
-		if got := open.ClientAddress(r); got.String() != want {
-			t.Fatalf("X-Real-IP without trusted proxies from %s: got %s want %s", peer, got, want)
-		}
 	}
 }

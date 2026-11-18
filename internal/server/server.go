@@ -355,10 +355,7 @@ func (s *Server) setUpLimits() {
 	s.sourceLimiter = ratelimit.NewLimiter(rates.SourcePerSecond, rates.SourceBurst)
 	s.rangeLimiter = ratelimit.NewLimiter(rates.BucketPerSecond*rangeShare, max(1, rates.BucketBurst*rangeShare))
 	s.addressKey = ratelimit.NewAddressKey()
-	s.proxies = ratelimit.Proxies{
-		Trusted:    s.settings.TrustedProxies,
-		ReadRealIP: s.settings.ProxyMode == config.ProxyModeScaleway,
-	}
+	s.proxies = ratelimit.Proxies{Trusted: s.settings.TrustedProxies}
 	s.counters = ratelimit.NewCounters()
 	s.streams = ratelimit.NewStreams(s.settings.MaxStreams)
 }
