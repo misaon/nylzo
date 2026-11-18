@@ -1,6 +1,6 @@
 {
-  "gh-amd64": {"package": "cli/cli", "version": "v2.104.0", "sha256": "98cb101ad87dbbd3f6b2f2bfcbd43197ccd07643140121d8a9cfaa91eadbc24e"},
-  "gh-arm64": {"package": "cli/cli", "version": "v2.104.0", "sha256": "cb34cefc6f4e77b90731374a2b737516bb8f3033c6ca46aa949e5344f68069e3"},
+  "gh-amd64": {"package": "cli/cli", "version": "v2.105.0", "sha256": "79e7ab5db738c48777b696e374f8b428f0647debfb424f44d2f426370407fe2f"},
+  "gh-arm64": {"package": "cli/cli", "version": "v2.105.0", "sha256": "b1278c75107423d818f1937fd92cafc9e5e9b606631568f68d7fb816f5885a02"},
   "cosign-amd64": {"package": "sigstore/cosign", "version": "v3.1.4", "sha256": "424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa"},
   "cosign-arm64": {"package": "sigstore/cosign", "version": "v3.1.4", "sha256": "ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2"},
   "jq-amd64": {"package": "jqlang/jq", "version": "jq-1.8.2", "sha256": "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f"},
@@ -9,8 +9,8 @@
   "ignition-arm64": {"package": "coreos/ignition", "version": "v2.28.0", "sha256": "a933969407e245646476ca06c610350f21a10704045ab375cdc99ae86975e0b3"},
   "syft-amd64": {"package": "anchore/syft", "version": "v1.57.2", "sha256": "ad92bd3ec1b94a3df01d4d0aec199afa9c42b72e86da436ff5f837914d32706b"},
   "syft-arm64": {"package": "anchore/syft", "version": "v1.57.2", "sha256": "8efe605309c98798e1ee0cffdcf8c05ca26819b4cd44c0b03650f1e963e9bdb6"},
-  "mise-amd64": {"package": "jdx/mise", "version": "v2026.11.6", "sha256": "d6ebb6f5601bdf5a8d1d56028b24fe575f45075b989941ccc920f95161c5fa28"},
-  "mise-arm64": {"package": "jdx/mise", "version": "v2026.11.6", "sha256": "c5c90bea46cae89fd02d09a034e5e2d171abbbb313dab9baa833ee65a8cd996c"},
+  "mise-amd64": {"package": "jdx/mise", "version": "v2026.11.8", "sha256": "d2d5a46f507bba772686e2c8f2316b3a4439dac49a37a30db5c0e7bb077c5431"},
+  "mise-arm64": {"package": "jdx/mise", "version": "v2026.11.8", "sha256": "b36da3c4892380325d44dee3678ba618de191254d8a4aed8011ee66b28a6cbd7"},
   "codecov-amd64": {"package": "codecov/codecov-cli", "version": "v11.3.2", "sha256": "8e1bfb71661378530f6ea21e82b414095899e565cbb4cf555c613064be17b973"},
   "codecov-arm64": {"package": "codecov/codecov-cli", "version": "v11.3.2", "sha256": "a4b71cac685742e272e7cfd4a390cafc3736f57ebc3cf7ba2e24010f19c7f23f"}
 }

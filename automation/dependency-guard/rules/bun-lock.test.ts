@@ -17,7 +17,7 @@ test('Bun dependency review accepts the real lock and rejects policy, source and
   assert.ok(entry);
   for (const mutated of [
     { ...lock, trustedDependencies: ['deepmerge'] },
-    { ...lock, patchedDependencies: {} },
+    { ...lock, patchedDependencies: { 'deepmerge@4.3.1': 'patches/deepmerge@4.3.1.patch' } },
     { ...lock, configVersion: 0 },
     { ...lock, packages: { ...packages, deepmerge: [entry[0], 'https://evil.test/package.tgz', entry[2], entry[3]] } },
     { ...lock, packages: { ...packages, deepmerge: [entry[0], '', entry[2], ''] } },

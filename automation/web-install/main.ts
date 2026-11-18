@@ -1,7 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 
-import { verifyDeepmergePatch } from './deepmerge-patch.ts';
 import { verifyInstallPolicy } from './policy.ts';
 
 verifyInstallPolicy();
@@ -12,6 +11,3 @@ const install = spawnSync('bun', ['install', '--cwd', webDirectory, '--frozen-lo
   stdio: 'inherit',
 });
 process.exitCode = install.status ?? 1;
-if (install.status === 0) {
-  verifyDeepmergePatch();
-}
