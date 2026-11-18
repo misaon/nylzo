@@ -67,7 +67,7 @@ nylzo read --link-file link.txt --out received
 - `--out DIR` creates a new private `nylzo-…` directory inside the existing directory `DIR`, saves `message.txt` and any attachment there and prints their paths. It checks that it can write there before it opens the message.
 - `--stdout` prints the text and writes nothing to disk. It cannot save an attachment, and a link does not show whether one is attached: if one is, the open is spent and the file is lost. Use `--out` when a file may be attached.
 
-On Windows and macOS each saved file gets the mark a browser gives a download, so SmartScreen, Office and Gatekeeper check it when you open it. The Linux build, which WSL runs unless you call `nylzo.exe`, marks nothing: files it saves, even in a Windows folder under `/mnt/c`, lack the mark that SmartScreen and Office check. Nylzo cannot scan attachments for malware. To run one you trust, clear the mark with `Unblock-File` on Windows or `xattr -d com.apple.quarantine` on macOS.
+On Windows and macOS each saved file gets the mark a browser gives a download, so SmartScreen, Office and Gatekeeper check it when you open it. Under WSL the Linux build marks nothing, even in a Windows folder under `/mnt/c`; run `nylzo.exe` and save to a Windows folder to get the mark. Nylzo cannot scan attachments for malware. To run one you trust, clear the mark with `Unblock-File` on Windows or `xattr -d com.apple.quarantine` on macOS.
 
 Saved files hold the plaintext. Delete them when you no longer need them; SSDs and backups may still keep copies.
 

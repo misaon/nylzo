@@ -25,7 +25,6 @@ import (
 
 const (
 	markedAttachment = "invoice.pdf"
-	devtoolsTimeout  = 2 * time.Minute
 	stepTimeout      = 30 * time.Second
 	savePage         = `<!doctype html><title>save</title><button type="button">Save</button><script>
 document.querySelector("button").addEventListener("click", () => {
@@ -61,7 +60,8 @@ func TestEdgeMarksAFileSavedOnTheOpenAddressAsFromTheInternet(t *testing.T) {
 	}
 	go func() { _ = listeners.Serve(page) }()
 	t.Cleanup(func() { _ = page.Close() })
-	address := "http://" + sessionHost(listeners.Port()) + "/"
+	pagePath, fragment := strings.ToLower(rand.Text()), strings.ToLower(rand.Text())
+	address := "http://" + sessionHost(listeners.Port()) + "/m/" + pagePath
 	downloads := t.TempDir()
 	browser := startEdge(t, edge)
 	browser.control.call(t, "Browser.setDownloadBehavior", map[string]any{
@@ -69,15 +69,16 @@ func TestEdgeMarksAFileSavedOnTheOpenAddressAsFromTheInternet(t *testing.T) {
 		"downloadPath": downloads,
 	})
 	tab := browser.newPage(t)
-	tab.call(t, "Page.navigate", map[string]any{"url": address})
+	tab.call(t, "Page.navigate", map[string]any{"url": address + "#" + fragment})
 	tab.clickTheButton(t)
 	mark := waitForMark(t, filepath.Join(downloads, markedAttachment))
 	t.Logf("Zone.Identifier of a file saved from %s:\n%s", address, mark)
 	if !bytes.Contains(mark, []byte("ZoneId=3")) {
 		t.Fatal("the saved file is not marked as from the Internet zone")
 	}
-	if bytes.Contains(mark, []byte("ReferrerUrl=")) {
-		t.Fatal("the mark names the page, which the local client's Referrer-Policy keeps out")
+	if bytes.Contains(mark, []byte("ReferrerUrl=")) || bytes.Contains(mark, []byte(pagePath)) ||
+		bytes.Contains(mark, []byte(fragment)) {
+		t.Fatal("the mark names the page beyond its origin")
 	}
 }
 
@@ -98,7 +99,7 @@ func waitForMark(t *testing.T, path string) []byte {
 	t.Helper()
 	deadline := time.Now().Add(time.Minute)
 	for time.Now().Before(deadline) {
-		if mark, err := os.ReadFile(path + ":Zone.Identifier"); err == nil && bytes.Contains(mark, []byte("ZoneId=")) {
+		if mark, err := os.ReadFile(path + ":Zone.Identifier"); err == nil && bytes.Contains(mark, []byte("HostUrl=")) {
 			return mark
 		}
 		time.Sleep(200 * time.Millisecond)
@@ -148,7 +149,8 @@ func startEdge(t *testing.T, edge string) *edgeBrowser {
 
 func (b *edgeBrowser) close(exited <-chan struct{}) {
 	_ = b.control.connection.SetDeadline(time.Now().Add(stepTimeout))
-	_ = b.control.send([]byte(`{"id":0,"method":"Browser.close"}`))
+	b.control.next++
+	_ = b.control.send(fmt.Appendf(nil, `{"id":%d,"method":"Browser.close"}`, b.control.next))
 	select {
 	case <-exited:
 	case <-time.After(stepTimeout):
@@ -200,7 +202,7 @@ func dialDevtools(t *testing.T, address string) *devtools {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { connection.Close() })
-	if err = connection.SetDeadline(time.Now().Add(devtoolsTimeout)); err != nil {
+	if err = connection.SetDeadline(time.Now().Add(stepTimeout)); err != nil {
 		t.Fatal(err)
 	}
 	nonce := make([]byte, 16)
@@ -225,6 +227,9 @@ func (d *devtools) call(t *testing.T, method string, parameters map[string]any) 
 	d.next++
 	request, err := json.Marshal(map[string]any{"id": d.next, "method": method, "params": parameters})
 	if err != nil {
+		t.Fatal(err)
+	}
+	if err = d.connection.SetDeadline(time.Now().Add(stepTimeout)); err != nil {
 		t.Fatal(err)
 	}
 	if err = d.send(request); err != nil {
