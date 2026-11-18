@@ -249,6 +249,7 @@ export const messages: Catalog = {
   'read.delete.rest.confirm': '删除剩余的打开次数？',
   'read.delete.confirm.title': '不打开就删除这条消息？',
   'read.note': '免费，无需注册。消息页面不使用 Cookie，也不统计访问量。',
+  'read.terms': '显示消息即表示你同意{link}。',
   'read.delete.confirm': '删除后任何人都无法再打开它，包括你自己。',
   'read.delete.yes': '确认删除',
   'read.delete.no': '不删除',
@@ -464,7 +465,9 @@ export const messages: Catalog = {
   'compose.attach': '附件（最大 {size}）',
   'compose.submit': '创建链接',
   'compose.encrypting': '正在加密',
-  'compose.note': '免费，无需注册，不使用 Cookie。',
+  'compose.note': '免费，无需注册，不使用 Cookie。创建链接即表示你同意{link}。',
+  'terms.agree.link': '使用条款',
+  'link.new_tab': '（在新标签页中打开）',
 
   'step.counter': '第 {step} 步，共 {total} 步',
   'step.key.label': '密钥',

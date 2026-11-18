@@ -303,6 +303,7 @@ export const messages: Catalog = {
   'read.delete.confirm.title': 'Usunąć wiadomość bez otwierania?',
   'read.note':
     'Bezpłatnie i\u{A0}bez rejestracji. Strona z\u{A0}wiadomością nie używa plików cookie ani nie mierzy ruchu.',
+  'read.terms': 'Wyświetlając wiadomość, akceptujesz {link}.',
   'read.delete.confirm': 'Potem nikt już jej nie otworzy, nawet ty.',
   'read.delete.yes': 'Tak, usuń',
   'read.delete.no': 'Nie usuwaj',
@@ -536,7 +537,9 @@ export const messages: Catalog = {
   'compose.attach': 'Plik do {size}',
   'compose.submit': 'Utwórz link',
   'compose.encrypting': 'Szyfrujemy',
-  'compose.note': 'Bezpłatnie, bez rejestracji i\u{A0}bez plików cookie.',
+  'compose.note': 'Bezpłatnie, bez rejestracji i\u{A0}bez plików cookie. Tworząc link, akceptujesz {link}.',
+  'terms.agree.link': 'warunki korzystania',
+  'link.new_tab': '(otwiera się w\u{A0}nowej karcie)',
 
   'step.counter': 'Krok {step} z\u{A0}{total}',
   'step.key.label': 'Klucz',

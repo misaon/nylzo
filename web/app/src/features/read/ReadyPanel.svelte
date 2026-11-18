@@ -1,10 +1,12 @@
 <script lang="ts">
   import { formatWait } from '../../shared/language/format.ts';
+  import Interpolated from '../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Button from '../../shared/ui/button/Button.svelte';
   import { privatePassphrase, submitOnEnter } from '../../shared/ui/field/private-fields.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../shared/ui/icon/SwapIcon.svelte';
+  import { INLINE_TARGET, TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
   import { lingering } from '../../shared/ui/transition/lingering.ts';
   import type { ReadPage } from './read-page.svelte.ts';
   import { panelClasses } from './read-page.svelte.ts';
@@ -189,5 +191,12 @@
         </p>
       {/if}
     {/if}
+    <p class="text-caption text-balance text-ink-mute">
+      <Interpolated text={translate('read.terms')} placeholder="link"
+        ><a href="/terms" target="_blank" rel="noreferrer" class={[TEXT_LINK, INLINE_TARGET]}
+          >{translate('terms.agree.link')}<span class="sr-only"> {translate('link.new_tab')}</span></a
+        ></Interpolated
+      >
+    </p>
   </form>
 </div>

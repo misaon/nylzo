@@ -1,8 +1,9 @@
 <script lang="ts">
+  import Interpolated from '../../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import { ARROW_LINK } from '../../../shared/ui/link/link-classes.ts';
+  import { ARROW_LINK, INLINE_TARGET, TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
   import ServiceCallout from '../../../shared/ui/notice/ServiceCallout.svelte';
   import { lingering } from '../../../shared/ui/transition/lingering.ts';
   import type { Composer } from './composer.svelte.ts';
@@ -35,12 +36,17 @@
       quiet ? 'opacity-100' : 'pointer-events-none opacity-0',
       failed && 'h-0',
     ]}
+    inert={!quiet}
   >
     <Icon
       name="shieldCheck"
       stroke={1.7}
       class="mr-2 inline-block size-4 shrink-0 align-[-3px] text-aegis-300"
-    />{translate('compose.note')}
+    /><Interpolated text={translate('compose.note')} placeholder="link"
+      ><a href="/terms" target="_blank" rel="noreferrer" class={[TEXT_LINK, INLINE_TARGET]}
+        >{translate('terms.agree.link')}<span class="sr-only"> {translate('link.new_tab')}</span></a
+      ></Interpolated
+    >
   </p>
   <div
     class={[

@@ -266,6 +266,7 @@ export const messages: Catalog = {
   'read.delete.rest.confirm': '残りの開封回数を削除しますか？',
   'read.delete.confirm.title': '開封せずにメッセージを削除しますか？',
   'read.note': '無料で、登録も不要です。メッセージのページは、Cookieもアクセス計測も使いません。',
+  'read.terms': 'メッセージを表示すると、{link}に同意したことになります。',
   'read.delete.confirm': '削除すると、あなたも含めて誰もメッセージを開封できなくなります。',
   'read.delete.yes': '削除する',
   'read.delete.no': '削除しない',
@@ -494,7 +495,9 @@ export const messages: Catalog = {
   'compose.attach': '{size}まで添付',
   'compose.submit': 'リンクを作成',
   'compose.encrypting': '暗号化中',
-  'compose.note': '無料で登録不要、Cookieも使いません。',
+  'compose.note': '無料で登録不要、Cookieも使いません。リンクを作成すると、{link}に同意したことになります。',
+  'terms.agree.link': '利用規約',
+  'link.new_tab': '（新しいタブで開きます）',
 
   'step.counter': 'ステップ{step}/{total}',
   'step.key.label': '鍵',

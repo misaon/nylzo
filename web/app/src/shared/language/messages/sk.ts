@@ -265,6 +265,7 @@ export const messages: Catalog = {
   'read.delete.rest.confirm': 'Vymazať zostávajúce otvorenia?',
   'read.delete.confirm.title': 'Vymazať správu bez otvorenia?',
   'read.note': 'Zadarmo a\u{A0}bez registrácie. Stránka so správou nepoužíva cookies ani meranie návštevnosti.',
+  'read.terms': 'Zobrazením správy súhlasíte s\u{A0}{link}.',
   'read.delete.confirm': 'Správu potom už nikto neotvorí, ani vy.',
   'read.delete.yes': 'Áno, vymazať',
   'read.delete.no': 'Nevymazať',
@@ -494,7 +495,9 @@ export const messages: Catalog = {
   'compose.attach': 'Príloha do {size}',
   'compose.submit': 'Vytvoriť odkaz',
   'compose.encrypting': 'Šifrujeme',
-  'compose.note': 'Zadarmo, bez registrácie a\u{A0}bez cookies.',
+  'compose.note': 'Zadarmo, bez registrácie a\u{A0}bez cookies. Vytvorením odkazu súhlasíte s\u{A0}{link}.',
+  'terms.agree.link': 'podmienkami používania',
+  'link.new_tab': '(otvorí sa v\u{A0}novej karte)',
 
   'step.counter': 'Krok {step} z\u{A0}{total}',
   'step.key.label': 'Kľúč',
