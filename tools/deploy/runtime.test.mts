@@ -139,16 +139,14 @@ echo VERIFIED_FAILURE_BEHAVIOR
   }
 });
 
-test("Caddy installs only a verified newer build, keeps upstream releases for releases without one, and restores the previous executable on failure", { skip: !available }, () => {
+const untouched = (previous: string) => `[[ "$status" != 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/${previous}/caddy && ! -s /tmp/restarts ]]
+[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = ${previous} && ! -e /var/lib/nylzo-deploy/caddy.previous.tag && ! -s /tmp/starts ]]`;
+
+test("Caddy installs only a verified newer release build, keeps it for releases without one, refuses an upstream build, and restores the previous executable on failure", { skip: !available }, () => {
   const releaseSigned = `grep -q '^verify-blob .*--certificate-identity https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/v0.2.1 ' /tmp/verified`;
   const archiveVerified = `grep -qx 'https://github.com/misaon/nylzo/releases/download/v0.2.1/nylzo-caddy_0.2.1_linux_amd64.tar.gz' /tmp/downloads
 grep -q '^attestation verify .*nylzo-caddy_0.2.1_linux_amd64.tar.gz .*--source-ref refs/tags/v0.2.1 ' /tmp/verified`;
-  const untouched = (previous: string) => `[[ "$status" != 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/${previous}/caddy && ! -s /tmp/restarts ]]
-[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = ${previous} && ! -e /var/lib/nylzo-deploy/caddy.previous.tag && ! -s /tmp/starts ]]`;
-  const installed = (candidate: string, previous: string) => `[[ "$status" = 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/${candidate}/caddy && "$(cat /tmp/restarts)" = /opt/nylzo/caddy/${candidate}/caddy ]]
-[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = ${candidate} && "$(cat /var/lib/nylzo-deploy/caddy.previous.tag)" = ${previous} ]]
-grep -q -- ' validate --config /etc/caddy/Caddyfile --adapter nylzo$' /tmp/verified`;
-  const scenarios: Record<string, { previous: string; listed?: boolean; identical?: boolean; approved?: string; built?: string; current?: string; fail?: string; release?: string; expectation: string }> = {
+  const scenarios: Record<string, { previous: string; listed?: boolean; identical?: boolean; current?: string; fail?: string; release?: string; expectation: string }> = {
     "fresh host": { previous: "", expectation: `${releaseSigned}
 ${archiveVerified}
 [[ "$status" = 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/release-v0.2.1/caddy && "$(cat /tmp/restarts)" = /opt/nylzo/caddy/release-v0.2.1/caddy ]]
@@ -161,14 +159,8 @@ ${archiveVerified}
 ${archiveVerified}
 [[ "$status" = 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/release-v0.2.1/caddy && ! -s /tmp/restarts && -s /tmp/starts ]]
 [[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = release-v0.2.1 && "$(cat /var/lib/nylzo-deploy/caddy.previous.tag)" = release-v0.2.0 ]]` },
-    "upstream to release": { previous: "v2.11.7", approved: "v2.11.8", expectation: `${releaseSigned}
-${archiveVerified}
-if grep -q caddyserver /tmp/downloads; then exit 1; fi
-grep -qx -- '--wait --pipe --collect --uid=caddy --gid=caddy /opt/nylzo/caddy/release-v0.2.1/caddy version' /tmp/verified
-${installed("release-v0.2.1", "v2.11.7")}` },
-    "older release build": { previous: "v2.11.8", built: "v2.11.7", expectation: `${releaseSigned}
-${archiveVerified}
-${untouched("v2.11.8")}` },
+    "upstream build": { previous: "v2.11.7", expectation: `[[ ! -s /tmp/downloads ]]
+${untouched("v2.11.7")}` },
     "another release": { previous: "release-v0.2.0", current: "v0.2.0", expectation: `[[ ! -s /tmp/downloads ]]
 ${untouched("release-v0.2.0")}` },
     "release without a build": { previous: "release-v0.2.0", listed: false, expectation: `${releaseSigned}
@@ -177,18 +169,6 @@ if grep -q 'tar.gz$' /tmp/downloads; then exit 1; fi
 [[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = release-v0.2.0 ]]
 rm /var/lib/nylzo-deploy/caddy.tag
 if PATH="/tmp/bin:$PATH" bash /test-update caddy v0.2.1; then exit 1; fi` },
-    "approved upstream release": { previous: "v2.11.7", listed: false, approved: "v2.11.8", expectation: `${releaseSigned}
-grep -q '^verify-blob .*upstream-checksums.txt .*--certificate-identity https://github.com/caddyserver/caddy/.github/workflows/release.yml@refs/tags/v2.11.8 ' /tmp/verified
-grep -qx 'https://github.com/caddyserver/caddy/releases/download/v2.11.8/caddy_2.11.8_linux_amd64.tar.gz' /tmp/downloads
-[[ "$(cat /opt/nylzo/caddy/v2.11.8/caddy)" = 'upstream verified executable' ]]
-${installed("v2.11.8", "v2.11.7")}` },
-    "installed upstream release": { previous: "v2.11.7", listed: false, expectation: `${releaseSigned}
-if grep -q 'tar.gz$' /tmp/downloads; then exit 1; fi
-[[ "$status" = 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/v2.11.7/caddy && ! -s /tmp/restarts && -s /tmp/starts ]]
-[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = v2.11.7 ]]` },
-    "upstream downgrade": { previous: "v2.11.7", listed: false, approved: "v2.11.6", expectation: `${releaseSigned}
-if grep -q 'tar.gz$' /tmp/downloads; then exit 1; fi
-${untouched("v2.11.7")}` },
     "release downgrade": { previous: "release-v0.2.2", expectation: `[[ ! -s /tmp/downloads ]]
 ${untouched("release-v0.2.2")}` },
     "mutable release": { previous: "release-v0.2.0", fail: "jq", expectation: `if grep -q 'checksums.txt' /tmp/downloads; then exit 1; fi
@@ -202,7 +182,7 @@ ${archiveVerified}
 [[ ! -e /opt/nylzo/caddy/release-v0.2.1 ]]
 ${untouched("release-v0.2.0")}` },
   };
-  for (const [scenario, { previous, listed = true, identical = false, approved, built = "v2.11.8", current = "v0.2.1", fail = "", release = "v0.2.1", expectation }] of Object.entries(scenarios)) {
+  for (const [scenario, { previous, listed = true, identical = false, current = "v0.2.1", fail = "", release = "v0.2.1", expectation }] of Object.entries(scenarios)) {
     const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
       "--tmpfs", "/opt", "--tmpfs", "/var/lib", "--tmpfs", "/var/tmp", "--tmpfs", "/run", "--tmpfs", "/etc/nylzo", "--tmpfs", "/tmp:exec",
       "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/host/update/update")},target=/test-update,readonly`,
@@ -210,21 +190,18 @@ ${untouched("release-v0.2.0")}` },
       encoding: "utf8", timeout: 60000, input: `set -euo pipefail
 mkdir -p /opt/nylzo/bin /var/lib/nylzo-deploy /tmp/bin /tmp/fixture
 printf '{"tag":"${current}"}\\n' > /var/lib/nylzo-deploy/current.json
-${approved ? `printf '${approved}\\n' > /var/lib/nylzo-deploy/caddy.approved.tag` : ""}
 ${previous ? `mkdir -p /opt/nylzo/caddy/${previous}
 printf '${previous}\\n' > /var/lib/nylzo-deploy/caddy.tag
 printf 'previous verified executable\\n' > /opt/nylzo/caddy/${previous}/caddy
 ln -s /opt/nylzo/caddy/${previous}/caddy /opt/nylzo/bin/caddy` : ""}
 printf '${identical ? "previous" : "candidate"} verified executable\\n' > /tmp/fixture/caddy
 (cd /tmp/fixture && tar -czf nylzo-caddy_0.2.1_linux_amd64.tar.gz caddy && sha256sum ${listed ? "nylzo-caddy_0.2.1_linux_amd64.tar.gz" : "caddy"} > checksums.txt)
-printf 'upstream verified executable' > /tmp/fixture/caddy
-(cd /tmp/fixture && for version in 2.11.6 2.11.8; do tar -czf caddy_\${version}_linux_amd64.tar.gz caddy; done && sha512sum caddy_*_linux_amd64.tar.gz > upstream-checksums.txt)
 cat > /tmp/bin/curl <<'CURL'
 #!/bin/bash
 file="\${@: -1}"
 printf '%s\\n' "\${@: -3:1}" >> /tmp/downloads
 case "\${file##*/}" in
-  checksums.txt | upstream-checksums.txt | *.tar.gz) cp "/tmp/fixture/\${file##*/}" "$file" ;;
+  checksums.txt | *.tar.gz) cp "/tmp/fixture/\${file##*/}" "$file" ;;
   *) printf '{}\\n' > "$file" ;;
 esac
 CURL
@@ -242,7 +219,6 @@ for name in cosign gh; do printf '#!/bin/bash\\nprintf "%%s\\\\n" "$*" >> /tmp/v
 cat > /tmp/bin/systemd-run <<'RUN'
 #!/bin/bash
 printf '%s\\n' "$*" >> /tmp/verified
-if [[ "\${@: -1}" = version ]]; then echo '${built} h1:fixture'; fi
 RUN
 printf '#!/bin/bash\\n' > /tmp/bin/sleep
 cat > /tmp/bin/systemctl <<'SYSTEMCTL'

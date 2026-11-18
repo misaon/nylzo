@@ -29,7 +29,7 @@ test("host certificate checks verify the live TLS identity, trust, renewal reser
     }
     const run = async (endpoint: string, ca: string) => {
       await execute("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/host-status")], { timeout: 15000, env: {
-        ...process.env, PATH: `${bin}:${process.env.PATH}`, SSL_CERT_FILE: join(directory, `${ca}.crt`), SSL_CERT_DIR: directory,
+        ...process.env, PATH: `${bin}:${process.env["PATH"]}`, SSL_CERT_FILE: join(directory, `${ca}.crt`), SSL_CERT_DIR: directory,
         NYLZO_HOST_STATUS_DIR: output, NYLZO_DEPLOY_STATE: directory, NYLZO_CLOCK_STATE: join(directory, "no-clock"),
         NYLZO_CADDY_ENV: join(directory, "caddy.env"), NYLZO_CERTIFICATE_ENDPOINT: endpoint,
       } });
@@ -38,12 +38,12 @@ test("host certificate checks verify the live TLS identity, trust, renewal reser
     for (const [identity, ca, expected] of [["valid", "valid", true], ["valid", "foreign", false], ["foreign", "foreign", false], ["renewal-due", "renewal-due", false], ["long-lived", "long-lived", false]] as const) {
       const server = createServer({ key: readFileSync(join(directory, `${identity}.key`)), cert: readFileSync(join(directory, `${identity}.crt`)), minVersion: "TLSv1.3" }, socket => socket.end());
       server.on("tlsClientError", () => {});
-      await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+      await new Promise<void>(listening => server.listen(0, "127.0.0.1", listening));
       try {
         const address = server.address();
         assert(address && typeof address !== "string");
         assert.equal(await run(`127.0.0.1:${address.port}`, ca), expected, `${identity} certificate with ${ca} trust anchor`);
-      } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
+      } finally { await new Promise<void>((closed, reject) => server.close(error => error ? reject(error) : closed())); }
     }
     assert.equal(await run("127.0.0.1:0", "valid"), false, "An unavailable TLS listener must fail closed");
     assert.equal(await run("192.0.2.1:443", "valid"), false, "The local certificate probe must reject non-loopback endpoints");

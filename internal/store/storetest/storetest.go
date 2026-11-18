@@ -39,6 +39,7 @@ var contracts = []contract{
 	{"RecordedEndingWins", (*fixture).recordedEndingWins},
 	{"ReleaseAfterExpiryRecordsNothing", (*fixture).releaseAfterExpiryRecordsNothing},
 	{"BurnAndCancel", (*fixture).burnAndCancel},
+	{"SecondEndingRecordsNothing", (*fixture).secondEndingRecordsNothing},
 	{"F11TakeBackRestoresOnlyItsOwnWait", (*fixture).takeBackRestoresOnlyItsOwnWait},
 	{"F11EndedMessagesCountNoAttempt", (*fixture).endedMessagesCountNoAttempt},
 	{"TakeDownWithoutTheKey", (*fixture).takeDownWithoutTheKey},
@@ -185,7 +186,7 @@ func (f *fixture) claimAndAck(created *message) {
 	}
 }
 
-func (f *fixture) end(created *message, state store.State, now time.Time, blobs store.Blobs) (store.State, error) {
+func (f *fixture) end(created *message, state store.State, now time.Time, blobs store.Blobs) (store.Ending, error) {
 	record := f.get(created)
 	return store.End(f.t.Context(), f.store, blobs, record, state, now)
 }

@@ -219,12 +219,12 @@ func (s *Server) shareOf(w http.ResponseWriter, r *http.Request, record *store.R
 
 // endLostShare ends a message nobody can open any more, because the seed that made its share is gone.
 func (s *Server) endLostShare(w http.ResponseWriter, r *http.Request, record *store.Record, now time.Time) {
-	final, err := store.End(r.Context(), s.store, s.blobs, record, store.StateLost, now)
+	ending, err := store.End(r.Context(), s.store, s.blobs, record, store.StateLost, now)
 	if err != nil {
 		s.events.ErrorContext(r.Context(), "share-lost", "err", logging.ErrorText(err))
-		final = store.StateLost
+		ending.State = store.StateLost
 	}
-	writeGone(w, string(final))
+	writeGone(w, string(ending.State))
 }
 
 func (s *Server) writeClaimFailure(w http.ResponseWriter, r *http.Request, err error) {

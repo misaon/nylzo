@@ -37,7 +37,7 @@ test("a host that missed a planned release reaches the newest approved line and 
         file(`${base}/nylzo_${version}.evidence.sha256.sigstore.json`, "{}");
       }
       return spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/update/release-target"), current], { encoding: "utf8", timeout: 20000,
-        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, FIXTURE: fixture, ...environment } });
+        env: { ...process.env, PATH: `${bin}:${process.env["PATH"]}`, FIXTURE: fixture, ...environment } });
     };
     const expect = (result: ReturnType<typeof run>, target: string | undefined) => {
       if (target === undefined) assert.notEqual(result.status, 0, result.stdout);

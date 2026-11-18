@@ -110,6 +110,7 @@ test("server user data stays small, carries no secret, and installs only the sig
   assert(!ignition.passwd.users.some(user => "sshAuthorizedKeys" in user && user.name !== "core"));
   assert.deepEqual(ignition.systemd.units.filter(unit => !("mask" in unit)).map(unit => unit.name), ["nylzo-host.service"]);
   const first = ignition.systemd.units.find(unit => unit.name === "nylzo-host.service")!;
+  assert("contents" in first);
   assert.match(first.contents, /^Before=sysinit\.target network-pre\.target shutdown\.target$/mu);
   assert.match(first.contents, /activate --first-boot \/opt\/nylzo\/host\/initial$/mu);
   const apex = decode((await render({ ...site, dnsZone: site.domain }, bundle)).ignition);

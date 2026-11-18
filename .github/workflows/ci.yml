@@ -598,6 +598,9 @@ jobs:
           sudo install -m 0644 nylzo-epoch.conf /etc/tmpfiles.d/nylzo-epoch.conf
           sudo systemd-tmpfiles --create nylzo-epoch.conf
           printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\nNYLZO_CADDY_IMAGE=caddy:ci\n' > .env
+          # No ACME issuer gives localhost a certificate; without the block, Caddy's internal CA issues it.
+          sed -i '/issuer acme {/,/}/d' Caddyfile
+          if grep -q 'issuer acme' Caddyfile; then exit 1; fi
           docker compose up -d
           for service in nylzo caddy; do
             docker inspect "nylzo-${service}-1" --format '{{.HostConfig.Memory}} {{.HostConfig.PidsLimit}} {{.HostConfig.NanoCpus}} {{json .HostConfig.Ulimits}}' | tee "$RUNNER_TEMP/limits"

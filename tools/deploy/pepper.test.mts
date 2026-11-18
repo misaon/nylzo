@@ -10,6 +10,7 @@ const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(path.
 const { server } = JSON.parse(readFileSync(path.resolve("spec/vectors.json"), "utf8")) as {
   server: { pepper_hex: string; pepper_id: number; previous_pepper_hex: string; previous_pepper_id: number };
 };
+const script = (name: string) => `type=bind,source=${path.resolve(`deploy/hetzner-flatcar/host/application/${name}`)},target=/test/${name},readonly`;
 const pepperId = (hex: string) => createHash("sha256").update("nylzo/v1/pepper-id").update(Buffer.from(hex, "hex")).digest()[0]!;
 
 test("a pepper rotation keeps the previous pepper for serve and never repeats its pepper_id", { skip: !available, timeout: 120000 }, () => {
@@ -19,7 +20,6 @@ test("a pepper rotation keeps the previous pepper for serve and never repeats it
   let colliding: string;
   do colliding = createHash("sha256").update(`collision/${counter++}`).digest("hex");
   while (pepperId(colliding) !== server.previous_pepper_id);
-  const script = (name: string) => `type=bind,source=${path.resolve(`deploy/hetzner-flatcar/host/application/${name}`)},target=/test/${name},readonly`;
   const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--cap-drop", "ALL", "--cap-add", "CHOWN", "--cap-add", "DAC_OVERRIDE", "--cap-add", "FOWNER",
     "--mount", script("prepare"), "--mount", script("run"), image, "bash", "-s"], { encoding: "utf8", timeout: 100000, input: String.raw`set -euo pipefail
 trap 'echo "failed at line $LINENO: $BASH_COMMAND" >&2' ERR

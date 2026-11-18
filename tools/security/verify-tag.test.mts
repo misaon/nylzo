@@ -25,7 +25,7 @@ esac
     const run = (overrides: Record<string,string> = {}) => {
       const output = join(directory, "output"); writeFileSync(output, "");
       const result = spawnSync("bash", ["tools/security/verify-tag"], { encoding: "utf8", env: {
-        ...process.env, PATH: `${directory}:${process.env.PATH}`, RUNNER_TEMP: directory, GITHUB_OUTPUT: output,
+        ...process.env, PATH: `${directory}:${process.env["PATH"]}`, RUNNER_TEMP: directory, GITHUB_OUTPUT: output,
         GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_REF_NAME: "v0.1.2", EMBEDDED_TAG: "v0.1.2",
         GITHUB_SHA: "a".repeat(40), GITHUB_ACTOR: "nylzo-security[bot]", RELEASE_TAGGER_EMAIL: "owner@example.com",
         SECURITY_AUTOMATION_ENABLED: "true", DEPENDENCY_APP_SLUG: "nylzo-security",
@@ -50,7 +50,7 @@ esac
       { TAG_JSON: unsigned, GITHUB_ACTOR: "attacker" },
       { TAG_JSON: unsigned, SIGNATURE_STATUS: "1" },
     ]) assert.notEqual(run(overrides).status, 0);
-    const probe = (tag: string, trigger: string, workflow = "misaon/nylzo/.github/workflows/release-tag.yml@refs/heads/codex/test") => spawnSync("bash", ["tools/security/verify-keyless-tag", tag, "a".repeat(40), trigger], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, RUNNER_TEMP: directory, GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_SHA: "a".repeat(40), GITHUB_WORKFLOW_REF: workflow } });
+    const probe = (tag: string, trigger: string, workflow = "misaon/nylzo/.github/workflows/release-tag.yml@refs/heads/codex/test") => spawnSync("bash", ["tools/security/verify-keyless-tag", tag, "a".repeat(40), trigger], { encoding: "utf8", env: { ...process.env, PATH: `${directory}:${process.env["PATH"]}`, RUNNER_TEMP: directory, GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_SHA: "a".repeat(40), GITHUB_WORKFLOW_REF: workflow } });
     assert.equal(probe("automation-probe-1", "workflow_dispatch").status, 0);
     assert.notEqual(probe("v0.1.2", "workflow_dispatch").status, 0);
     assert.notEqual(probe("automation-probe-1", "workflow_run").status, 0);
@@ -77,7 +77,7 @@ esac
     };
     for (const [name, source] of Object.entries(commands)) { const path = join(directory, name); writeFileSync(path, source); chmodSync(path, 0o700); }
     const run = (overrides: Record<string,string> = {}) => spawnSync("bash", ["tools/security/verify-tag"], { encoding: "utf8", env: {
-      ...process.env, PATH: `${directory}:${process.env.PATH}`, RUNNER_TEMP: directory, GITHUB_OUTPUT: join(directory, "output"),
+      ...process.env, PATH: `${directory}:${process.env["PATH"]}`, RUNNER_TEMP: directory, GITHUB_OUTPUT: join(directory, "output"),
       GITHUB_REPOSITORY: "misaon/nylzo", GITHUB_REF_NAME: "v0.2.4", GITHUB_SHA: "a".repeat(40), BRANCH_TIP: "a".repeat(40),
       GITHUB_ACTOR: "nylzo-dependency-updates[bot]", DEPENDENCY_APP_SLUG: "nylzo-dependency-updates", SECURITY_AUTOMATION_ENABLED: "true",
       KIND: "security", BASE: "v0.2.3", LATEST: "v0.2.3", ...overrides,

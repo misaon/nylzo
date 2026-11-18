@@ -13,7 +13,7 @@ const sourceIndex = (file: string) => sources.findIndex((source) => source.url.e
 const documents = (replaced: Record<number, object> = {}): Download[] => sources.map((_, index) => ({ document: replaced[index] ?? googlebot }));
 const nothingCommitted: CrawlerList = { sources: {}, prefixes: [] };
 const prefixesOf = (replaced: Record<number, object>) => crawlerList(documents(replaced), nothingCommitted).list.prefixes;
-const committedList = (ranges: Record<string, string[]>): CrawlerList => ({
+const committedList = (ranges: CrawlerList["sources"]): CrawlerList => ({
   sources: ranges,
   prefixes: [...new Set(Object.values(ranges).flat())],
 });

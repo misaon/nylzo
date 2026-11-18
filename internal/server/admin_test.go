@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"os"
@@ -234,6 +235,11 @@ func TestAK28AdminAnswersOnlyToASessionAPasskeyOpened(t *testing.T) {
 		}
 	}
 	refused("an unsigned request", harness.authorized(http.MethodGet, overview, ""))
+	for _, path := range []string{api.AdminPath, overview, live} {
+		if head := harness.authorized(http.MethodHead, path, ""); head.status != http.StatusNotFound {
+			t.Fatalf("HEAD %s reached a handler: %d", path, head.status)
+		}
+	}
 	passkey := newSoftwarePasskey(t)
 	if status := harness.enroll(harness.openEnrollment(), passkey); status != http.StatusCreated {
 		t.Fatalf("enrollment: %d", status)
@@ -269,6 +275,40 @@ func TestAK28AdminAnswersOnlyToASessionAPasskeyOpened(t *testing.T) {
 		t.Fatalf("sign-out: %d", signedOut.status)
 	}
 	refused("a signed-out session", harness.signed(session.seed, http.MethodGet, overview, fresh()))
+}
+
+// The page asks for the live figures every five seconds, so the list of refused clients travels only when it changed
+// since the version the page holds.
+func TestLiveSendsTheRefusedClientsOnlyWhenTheyChanged(t *testing.T) {
+	harness := newAdminHarness(t)
+	passkey := newSoftwarePasskey(t)
+	if status := harness.enroll(harness.openEnrollment(), passkey); status != http.StatusCreated {
+		t.Fatalf("enrollment: %d", status)
+	}
+	session := harness.signIn(passkey)
+	next := session.challenge
+	live := func(query string) answered {
+		t.Helper()
+		answer := harness.signed(session.seed, http.MethodGet, api.AdminPath+"/live"+query, next)
+		next = answer.next
+		return answer
+	}
+	harness.server.refusals.Note(netip.MustParseAddr("192.0.2.1"), "requests", time.Now())
+	first := live("")
+	version := fmt.Sprint(first.fields["refused_version"])
+	if listed, ok := first.fields["refused"].([]any); first.status != http.StatusOK || !ok || len(listed) != 1 {
+		t.Fatalf("the first live answer: %d %v", first.status, first.fields)
+	}
+	if same := live("?since=0&refused=" + version); same.status != http.StatusOK || same.fields["refused"] != nil {
+		t.Fatalf("an unchanged list was sent again: %d %v", same.status, same.fields["refused"])
+	}
+	harness.server.refusals.Note(netip.MustParseAddr("192.0.2.2"), "requests", time.Now())
+	if changed, ok := live("?refused=" + version).fields["refused"].([]any); !ok || len(changed) != 2 {
+		t.Fatalf("a changed list was not sent: %v", changed)
+	}
+	if malformed := live("?since=soon"); malformed.status != http.StatusBadRequest {
+		t.Fatalf("a malformed since: %d", malformed.status)
+	}
 }
 
 // A reset on the server host is the operator's way to shut a session they do not trust: it ends every session at
@@ -325,15 +365,25 @@ func TestAK29EnrollmentLinkAddsOnePasskeyOnce(t *testing.T) {
 	}
 	token := harness.openEnrollment()
 	guess := core.Encode(make([]byte, 24))
-	response, _ := harness.post(api.AdminPath+"/enrollment/options", map[string]string{"token": guess}, "203.0.113.9")
-	if response.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("a guessed token got %d", response.StatusCode)
+	for _, wrong := range []string{guess, "not base64url!"} {
+		response, _ := harness.post(
+			api.AdminPath+"/enrollment/options",
+			map[string]string{"token": wrong},
+			"203.0.113.9",
+		)
+		if response.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("the token %q got %d", wrong, response.StatusCode)
+		}
 	}
 	if kept := harness.server.refusals.List(); len(kept) != 0 {
 		t.Fatalf("a server without a passkey keeps the addresses of %v", kept)
 	}
-	if status := harness.enroll(token, newSoftwarePasskey(t)); status != http.StatusCreated {
+	enrolled := newSoftwarePasskey(t)
+	if status := harness.enroll(token, enrolled); status != http.StatusCreated {
 		t.Fatalf("enrollment: %d", status)
+	}
+	if status := harness.enroll(harness.openEnrollment(), enrolled); status != http.StatusUnauthorized {
+		t.Fatalf("a passkey the instance already holds got %d", status)
 	}
 	if !harness.server.counts.Enabled() {
 		t.Fatal("the server does not count although a passkey can sign in")
@@ -345,7 +395,7 @@ func TestAK29EnrollmentLinkAddsOnePasskeyOnce(t *testing.T) {
 	if err != nil || held != 1 {
 		t.Fatalf("%d passkeys, %v", held, err)
 	}
-	response, _ = harness.post(api.AdminPath+"/enrollment/options", map[string]string{"token": guess}, "203.0.113.9")
+	response, _ := harness.post(api.AdminPath+"/enrollment/options", map[string]string{"token": guess}, "203.0.113.9")
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("a guessed token got %d", response.StatusCode)
 	}

@@ -64,3 +64,26 @@ func TestSessionsEndWhenIdleOrOldAndChallengesWorkOnce(t *testing.T) {
 		t.Fatal("a session outlived its passkey")
 	}
 }
+
+// A used sign-in challenge stays used for its whole life, a challenge that runs out further ahead than its life is
+// refused, and a clock that once ran ahead locks no later sign-in out.
+func TestSignInChallengesSurviveClockSteps(t *testing.T) {
+	issued := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	held, key := newSessions(), sessionKey{1}
+	challenge := held.signInChallenge(key, issued)
+	if _, opened := held.open(key, []byte("passkey"), challenge, time.Time{}, issued); !opened {
+		t.Fatal("the challenge opened no session")
+	}
+	held.keep(func(string) bool { return true }, issued.Add(ceremonyLife))
+	if held.signInOpen(challenge, key, issued.Add(time.Minute)) {
+		t.Fatal("a used challenge opened again")
+	}
+	if held.signInOpen(held.signInChallenge(key, issued.Add(time.Hour)), key, issued) {
+		t.Fatal("a challenge that runs out an hour after its life was accepted")
+	}
+	held.keep(func(string) bool { return true }, issued.Add(time.Hour))
+	later := issued.Add(2 * time.Minute)
+	if !held.signInOpen(held.signInChallenge(key, later), key, later) {
+		t.Fatal("a clock that once ran ahead refused a fresh challenge")
+	}
+}

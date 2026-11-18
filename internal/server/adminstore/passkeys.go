@@ -18,6 +18,7 @@ var (
 	// ErrEnrollmentClosed answers a token that was never issued, was used, or ran out.
 	ErrEnrollmentClosed = errors.New("adminstore: no enrollment is open for this token")
 	ErrTooManyPasskeys  = errors.New("adminstore: the admin area holds as many passkeys as it accepts")
+	ErrPasskeyEnrolled  = errors.New("adminstore: the instance already holds this passkey")
 )
 
 type TokenHash [sha256.Size]byte
@@ -92,6 +93,17 @@ func (s *Store) Enroll(ctx context.Context, token TokenHash, credential *passkey
 		}
 		if held >= MaxPasskeys {
 			return ErrTooManyPasskeys
+		}
+		var enrolled bool
+		if existsErr := tx.QueryRowContext(
+			ctx,
+			`SELECT EXISTS (SELECT 1 FROM passkeys WHERE credential_id = ?)`,
+			credential.ID,
+		).Scan(&enrolled); existsErr != nil {
+			return existsErr
+		}
+		if enrolled {
+			return ErrPasskeyEnrolled
 		}
 		if _, err = tx.ExecContext(ctx, `DELETE FROM enrollment`); err != nil {
 			return err

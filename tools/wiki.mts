@@ -8,7 +8,7 @@ const repository = "https://github.com/misaon/nylzo";
 const wiki = `${repository}/wiki`;
 const pages = (await readdir(path.join(root, "docs/wiki"), { recursive: true }))
   .filter(file => file.endsWith(".md"))
-  .sort()
+  .toSorted()
   .map(file => [path.join("docs/wiki", file), path.basename(file, ".md")] as const);
 const sources = new Map([...pages, ["CODE_OF_CONDUCT.md", "Code-of-conduct"]]);
 const duplicates = [...sources.values()].filter((page, index, all) => all.indexOf(page) !== index);
@@ -21,8 +21,8 @@ await mkdir(destination, { recursive: true });
 for (const [source, page] of sources) {
   let markdown = await readFile(path.join(root, source), "utf8");
   const links = [...markdown.matchAll(/!?\[[^\]\n]*\]\(([^)\s]+)\)/gu)];
-  for (const match of links.reverse()) {
-    const target = match[1];
+  for (const match of links.toReversed()) {
+    const target = match[1]!;
     let replacement = target;
     if (target.startsWith(`${wiki}/`)) {
       const name = new URL(target).pathname.split("/").at(-1);
