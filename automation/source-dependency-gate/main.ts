@@ -5,12 +5,13 @@ import path from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { verifyDeepmergePatch } from '../web-install/deepmerge-patch.ts';
-import { assessSourceDependencies, scannedLockfiles } from './assessment.ts';
+import { assessSourceDependencies, npmLockfiles, scannedLockfiles } from './assessment.ts';
 import { collectGoImports } from './go-imports.ts';
 import { arrayAt, objectAt } from './json-values.ts';
 import { openVexDocument, openVexFileName } from './openvex.ts';
 import type { Release } from './openvex.ts';
 import { lockedPackageCount, parseDependencyReport } from './osv-report.ts';
+import { npmRuntimeEvidence } from './runtime-dependencies.ts';
 import { parseScaPolicy } from './sca-policy.ts';
 
 const repositoryRoot = path.resolve(import.meta.dirname, '../..');
@@ -43,9 +44,16 @@ runScanner(['--format=json', `--output-file=${reportPath}`], 'Dependency scanner
 const report = parseDependencyReport(readJson(reportPath));
 const imports = collectGoImports(repositoryRoot);
 writeJson(path.join(reportDirectory, 'go-imports.json'), imports);
+const npmRuntime = Object.fromEntries(
+  npmLockfiles.map((lockfile) => [
+    lockfile,
+    npmRuntimeEvidence(readFileSync(path.join(repositoryRoot, lockfile), 'utf8')),
+  ]),
+);
+writeJson(path.join(reportDirectory, 'npm-runtime.json'), npmRuntime);
 
 const now = new Date();
-const statements = assessSourceDependencies(report, policy, imports, now, patchEvidence);
+const statements = assessSourceDependencies(report, policy, imports, now, patchEvidence, npmRuntime);
 writeJson(path.join(reportDirectory, 'patch-evidence.json'), patchEvidence);
 
 const commit = git('rev-parse', 'HEAD');

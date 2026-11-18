@@ -6,6 +6,7 @@ import { localWorkspaces } from '../web-install/policy.ts';
 import { goBuilds } from './go-imports.ts';
 import type { GoImports } from './go-imports.ts';
 import type { Component, DependencyReport, LockedPackage, LockfileReport, Vulnerability } from './osv-report.ts';
+import type { NpmRuntimeEvidence } from './runtime-dependencies.ts';
 import type { Assessment, FixedAssessment, NotAffectedAssessment, ScaPolicy } from './sca-policy.ts';
 
 export type VexStatement = FixedStatement | NotAffectedStatement;
@@ -31,10 +32,15 @@ export const scannedLockfiles = ['go.mod', 'web/bun.lock', 'automation/bun.lock'
 
 type ScannedLockfile = (typeof scannedLockfiles)[number];
 
+export const npmLockfiles = ['web/bun.lock', 'automation/bun.lock'] as const satisfies readonly ScannedLockfile[];
+
+export type NpmRuntime = Partial<Record<ScannedLockfile, NpmRuntimeEvidence>>;
+
 export const patchedLockfile: ScannedLockfile = 'web/bun.lock';
 const toolingLockfile: ScannedLockfile = 'automation/bun.lock';
 const reviewedForbiddenImport = 'golang.org/x/crypto/openpgp';
 const reviewedJustification = 'vulnerable_code_not_present';
+const buildToolJustification = 'vulnerable_code_cannot_be_controlled_by_adversary';
 
 export function assessSourceDependencies(
   report: DependencyReport,
@@ -42,6 +48,7 @@ export function assessSourceDependencies(
   imports: GoImports,
   now: Date,
   verifiedPatches: readonly PatchAssessment[] = [],
+  npmRuntime: NpmRuntime = {},
 ): VexStatement[] {
   assert.ok(
     hasExactly(
@@ -101,7 +108,7 @@ export function assessSourceDependencies(
           findings.push(`Vulnerability: ${component.name}@${component.version} ${vulnerability.id}`);
           continue;
         }
-        statements.push(notAffectedStatement(notAffected, lockfile, component, now, imports));
+        statements.push(notAffectedStatement(notAffected, lockfile, component, now, imports, npmRuntime));
       }
     }
   }
@@ -192,9 +199,34 @@ function notAffectedStatement(
   component: Component,
   now: Date,
   imports: GoImports,
+  npmRuntime: NpmRuntime,
 ): NotAffectedStatement {
-  assert.equal(assessment.justification, reviewedJustification, 'Only absent vulnerable code can be not affected');
   assert.ok(isUnderReview(assessment, now), 'VEX assessment expired');
+  const purl =
+    assessment.justification === buildToolJustification
+      ? buildToolPackage(assessment, lockfile, component, npmRuntime)
+      : absentOpenPgpModule(assessment, lockfile, component, imports);
+  return {
+    vulnerability: { name: assessment.id },
+    status: 'not_affected',
+    justification: assessment.justification,
+    impact_statement: assessment.impact,
+    component: purl,
+    lockfile,
+  };
+}
+
+function absentOpenPgpModule(
+  assessment: NotAffectedAssessment,
+  lockfile: ScannedLockfile,
+  component: Component,
+  imports: GoImports,
+): string {
+  assert.equal(
+    assessment.justification,
+    reviewedJustification,
+    'Only absent vulnerable code or build-only packages can be not affected',
+  );
   assert.equal(
     assessment.forbiddenImport,
     reviewedForbiddenImport,
@@ -212,14 +244,26 @@ function notAffectedStatement(
       `Vulnerable OpenPGP code is present for ${platform}`,
     );
   }
-  return {
-    vulnerability: { name: assessment.id },
-    status: 'not_affected',
-    justification: assessment.justification,
-    impact_statement: assessment.impact,
-    component: `pkg:golang/${component.name}@v${component.version}`,
-    lockfile,
-  };
+  return `pkg:golang/${component.name}@v${component.version}`;
+}
+
+function buildToolPackage(
+  assessment: NotAffectedAssessment,
+  lockfile: ScannedLockfile,
+  component: Component,
+  npmRuntime: NpmRuntime,
+): string {
+  assert.equal(assessment.forbiddenImport, undefined, 'A build-only assessment names no import');
+  assert.ok(
+    component.ecosystem === 'npm' && npmLockfiles.some((npmLockfile) => npmLockfile === lockfile),
+    'Only an npm package can be build-only',
+  );
+  const evidence = npmRuntime[lockfile];
+  assert.ok(evidence !== undefined, `Missing runtime dependency evidence for ${lockfile}`);
+  const locked = `${component.name}@${component.version}`;
+  assert.ok(evidence.locked.includes(locked), `${locked} is not locked in ${lockfile}`);
+  assert.ok(!evidence.runtime.includes(locked), `${locked} is a runtime dependency in ${lockfile}`);
+  return `pkg:npm/${component.name}@${component.version}`;
 }
 
 function hasExactly(values: readonly string[], expected: readonly string[]): boolean {
