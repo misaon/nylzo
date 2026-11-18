@@ -78,7 +78,7 @@ Then open `https://your-domain/transparency` and run `nylzo verify-client --serv
 
 - Both containers have a read-only root filesystem, no capabilities, `no-new-privileges`, resource limits and no core dumps. Nylzo writes only to the `nylzo-data` volume and the epoch directory, and gets the pepper as a Docker secret file.
 - Nylzo is attached only to `backend`, an internal network with no route out. Caddy is also attached to `edge`, where Docker publishes its ports. Nylzo trusts forwarding headers only from Caddy's fixed addresses. If the subnets clash with your network, change them, both fixed addresses, the Caddyfile upstream and `NYLZO_TRUSTED_PROXIES` together.
-- Caddy accepts only TLS 1.3 with X25519MLKEM768, a hybrid post-quantum key exchange, so older browsers and many bots cannot connect ([transport](Security-model.md#transport)).
+- Caddy accepts only TLS 1.3 with X25519MLKEM768, a hybrid post-quantum key exchange, so older browsers and many bots, search crawlers among them, cannot connect ([transport](Security-model.md#transport)). It gets Let's Encrypt `shortlived` certificates, valid for 160 hours, over HTTP-01 on port 80 or TLS-ALPN on 443.
 - Caddy keeps no access log. Add no `log` directive to a site and keep the `exclude` list: a logged `X-Nylzo-Lease` header lets anyone with the link download a message without spending an open. Caddy started with `--adapter nylzo`, as `compose.yaml` does, refuses such a Caddyfile.
 
 Other server settings go into the `environment` block of the `nylzo` service ([configuration](Operations.md#configuration)); apply them with `docker compose up -d`.
@@ -110,7 +110,7 @@ Never copy the seed to save messages: a copy, a link and a stored message togeth
 
 ## Upgrade
 
-Take both images, `compose.yaml`, `Caddyfile`, `check-isolation` and `nylzo-epoch.conf` from the same release. If you serve another host name from the same site block, such as `www`, add it to `nylzo_crawler_tls`.
+Take both images, `compose.yaml`, `Caddyfile`, `check-isolation` and `nylzo-epoch.conf` from the same release.
 
 1. Verify the new release and put its references into `.env`. Leave `secrets/pepper` as it is.
 2. Ask the new image whether it can open your data. The check writes nothing and exits with 1 where the server would refuse to start.
@@ -133,7 +133,7 @@ Never go back to an older release once a newer one has started on your data.
 The first start of 0.14.0 erases every stored message, the 0.13 seed and any stored abuse reports, so every earlier link stops working. CLIs before 0.14.0 get `client_outdated`. Copying the old seed keeps nothing, since 0.14.0 erases a 0.13 seed wherever it finds one, and it refuses to start while the old `epoch` directory is still in `nylzo-data`.
 
 1. Tell your users when open messages will be deleted and that they need CLI 0.14.0 or later.
-2. Install Docker Engine 28.0 or newer, the tmpfiles entry and the swap settings from [Prepare the host](#prepare-the-host). Verify the 0.14 images.
+2. Install Docker Engine 28.0 or newer, the tmpfiles entry and the swap settings from [Prepare the host](#prepare-the-host). Verify the 0.14 images. Keep port 80 open next to 443, since Caddy now renews 160-hour certificates. Search crawlers without X25519MLKEM768 can no longer reach the instance.
 3. Turn on maintenance mode and stop Nylzo: `sudo touch caddy-state/maintenance && docker compose stop nylzo`.
 4. Erase the old seed directory in place, since `rm` or `mv` would leave its blocks on the disk:
 

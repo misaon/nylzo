@@ -444,13 +444,28 @@ func RefuseEpochInDataDirectory(settings *config.Server) error {
 	return fmt.Errorf("%w: %s; %s", ErrEpochInDataDirectory, inData, advice)
 }
 
-// leftoverAdvice offers the copy only while NYLZO_EPOCH_DIR holds no seed, which the copy would overwrite.
+// leftoverAdvice offers the copy only while NYLZO_EPOCH_DIR holds no seed, which the copy would overwrite, and never
+// for a damaged seed or one of a release before 0.14.0, which serve erases with its messages. A seed that fails
+// another check keeps the offer and names the check.
 func leftoverAdvice(inData, named string) string {
 	const eraseAll = "erase every file in it in place (shred --zero --iterations=0 --remove=unlink) and remove it"
-	if exists(filepath.Join(inData, epoch.FileName)) && !exists(filepath.Join(named, epoch.FileName)) {
-		return "copy its seed into " + named + " first to keep the live messages, then " + eraseAll
+	if !exists(filepath.Join(inData, epoch.FileName)) || exists(filepath.Join(named, epoch.FileName)) {
+		return eraseAll
 	}
-	return eraseAll
+	var (
+		held epoch.State
+		err  error
+	)
+	secretmode.Do(func() { held, err = epoch.Inspect(inData) })
+	copySeed := "copy its seed into " + named + " first to keep the live messages, then " + eraseAll
+	switch {
+	case errors.Is(err, epoch.ErrCorrupt), err == nil && held != epoch.StateSeed:
+		return eraseAll
+	case err != nil:
+		return "fix the seed (" + err.Error() + "), " + copySeed
+	default:
+		return copySeed
+	}
 }
 
 func exists(path string) bool {
