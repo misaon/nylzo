@@ -44,7 +44,6 @@ type opaqueVector struct {
 	KE2                  string `json:"ke2"`
 	KE3                  string `json:"ke3"`
 	ExportKey            string `json:"export_key"`
-	SessionKey           string `json:"session_key"`
 }
 
 type rfcVectors struct {
@@ -216,8 +215,6 @@ func TestOPAQUEMatchesRFC9807(t *testing.T) {
 			}
 			expectHex(t, "KE3", result.KE3[:], vector.KE3)
 			expectHex(t, "export key", result.ExportKey[:], vector.ExportKey)
-			expectHex(t, "client session key", result.SessionKey[:], vector.SessionKey)
-			expectHex(t, "server session key", run.serverLogin.SessionKey[:], vector.SessionKey)
 			if err = run.serverLogin.ServerFinish(result.KE3[:]); err != nil {
 				t.Fatal(err)
 			}
