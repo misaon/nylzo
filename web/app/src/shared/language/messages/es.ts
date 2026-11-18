@@ -30,6 +30,7 @@ export const messages: Catalog = {
     'El servicio de nylzo.com lo opera una persona física (en adelante, el «operador») de forma gratuita, sin publicidad y al margen de su actividad empresarial.',
   'terms.operator.2':
     'El software Nylzo es de código abierto con licencia MIT. Estas condiciones se aplican solo a nylzo.com.',
+  'terms.operator.identity': 'Facilitamos la identidad del operador si se solicita a través de GitHub.',
   'terms.agreement.title': 'Aceptación',
   'terms.agreement.1': 'Al crear o abrir un mensaje, aceptas estas condiciones.',
   'terms.service.title': 'Cómo funciona el servicio',
@@ -50,6 +51,9 @@ export const messages: Catalog = {
   'terms.forbidden.6': 'La elusión de los límites del servicio y los ataques contra él.',
   'terms.forbidden.note': 'Quien crea un mensaje es responsable de su contenido.',
   'terms.removal.title': 'Retirada de mensajes',
+  'terms.removal.notice':
+    'Denuncia el contenido ilícito mediante un {link} en GitHub. Indica el motivo y el ID del mensaje, que en el enlace va tras el # entre el segundo y el tercer punto. No envíes el enlace completo.',
+  'terms.removal.notice.link': 'aviso privado',
   'terms.removal.1': 'Si un mensaje infringe la ley o estas condiciones, lo borramos. El borrado no se puede deshacer.',
   'terms.removal.2': 'Comunicamos a la policía las sospechas de delitos que pongan en peligro la vida o la seguridad.',
   'terms.removal.3':

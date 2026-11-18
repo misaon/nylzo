@@ -28,6 +28,7 @@ export const messages: Catalog = {
   'terms.operator.1':
     'nylzo.comのサービスは、個人（以下「運営者」）が事業としてではなく、無料かつ広告なしで運営しています。',
   'terms.operator.2': 'NylzoのソフトウェアはMITライセンスのオープンソースです。本規約はnylzo.comにのみ適用されます。',
+  'terms.operator.identity': '運営者の身元は、GitHubを通じた求めに応じて開示します。',
   'terms.agreement.title': '同意',
   'terms.agreement.1': 'メッセージを作成または開封することで、本規約に同意したものとみなされます。',
   'terms.service.title': 'サービスの仕組み',
@@ -46,6 +47,9 @@ export const messages: Catalog = {
   'terms.forbidden.6': '本サービスの制限の回避、および本サービスへの攻撃。',
   'terms.forbidden.note': 'メッセージの内容については、その作成者が責任を負います。',
   'terms.removal.title': 'メッセージの撤去',
+  'terms.removal.notice':
+    '違法なコンテンツは、GitHubの{link}で報告してください。理由とメッセージIDを記載してください。メッセージIDは、リンクの#より後ろの2つ目と3つ目のピリオドの間にあります。リンク全体は送らないでください。',
+  'terms.removal.notice.link': '非公開の報告',
   'terms.removal.1': 'メッセージが法令または本規約に違反する場合は、これを削除します。削除は元に戻せません。',
   'terms.removal.2': '生命または安全を脅かす犯罪の疑いがある場合は、警察に通報します。',
   'terms.removal.3':

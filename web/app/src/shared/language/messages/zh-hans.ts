@@ -26,6 +26,7 @@ export const messages: Catalog = {
   'terms.operator.title': '运营者',
   'terms.operator.1': 'nylzo.com 上的服务由一名个人（以下简称“运营者”）免费运营，不含广告，且不属于其经营活动。',
   'terms.operator.2': 'Nylzo 软件基于 MIT 许可证开源。本条款仅适用于 nylzo.com。',
+  'terms.operator.identity': '如通过 GitHub 提出要求，我们会提供运营者的身份。',
   'terms.agreement.title': '同意',
   'terms.agreement.1': '创建或打开消息，即表示你同意本条款。',
   'terms.service.title': '服务如何运作',
@@ -44,6 +45,9 @@ export const messages: Catalog = {
   'terms.forbidden.6': '规避服务限制或攻击本服务。',
   'terms.forbidden.note': '消息的创建者对其内容负责。',
   'terms.removal.title': '移除消息',
+  'terms.removal.notice':
+    '请通过 GitHub 上的{link}举报违法内容。请写明理由和消息 ID：它位于链接中 # 之后的第二个和第三个句点之间。请勿发送完整链接。',
+  'terms.removal.notice.link': '非公开报告',
   'terms.removal.1': '如果消息违反法律或本条款，我们会将其删除。删除后无法恢复。',
   'terms.removal.2': '如果怀疑存在危及生命或安全的犯罪行为，我们会向警方报告。',
   'terms.removal.3': '自动限制（请求次数、每日消息上限、输错密码后的等待和锁定）用于保护服务，不对内容作任何判断。',
