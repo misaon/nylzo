@@ -10,6 +10,7 @@ import (
 	"github.com/misaon/nylzo/internal/core"
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server/adminstore"
+	"github.com/misaon/nylzo/internal/server/logging"
 	"github.com/misaon/nylzo/internal/server/passkey"
 )
 
@@ -62,8 +63,12 @@ func (a *API) handleEnrollmentOptions(w http.ResponseWriter, r *http.Request) {
 	}
 	relyingParty, known := a.relyingParty(r)
 	token, ok := decode(request.Token)
-	if !ok || !known {
+	if !known {
 		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
+		return
+	}
+	if !ok {
+		a.refuseEnrollment(w, r)
 		return
 	}
 	now := time.Now()
@@ -144,8 +149,12 @@ func (a *API) handleEnrollment(w http.ResponseWriter, r *http.Request) {
 	}
 	registration, token, complete := decodeRegistration(&request)
 	relyingParty, known := a.relyingParty(r)
-	if !complete || !known {
+	if !known {
 		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
+		return
+	}
+	if !complete {
+		a.refuseEnrollment(w, r)
 		return
 	}
 	now := time.Now()
@@ -156,16 +165,17 @@ func (a *API) handleEnrollment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err := a.Store.Enroll(r.Context(), hashed, &credential, now)
-	if errors.Is(err, adminstore.ErrEnrollmentClosed) || errors.Is(err, adminstore.ErrTooManyPasskeys) {
+	if errors.Is(err, adminstore.ErrEnrollmentClosed) || errors.Is(err, adminstore.ErrTooManyPasskeys) ||
+		errors.Is(err, adminstore.ErrPasskeyEnrolled) {
 		a.refuseEnrollment(w, r)
 		return
-	}
-	if err == nil {
-		err = a.Sync(context.WithoutCancel(r.Context()), now)
 	}
 	if err != nil {
 		a.writeInternal(w, r, err)
 		return
+	}
+	if syncErr := a.Sync(context.WithoutCancel(r.Context()), now); syncErr != nil {
+		a.Events.ErrorContext(r.Context(), "admin-store", "err", logging.ErrorText(syncErr))
 	}
 	a.Events.InfoContext(r.Context(), "admin-passkey-enrolled")
 	writeJSON(w, http.StatusCreated, stateResponse{Enrolled: true})
