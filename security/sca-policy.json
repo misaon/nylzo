@@ -23,26 +23,6 @@
       "forbiddenImport": "golang.org/x/crypto/openpgp",
       "justification": "vulnerable_code_not_present",
       "impact": "The advisory concerns the deprecated OpenPGP packages. Neither Linux build of the Caddy that Nylzo releases imports or links them; both use the nobadger, nomysql and nopgx tags. Other packages from golang.org/x/crypto remain in use. This assessment does not apply to a build that adds OpenPGP."
-    },
-    {
-      "id": "GHSA-fc5q-39xc-vjpf",
-      "ecosystem": "npm",
-      "lockfile": "web/bun.lock",
-      "package": "picomatch",
-      "version": "4.0.7",
-      "reviewUntil": "2027-01-15T00:00:00Z",
-      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
-      "impact": "picomatch runs only in lint, build and test tools (Vite, Vitest, the Svelte and Tailwind Vite plugins, knip and a lint plugin), which match glob patterns written in this repository. It is no runtime dependency of any web workspace, which the dependency gate checks against web/bun.lock, so the web client does not contain it and no outside input reaches it. Replace this assessment with an upstream fix when one is released."
-    },
-    {
-      "id": "GHSA-fc5q-39xc-vjpf",
-      "ecosystem": "npm",
-      "lockfile": "automation/bun.lock",
-      "package": "picomatch",
-      "version": "4.0.7",
-      "reviewUntil": "2027-01-15T00:00:00Z",
-      "justification": "vulnerable_code_cannot_be_controlled_by_adversary",
-      "impact": "picomatch runs only in a lint plugin of the release tooling, which matches glob patterns written in this repository. It is no runtime dependency of the automation workspace, which the dependency gate checks against automation/bun.lock, so no automation step runs it on outside input. Replace this assessment with an upstream fix when one is released."
     }
   ]
 }
