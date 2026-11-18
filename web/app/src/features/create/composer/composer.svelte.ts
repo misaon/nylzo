@@ -89,6 +89,7 @@ function cipherText(plain: string, progress: number): string {
 export class Composer {
   #pending: SealedMessage | undefined;
   #run = 0;
+  #suggestion = 0;
   #submitting = false;
   #sentStore: ReturnType<typeof browserSentStore> | undefined;
   readonly #sessionStore: SentStore;
@@ -359,12 +360,24 @@ export class Composer {
 
   // The word list loads on demand, so what the sender typed meanwhile must win.
   readonly generatePassphrase = async (): Promise<void> => {
+    const suggestion = ++this.#suggestion;
     const before = this.passphrase;
     const passphrase = await generatePassphrase(this.#translator.language).catch(() => null);
-    if (passphrase !== null && this.protect && !this.busy && this.passphrase === before) {
+    if (
+      passphrase !== null &&
+      suggestion === this.#suggestion &&
+      this.protect &&
+      !this.busy &&
+      this.passphrase === before
+    ) {
       this.passphrase = passphrase;
       this.#forgetProblems('passphrase');
     }
+  };
+
+  // Words that arrive after the sender reached the field would join the characters they type next.
+  readonly reachPassphrase = (): void => {
+    this.#suggestion++;
   };
 
   readonly toggleProtect = async (): Promise<void> => {
