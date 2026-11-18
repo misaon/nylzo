@@ -23,8 +23,10 @@ const (
 
 var (
 	errPassphraseScopeRemoved = errors.New("removed: passphrase limits are kept per message, without address buckets")
-	errUnknownProxyMode       = errors.New("unknown mode")
-	errSecretInEnvironment    = errors.New(
+	errProxyModeRemoved       = errors.New(
+		"removed: unset it, and name a proxy that sets X-Forwarded-For in NYLZO_TRUSTED_PROXIES",
+	)
+	errSecretInEnvironment = errors.New(
 		"is not read from the environment, where docker inspect and /proc show it; " +
 			"put the secret in a file with mode 600 or 400 and name it in",
 	)
@@ -89,7 +91,9 @@ func (s *Server) variables() []variable {
 		{"NYLZO_DATA_DIR", text(&s.DataDirectory)},
 		{"NYLZO_EPOCH_DIR", text(&s.EpochDirectoryOverride)},
 		{"NYLZO_TRUSTED_PROXIES", s.parseTrustedProxies},
-		{"NYLZO_PROXY_MODE", s.parseProxyMode},
+		{"NYLZO_PROXY_MODE", func(string) error {
+			return errProxyModeRemoved
+		}},
 		{"NYLZO_PASSPHRASE_IP_SCOPE", func(string) error {
 			return errPassphraseScopeRemoved
 		}},
@@ -158,18 +162,6 @@ func parseProxy(part string) (netip.Prefix, error) {
 		prefix = netip.PrefixFrom(prefix.Addr().Unmap(), prefix.Bits()-ipv4MappedPrefixBits)
 	}
 	return prefix, nil
-}
-
-func (s *Server) parseProxyMode(value string) error {
-	switch value {
-	case ProxyModeScaleway:
-		s.ProxyMode = value
-	case "none", "off":
-		s.ProxyMode = proxyModeNone
-	default:
-		return fmt.Errorf("%w %q", errUnknownProxyMode, value)
-	}
-	return nil
 }
 
 // secretFromEnvironment reads a secret only from a file: a variable stays in /proc/PID/environ and in docker inspect.

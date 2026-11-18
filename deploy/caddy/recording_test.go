@@ -45,17 +45,19 @@ func TestTheAdapterRefusesRequestRecording(t *testing.T) {
 		}
 	}
 	site := "\trequest_body {"
-	logBlock := "\tlog default {\n\t\texclude http.log http.handlers http.stdlib\n\t}\n"
-	crawler := "\tnylzo_crawler_tls {$NYLZO_DOMAIN}\n"
+	logBlock := "\tlog default {\n\t\texclude http.log http.handlers http.stdlib http.auto_https admin\n\t}\n"
 	transport := "\t\t\ttransport http {\n\t\t\t\tkeepalive 25s\n\t\t\t}\n"
-	secrets := "\t\tcurves x25519mlkem768\n\t}\n\trequest_body"
+	secrets := "\t\tcurves x25519mlkem768\n\t\tissuer acme {"
 	for name, test := range map[string]struct {
 		edits [][2]string
 		want  error
 	}{
-		"bare site log":          {[][2]string{{site, "\tlog\n" + site}}, errAccessLog},
+		"bare site log": {[][2]string{{site, "\tlog\n" + site}}, errAccessLog},
+		"site log with the crawler option": {
+			[][2]string{{"\tadmin off\n", "\tadmin off\n\tnylzo_crawler_tls {$NYLZO_DOMAIN}\n"}, {site, "\tlog\n" + site}},
+			errAccessLog,
+		},
 		"site log with format":   {[][2]string{{site, "\tlog {\n\t\tformat json\n\t}\n" + site}}, errAccessLog},
-		"no crawler option":      {[][2]string{{crawler, ""}, {site, "\tlog\n" + site}}, errAccessLog},
 		"no global log":          {[][2]string{{logBlock, ""}}, errNoDefaultLog},
 		"default log unbounded":  {[][2]string{{logBlock, "\tlog default {\n\t\texclude http.log http.stdlib\n\t}\n"}}, errLogsRequests},
 		"access log included":    {[][2]string{{logBlock, logBlock + "\tlog access {\n\t\tinclude http.log.access\n\t}\n"}}, errLogsRequests},
@@ -65,7 +67,7 @@ func TestTheAdapterRefusesRequestRecording(t *testing.T) {
 		"tracing":                {[][2]string{{site, "\ttracing\n" + site}}, errTracing},
 		"FastCGI transport":      {[][2]string{{transport, "\t\t\ttransport fastcgi\n"}}, errFastCGI},
 		"TLS secrets": {
-			[][2]string{{secrets, "\t\tcurves x25519mlkem768\n\t\tinsecure_secrets_log /tmp/keys\n\t}\n\trequest_body"}},
+			[][2]string{{secrets, "\t\tcurves x25519mlkem768\n\t\tinsecure_secrets_log /tmp/keys\n\t\tissuer acme {"}},
 			errTLSSecretsFile,
 		},
 	} {

@@ -27,7 +27,6 @@ A source is an IPv4 address or IPv6 /64, a range an IPv4 /24 or IPv6 /48. Durati
 | `NYLZO_EPOCH_DIR` | `$NYLZO_DATA_DIR/epoch` | Epoch seed; put it on a tmpfs |
 | `NYLZO_PUBLIC_URL` | unset | Public origin such as `https://nylzo.example` |
 | `NYLZO_TRUSTED_PROXIES` | unset | Proxy addresses or CIDRs allowed to set `X-Forwarded-For` |
-| `NYLZO_PROXY_MODE` | unset | `scaleway` reads one `X-Real-IP` from a trusted or private address |
 | `NYLZO_EDGE_REPORTS` | off | `1` only behind Nylzo's Caddy, which reports visits |
 | `NYLZO_OPERATOR`, `NYLZO_CONTACT`, `NYLZO_HOSTING` | unset | Transparency page, up to 200 bytes each; contact is one e-mail or `https://` address, the same for Caddy |
 | `NYLZO_GLOBAL_DAILY_CREATES` | `0` (off) | Messages per UTC day. Past half the cap proof of work rises, and at the cap creation answers 503. A range may take a twentieth, an IPv4 /16 or IPv6 /32 a fifth |
@@ -133,6 +132,7 @@ Never open `nylzo.db` with another SQLite client while `serve` runs, and never p
 | `epoch-seed-on-disk` | The seed is not on a tmpfs; backups hold it. Move `NYLZO_EPOCH_DIR` |
 | `epoch-storage-not-erasable` | Swap came on. Turn it off (alert) |
 | `epoch-clock-behind` | The clock is behind the seed; new messages answer 503 until it catches up. A forward jump ends messages whose deadline it skips. Fix time sync |
+| `epoch-generation-replaced` | The clock ran more than 5 minutes behind the seed, so the messages created in the seed's current hour end as `lost`. Fix time sync (alert) |
 | `rows-unopenable` | No configured pepper opens some records. Check both pepper files (alert) |
 | `registration-pepper-missing` | A message needs the previous pepper. Restore `NYLZO_PEPPER_PREVIOUS_FILE` |
 | `blob-changed` | Something else wrote to `blobs/`, or the disk returns damaged data (alert) |

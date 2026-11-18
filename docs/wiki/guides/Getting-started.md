@@ -7,7 +7,7 @@ This page is for people who send or open a Nylzo message in a browser.
 1. Open [nylzo.com](https://nylzo.com) or another Nylzo instance.
 2. Type the message, attach a file, or both.
 3. Choose when the link expires and how many times it can be opened.
-4. Optionally turn on Protect with a passphrase and keep the random one Nylzo suggests, or type your own.
+4. Optionally turn on Protect with a passphrase and keep the random words Nylzo suggests in the page's language, or type your own.
 5. Choose Create link. Send the link to the recipient and the passphrase another way.
 
 Your browser encrypts the message before uploading it. The key is the part of the link after `#`, which browsers never send to the server. Track in Sent, offered once the link exists, shows whether it was opened and lets you cancel it.

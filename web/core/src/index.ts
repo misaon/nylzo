@@ -28,6 +28,7 @@ export {
   type Stretch,
   wipeLogin,
 } from './keys/opaque.ts';
+export { loadPassphraseWords, type PassphraseLanguage } from './keys/passphrase-words.ts';
 export { generatePassphrase, MIN_PASSPHRASE_CHARACTERS, passphraseProblem } from './keys/passphrase.ts';
 export {
   HEADER_LENGTH,

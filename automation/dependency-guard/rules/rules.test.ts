@@ -164,6 +164,9 @@ permissions:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    services:
+      registry:
+        image: registry:3@sha256:${'6'.repeat(64)}
     steps:
       - uses: ${checkoutPin}
         with:
@@ -660,6 +663,27 @@ const cases: readonly Case[] = [
     before: workflow,
     expected: 'safe',
     name: 'workflow annotated, govulncheck and Renovate image updates',
+    path: '.github/workflows/ci.yml',
+  },
+  {
+    after: workflow.replace(`registry:3@sha256:${'6'.repeat(64)}`, `registry:3@sha256:${'7'.repeat(64)}`),
+    before: workflow,
+    expected: 'safe',
+    name: 'workflow service image digest refresh',
+    path: '.github/workflows/ci.yml',
+  },
+  {
+    after: workflow.replace(`registry:3@sha256:${'6'.repeat(64)}`, `registry:4@sha256:${'7'.repeat(64)}`),
+    before: workflow,
+    expected: 'rejected',
+    name: 'workflow service image major change',
+    path: '.github/workflows/ci.yml',
+  },
+  {
+    after: workflow.replace(`registry:3@sha256:${'6'.repeat(64)}`, `attacker/registry:3@sha256:${'7'.repeat(64)}`),
+    before: workflow,
+    expected: 'rejected',
+    name: 'workflow service image identity',
     path: '.github/workflows/ci.yml',
   },
   {

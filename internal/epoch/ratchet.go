@@ -38,6 +38,9 @@ const (
 	// ClockLag is how far behind the ratchet a clock may run while an id is issued: a request that read the clock just
 	// before the ratchet entered the next minute is still issued.
 	ClockLag = time.Minute
+	// ClockStep is how far behind the ratchet a clock may run before the generation of the ratchet's hour counts as
+	// started by a clock that ran ahead, which a seed copied then predicts, so Advance replaces it.
+	ClockStep = 5 * time.Minute
 
 	fileFormat = "nylzo-e3"
 	// slotLen divides a 512-byte sector, so a write that a crash cuts short leaves every slot old or new.
@@ -268,6 +271,13 @@ func (s *state) advance(target uint32) {
 	}
 }
 
+// replaceIssuer gives the slot of the hour's generation a new one from fresh entropy, so the shares it issued are lost.
+func (s *state) replaceIssuer() {
+	if issuer := s.issuer(); issuer != nil {
+		issuer.startFresh(s.minute)
+	}
+}
+
 // issuer is the generation that makes the shares of the ids issued in the hour.
 func (s *state) issuer() *generation {
 	for i := range s.slots {
@@ -303,6 +313,8 @@ type Options struct {
 	Create bool
 	// CheckFileSystem refuses a directory whose file system may keep an overwritten seed.
 	CheckFileSystem func(directory string) error
+	// Replaced reports that Advance or Open replaced the generation of the ratchet's hour.
+	Replaced func()
 }
 
 // State is what a directory holds, as a read that changes nothing finds it.
@@ -398,9 +410,13 @@ type Ratchet struct {
 	mutex    sync.Mutex
 	state    state
 	unsynced bool
-	closed   bool
-	pinned   []byte
-	replace  func(path string, content []byte) error
+	// replacing keeps a replacement whose write failed until a write succeeds, so the next load does not bring the
+	// replaced generation back from the file.
+	replacing bool
+	replaced  func()
+	closed    bool
+	pinned    []byte
+	replace   func(path string, content []byte) error
 }
 
 // Open loads the ratchet from the directory and advances it; it reports created when it started a new one, which it
@@ -415,7 +431,7 @@ func Open(directory string, now time.Time, options Options) (*Ratchet, bool, err
 			return nil, false, err
 		}
 	}
-	ratchet := &Ratchet{path: filepath.Join(directory, FileName), replace: erase.Replace}
+	ratchet := &Ratchet{path: filepath.Join(directory, FileName), replace: erase.Replace, replaced: options.Replaced}
 	err := checkSeed(ratchet.path)
 	switch {
 	case errors.Is(err, fs.ErrNotExist) && !options.Create:
@@ -459,11 +475,14 @@ func (r *Ratchet) Generations() []GenerationID {
 }
 
 // Advance moves the ratchet to the current minute and overwrites the older seeds in place. After a failed write it
-// writes again, because a page that the kernel marked clean after the failure would read back as written.
+// writes again, because a page that the kernel marked clean after the failure would read back as written. While the
+// clock runs more than ClockStep behind the ratchet, it replaces the generation of the ratchet's hour. Only Advance
+// and Open replace one, because their callers read the clock right before; a lookup may carry the time at which its
+// request began, minutes before a slow upload ended.
 func (r *Ratchet) Advance(now time.Time) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	return r.advanceLocked(now)
+	return r.advanceLocked(now, true)
 }
 
 // Issue makes the share of a new id whose deadline ends the epoch, from the generation of the current hour, and
@@ -476,7 +495,11 @@ func (r *Ratchet) Issue(
 	now time.Time,
 ) (GenerationID, [core.ShareLen]byte, error) {
 	r.mutex.Lock()
-	if err := r.advanceLocked(now); err != nil {
+	err := r.advanceLocked(now, false)
+	if err == nil {
+		err = r.followReplacement(now)
+	}
+	if err != nil {
 		r.mutex.Unlock()
 		return GenerationID{}, [core.ShareLen]byte{}, err
 	}
@@ -572,26 +595,71 @@ func (r *Ratchet) Close() {
 	r.pinned = nil
 }
 
-func (r *Ratchet) advanceLocked(now time.Time) error {
+func (r *Ratchet) advanceLocked(now time.Time, mayReplace bool) error {
 	if r.closed {
 		return errClosed
 	}
-	if Minute(now) <= r.state.minute && !r.unsynced {
+	replaces := mayReplace && farBehind(now, r.state.minute)
+	if Minute(now) <= r.state.minute && !r.unsynced && !replaces {
 		return nil
 	}
-	return r.loadLocked(now)
+	return r.loadLocked(now, mayReplace)
+}
+
+// followReplacement reads the file again when it names another generation of the hour than memory does, because
+// another process may have replaced it while this one never saw the clock behind.
+func (r *Ratchet) followReplacement(now time.Time) error {
+	onDisk, err := r.issuerOnDisk()
+	if err != nil {
+		return err
+	}
+	if issuer := r.state.issuer(); issuer != nil && issuer.id == onDisk {
+		return nil
+	}
+	return r.loadLocked(now, false)
+}
+
+func (r *Ratchet) issuerOnDisk() (GenerationID, error) {
+	file, err := os.Open(r.path)
+	if err != nil {
+		return GenerationID{}, err
+	}
+	defer file.Close()
+	if lockErr := lockShared(file); lockErr != nil {
+		return GenerationID{}, lockErr
+	}
+	defer unlock(file)
+	content, err := readContent(file)
+	defer clear(content)
+	if err != nil {
+		return GenerationID{}, err
+	}
+	var loaded state
+	defer clear(loaded.slots[:])
+	if !decode(content, &loaded) {
+		return GenerationID{}, ErrCorrupt
+	}
+	loaded.minute = r.state.minute
+	if issuer := loaded.issuer(); issuer != nil {
+		return issuer.id, nil
+	}
+	return GenerationID{}, nil
+}
+
+func farBehind(now time.Time, ratchetMinute uint32) bool {
+	return Minute(now.Add(ClockStep)) < ratchetMinute
 }
 
 // findLocked reads the file again before it gives up on a generation, because another process that shares the file
 // may have started it in a minute this process has not reached yet.
 func (r *Ratchet) findLocked(id GenerationID, now time.Time) (*generation, error) {
-	if err := r.advanceLocked(now); err != nil {
+	if err := r.advanceLocked(now, false); err != nil {
 		return nil, err
 	}
 	if named := r.state.named(id); named != nil {
 		return named, nil
 	}
-	if err := r.loadLocked(now); err != nil {
+	if err := r.loadLocked(now, false); err != nil {
 		return nil, err
 	}
 	return r.state.named(id), nil
@@ -628,7 +696,7 @@ func (r *Ratchet) create(now time.Time) (bool, error) {
 func (r *Ratchet) load(now time.Time) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	return r.loadLocked(now)
+	return r.loadLocked(now, true)
 }
 
 // loadLocked reads the file under an exclusive lock, so processes that share it advance it one at a time and agree
@@ -636,7 +704,7 @@ func (r *Ratchet) load(now time.Time) error {
 // wrote may still be only in the page cache, and it never replaces a file it cannot read from memory, which may lack
 // generations that another process wrote. Memory moves to the new minute before the write, so no seed of a passed
 // minute stays in it while the disk fails, and its minute never goes back.
-func (r *Ratchet) loadLocked(now time.Time) error {
+func (r *Ratchet) loadLocked(now time.Time, mayReplace bool) error {
 	file, err := os.OpenFile(r.path, os.O_RDWR, 0)
 	if err != nil {
 		return err
@@ -664,14 +732,22 @@ func (r *Ratchet) loadLocked(now time.Time) error {
 		return ErrCorrupt
 	}
 	loaded.advance(max(Minute(now), loaded.minute, r.state.minute))
+	replaces := r.replacing || (mayReplace && farBehind(now, loaded.minute))
+	if replaces {
+		loaded.replaceIssuer()
+	}
 	r.state = loaded
 	updated := encode(&r.state)
 	defer clear(updated)
 	if err = r.replace(r.path, updated); err != nil {
 		r.unsynced = true
+		r.replacing = replaces
 		return fmt.Errorf("epoch: overwrite the seed: %w", err)
 	}
-	r.unsynced = false
+	r.unsynced, r.replacing = false, false
+	if replaces && r.replaced != nil {
+		r.replaced()
+	}
 	return nil
 }
 

@@ -11,7 +11,7 @@ This runbook is for whoever runs the hardened production profile in [deploy/hetz
 - Caddy accepts only TLS 1.3 with X25519MLKEM768 ([transport](Security-model.md#transport)), gets Let's Encrypt `shortlived` certificates over HTTP-01 and writes no access log.
 - SSH admits only user `core` with a hardware-backed key and a touch on every login.
 - With the `strict` profile, data, pepper, Caddy's keys and the journal live on an [encrypted volume](#encrypted-data-volume) that opens only while your Tang servers answer.
-- The epoch seed lives in `/run/nylzo-epoch` on tmpfs, and host policy refuses swap.
+- The epoch seed lives in `/run/nylzo-epoch` on tmpfs, and host policy refuses swap. Nylzo starts only after `systemd-timesyncd` has synchronised the clock ([expiry shares](../reference/Protocol.md#56-expiry-shares)); until then the host report shows `services` as false.
 - Hetzner backups are off, because a restored snapshot would bring back messages that were already read or deleted.
 
 Hetzner and your administrator accounts stay trusted, and root on the host can serve altered browser code.

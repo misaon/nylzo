@@ -76,7 +76,7 @@ func New(listeners *Listeners, config *Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	host := strings.ToLower(rand.Text()) + sessionDomain + ":" + strconv.Itoa(listeners.Port())
+	host := sessionHost(listeners.Port())
 	local := &Server{
 		host:     host,
 		origin:   "http://" + host,
@@ -170,4 +170,8 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 type apiError struct {
 	Error string `json:"error"`
+}
+
+func sessionHost(port int) string {
+	return strings.ToLower(rand.Text()) + sessionDomain + ":" + strconv.Itoa(port)
 }
