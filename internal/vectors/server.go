@@ -10,9 +10,9 @@ import (
 
 type Server struct {
 	Pepper           string            `json:"pepper_hex"`
-	PepperID         int               `json:"pepper_id"`
+	PepperID         string            `json:"pepper_id_hex"`
 	PreviousPepper   string            `json:"previous_pepper_hex"`
-	PreviousPepperID int               `json:"previous_pepper_id"`
+	PreviousPepperID string            `json:"previous_pepper_id_hex"`
 	MACs             []MACCase         `json:"macs"`
 	MinuteEpochs     []MinuteEpochCase `json:"minute_epochs"`
 }
@@ -55,11 +55,12 @@ func (f *File) server() error {
 	if err != nil {
 		return err
 	}
+	currentID, previousID := ring.CurrentID(), previousRing.CurrentID()
 	f.Server = Server{
 		Pepper:           hex.EncodeToString(current),
-		PepperID:         int(ring.CurrentID()),
+		PepperID:         hex.EncodeToString(currentID[:]),
 		PreviousPepper:   hex.EncodeToString(previous),
-		PreviousPepperID: int(previousRing.CurrentID()),
+		PreviousPepperID: hex.EncodeToString(previousID[:]),
 	}
 	for _, purpose := range purposes {
 		input := deterministic("mac-input/"+string(purpose), 32)

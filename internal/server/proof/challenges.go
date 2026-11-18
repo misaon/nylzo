@@ -18,8 +18,9 @@ import (
 const (
 	clockSkew    = 5 * time.Second
 	challengeTTL = time.Minute
-	// loginTTL leaves the client of a handshake the time to stretch its passphrase before it presents the challenge.
-	loginTTL             = 2 * time.Minute
+	// loginTTL leaves the client of a handshake the time to stretch its passphrase before it presents the challenge,
+	// also when the browser froze its tab meanwhile, so the claim still takes the handshake's attempt back.
+	loginTTL             = 15 * time.Minute
 	challengeNonceLength = 16
 	challengeSignedEnd   = 4 + challengeNonceLength
 )

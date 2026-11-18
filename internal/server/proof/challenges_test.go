@@ -128,8 +128,8 @@ func TestCapacityHoldsTwiceWhatTheInstanceBucketCanIssue(t *testing.T) {
 		perSecond, burst float64
 		capacity         int
 	}{
-		{200, 1000, MinCapacity},
-		{2000, 2000, 2 * (2000*186 + 2000)},
+		{20, 1000, MinCapacity},
+		{2000, 2000, 2 * (2000*966 + 2000)},
 		{1e300, 1e300, math.MaxInt32},
 	} {
 		if capacity := Capacity(testCase.perSecond, testCase.burst); capacity != testCase.capacity {
