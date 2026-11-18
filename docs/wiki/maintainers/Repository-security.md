@@ -47,7 +47,7 @@ gh workflow run release-tag.yml --ref main
 - Runs from outside contributors wait for approval. Read the whole diff, workflows and lockfiles included, before you approve.
 - Pull request CI uses `pull_request` and gets no secrets. `Dependency guard` uses `pull_request_target`: it runs the base branch's definition and reads the pull request only through the API.
 - Actions are pinned to full commit SHAs. Only GitHub-owned actions and a short allowlist of build and release actions may run.
-- Jobs start with Harden-Runner in audit mode, which records network, process and file activity.
+- Jobs start with Harden-Runner, which records network, process and file activity. Jobs that hold a secret or a write token and run often (Renovate, the release plan and tag, Scorecard, the watch scheduler) block every connection outside their `allowed-endpoints`; a new endpoint fails the job until it is added. The rest stay in audit mode until their run history is long enough to build a reliable list; the StepSecurity insights page of a run shows the recommended list.
 - Secret scanning and push protection are on.
 
 ## Dependency guard

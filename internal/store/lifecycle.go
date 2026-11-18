@@ -258,20 +258,32 @@ func Ack(ctx context.Context, messages Messages, blobs Blobs, record *Record, le
 	return deleteBlobOf(ctx, messages, blobs, record)
 }
 
+// Ending is the state a message ends in and whether the call that reports it recorded that ending.
+type Ending struct {
+	State    State
+	Recorded bool
+}
+
 // MarkEnding records an ending unless the message has already ended, and reports its state.
-func MarkEnding(ctx context.Context, messages Messages, record *Record, requested State, now time.Time) (State, error) {
-	var final State
+func MarkEnding(
+	ctx context.Context,
+	messages Messages,
+	record *Record,
+	requested State,
+	now time.Time,
+) (Ending, error) {
+	var ending Ending
 	err := record.update(ctx, messages, now, func(current *Record) error {
-		final = current.State(now)
+		ending = Ending{State: current.State(now)}
 		if current.Ended(now) {
 			return nil
 		}
-		final = requested
+		ending = Ending{State: requested, Recorded: true}
 		current.Message.Ending = requested
 		current.recordEnd(now)
 		return nil
 	})
-	return final, err
+	return ending, err
 }
 
 // End records a cancel or a burn, whose KE3 the caller has checked (F05), then deletes the blob even when the caller
@@ -283,16 +295,16 @@ func End(
 	record *Record,
 	requested State,
 	now time.Time,
-) (State, error) {
+) (Ending, error) {
 	ctx = context.WithoutCancel(ctx)
-	final, err := MarkEnding(ctx, messages, record, requested, now)
+	ending, err := MarkEnding(ctx, messages, record, requested, now)
 	switch {
 	case err != nil:
-		return "", err
+		return Ending{}, err
 	case record.Row.BlobReference == "":
-		return final, nil
+		return ending, nil
 	default:
-		return final, deleteBlobOf(ctx, messages, blobs, record)
+		return ending, deleteBlobOf(ctx, messages, blobs, record)
 	}
 }
 

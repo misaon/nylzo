@@ -84,14 +84,14 @@ func (f *fixture) crashBeforeTheEnd() {
 	if _, err := f.claim(created, baseTime, 1); goneState(err) != store.StateCancelled {
 		t.Fatalf("a claim on an interrupted ending: %v", err)
 	}
-	if state, err := f.end(
+	if ending, err := f.end(
 		created,
 		store.StateDeleted,
 		baseTime,
 		f.blobs,
 	); err != nil ||
-		state != store.StateCancelled {
-		t.Fatalf("a later ending must finish the recorded one: %s %v", state, err)
+		ending.State != store.StateCancelled || ending.Recorded {
+		t.Fatalf("a later ending must finish the recorded one: %+v %v", ending, err)
 	}
 	if f.blobExists(created.reference()) || f.get(created).State(baseTime) != store.StateCancelled {
 		t.Fatal("the later ending left the blob or changed the state")
@@ -121,9 +121,9 @@ func (f *fixture) failedDeleteLeavesNothingToRead() {
 	}
 	gone, cancel := context.WithCancel(t.Context())
 	cancel()
-	if state, err := store.End(gone, f.store, f.blobs, record, store.StateDeleted, baseTime); err != nil ||
-		state != store.StateCancelled {
-		t.Fatalf("End must finish the recorded ending even when the caller has gone: %s %v", state, err)
+	if ending, err := store.End(gone, f.store, f.blobs, record, store.StateDeleted, baseTime); err != nil ||
+		ending.State != store.StateCancelled || ending.Recorded {
+		t.Fatalf("End must finish the recorded ending even when the caller has gone: %+v %v", ending, err)
 	}
 	if f.blobExists(created.reference()) {
 		t.Fatal("the retry left the blob")
@@ -138,8 +138,14 @@ func (f *fixture) recordedEndingWins() {
 	f.recordedReleaseEndsTheMessage()
 	opened := f.create(1, oneHour, false)
 	f.claimAndAck(opened)
-	if state, err := f.end(opened, store.StateCancelled, baseTime, f.blobs); err != nil || state != store.StateOpened {
-		t.Fatalf("a cancel after the last release must report opened: %s %v", state, err)
+	if ending, err := f.end(
+		opened,
+		store.StateCancelled,
+		baseTime,
+		f.blobs,
+	); err != nil ||
+		ending.State != store.StateOpened {
+		t.Fatalf("a cancel after the last release must report opened: %+v %v", ending, err)
 	}
 	if record := f.get(opened); record.Message.Ending != "" || record.State(baseTime) != store.StateOpened {
 		t.Fatalf("a cancel after the release must record nothing: %+v", record.Message)
@@ -163,9 +169,9 @@ func (f *fixture) recordedReleaseEndsTheMessage() {
 	if record.HasBlob() || !record.Ended(afterLease) || !f.blobExists(created.reference()) {
 		t.Fatal("the release must end the message and drop the blob key in one transaction, even if the file stays")
 	}
-	if state, err := store.MarkEnding(ctx, f.store, record, store.StateCancelled, afterLease); err != nil ||
-		state != store.StateOpened {
-		t.Fatalf("a cancel after a recorded release: %s %v", state, err)
+	if ending, err := store.MarkEnding(ctx, f.store, record, store.StateCancelled, afterLease); err != nil ||
+		ending.State != store.StateOpened || ending.Recorded {
+		t.Fatalf("a cancel after a recorded release: %+v %v", ending, err)
 	}
 }
 
@@ -219,11 +225,24 @@ func (f *fixture) releaseAfterExpiryRecordsNothing() {
 	}
 }
 
+// A second ending of one message, as from a concurrent request, reports the recorded state and records nothing, so
+// the ended messages are counted once.
+func (f *fixture) secondEndingRecordsNothing() {
+	burned := f.create(1, oneHour, false)
+	if ending, err := f.end(burned, store.StateDeleted, baseTime, f.blobs); err != nil || !ending.Recorded {
+		f.t.Fatalf("burn: %+v %v", ending, err)
+	}
+	if again, err := f.end(burned, store.StateDeleted, baseTime, f.blobs); err != nil ||
+		again != (store.Ending{State: store.StateDeleted}) {
+		f.t.Fatalf("a second burn recorded the ending again: %+v %v", again, err)
+	}
+}
+
 func (f *fixture) burnAndCancel() {
 	t := f.t
 	burned := f.create(1, oneHour, false)
-	if _, err := f.end(burned, store.StateDeleted, baseTime, f.blobs); err != nil {
-		t.Fatal(err)
+	if ending, err := f.end(burned, store.StateDeleted, baseTime, f.blobs); err != nil || !ending.Recorded {
+		t.Fatalf("burn: %+v %v", ending, err)
 	}
 	if record := f.get(burned); record.State(baseTime) != store.StateDeleted ||
 		record.Message.FirstOpenedAt != nil || f.blobExists(burned.reference()) {
@@ -252,14 +271,14 @@ func (f *fixture) burnAndCancel() {
 		record.Message.FirstOpenedAt == nil {
 		t.Fatalf("cancel: %+v", record.Message)
 	}
-	if state, endErr := f.end(
+	if ending, endErr := f.end(
 		cancelled,
 		store.StateDeleted,
 		baseTime,
 		f.blobs,
 	); endErr != nil ||
-		state != store.StateCancelled {
-		t.Fatalf("ending twice must report the first ending: %s %v", state, endErr)
+		ending.State != store.StateCancelled || ending.Recorded {
+		t.Fatalf("ending twice must report the first ending: %+v %v", ending, endErr)
 	}
 	f.endedTimes()
 }
@@ -285,14 +304,14 @@ func (f *fixture) endedTimes() {
 	}
 	expired := f.create(1, oneHour, false)
 	finishedAt := baseTime.Add(time.Hour + 4*time.Minute + 30*time.Second)
-	if state, err := f.end(
+	if ending, err := f.end(
 		expired,
 		store.StateDeleted,
 		finishedAt,
 		f.blobs,
 	); err != nil ||
-		state != store.StateExpired {
-		t.Fatalf("a burn after the expiry: %s %v", state, err)
+		ending.State != store.StateExpired || ending.Recorded {
+		t.Fatalf("a burn after the expiry: %+v %v", ending, err)
 	}
 	if record := f.get(expired); !record.EndedAt(finishedAt).Equal(expired.Message.ExpiresAt) ||
 		!record.Message.EndedAt.IsZero() {
