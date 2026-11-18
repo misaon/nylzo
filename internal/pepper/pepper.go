@@ -29,6 +29,9 @@ const (
 const (
 	SecretLen = 32
 	MACLen    = 32
+	// IDLen makes it unlikely, at 1 in 2^64, that a pepper takes the id of the one before the previous, whose
+	// registrations would then fail every passphrase instead of answering 503.
+	IDLen = 8
 
 	labelID      = "nylzo/v1/pepper-id"
 	infoBase     = "nylzo/v1/mac/"
@@ -67,8 +70,11 @@ func decodeSecret(text string) ([]byte, error) {
 	return nil, ErrSecret
 }
 
+// ID names a pepper in what its keys made, so a rotation keeps them verifiable (spec section 5.1).
+type ID [IDLen]byte
+
 type key struct {
-	id         byte
+	id         ID
 	macKeys    map[Purpose][32]byte
 	recordsKey [SecretLen]byte
 	oprfSeed   [opaque.OPRFSeedLen]byte
@@ -78,8 +84,9 @@ func newKey(secret []byte) (*key, error) {
 	if len(secret) != SecretLen {
 		return nil, ErrSecret
 	}
+	hashed := sha256.Sum256(append([]byte(labelID), secret...))
 	derived := &key{
-		id:      sha256.Sum256(append([]byte(labelID), secret...))[0],
+		id:      ID(hashed[:IDLen]),
 		macKeys: make(map[Purpose][32]byte, len(purposes)),
 	}
 	for _, purpose := range purposes {
@@ -160,20 +167,20 @@ func (r *Ring) ForgetPreviousRecordsKey() {
 	}
 }
 
-func (r *Ring) CurrentID() byte {
+func (r *Ring) CurrentID() ID {
 	return r.current.id
 }
 
 type Tag struct {
 	MAC      [MACLen]byte
-	PepperID byte
+	PepperID ID
 }
 
 func (r *Ring) MAC(purpose Purpose, input []byte) Tag {
 	return Tag{MAC: r.current.mac(purpose, input), PepperID: r.current.id}
 }
 
-func (r *Ring) Verify(purpose Purpose, input, expected []byte, id byte) bool {
+func (r *Ring) Verify(purpose Purpose, input, expected []byte, id ID) bool {
 	verifying := r.keyFor(id)
 	known := verifying != nil
 	if !known {
@@ -186,7 +193,7 @@ func (r *Ring) Verify(purpose Purpose, input, expected []byte, id byte) bool {
 
 // OPAQUEKeys derives the OPAQUE keys of one message from the pepper that pepperID names (spec section 5.1). With an
 // unknown pepperID it derives them from the current pepper, so the work is the same; Holds tells the two apart.
-func (r *Ring) OPAQUEKeys(messageID []byte, pepperID byte) (opaque.ServerKeys, error) {
+func (r *Ring) OPAQUEKeys(messageID []byte, pepperID ID) (opaque.ServerKeys, error) {
 	deriving := r.keyFor(pepperID)
 	if deriving == nil {
 		deriving = r.current
@@ -197,11 +204,11 @@ func (r *Ring) OPAQUEKeys(messageID []byte, pepperID byte) (opaque.ServerKeys, e
 }
 
 // Holds reports whether the ring still has the pepper that id names.
-func (r *Ring) Holds(id byte) bool {
+func (r *Ring) Holds(id ID) bool {
 	return r.keyFor(id) != nil
 }
 
-func (r *Ring) keyFor(id byte) *key {
+func (r *Ring) keyFor(id ID) *key {
 	if r.current.id == id {
 		return r.current
 	}

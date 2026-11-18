@@ -59,8 +59,9 @@ var schema = messagesTable.definition + ";\n" + messagesTable.index + ";\n" +
 	countersTable.definition + ";\n" + countersTable.index + ";\n" +
 	scrubTable + ";\n"
 
-// schemaVersion 8 holds the 1024-byte records of protocol v3 with their OPAQUE registration.
-const schemaVersion = 8
+// schemaVersion 9 holds the 1024-byte records of protocol v3 with their OPAQUE registration and 8-byte pepper ids;
+// version 8 held 1-byte ids and only development builds wrote it.
+const schemaVersion = 9
 
 var (
 	ErrNewerSchema    = errors.New("sqlite: the database was written by a newer nylzo")

@@ -2330,3 +2330,26 @@ func TestAResumedDownloadTakesItsHandshakeBack(t *testing.T) {
 		}
 	})
 }
+
+// A reader whose tab the browser froze between the handshake and the claim still claims when the tab wakes within 15
+// minutes, and the claim takes the handshake's attempt back.
+func TestAClaimFromATabFrozenAfterItsHandshakeTakesTheAttemptBack(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "a frozen tab")
+		harness.mustCreate(message)
+		request, refused, body := harness.claimRequestFor(message, "", "")
+		if request == nil {
+			t.Fatalf("handshake: %d %s", refused.StatusCode, body)
+		}
+		synctest.Sleep(10 * time.Minute)
+		if response, claimed := harness.do(request); response.StatusCode != http.StatusOK {
+			t.Fatalf("a claim ten minutes after its handshake: %d %s", response.StatusCode, claimed)
+		}
+		record, err := harness.record(message)
+		if err != nil || record.Message.FailCountTotal != 0 {
+			t.Fatalf("the attempt stayed counted: %d %v", record.Message.FailCountTotal, err)
+		}
+	})
+}

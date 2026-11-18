@@ -2092,9 +2092,9 @@
   ],
   "server": {
     "pepper_hex": "a59a077138be894c1284db9057e9c47ddf644cf703cd821b445445c1dd3e409f",
-    "pepper_id": 122,
+    "pepper_id_hex": "7afbafc1a3e5037c",
     "previous_pepper_hex": "ef8e8510e853256228a14773cb5b7bdbd1669761bada8495fa12ecfbc9ec0fa6",
-    "previous_pepper_id": 234,
+    "previous_pepper_id_hex": "ea45685eb4d8310e",
     "macs": [
       {
         "purpose": "read",

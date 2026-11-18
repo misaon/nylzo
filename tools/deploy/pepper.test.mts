@@ -8,18 +8,14 @@ import { test } from "node:test";
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
 const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(path.resolve("tools/deploy/runtime.test.mts"), "utf8"))![1]!;
 const { server } = JSON.parse(readFileSync(path.resolve("spec/vectors.json"), "utf8")) as {
-  server: { pepper_hex: string; pepper_id: number; previous_pepper_hex: string; previous_pepper_id: number };
+  server: { pepper_hex: string; pepper_id_hex: string; previous_pepper_hex: string; previous_pepper_id_hex: string };
 };
-const pepperId = (hex: string) => createHash("sha256").update("nylzo/v1/pepper-id").update(Buffer.from(hex, "hex")).digest()[0]!;
+const script = (name: string) => `type=bind,source=${path.resolve(`deploy/hetzner-flatcar/host/application/${name}`)},target=/test/${name},readonly`;
+const pepperId = (hex: string) => createHash("sha256").update("nylzo/v1/pepper-id").update(Buffer.from(hex, "hex")).digest().subarray(0, 8).toString("hex");
 
-test("a pepper rotation keeps the previous pepper for serve and never repeats its pepper_id", { skip: !available, timeout: 120000 }, () => {
-  assert.equal(pepperId(server.pepper_hex), server.pepper_id);
-  assert.equal(pepperId(server.previous_pepper_hex), server.previous_pepper_id);
-  let counter = 0;
-  let colliding: string;
-  do colliding = createHash("sha256").update(`collision/${counter++}`).digest("hex");
-  while (pepperId(colliding) !== server.previous_pepper_id);
-  const script = (name: string) => `type=bind,source=${path.resolve(`deploy/hetzner-flatcar/host/application/${name}`)},target=/test/${name},readonly`;
+test("a pepper rotation keeps the previous pepper for serve", { skip: !available, timeout: 120000 }, () => {
+  assert.equal(pepperId(server.pepper_hex), server.pepper_id_hex);
+  assert.equal(pepperId(server.previous_pepper_hex), server.previous_pepper_id_hex);
   const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--cap-drop", "ALL", "--cap-add", "CHOWN", "--cap-add", "DAC_OVERRIDE", "--cap-add", "FOWNER",
     "--mount", script("prepare"), "--mount", script("run"), image, "bash", "-s"], { encoding: "utf8", timeout: 100000, input: String.raw`set -euo pipefail
 trap 'echo "failed at line $LINENO: $BASH_COMMAND" >&2' ERR
@@ -47,7 +43,7 @@ if grep -q previous /tmp/docker-run; then exit 1; fi
 rm "$secrets/pepper"
 printf '%s\n' ${server.previous_pepper_hex} > "$secrets/pepper.previous"
 chmod 0644 "$secrets/pepper.previous"
-printf '%s\n' ${colliding} ${server.pepper_hex} > /tmp/candidates
+printf '%s\n' ${server.pepper_hex} > /tmp/candidates
 bash /test/prepare
 [[ "$(cat "$secrets/pepper")" = ${server.pepper_hex} && ! -s /tmp/candidates ]]
 owned "$secrets/pepper"

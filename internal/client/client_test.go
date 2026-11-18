@@ -148,10 +148,10 @@ func TestInstanceRefusesWhatTheSpecForbids(t *testing.T) {
 		creation *Creation
 		valid    bool
 	}{
-		"limits only":                {`{"limits":{},"pow":{"difficulty":8}}`, nil, true},
+		"limits only":                {`{"limits":{},"pow":{"difficulty":7}}`, nil, true},
 		"an issued id":               {valid, creation, true},
 		"a deadline rounded up":      {issued("2026-11-12T11:01:00Z"), creation, true},
-		"difficulty above 8":         {`{"limits":{},"pow":{"difficulty":9}}`, nil, false},
+		"difficulty above 7":         {`{"limits":{},"pow":{"difficulty":8}}`, nil, false},
 		"difficulty below 0":         {`{"limits":{},"pow":{"difficulty":-1}}`, nil, false},
 		"no id when asked":           {`{"limits":{},"pow":{}}`, creation, false},
 		"a deadline before the TTL":  {issued("2026-11-12T10:59:00Z"), creation, false},

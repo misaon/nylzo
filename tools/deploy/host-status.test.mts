@@ -40,7 +40,7 @@ else if(name==='openssl'){
     }
     const run = (state: any) => {
       writeFileSync(join(directory, "clock"), state.clock);
-      const result = spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/host-status")], { encoding: "utf8", timeout: 30000, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, STATUS_FIXTURE: JSON.stringify(state), NYLZO_HOST_STATUS_DIR: output, NYLZO_DEPLOY_STATE: directory, NYLZO_CLOCK_STATE: join(directory, "clock"), NYLZO_CADDY_ENV: join(directory, "caddy.env") } });
+      const result = spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/host-status")], { encoding: "utf8", timeout: 30000, env: { ...process.env, PATH: `${bin}:${process.env["PATH"]}`, STATUS_FIXTURE: JSON.stringify(state), NYLZO_HOST_STATUS_DIR: output, NYLZO_DEPLOY_STATE: directory, NYLZO_CLOCK_STATE: join(directory, "clock"), NYLZO_CADDY_ENV: join(directory, "caddy.env") } });
       assert.equal(result.status, 0, result.stderr);
       return JSON.parse(readFileSync(join(output, "status.json"), "utf8"));
     };
@@ -60,7 +60,7 @@ else if(name==='openssl'){
       const state = structuredClone(fixture); mutate(state);
       const report = run(state);
       assert.equal(report.checks[component], false, component);
-      assert.deepEqual(Object.keys(report).sort(), ["checks", "observedAt", "version"]);
+      assert.deepEqual(Object.keys(report).toSorted(), ["checks", "observedAt", "version"]);
     }
     for (const unit of requiredUnits) {
       for (const unitState of ["inactive", "failed", "activating", "not-found"]) {

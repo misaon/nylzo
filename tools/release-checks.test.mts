@@ -22,6 +22,8 @@ test("release builds source without promoting cached CI artifacts", () => {
 });
 
 type Step = { name?: string; uses?: string; run?: string; with?: Record<string, string> };
+type Job = { permissions: Record<string, string>; needs: string[]; environment?: string; steps: Step[] };
+type GoReleaserConfig = { release: { disable?: boolean; header: string; footer: string }; kos: { id: string; repositories: string[] }[] };
 test("the generated build config disables SCM publishing and keeps each image in its own loopback repository", () => {
   const directory = mkdtempSync(join(tmpdir(), "nylzo-release-config-"));
   try {
@@ -31,7 +33,7 @@ test("the generated build config disables SCM publishing and keeps each image in
       env: { ...process.env, RUNNER_TEMP: directory }, encoding: "utf8",
     });
     assert.equal(generated.status, 0, generated.stderr);
-    const original = YAML.parse(readFileSync(".goreleaser.yaml", "utf8"));
+    const original = YAML.parse(readFileSync(".goreleaser.yaml", "utf8")) as GoReleaserConfig;
     const config = YAML.parse(readFileSync(join(directory, "goreleaser-build.yaml"), "utf8"));
     const expected = structuredClone(original);
     expected.release.disable = true;
@@ -46,7 +48,7 @@ test("the generated build config disables SCM publishing and keeps each image in
 
 const workflow = YAML.parse(readFileSync(".github/workflows/release.yml", "utf8")) as {
   permissions: Record<string, string>;
-  jobs: Record<string, { permissions: Record<string, string>; needs: string[]; environment?: string; steps: Step[] }>;
+  jobs: { build: Job; release: Job };
 };
 
 test("native compilation and image builds have no publishing or OIDC permissions", () => {
@@ -69,14 +71,14 @@ test("the protected publisher verifies readonly artifacts and never rebuilds the
   assert.deepEqual(publisher.needs, ["guard", "web", "build"]);
   assert.equal(publisher.environment, "${{ needs.guard.outputs.environment }}");
   const setup = publisher.steps.find(step => step.uses === "$/.github/actions/setup")!;
-  assert.equal(setup.with?.tools, "regctl grype");
+  assert.equal(setup.with?.["tools"], "regctl grype");
   const code = publisher.steps.map(step => step.run ?? step.uses ?? "").join("\n");
   assert(!/goreleaser|go build|bun |mise-tasks\/release\/build/u.test(code));
   const verify = code.indexOf('cmp - release-build.sha256');
   const publish = code.indexOf('regctl image copy ');
   assert(verify > 0 && verify < publish);
   assert(code.includes('test "$(regctl image digest "${image}:staging-${GITHUB_REF_NAME#v}")" = "$digest"'));
-  assert(publisher.steps.some(step => step.with?.name === "release-build" && step.with?.["digest-mismatch"] === "error"));
+  assert(publisher.steps.some(step => step.with?.["name"] === "release-build" && step.with?.["digest-mismatch"] === "error"));
 });
 
 test("the publisher rejects altered, missing, added or misidentified build artifacts", () => {
@@ -94,7 +96,7 @@ test("the publisher rejects altered, missing, added or misidentified build artif
     assert.equal(generated.status, 0, generated.stderr);
     writeFileSync(join(artifact, "release-build.sha256"), generated.stdout);
     const hash = createHash("sha256").update(generated.stdout).digest("hex");
-    const step = workflow.jobs.release.steps.find(step => step.name === "Verify the complete readonly build before using any artifact")!;
+    const step = workflow.jobs.release.steps.find(candidate => candidate.name === "Verify the complete readonly build before using any artifact")!;
     // macOS has shasum; hosted Linux uses sha256sum. The manifest format and verifier are identical.
     const code = step.run!.replaceAll("sha256sum", "shasum -a 256");
     const verify = (extra: Record<string, string> = {}) => spawnSync("bash", ["-c", `set -euo pipefail\n${code}`], {
@@ -161,7 +163,7 @@ exit "\${GH_EXIT_STATUS:-0}"
       spawnSync("bash", ["mise-tasks/release/checks", "a".repeat(40)], {
         env: {
           ...process.env,
-          PATH: `${directory}:${process.env.PATH}`,
+          PATH: `${directory}:${process.env["PATH"]}`,
           CHECKS: JSON.stringify({ check_runs: checkRuns }),
           LATER_PAGES: laterPages.map(page => JSON.stringify({ check_runs: page })).join("\n"),
           GH_EXIT_STATUS: String(exitStatus),
@@ -170,7 +172,7 @@ exit "\${GH_EXIT_STATUS:-0}"
       });
     assert.equal(verify(checks).status, 0);
     const unrelated = Array.from({ length: 100 }, (_, index) => ({
-      ...checks[0],
+      ...checks[0]!,
       name: `Unrelated check ${index}`,
     }));
     assert.notEqual(verify(unrelated).status, 0);

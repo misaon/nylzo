@@ -9,6 +9,7 @@ import (
 
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/epoch"
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 )
 
@@ -118,7 +119,7 @@ type Message struct {
 	OpensRemaining uint16
 	Size           int64
 	// Registration is the OPAQUE registration sealed under the erase salt; its pepper made the OPAQUE keys.
-	RegistrationPepperID byte
+	RegistrationPepperID pepper.ID
 	Registration         []byte
 	FailCountTotal       int
 	NextAttemptAt        time.Time
@@ -133,7 +134,7 @@ type Message struct {
 
 type Lease struct {
 	MAC       []byte
-	PepperID  byte
+	PepperID  pepper.ID
 	ExpiresAt time.Time
 	Downloads int
 }
@@ -169,7 +170,7 @@ type Attempt struct {
 type ClaimParameters struct {
 	Clock         func() time.Time
 	LeaseMAC      []byte
-	LeasePepperID byte
+	LeasePepperID pepper.ID
 }
 
 type RateHit struct {

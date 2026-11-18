@@ -38,7 +38,7 @@ A source is an IPv4 address or IPv6 /64, a range an IPv4 /24 or IPv6 /48. Durati
 | `NYLZO_RATE_COARSE_MULTIPLIER` | `5` | Range limits as a multiple of source limits; `0` turns them off |
 | `NYLZO_RATE_SOURCE_RPS`, `NYLZO_RATE_SOURCE_BURST` | `10`, `20` | API requests per source |
 | `NYLZO_RATE_BUCKET_RPS`, `NYLZO_RATE_BUCKET_BURST` | `500`, `1000` | API requests for the instance |
-| `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | Proof-of-work difficulty (0 to 8) and parallel checks (1 to 4, 16 MiB each) |
+| `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | Proof-of-work difficulty (0 to 7) and parallel checks (1 to 4, 16 MiB each) |
 | `NYLZO_MAX_STREAMS` | `256` | Concurrent uploads and downloads, up to 1024 |
 | `NYLZO_MIN_FREE_BYTES` | `1073741824` | Free disk to keep; below it creation stops |
 | `NYLZO_SWEEP_INTERVAL` | `5m` | Cleanup interval; `0` leaves cleanup to `sweep-once` |

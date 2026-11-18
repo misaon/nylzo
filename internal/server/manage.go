@@ -22,8 +22,8 @@ func (s *Server) handleBurn(w http.ResponseWriter, r *http.Request) {
 	if !ok || !s.finishHandshake(w, r, &granted.record, ke3) {
 		return
 	}
-	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, store.StateDeleted, time.Now())
-	s.answerEnding(w, r, &granted.record, store.StateDeleted, final, err)
+	ending, err := store.End(r.Context(), s.store, s.blobs, &granted.record, store.StateDeleted, time.Now())
+	s.answerEnding(w, r, &granted.record, store.StateDeleted, ending, err)
 }
 
 func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
@@ -32,28 +32,32 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	final, err := store.End(r.Context(), s.store, s.blobs, &granted.record, store.StateCancelled, time.Now())
-	s.answerEnding(w, r, &granted.record, store.StateCancelled, final, err)
+	ending, err := store.End(r.Context(), s.store, s.blobs, &granted.record, store.StateCancelled, time.Now())
+	s.answerEnding(w, r, &granted.record, store.StateCancelled, ending, err)
 }
 
-// answerEnding answers 204 to the request that recorded the first ending, even when a concurrent release finishes it.
+// answerEnding answers 204 to the request that recorded the first ending, even when a concurrent release finishes it,
+// and counts the ending only for that request.
 func (s *Server) answerEnding(
 	w http.ResponseWriter,
 	r *http.Request,
 	record *store.Record,
-	requested, final store.State,
+	requested store.State,
+	ending store.Ending,
 	err error,
 ) {
 	s.leaseTimers.Cancel(record.Row.Locator)
+	if ending.Recorded {
+		s.count(statistics.MetricEnded, 1)
+	}
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		s.writeCurrentGone(w, r, record)
 	case err != nil:
 		s.writeInternal(w, r, err)
-	case final != requested:
-		writeGone(w, string(final))
+	case ending.State != requested:
+		writeGone(w, string(ending.State))
 	default:
-		s.count(statistics.MetricEnded, 1)
 		w.WriteHeader(http.StatusNoContent)
 	}
 }

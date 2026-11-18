@@ -29,7 +29,7 @@ cp "${published}/\${url##*/}" "$output"
     };
     const run = () => spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/directive")], {
       encoding: "utf8", timeout: 30000,
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, NYLZO_DIRECTIVE_SOURCE: "https://raw.example/production-directive", NYLZO_DIRECTIVE_DIR: state, NYLZO_DOMAIN: "nylzo.example" },
+      env: { ...process.env, PATH: `${bin}:${process.env["PATH"]}`, NYLZO_DIRECTIVE_SOURCE: "https://raw.example/production-directive", NYLZO_DIRECTIVE_DIR: state, NYLZO_DOMAIN: "nylzo.example" },
     });
     const maintenance = () => existsSync(join(state, "maintenance"));
 

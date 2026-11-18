@@ -117,7 +117,7 @@ func TestServerVectors(t *testing.T) {
 	current, _ := hex.DecodeString(file.Server.Pepper)
 	previous, _ := hex.DecodeString(file.Server.PreviousPepper)
 	ring := newRing(t, current, previous)
-	if int(ring.CurrentID()) != file.Server.PepperID {
+	if id := ring.CurrentID(); hex.EncodeToString(id[:]) != file.Server.PepperID {
 		t.Fatal("pepper id mismatch")
 	}
 	for _, vector := range file.Server.MACs {

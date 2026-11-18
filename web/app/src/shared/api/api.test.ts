@@ -190,7 +190,7 @@ describe('api client', () => {
 
   it('A-04: refuses a proof-of-work difficulty above the spec maximum before any work', async () => {
     const server = fakeServer(() =>
-      json(200, { ...instanceBody, pow: { required: true, difficulty: 9, challenge: 'x' } }),
+      json(200, { ...instanceBody, pow: { required: true, difficulty: 8, challenge: 'x' } }),
     );
     await expect(server.api.instance()).rejects.toThrow(ResponseError);
   });

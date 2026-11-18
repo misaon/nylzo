@@ -3,6 +3,8 @@ import { encodeBase64url, newRequestKey, wipeRequestKey } from '@nylzo/core';
 import { ResponseError } from '../../shared/api/api-errors.ts';
 import { integer } from '../../shared/api/responses.ts';
 import type { Live, Overview, Range } from '../api/types.ts';
+import { liveQuery, mergeLive } from './live-update.ts';
+import type { HeldLive } from './live-update.ts';
 import { parseLive, parseOverview } from './parse.ts';
 import { createPasskey, usePasskey } from './passkey.ts';
 import { SignedChannel } from './signed-channel.ts';
@@ -22,11 +24,18 @@ export interface AdminClient {
   readonly signIn: () => Promise<AdminSession>;
 }
 
+// The page asks for the live figures every five seconds, so it sends what it holds and the server answers only what
+// changed.
 function openSession(channel: SignedChannel, expiresAt: number): AdminSession {
+  let held: HeldLive | undefined;
   return {
     expiresAt,
     overview: async (range) => parseOverview(await channel.request('GET', `${ADMIN_PATH}/overview?range=${range}`)),
-    live: async () => parseLive(await channel.request('GET', `${ADMIN_PATH}/live`)),
+    async live() {
+      const update = parseLive(await channel.request('GET', `${ADMIN_PATH}/live${liveQuery(held)}`));
+      held = mergeLive(held, update);
+      return held.live;
+    },
     async signOut() {
       try {
         await channel.request('DELETE', `${ADMIN_PATH}/session`);
