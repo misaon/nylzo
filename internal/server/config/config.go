@@ -17,8 +17,6 @@ import (
 )
 
 const (
-	proxyModeNone     = ""
-	ProxyModeScaleway = "scaleway"
 	MaxPoWConcurrency = 4
 	MaxPoWDifficulty  = proofofwork.MaxDifficulty
 	MaxOpens          = 100
@@ -64,7 +62,6 @@ type Server struct {
 	// EdgeReports tells that the trusted proxy is the nylzo frontend, which reports the pages it serves and keeps
 	// clients off the address it reports to.
 	EdgeReports    bool
-	ProxyMode      string
 	SweepInterval  time.Duration
 	Limits         Limits
 	Rates          Rates
@@ -190,10 +187,6 @@ func (s *Server) rules() []rule {
 		{
 			s.MinFreeBytes == 0 || diskspace.Measurable,
 			"NYLZO_MIN_FREE_BYTES must be 0 on a system where nylzo cannot measure free space",
-		},
-		{
-			s.ProxyMode == proxyModeNone || s.ProxyMode == ProxyModeScaleway,
-			"NYLZO_PROXY_MODE must be empty or scaleway",
 		},
 		{
 			rates.BucketPerSecond > 0 && rates.SourcePerSecond > 0,

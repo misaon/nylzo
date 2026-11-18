@@ -1,15 +1,14 @@
 import { MalformedPassphraseError, WeakPassphraseError } from '../errors.ts';
 import type { PassphraseProblem } from '../errors.ts';
 import { COMMON_PASSPHRASES } from './common-passphrases.ts';
+import { loadPassphraseWords, WORD_LIST_LENGTH } from './passphrase-words.ts';
+import type { PassphraseLanguage, PassphraseWords } from './passphrase-words.ts';
 import { ASSIGNED_RANGE_DELTAS } from './unicode-assigned.ts';
 
 export const MIN_PASSPHRASE_CHARACTERS = 15;
 export const ASSIGNED_UNICODE_VERSION = '15.1';
 const MIN_DISTINCT_CHARACTERS = 6;
 const CONTEXT_WORD = 'nylzo';
-const GENERATED_GROUPS = 4;
-const GENERATED_GROUP_LENGTH = 4;
-const GENERATED_ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz';
 const SEQUENCES = [
   'abcdefghijklmnopqrstuvwxyz',
   '01234567890123456789',
@@ -75,19 +74,32 @@ export function assertStrongPassphrase(passphrase: string): void {
   }
 }
 
-export function generatePassphrase(): string {
+function wordAt(words: readonly string[], index: number): string {
+  const word = words[index];
+  if (word === undefined) {
+    throw new Error(`no word at index ${index}`);
+  }
+  return word;
+}
+
+export function passphraseFrom(list: PassphraseWords, randomBytes: (length: number) => Uint8Array): string {
   for (;;) {
-    const random = crypto.getRandomValues(new Uint8Array(GENERATED_GROUPS * GENERATED_GROUP_LENGTH));
-    const characters = Array.from(random, (value) => GENERATED_ALPHABET.charAt(value & 31));
-    random.fill(0);
-    const groups = Array.from({ length: GENERATED_GROUPS }, (_, group) =>
-      characters.slice(group * GENERATED_GROUP_LENGTH, (group + 1) * GENERATED_GROUP_LENGTH).join(''),
+    const random = randomBytes(2 * list.count);
+    const view = new DataView(random.buffer, random.byteOffset, random.byteLength);
+    const chosen = Array.from({ length: list.count }, (_, index) =>
+      wordAt(list.words, view.getUint16(2 * index) % WORD_LIST_LENGTH),
     );
-    const candidate = groups.join('-');
-    if (strengthProblem(candidate) === undefined) {
+    random.fill(0);
+    const candidate = chosen.join(list.separator);
+    if (passphraseProblem(candidate) === undefined) {
       return candidate;
     }
   }
+}
+
+export async function generatePassphrase(language: PassphraseLanguage): Promise<string> {
+  const list = await loadPassphraseWords(language);
+  return passphraseFrom(list, (length) => crypto.getRandomValues(new Uint8Array(length)));
 }
 
 function strengthProblem(normalized: string): PassphraseProblem | undefined {

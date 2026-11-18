@@ -201,6 +201,95 @@ func TestF12EveryHourIssuesFromANewGeneration(t *testing.T) {
 	}
 }
 
+// A clock stepped forward starts the generation of a later hour early, so a seed copied then would predict its shares.
+// Once the clock is back, an advance replaces that generation and reports it. A lookup never does, since its request
+// may have read the clock before a slow upload, and neither does a clock up to ClockStep behind, as between processes
+// that share the seed.
+func TestAGenerationStartedByAClockAheadNeverIssuesOnceTheClockIsBack(t *testing.T) {
+	t.Parallel()
+	locator := seal.LocatorOf([]byte("message"))
+	ahead := start.Add(3 * time.Hour)
+	shareEpoch := epoch.Minute(ahead) + 60
+	replaced := 0
+	ratchet, _, err := epoch.Open(t.TempDir(), start, epoch.Options{Create: true, Replaced: func() { replaced++ }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(ratchet.Close)
+	early, _, err := ratchet.Issue(shareEpoch, locator, ahead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = ratchet.Holds(epoch.GenerationID{1}, start); err != nil {
+		t.Fatal(err)
+	}
+	if err = ratchet.Advance(ahead.Add(-epoch.ClockStep)); err != nil {
+		t.Fatal(err)
+	}
+	if kept, _, keptErr := ratchet.Issue(shareEpoch, locator, ahead); keptErr != nil || kept != early || replaced != 0 {
+		t.Fatalf("a lookup with a clock read long ago or a clock ClockStep behind replaced the generation: %v", keptErr)
+	}
+	if err = ratchet.Advance(start.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	renewed, _, err := ratchet.Issue(shareEpoch, locator, ahead)
+	if err != nil || renewed == early || replaced != 1 {
+		t.Fatalf("the generation that a clock ahead started issued after the clock was back: %v", err)
+	}
+	if _, err = ratchet.Share(early, shareEpoch, locator, ahead); !errors.Is(err, epoch.ErrShareGone) {
+		t.Fatalf("a share of the replaced generation survived: %v", err)
+	}
+}
+
+// Processes that share the seed replace the generation one after another while the clock is behind; each reads the
+// file again before it issues, so none issues from a generation that only its memory holds.
+func TestProcessesThatShareTheSeedIssueFromOneGenerationAfterAReplacement(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	locator := seal.LocatorOf([]byte("message"))
+	ahead := start.Add(3 * time.Hour)
+	shareEpoch := epoch.Minute(ahead) + 60
+	first := open(t, directory, ahead)
+	second := open(t, directory, ahead)
+	for _, process := range []*epoch.Ratchet{first, second} {
+		if err := process.Advance(start); err != nil {
+			t.Fatal(err)
+		}
+	}
+	fromFirst, _, err := first.Issue(shareEpoch, locator, ahead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromSecond, _, err := second.Issue(shareEpoch, locator, ahead)
+	if err != nil || fromFirst != fromSecond {
+		t.Fatalf("two processes issued one hour from two generations: %v", err)
+	}
+}
+
+// A process that never saw the clock behind, such as serve while a sweep-once ran during a short backward step,
+// follows the replacement that the other process wrote before it issues.
+func TestAProcessFollowsAReplacementItDidNotSee(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	locator := seal.LocatorOf([]byte("message"))
+	ahead := start.Add(3 * time.Hour)
+	shareEpoch := epoch.Minute(ahead) + 60
+	serving := open(t, directory, ahead)
+	early, _, err := serving.Issue(shareEpoch, locator, ahead)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaced := 0
+	sweeping, _, err := epoch.Open(directory, start, epoch.Options{Replaced: func() { replaced++ }})
+	if err != nil || replaced != 1 {
+		t.Fatalf("an open with the clock behind replaced %d generations: %v", replaced, err)
+	}
+	sweeping.Close()
+	if issued, _, issueErr := serving.Issue(shareEpoch, locator, ahead); issueErr != nil || issued == early {
+		t.Fatalf("a process issued from a generation another one had replaced: %v", issueErr)
+	}
+}
+
 // L3: a missing directory may be a volume that failed to mount, so only an empty one gets a new ratchet.
 func TestStartUpRefusesAMissingDirectoryAndADamagedSeedAndReplacesALostOne(t *testing.T) {
 	t.Parallel()

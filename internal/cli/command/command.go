@@ -25,11 +25,12 @@ import (
 )
 
 const (
-	EnvironmentServer      = "NYLZO_SERVER"
-	EnvironmentLink        = "NYLZO_LINK"
-	EnvironmentPassphrase  = "NYLZO_PASSPHRASE_FILE"   //nolint:gosec // the name of a variable that names a file, not a credential
-	EnvironmentManageToken = "NYLZO_MANAGE_TOKEN_FILE" //nolint:gosec // the name of a variable that names a file, not a credential
-	EnvironmentAllowSwap   = "NYLZO_ALLOW_SWAP"
+	EnvironmentServer             = "NYLZO_SERVER"
+	EnvironmentLink               = "NYLZO_LINK"
+	EnvironmentPassphrase         = "NYLZO_PASSPHRASE_FILE"   //nolint:gosec // the name of a variable that names a file, not a credential
+	EnvironmentManageToken        = "NYLZO_MANAGE_TOKEN_FILE" //nolint:gosec // the name of a variable that names a file, not a credential
+	EnvironmentAllowSwap          = "NYLZO_ALLOW_SWAP"
+	EnvironmentPassphraseLanguage = "NYLZO_PASSPHRASE_LANGUAGE" //nolint:gosec // the name of a variable that names a language, not a credential
 )
 
 const (
