@@ -1,29 +1,38 @@
 # Nylzo documentation
 
-Nylzo shares text and files through links with an expiry and an open limit. The browser or CLI encrypts the content before uploading it; the link carries the decryption secret in its URL fragment.
+Nylzo sends text and files through a link that expires after a set time or a set number of opens. The browser or the CLI encrypts the message before it leaves the device, and the decryption key travels only in the link.
 
-## Start here
+These pages describe the current code on `main`. A deployed version comes with the documentation in its [source tag](https://github.com/misaon/nylzo/tags).
 
-| You want to…                | Read                                                                               |
-| --------------------------- | ---------------------------------------------------------------------------------- |
-| Create your first link      | [Getting started](https://github.com/misaon/nylzo/wiki/Getting-started)            |
-| Install the CLI             | [CLI guide](guides/CLI.md#install)                                                 |
-| Verify what you installed   | [Verify a release](https://github.com/misaon/nylzo/wiki/Verify-a-release)          |
-| Work from a terminal        | [CLI guide](guides/CLI.md)                                                         |
-| Run your own instance       | [Self-hosting](guides/Self-hosting.md), then [operations](guides/Operations.md)    |
-| See how data is protected   | [Security model](guides/Security-model.md)                                         |
-| Keep the server out         | [Verified clients](guides/Verified-clients.md)                                     |
-| Change the code             | [Development](guides/Development.md) and [contributing](community/Contributing.md) |
+## Use Nylzo
 
-## Reference
+- [Getting started](guides/Getting-started.md): send and open your first message.
+- [CLI](guides/CLI.md): install `nylzo` and use it from a terminal.
+- [Security model](guides/Security-model.md): what is protected, from whom, and where the protection ends.
+- [Verify a release](guides/Verify-a-release.md): check what you installed and use a verified local web client.
 
-- [Versioning and releases](maintainers/Releasing.md) and the [maintainer release checklist](maintainers/Release-checklist.md).
-- [Repository map](reference/Repository-map.md) and the [normative protocol](reference/Protocol.md).
-- [Repository governance](maintainers/Repository-governance.md), [security policy](community/Security-policy.md), and [name and logo](guides/Name-and-logo.md).
-- [Release notes](https://github.com/misaon/nylzo/releases).
+## Run an instance
 
-These guides describe the current source on `main`. For a deployed version, use the documentation bundled with its [source tag](https://github.com/misaon/nylzo/tags).
+- [Self-hosting](guides/Self-hosting.md): run your own instance with Docker Compose.
+- [Hetzner and Flatcar](guides/Hetzner-Flatcar.md): the hardened profile that runs nylzo.com.
+- [Operations](guides/Operations.md): configuration, keys, monitoring and troubleshooting.
 
-Use [Issues](https://github.com/misaon/nylzo/issues) for bugs and [Discussions](https://github.com/misaon/nylzo/discussions) for questions. Report vulnerabilities [privately](https://github.com/misaon/nylzo/security/advisories/new).
+## Implement
 
-For maintainers: [publish the Wiki](maintainers/Publishing.md). For brand use: [name and logo](guides/Name-and-logo.md) and [asset formats](guides/Brand-assets.md).
+- [Protocol](reference/Protocol.md): the specification a compatible client or server follows.
+
+## Contribute
+
+- [Contributing](community/Contributing.md): set up, build, test and send a pull request.
+- [Security policy](community/Security-policy.md): report a vulnerability privately.
+- [Code of conduct](../../CODE_OF_CONDUCT.md)
+
+## Maintain
+
+- [Releasing](maintainers/Releasing.md): cut a release and publish this wiki.
+- [Repository security](maintainers/Repository-security.md): branch rules, required checks and dependency updates.
+- [Security assessment](maintainers/Security-assessment.md): the threat model.
+
+## Help
+
+Ask questions in [Discussions](https://github.com/misaon/nylzo/discussions) and report bugs in [Issues](https://github.com/misaon/nylzo/issues). Report a vulnerability [privately](https://github.com/misaon/nylzo/security/advisories/new). For the name and logo, see [Brand](guides/Brand.md).

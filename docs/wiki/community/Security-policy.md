@@ -1,50 +1,37 @@
 # Security policy
 
-## Reporting a vulnerability
+This page is for anyone who finds a security flaw in Nylzo: how to report it privately and what happens next.
 
-Report it privately through GitHub: [Report a vulnerability](https://github.com/misaon/nylzo/security/advisories/new). Please do not open a public issue, pull request or discussion for it.
+## Report a vulnerability
+
+Report it through GitHub: [Report a vulnerability](https://github.com/misaon/nylzo/security/advisories/new). Do not open a public issue, pull request or discussion about it.
 
 Include:
 
-- the component (protocol, Go core, TypeScript core, server, CLI, web client, Compose example or release pipeline) and the version or commit;
-- the steps or a proof of concept that reproduces it;
-- what an attacker gains and from which position, for example a network observer, someone holding the link, or a copy of the server's data (see the [security model](../guides/Security-model.md)).
+- the component (protocol, Go or TypeScript core, server, CLI, web client, Compose example or release pipeline) and the version or source commit;
+- steps or a proof of concept that reproduces it;
+- what an attacker gains and from which position, for example a network observer, someone who holds the link, or someone with a copy of the server's data.
 
-Do not send real message links, passphrases or other people's data. A link made on a local test server is enough.
+Never send real message links, passphrases or other people's data; a link made on a local test server is enough.
 
-To report a message on a public instance that carries fraud, malware or illegal content, write to the operator contact on the instance's `/transparency` page instead, if it lists one. This policy covers flaws in Nylzo itself.
+Test only systems you own or may test, preferably a local instance. Avoid denial of service, social engineering, persistence on others' infrastructure and other people's messages.
 
-## Scope
+To report a message on an instance that carries fraud, malware or illegal content, write to the operator contact on that instance's `/transparency` page, if it lists one. This policy covers flaws in Nylzo itself.
 
-In scope: [the protocol](../reference/Protocol.md), both cores and their shared vectors, the server with its admin area and visit counting, the `nylzo` CLI, the web client, `deploy/compose` and the release pipeline (signatures, provenance, reproducible builds).
+## Known limits
 
-Some limits are known and documented in [the protocol](../reference/Protocol.md) §13, so a report of them alone is not a vulnerability:
+The [security model](../guides/Security-model.md) and [Protocol §13](../reference/Protocol.md#13-what-a-stolen-server-reveals) describe limits that are part of the design, such as a hostile server sending a modified web client, or offline guessing of a weak passphrase by someone who has both the link and the server's data. A documented limit alone is not a vulnerability; a report that shows one is worse than documented is welcome.
 
-- Whoever controls the running server or its hosting can send a modified web client and read the messages created or opened in it. The CLI from a signed release protects against this. `nylzo verify-client` detects modified files served to that check. A hostile server can recognize the command and send browsers different JavaScript.
-- Anyone who has the link can delete a message that has no passphrase, and can lock readers out with wrong passphrases, which also holds back deleting. Deleting a message that has a passphrase needs the passphrase as well as the link.
-- Someone with both the link and a copy of the server can guess a weak passphrase offline.
-- Someone who controls the server, or has a copy of it with its pepper, and also has the link can guess a weak passphrase offline while the message lives, as with any single-server password protocol. A recorded request no longer helps since protocol v3 checks the passphrase with OPAQUE; [Passphrase verifier and PAKE](../maintainers/Passphrase-verifier.md) explains the change and what stays.
-- The server sees the padded size of a message and times to the minute.
-- Anyone can send visit signals and inflate the visit counts of an instance's admin area.
+## What happens next
 
-A report that shows one of these is worse than documented is welcome.
+1. The maintainer aims to acknowledge your report within five business days. This is a best-effort target: Nylzo has one maintainer and no paid bug bounty. If you hear nothing, add a comment to the private report.
+2. Impact, a fix and a disclosure date are agreed in the private report. Please wait for the fix before you disclose.
+3. The fix ships in the next release. A confirmed vulnerability gets a GitHub Security Advisory, a CVE where appropriate, and credit as you prefer.
 
 ## Supported versions
 
-Only the latest stable release receives security fixes and ordinary bug fixes. Support begins when that release is published and ends when the next stable release is published, including a patch release. There are no LTS branches or fixed-duration support commitments. Older versions and pre-release builds are not maintained. If maintenance ends without a successor release, announce that end of support in the repository and release notes. Upgrade to the latest stable release before relying on a fix. For reports about a development build, include its source commit.
+Only the latest stable release gets security fixes. Older versions and prerelease builds are not maintained.
 
-## Coordinated disclosure
+## Official sources
 
-The maintainer aims to acknowledge reports within five business days. This is a best-effort target. There is no guaranteed response time and no paid bug bounty. GitHub notifications are the only contact channel; if there is no acknowledgement, follow up in the private report.
-
-Please allow investigation and a coordinated fix before public disclosure. The maintainer will discuss impact, mitigation, and a disclosure date in the private report. Confirmed vulnerabilities should receive a GitHub Security Advisory and a CVE where appropriate, with credit according to the reporter's preference. There is no external security certification implied by this policy or by passing CI.
-
-Test only systems and data you own or have explicit permission to test. Prefer a local instance. Avoid denial of service, social engineering, access to other people's messages, and persistence on third-party infrastructure.
-
-## Official sources and artifact verification
-
-The canonical source is [misaon/nylzo](https://github.com/misaon/nylzo). Install the CLI only from [misaon/homebrew-nylzo](https://github.com/misaon/homebrew-nylzo) with Homebrew or Scoop, download release archives only from the [Releases page](https://github.com/misaon/nylzo/releases), and pull container images only from `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. A checksum alone does not establish authenticity: verify its Sigstore signature and the artifact's provenance against this repository and the exact release tag. Use [Verify a release](../guides/Verify-a-release.md) and the [release checklist](../maintainers/Release-checklist.md).
-
-## Fixes and releases
-
-Fixes go into the next release. There are no maintained older branches, so update to the latest release. See [Verify a release](../guides/Verify-a-release.md) for image signatures and provenance, and the [CLI guide](../guides/CLI.md#verify-an-instances-web-client) for checking the client a server sends with `nylzo verify-client`.
+Install the CLI with Homebrew or Scoop from [misaon/homebrew-nylzo](https://github.com/misaon/homebrew-nylzo), download archives from the [Releases page](https://github.com/misaon/nylzo/releases), and pull images from `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. [Verify a release](../guides/Verify-a-release.md) shows how to check them.

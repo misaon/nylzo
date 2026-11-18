@@ -1,65 +1,101 @@
-# Contributing to Nylzo
+# Contributing
 
-Contributions are welcome: bug reports, documentation, tests, accessibility improvements, and code. Discuss substantial changes before implementing them, especially changes to cryptography, the protocol, storage, or the release pipeline.
+This page is for people who want to change Nylzo: how to set up the project, run the checks CI runs and get a pull request merged.
 
-## Choose the right channel
+## Before you start
 
-- Report reproducible bugs and propose specific features using the [issue forms](https://github.com/misaon/nylzo/issues/new/choose).
-- Ask questions and discuss ideas in [Discussions](https://github.com/misaon/nylzo/discussions).
-- Report vulnerabilities **privately** through [GitHub Security Advisories](https://github.com/misaon/nylzo/security/advisories/new), following [SECURITY.md](Security-policy.md).
+- Report a bug or propose a feature with the [issue forms](https://github.com/misaon/nylzo/issues/new/choose). Ask questions in [Discussions](https://github.com/misaon/nylzo/discussions).
+- Report a vulnerability privately, as the [security policy](Security-policy.md) describes.
+- Discuss changes to cryptography, the protocol, storage or the release pipeline before you write them.
+- Write issues, pull requests, code and documentation in English. Use synthetic data: no real message links, passphrases, keys or personal data.
+- Follow the [code of conduct](../../../CODE_OF_CONDUCT.md).
 
-Read the [code of conduct](../../../CODE_OF_CONDUCT.md). Use English for issues, pull requests, code, and contributor documentation. Use synthetic data in reproductions; never include real message links, keys, passphrases, credentials, or personal data.
+## Set up
 
-## Set up a development environment
-
-Use Linux, macOS, or WSL with a C compiler for Go's race detector. The exact versions of Go, Bun, and the CI tools are pinned in [mise.toml](../../../mise.toml) and [mise.lock](../../../mise.lock).
-
-1. Fork this repository and create a branch from `main`.
-2. Install [mise](https://mise.jdx.dev/getting-started.html).
-3. Read `mise.toml` and `mise-tasks/` before trusting them: repository tasks execute code on your machine.
-4. Run:
-
-   ```sh
-   mise trust
-   mise install
-   mise run dev
-   ```
-
-The development server listens on `http://localhost:8080`. For hot reload, run `mise run dev:web` in another terminal and open `http://localhost:5173`. Local data and keys live in `.dev/`; `mise run dev:reset` deletes them.
-
-## Make and verify a change
-
-The normative protocol is [protocol](../reference/Protocol.md); the Go and TypeScript cores must agree on [spec/vectors.json](../../../spec/vectors.json). Keep changes focused and use the protocol's terminology. Keep tests next to the code and add meaningful coverage for security properties, protocol behavior, and regressions. Every major functional change must add or update automated tests: this includes new behavior, changed protocol or storage rules, security controls, and external interfaces. Tests must exercise the changed guarantee and fail when it is broken. Explain why a documentation-only or behavior-preserving change needs no new test.
+You need Linux, macOS or WSL, and a C compiler for Go's race detector. [mise](https://mise.jdx.dev/getting-started.html) installs every other tool at the version pinned in [mise.toml](../../../mise.toml), with checksums in [mise.lock](../../../mise.lock). Tasks run code on your machine, so read `mise.toml` and [mise-tasks](../../../mise-tasks) before you trust them.
 
 ```sh
-mise run test
-mise run lint
-mise run build
+mise trust
+mise install
+mise run dev
 ```
 
-For browser or client/server changes, also run:
+`mise run dev` builds `bin/nylzo` and serves it on `http://localhost:8080` with relaxed rate limits. Its messages and pepper (the server's secret key) live in `.dev/`. Set `NYLZO_DEV_PORT` to use another port. `mise run dev:reset` deletes `.dev/`.
+
+For hot reload, run Vite in a second terminal and open `http://localhost:5173`:
 
 ```sh
-mise run e2e:browsers
-mise run e2e
+mise run dev:web
 ```
 
-On Linux, Playwright may also need system libraries (`bun run --cwd web/e2e --bun playwright install-deps`, with the privileges your package manager requires). Include the commands you ran and any limitations in the pull request. CI runs additional fuzz, reproducibility, and deployment checks.
+Vite forwards `/api` to `http://127.0.0.1:8080` (`NYLZO_DEV_API` changes it). It does not send the production Content Security Policy, so test CSP changes with `mise run dev` or the browser tests.
 
-Do not hand-edit generated protocol vectors or dependency lockfiles. Regenerate vectors with `go run ./cmd/nylzo-vectors -out spec/vectors.json`; change dependencies deliberately with the pinned package manager and review the resulting lockfile diff. Do not relax dependency build-script restrictions or security checks to make a change pass.
+Bun runs every JavaScript and TypeScript tool; you need no Node.js or pnpm. `mise run install` installs the locked dependencies without running their install scripts.
 
-## Open a pull request
+## Build, lint and test
 
-The [Wiki](https://github.com/misaon/nylzo/wiki) is the documentation entry point. Edit its reviewed source files here, following [Publishing the GitHub Wiki](../maintainers/Publishing.md); the maintainer republishes them after merge.
+| Command | What it does |
+| --- | --- |
+| `mise run build` | Builds `bin/nylzo` with the web client embedded |
+| `mise run test` | Go race tests, TypeScript core and web client tests, tests of `automation/` and `tools/` |
+| `mise run lint` | Dependency scan, Go checks, Oxfmt, Oxlint, type checks, Svelte autofixer, workflow and shell checks |
+| `mise run e2e:browsers` | Downloads the Playwright browsers once |
+| `mise run e2e` | End-to-end tests in Chromium, Firefox and WebKit |
 
-Use an English Conventional Commit title, such as `feat(cli): add JSON version output`, and a short body explaining the problem, resulting behavior, and validation. Allowed types are `feat`, `fix`, `perf`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `revert`, `style`, and `security`. Add `!` before the colon for a breaking change and explain its migration in the body. The title becomes the squash commit and determines its section in the generated release notes. Link the relevant issue and acceptance criterion when applicable. For documentation changes, check the formatting, examples, and links, then describe what you checked.
+`mise tasks` lists the smaller tasks, such as `test:go` or `lint:web`. CI runs the same `lint:*` and `test:*` tasks. On Linux, Playwright may also need system libraries:
 
-`main` requires a pull request, successful checks, resolved review conversations, and verified signatures on the resulting commits. Code-owner review is required for community changes; new commits dismiss previous approvals. GitHub evaluates signatures on commits introduced by the PR as well as the final squash commit. Sign code commits before requesting merge; a GitHub-signed web edit is also acceptable. Squash merging does not exempt unsigned branch commits from the signature rule. The sole repository administrator can bypass the review requirement through a pull request for their own maintenance work; the separate integrity and CI rules still apply. This exception is documented in [repository governance](../maintainers/Repository-governance.md).
+```sh
+bun run --cwd web/e2e --bun playwright install-deps
+```
 
-Workflows from **all external contributors** require maintainer approval before running. Approval is a decision to execute the proposed code, so it can take time. Maintainers must inspect the complete diff, workflow changes, and executable setup files first. Never ask a maintainer to run a command with secrets or to enable a privileged workflow for your branch.
+Format the web workspace with `bun run --cwd web format`. In `web/`, `bun run test` starts Vitest; `bun test` would start Bun's own runner.
 
-Releases use the maintainer-approved path or the bounded security-update automation after activation. Contributors should not create release tags or upload release assets. See the [release checklist](../maintainers/Release-checklist.md).
+After a change to a protocol core, regenerate the shared test vectors. The Go and TypeScript cores must both match them.
+
+```sh
+go run ./cmd/nylzo-vectors -out spec/vectors.json
+```
+
+The largest scrypt vector needs 1 GiB of memory. `mise run test` runs it because it sets `NYLZO_HEAVY_TESTS=1`.
+
+Do not edit the vectors or lockfiles by hand. Change dependencies with `go get` or `bun add`, then review the lockfile diff. Do not weaken install-script rules or security checks to make a change pass.
+
+## Repository map
+
+| Path | Contents |
+| --- | --- |
+| [internal/core](../../../internal/core), [web/core](../../../web/core) | Go and TypeScript protocol cores |
+| [spec/vectors.json](../../../spec/vectors.json), [cmd/nylzo-vectors](../../../cmd/nylzo-vectors) | Shared test vectors and their generator |
+| [internal/core/api](../../../internal/core/api) | Paths, headers, error codes and bodies shared by server, CLI and Caddy |
+| [internal/server](../../../internal/server) | HTTP server, limits, admin area and embedded web client |
+| [internal/store](../../../internal/store), [internal/seal](../../../internal/seal) | Storage and sealed records |
+| [cmd/nylzo](../../../cmd/nylzo), [internal/cli](../../../internal/cli), [internal/client](../../../internal/client) | The `nylzo` command and its HTTP client |
+| [web/app](../../../web/app), [web/e2e](../../../web/e2e) | Svelte web client and Playwright tests |
+| [deploy](../../../deploy) | Compose example, Caddy build and the Hetzner Flatcar profile |
+| [automation](../../../automation) | Scripts for Renovate, the Dependency guard, release tags and scans |
+| [tools](../../../tools), [mise-tasks](../../../mise-tasks) | Build, CI routing, release and deploy scripts |
+| [security](../../../security) | Dependency scan policy |
+| [docs/wiki](..) | Sources of this Wiki |
+
+## Conventions
+
+- Use the words of the [protocol](../reference/Protocol.md) (message, envelope, lease, verifier, tombstone) and spell names out.
+- Put tests next to the code. Test protocol vectors, security guarantees, spec rules and regressions; a test must fail when the guarantee breaks.
+- Comment code only to state a constraint the code cannot show. A lint suppression names its rule and reason.
+- Give the pull request an English [Conventional Commit](https://www.conventionalcommits.org/) title, such as `feat(cli): add JSON version output`. The types are `feat`, `fix`, `perf`, `docs`, `refactor`, `test`, `build`, `ci`, `chore`, `revert`, `style` and `security`. Add `!` before the colon for a breaking change and describe the migration in the body. The title becomes the squash commit and picks its section in the release notes.
+- Sign every commit with a key registered on GitHub. `main` and `release/v*` accept only commits with verified signatures.
+
+## Get a pull request merged
+
+1. Fork the repository, branch from `main` and open the pull request against `main`. The template asks what changed and which checks you ran.
+2. GitHub holds the workflow runs of every outside contributor until a maintainer has read the diff and approves them.
+3. CI picks its jobs from the changed paths. A change to the Wiki or the root Markdown files runs the link check and CodeQL only.
+4. These checks must pass: `CI required`, `Conventional PR title`, `Dependency guard`, `Socket Security: Pull Request Alerts`, and CodeQL with no errors and no security alert of medium or higher severity.
+5. A code owner approves the latest push and reruns `Dependency guard`, which passes an outside pull request only after that approval. Review conversations must be resolved.
+6. The maintainer squash merges. Merging releases nothing; see [Releasing](../maintainers/Releasing.md).
+
+Wiki pages are edited in `docs/wiki/` through a pull request. The maintainer publishes them after the merge.
 
 ## License
 
-Submit only work you have the right to contribute under the repository's [MIT license](../../../LICENSE). GitHub-hosted contributions are subject to [GitHub Terms of Service, section D.6](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service#6-contributions-under-repository-license), which requires the right to license each contribution under the repository license. Nylzo currently uses that platform assertion and does not impose a separate CLA or DCO. Obtain an equivalent rights assertion before importing a contribution submitted outside GitHub. The license does not grant trademark rights to the Nylzo name or logo.
+Contribute only work you may license under the [MIT license](../../../LICENSE). [Section D.6 of the GitHub Terms of Service](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service#6-contributions-under-repository-license) applies; there is no separate CLA or DCO. The license grants no rights to the Nylzo name or logo; see [Brand](../guides/Brand.md).

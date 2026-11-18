@@ -1,22 +1,34 @@
 # Self-hosting
 
-Deployment profiles live under [`deploy/`](../../../deploy). The Compose example below is the existing runtime reference. The [Hetzner/Flatcar profile](Hetzner-Flatcar.md) adds OpenTofu provisioning, verified updates, and optional Cloudflare DNS-only/DNSSEC; it remains experimental until real-cloud acceptance is complete.
+This guide is for people who run their own Nylzo instance with Docker Compose: the first start, the settings you change, maintenance mode, reboots and upgrades. [Operations](Operations.md) has the configuration reference, keys, monitoring and troubleshooting.
 
-The [Compose example](../../../deploy/compose) runs Nylzo behind Caddy with TLS. Use a Linux server with Docker Engine 28.0 or newer, Docker Compose v2, a domain pointing to the server, and ports 80/tcp, 443/tcp, and 443/udp open.
+The example in [deploy/compose](../../../deploy/compose) runs two containers: `nylzo`, the server, and `caddy`, a Caddy build from the same Nylzo release that terminates TLS and serves the web client. Whoever controls the TLS endpoint can replace the web client, so run it on a host you trust as much as the server ([security model](Security-model.md)).
 
-Caddy comes from the same release as Nylzo and embeds the same static web client. It serves pages, assets and the client manifest itself; only API requests, the transparency JSON and health checks reach the backend. The release workflow builds `ghcr.io/misaon/nylzo-caddy` from [deploy/caddy](../../../deploy/caddy) with the repository's pinned Go toolchain and dependency versions, so a Go or dependency fix does not wait for an upstream image rebuild.
+## Requirements
 
-The TLS endpoint sees ciphertext, request signatures, and leases, and can replace the web client. Terminate TLS on infrastructure you trust with the server itself. Read the [security model](Security-model.md) and [operations guide](Operations.md) before deployment.
+- Linux with Docker Engine 28.0 or newer, Docker Compose v2 and Docker's default IPv6 firewall support. Docker Desktop can merge client addresses, which breaks per-address rate limits.
+- Docker's data root on ext4 or XFS. Nylzo erases a deleted message by overwriting its blocks in place and refuses btrfs, ZFS and overlay storage.
+- No active swap, zram included, unless the epoch directory gets a `noswap` tmpfs (below).
+- systemd, whose tmpfiles entry creates the epoch directory at every boot.
+- A domain pointing to the host, and ports 80/tcp, 443/tcp and 443/udp open.
+- Disk for eight days of your daily cap. A message holds up to about 5.4 MB, so the default 2,000 messages a day need about 86 GB.
 
-## Prepare the deployment
+## Prepare the host
 
-1. Download and [verify a release](Verify-a-release.md). Verify the signatures and provenance of both container images against the selected tag and pin their digests.
-2. Copy [compose.yaml](../../../deploy/compose/compose.yaml), [Caddyfile](../../../deploy/compose/Caddyfile), [check-isolation](../../../deploy/compose/check-isolation), [nylzo-epoch.conf](../../../deploy/compose/nylzo-epoch.conf) and [.env.example](../../../deploy/compose/.env.example) into a private deployment directory. Copy `.env.example` to `.env`.
-3. Set `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE` to the digest-pinned references printed by the verification guide. Set `NYLZO_DOMAIN` to your lowercase domain and `NYLZO_GLOBAL_DAILY_CREATES` to a cap your disk can support.
-4. Fill in `NYLZO_OPERATOR`, `NYLZO_CONTACT` (email or HTTPS address), and `NYLZO_HOSTING`. They appear on `/transparency`. Compose derives `NYLZO_PUBLIC_URL` from the domain for canonical URLs and previews. Search engines get `noindex` on every page of a self-hosted instance, because only nylzo.com may appear in results with the same text.
-5. Keep Docker's data root, which holds the `nylzo-data` volume, on ext4 or XFS: Nylzo erases a deleted message by overwriting its blocks in place and refuses to start on btrfs, ZFS or an overlay. The Compose file raises the memlock limit, because the server locks its memory against swap.
+1. [Verify the release](Verify-a-release.md). Verification prints digest-pinned references for both images.
+2. From [deploy/compose](../../../deploy/compose) of that release, copy `compose.yaml`, `Caddyfile`, `check-isolation`, `nylzo-epoch.conf` and `.env.example` into a private directory. Copy `.env.example` to `.env`.
+3. Fill in `.env`:
 
-Generate a server pepper in the deployment directory. The container runs as UID 65532 and must be the only account able to read the file:
+| Variable | Value |
+| --- | --- |
+| `NYLZO_DOMAIN` | Your host name in lowercase |
+| `NYLZO_IMAGE`, `NYLZO_CADDY_IMAGE` | The references from step 1 |
+| `NYLZO_GLOBAL_DAILY_CREATES` | Messages a day your disk can hold, default 2000 |
+| `NYLZO_OPERATOR`, `NYLZO_CONTACT`, `NYLZO_HOSTING` | Who runs the instance, one e-mail or `https://` contact, and where it runs, shown on the transparency page |
+
+Compose sets `NYLZO_PUBLIC_URL` from the domain. Self-hosted instances tell search engines not to index their pages; only nylzo.com is indexable.
+
+Run the rest in the deployment directory. Generate the pepper, a 32-byte server secret that only UID 65532, the container's user, may read:
 
 ```sh
 umask 077
@@ -26,177 +38,113 @@ sudo chown 65532:65532 secrets/pepper
 sudo chmod 0400 secrets/pepper
 ```
 
-Create Caddy's state directory for its certificates and ACME account. Caddy runs as UID 65533, separate from Nylzo's 65532, so its account owns neither the pepper nor Nylzo's data, even outside the container:
+Create the directory for Caddy's certificates and ACME account. Caddy runs as UID 65533. Neither UID may belong to an account on the host.
 
 ```sh
 sudo install -d -o 65533 -g 65533 -m 0700 caddy-state
 ```
 
-Neither UID may belong to an account on the host. Compose refuses to start when `caddy-state` is missing, rather than creating a directory Caddy cannot write.
-
-Keep the epoch seed off the disk. Compose binds the host directory `/run/nylzo/epoch`, which lies on the host's tmpfs, into Nylzo as `NYLZO_EPOCH_DIR`. Install the tmpfiles entry, which at every boot creates `/run/nylzo` for root only and inside it `epoch` for UID 65532, both with mode 0700, and create them now:
+Install the tmpfiles entry. It creates `/run/nylzo/epoch` on the host's tmpfs for the epoch seed, the key material that makes a message unreadable after its deadline:
 
 ```sh
 sudo cp nylzo-epoch.conf /etc/tmpfiles.d/
 sudo systemd-tmpfiles --create nylzo-epoch.conf
 ```
 
-Docker refuses to start Nylzo while the directory is missing, for example after a reboot without the entry. On a host without systemd, create the directory at every boot before Docker starts.
-
-The kernel could write tmpfs pages to the disk. Nylzo therefore refuses to start on a tmpfs while any swap is active, zram included, locks the pages of the seed file in memory while it runs, and logs `epoch-storage-not-erasable` at every sweep once swap appears. Turn swap off for good:
+Turn swap off for good, so the kernel never writes the seed to disk. Nylzo refuses a tmpfs while swap is active.
 
 ```sh
 sudo swapoff -a && sudo sed -i.bak '/\sswap\s/s/^/#/' /etc/fstab
 ```
 
-That covers swap listed in `/etc/fstab`; turn off zram and systemd swap units in their own configuration, and check that `swapon --show` prints nothing.
+Turn off zram and systemd swap units in their own configuration too, then check that `swapon --show` prints nothing. A host that needs swap can instead mount a `noswap` tmpfs (Linux 6.4 or later) on `/run/nylzo/epoch`, keep the tmpfiles entry, and mask hibernation with `sudo systemctl mask hibernate.target hybrid-sleep.target suspend-then-hibernate.target`:
 
-A host that needs swap can instead mount a tmpfs of its own with `noswap` (Linux 6.4 or later) on `/run/nylzo/epoch`; keep the tmpfiles entry, which then sets the owner and mode of both directories. Try the mount first, since an older kernel refuses the option:
-
-```sh
-sudo mount -t tmpfs -o noswap,size=1m,mode=0700,uid=65532,gid=65532,nosuid,nodev,noexec tmpfs /run/nylzo/epoch
-```
-
-If it works, add the same mount to `/etc/fstab`. `nofail` keeps the boot going if the mount ever fails; Nylzo then refuses the root-owned directory left in its place:
-
-```
+```text
 tmpfs /run/nylzo/epoch tmpfs noswap,size=1m,mode=0700,uid=65532,gid=65532,nosuid,nodev,noexec,nofail 0 0
 ```
 
-Hibernation writes all memory to swap, a `noswap` tmpfs included, so turn it off on such a host: `sudo systemctl mask hibernate.target hybrid-sleep.target suspend-then-hibernate.target`.
-
-Run the pepper commands only for a new deployment; do not overwrite an existing pepper during an upgrade. Keep it outside the database. Losing the pepper makes existing tokens unverifiable and live messages inaccessible. A leaked pepper combined with server data enables additional guessing attacks, and together with a public key from a recorded request it opens that message's stored metadata; see the [protocol](../reference/Protocol.md).
-
-Start from the deployment directory:
+## Start
 
 ```sh
 docker compose up -d
-```
-
-Then check that Nylzo's network is isolated:
-
-```sh
 sudo bash check-isolation
 ```
 
-The script fails when:
+`check-isolation` confirms that Nylzo can reach Caddy and nothing else. It fails on Docker Engine before 28.0, a host address on the `backend` network, reverse-path filtering turned off (set `net.ipv4.conf.all.rp_filter = 2` in `/etc/sysctl.d/`), a third container on `backend`, a default route in Nylzo, or a Caddyfile that proxies elsewhere. Run it after every Docker or Nylzo upgrade.
 
-- Docker Engine is older than 28.0. Engine 26 and older accept the `isolated` gateway mode without applying it, which leaves services on the host reachable from Nylzo.
-- The host has an address on the `backend` network, or has reverse-path filtering off for it and would accept broadcasts from Nylzo. Set `net.ipv4.conf.all.rp_filter = 2` in `/etc/sysctl.d/` to turn the filter on.
-- A container other than Nylzo and Caddy is attached to `backend`, or Nylzo is attached to another network or has a default route.
-- The Caddyfile proxies to an address other than Nylzo's.
+Then open `https://your-domain/transparency` and run `nylzo verify-client --server https://your-domain` with the [CLI](CLI.md) of the same release.
 
-Run the check again after every Docker or Nylzo upgrade.
+## What the example sets up
 
-Check the HTTPS instance and its `/transparency` page. Run `nylzo verify-client --server https://your-domain.example` with a `nylzo` of the release the instance runs. [Homebrew and Scoop](CLI.md#install) install the latest release, the only one that receives security fixes. Understand the [limits of that check](Security-model.md#the-client-is-part-of-the-trust-boundary).
+- Both containers have a read-only root filesystem, no capabilities, `no-new-privileges`, resource limits and no core dumps. Nylzo writes only to the `nylzo-data` volume and the epoch directory, and gets the pepper as a Docker secret file.
+- Nylzo is attached only to `backend`, an internal network with no route out. Caddy is also attached to `edge`, where Docker publishes its ports. Nylzo trusts forwarding headers only from Caddy's fixed addresses. If the subnets clash with your network, change them, both fixed addresses, the Caddyfile upstream and `NYLZO_TRUSTED_PROXIES` together.
+- Caddy accepts only TLS 1.3 with X25519MLKEM768, a hybrid post-quantum key exchange, so older browsers and many bots cannot connect ([transport](Security-model.md#transport)).
+- Caddy keeps no access log. Add no `log` directive to a site and keep the `exclude` list: a logged `X-Nylzo-Lease` header lets anyone with the link download a message without spending an open. Caddy started with `--adapter nylzo`, as `compose.yaml` does, refuses such a Caddyfile.
 
-## What the example configures
+Other server settings go into the `environment` block of the `nylzo` service ([configuration](Operations.md#configuration)); apply them with `docker compose up -d`.
 
-- Nylzo has a read-only root filesystem, drops all Linux capabilities, and sets `no-new-privileges`. Only `nylzo-data` and the epoch directory are writable. The pepper is a Docker secret file, rather than a process environment value. It may use 512 MiB, 1.5 CPUs and 128 processes, and has no memory-lock limit (`memlock: -1`), so it can lock its memory and keep secrets out of swap.
-- The epoch seed lives in `/run/nylzo/epoch` on the host's tmpfs, inside a directory only root can enter and apart from `nylzo-data`, so no backup of the volume and no disk image or provider snapshot of the host holds it, unless a snapshot also saves the memory of the running machine. Restarting or recreating the container, restarting Docker and installing a new release keep it; a host reboot ends every live message ([Reboots](#reboots)).
-- Caddy has the same restrictions and runs as UID and GID 65533, apart from Nylzo's 65532, with 512 MiB, one CPU and 256 processes. Its container sets `net.ipv4.ip_unprivileged_port_start` to 80, which lets it bind ports 80 and 443 without `NET_BIND_SERVICE`. Only the `caddy-state` directory, which holds certificates and the ACME account, is writable. Its admin API is off. Neither container writes core dumps.
-- Caddy accepts only TLS 1.3 with X25519MLKEM768, the hybrid post-quantum key exchange every browser the client is built for uses by default. Older clients cannot connect, among them Safari and iOS before 26, Firefox ESR 128, curl on Ubuntu 24.04, and many link-preview bots and uptime monitors. Only the addresses that search engines and AI services publish for their crawlers may also use X25519, and they reach only the public pages ([transport](Security-model.md#transport)). Caddy runs with `--adapter nylzo`, which adds that exception; started any other way it refuses the Caddyfile.
-- Caddy limits headers to 16 KB and bodies to 6 MiB, and closes connections that stall: 10 s for headers, 20 s without body data, 6 minutes for a whole body or response, 2 minutes idle. When Caddy itself fails a request, for example because Nylzo does not answer, a browser that navigated gets the server error page from the frontend under that page's CSP, and every other request gets the bare status with a `default-src 'none'` CSP. Both carry `nosniff`, HSTS and `no-store`.
-- Nylzo is attached only to `backend`, an internal network with IPv4 and IPv6. Nylzo has no route out, the host has no address on `backend` (gateway mode `isolated`), and Docker forwards none of Nylzo's DNS lookups, so it resolves only container names. A compromised Nylzo can open connections to Caddy and to nothing outside `backend`. Caddy is also attached to `edge`, where Docker publishes its ports and through which it reaches Let's Encrypt. On `backend` Caddy uses fixed addresses `172.30.82.2` and `fd1f:9791:e50b:1::2`, and Nylzo trusts only those proxy addresses. Caddy connects to Nylzo's fixed address `172.30.82.3` instead of its name: while the Nylzo container is down, Docker would pass a lookup of `nylzo` to the host's resolvers. Caddy sets `X-Forwarded-For` itself and removes client-sent `X-Real-IP`, `Forwarded`, `True-Client-IP` and similar headers. Other containers use the upper half of each `backend` subnet. If these ranges conflict with your network, change the subnets, the Caddy and Nylzo addresses, the Caddyfile upstream and the trusted proxies together. Docker picks the `edge` subnets from its own address pools; give `edge` an `ipam` block to pin them.
-- Docker Engine's default IPv6 firewall support is required. Without IPv6 on the `edge` network, Docker's userland proxy can make all IPv6 users share one source-address rate-limit bucket. Docker Desktop also proxies incoming traffic and can collapse source addresses; use Linux with Docker Engine for production.
-- The global daily cap defaults to 2,000 creations. Proof of work starts at 1,000; at the cap, creation returns 503 while reading continues. Address limits reset with the process, so the global cap protects disk capacity against clients rotating addresses.
-- A maximum-size message is about 5.4 MB and may live for seven days. Budget up to eight daily caps of stored messages: about 86 GB at 2,000 creations per day. Adjust the cap for your disk. Below the 1 GiB free-space reserve, creation stops while reading, cancellation, and deletion continue.
-- Caddy serves `/admin` like every page that is not public, only over X25519MLKEM768. For each page it serves that counts as a visit, it reports the visit to Nylzo through the same proxy, after the page is sent, with only the client address and `User-Agent`; a queue of 256 reports drops the rest, and Nylzo counts them only while an admin passkey exists. The Compose file sets `NYLZO_EDGE_REPORTS=1` for this; behind any other reverse proxy leave it unset, because such a proxy would let clients send reports themselves. A deployment whose Compose file predates the admin area needs that line added: without it Nylzo refuses the reports, Caddy pauses them, and robots that name themselves, scripts and unconfirmed views stay at zero while people are still counted. `admin.db` lives in `nylzo-data`, so a volume backup includes it.
-- Both containers use the `local` log driver with at most three 10 MB files. Caddy's access logging and error loggers containing request details are disabled, preventing proxy failures from logging addresses, message paths, or `X-Nylzo-*` headers. Startup and certificate logs remain. Keep `http.log`, `http.handlers` and `http.stdlib` excluded and add no `log` directive to a site: a `log` block with any setting, `format` or `level` included, becomes an access log of its own that the exclusions do not reach. Caddy redacts `Authorization` but not `X-Nylzo-*`, and a logged `X-Nylzo-Lease` lets anyone with the link download a message without spending an open. The `nylzo` adapter refuses a Caddyfile that does any of this or uses `tracing`, the FastCGI transport or `insecure_secrets_log`, and the frontend does not start from a Caddyfile loaded without that adapter. For the same reason Nylzo and its Caddy refuse to start with `GODEBUG=http2debug=1` or `=2`, and Caddy also with `QLOGDIR`, which makes it write HTTP/3 headers to files.
-- Caddy reuses idle upstream connections for at most 25 seconds, below Nylzo's 30-second idle timeout. It removes `Server` and `Via` headers, including on errors and HTTP redirects, and closes requests for other hosts without an HTTP response. Caddy supplies the frontend's CSP and security headers. Backend responses pass through a data-only boundary: only JSON, encrypted blob bytes and plain-text health responses are accepted; redirects, unexpected content types and encoded bodies are rejected. Rejected upstream replies are closed before their bodies are read, and successful bodyless acknowledgements remain HTTP 204. Only content length, retry timing and the three protocol headers are forwarded. Cookies, refreshes, resource hints, service-worker permissions and backend security policies are discarded.
-
-The frontend is part of Caddy's read-only executable, outside the backend process and its writable data volume. Compromising the backend alone cannot replace frontend pages or assets through this deployment. The host, Caddy, the release process and browser/device security remain trusted; a client-side injection vulnerability would still require its own fix.
-
-## Remove a message
-
-To remove messages, place their IDs in a private file, one per line. Run from the deployment directory:
+## Server commands
 
 ```sh
 docker compose exec -T nylzo /ko-app/nylzo takedown < approved-ids.txt
-```
-
-Run commands in the running container with `docker compose exec`. A `docker compose run nylzo` container takes Nylzo's fixed address, so it fails while Nylzo runs and receives Caddy's API requests while Nylzo is stopped. Never `docker cp` or `docker compose cp` anything into the Nylzo container: Docker 28 and older let a compromised container redirect such a copy onto host files (GHSA-vp62-88p7-qqf5, GHSA-x86f-5xw2-fm2r).
-
-Takedown deletes the server's message blob without reading its content. See [Operations](Operations.md#takedown).
-
-## Set up the admin area
-
-To add a passkey for the admin area at `/admin`, run from the deployment directory and open the printed link within 15 minutes:
-
-```sh
 docker compose exec -T nylzo /ko-app/nylzo admin-enroll
 ```
 
-`admin-passkeys` lists the passkeys and `admin-reset` removes them all, run the same way. The server counts visits only while a passkey exists. See [Operations](Operations.md#admin-area).
+`takedown` removes the messages whose ids stand one per line in the file. `admin-enroll` prints a link that adds a passkey to the admin area at `/admin`; open it within 15 minutes. [Operations](Operations.md#operator-commands) lists every command.
 
-## Maintenance
+Do not use `docker compose run nylzo`, whose container takes Nylzo's fixed address. Never copy files into the container with `docker cp`: Docker 28 and older let a compromised container redirect such a copy onto host files.
 
-Create an empty file `caddy-state/maintenance` to put the instance into maintenance, and delete it to end maintenance. Caddy checks for the file on every request, so neither step needs a restart. While the file exists:
+## Maintenance mode
 
-- a page request gets the maintenance page in English or Czech, chosen by `Accept-Language`, with status 503 and `Retry-After: 30`. The page reloads itself every 30 seconds and runs no application code.
-- API and transparency requests get 503 `{"error":"unavailable"}` with `Retry-After: 30` and never reach Nylzo.
-- Assets and `/healthz` pass as usual, so the page loads its styles and monitoring still sees Nylzo.
-
-Messages keep expiring on schedule, because expiry follows `expires_at`.
+`sudo touch caddy-state/maintenance` starts maintenance and `sudo rm caddy-state/maintenance` ends it, without a restart. While the file exists, pages get a maintenance page with status 503 and `Retry-After: 30`, API and transparency requests get 503 `{"error":"unavailable"}` without reaching Nylzo, and assets and `/healthz` pass as usual. Messages keep expiring on schedule.
 
 ## Reboots
 
-The epoch seed exists only in the host's memory, so a reboot ends every live message. After the boot Nylzo starts a new seed and logs `epoch-seed-created`. The first request about an older message, the sender's status or a reader opening the link, ends it as `lost` and erases its blob; new messages work at once. Nothing carries the seed across a reboot without writing it to a disk, so never copy it out to save messages.
+The epoch seed exists only in memory, so a host reboot ends every live message. Nylzo then creates a new seed and logs `epoch-seed-created`, and the first request about an older message ends it as `lost` and erases its blob. Restarting containers or Docker, `docker compose down`, and upgrades keep the seed.
 
-- Reboot only when an update needs it, such as a new kernel (Ubuntu, and Debian with unattended upgrades, then create `/var/run/reboot-required`), and do it in a fixed window with little traffic. Unattended upgrades reboot on their own only with `Unattended-Upgrade::Automatic-Reboot "true"`; leave that off or set `Unattended-Upgrade::Automatic-Reboot-Time` to your window.
-- Restarting the container or Docker, `docker compose up -d` with a new release and `docker compose down` keep the seed, because `/run/nylzo/epoch` stays until the host stops.
-- After a reboot, check that `swapon --show` prints nothing. Swap from zram, a swap partition that systemd finds on its own or a cloud agent comes back at boot, and Nylzo then refuses to start until it is off again.
-- Watch for `epoch-seed-created` (`docker compose logs nylzo | grep epoch-seed-created`). Outside the first start and your planned reboots it means the host restarted unexpectedly or someone emptied `/run/nylzo/epoch`.
-- Docker starts its containers before network time sync (Docker's own `docker.service` orders after `time-set.target`, not `time-sync.target`), and the new seed starts at the clock it finds. Check `timedatectl` after a reboot; [Expiry keys](Operations.md#expiry-keys) describes what a clock step does to messages.
+- Reboot only when an update needs it, such as a new kernel, at a quiet time. With unattended upgrades, leave `Unattended-Upgrade::Automatic-Reboot` off or set `Unattended-Upgrade::Automatic-Reboot-Time` to your window.
+- After a reboot, check that `swapon --show` prints nothing and that `timedatectl` reports a synchronised clock.
+- An unplanned `epoch-seed-created` in `docker compose logs nylzo` means that the host restarted or someone emptied `/run/nylzo/epoch`.
 
-## Upgrade and rotate keys
+Never copy the seed to save messages: a copy, a link and a stored message together open that message at any later time.
 
-Keep both images, the Caddyfile, `compose.yaml` and `check-isolation` from the same release: the `nylzo_frontend` directive and the `nylzo_crawler_tls` option need Nylzo's Caddy build, and `compose.yaml` starts it with `--adapter nylzo`. An older or upstream-only Caddy rejects either, and the plain Caddyfile adapter refuses the option. If you serve another host name from the same site block, such as `www`, name it in `nylzo_crawler_tls` too, or the adapter refuses the Caddyfile. The `contact` lines of `nylzo_frontend` and `nylzo_error` take `NYLZO_CONTACT` too, so the pages Caddy serves may link the operator's contact; give the Caddy container the same value as the server. Verify both new images against their exact tag, update the digest-pinned `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE`, run `docker compose up -d` and then `sudo bash check-isolation`. Do not overwrite the pepper. Read the [operations guide](Operations.md#logging-and-upgrades) for schema compatibility.
+## Upgrade
 
-Deployments set up before Nylzo 0.14.0 keep the seed in `epoch/` inside `nylzo-data`. The new `compose.yaml` needs Nylzo 0.14.0 or later, which refuses to start while that directory is still there. Prepare `/run/nylzo/epoch` and swap as described above, put the new `compose.yaml` in place, and move the seed:
+Take both images, `compose.yaml`, `Caddyfile`, `check-isolation` and `nylzo-epoch.conf` from the same release. If you serve another host name from the same site block, such as `www`, add it to `nylzo_crawler_tls`.
+
+1. Verify the new release and put its references into `.env`. Leave `secrets/pepper` as it is.
+2. Ask the new image whether it can open your data. The check writes nothing and exits with 1 where the server would refuse to start.
 
 ```sh
-{ test -z "$(swapon --show --noheadings)" || sudo findmnt -n -o OPTIONS --target /run/nylzo/epoch | grep -qw noswap ||
-    { echo 'Turn swap off or mount /run/nylzo/epoch with noswap first.' >&2; false; }; } &&
-  { sudo test ! -e /run/nylzo/epoch/seed || { echo '/run/nylzo/epoch already holds a seed.' >&2; false; }; } &&
-  data=$(docker volume inspect --format '{{.Mountpoint}}' nylzo_nylzo-data) &&
-  { sudo test -f "$data/epoch/seed" -a ! -L "$data/epoch/seed" || { echo "No seed file in $data/epoch." >&2; false; }; } &&
-  docker compose stop nylzo &&
-  sudo cp --preserve=mode,ownership "$data/epoch/seed" /run/nylzo/epoch/seed &&
-  sudo cmp "$data/epoch/seed" /run/nylzo/epoch/seed &&
-  sudo find "$data/epoch" -type f -exec shred --zero --iterations=0 --remove=unlink {} + &&
-  sudo rmdir "$data/epoch" &&
-  docker compose up -d
+image=$(sed -n 's/^NYLZO_IMAGE=//p' .env)
+docker run --rm --user 65532:65532 --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges:true --ulimit memlock=-1:-1 --ulimit core=0:0 \
+  --env NYLZO_DATA_DIR=/home/nonroot --env NYLZO_EPOCH_DIR=/run/nylzo-epoch \
+  --volume nylzo_nylzo-data:/home/nonroot:ro --volume /run/nylzo/epoch:/run/nylzo-epoch:ro \
+  "$image" store-check
 ```
 
-The commands stop at the first failure, and they erase the old seed only once the copy matches it. The copy keeps the live messages until the next reboot. `shred` overwrites every file in `epoch/` where it lies on ext4 or XFS before removing it; a plain `mv` to the tmpfs would leave its blocks on the disk. Then delete every backup and snapshot that holds `epoch/`: with a link, each one still opens every message that was live when it was taken. Do not go back to a `compose.yaml` without `NYLZO_EPOCH_DIR`, because Nylzo would then start a new seed inside `nylzo-data`.
+3. Run `docker compose up -d`, then `sudo bash check-isolation`.
 
-A deployment that still runs the official `caddy` image must also take the new `compose.yaml` and create `caddy-state` as shown above. Caddy then runs as UID 65533, keeps its state in that directory and requests a new certificate on first start. Once HTTPS works, remove the old volumes with `docker volume rm nylzo_caddy-data nylzo_caddy-config`.
+Never go back to an older release once a newer one has started on your data.
 
-A deployment whose `compose.yaml` still has a single `nylzo` network moves to `backend` and `edge` with the same `docker compose up -d`, which recreates both containers and needs Docker Engine 28.0 or newer. The old network stays behind without containers, and Compose no longer manages it: delete it with `docker network rm nylzo_nylzo`. To keep subnets you chose for it, run `docker compose down` before you replace `compose.yaml`, because Docker refuses a new network whose ranges an existing one holds; `down` keeps the `nylzo-data` volume. Host scripts that reached Nylzo at its container address stop working, since the host has no address on `backend`.
+### From 0.13 to 0.14
 
-Nylzo 0.14.0 and later take no abuse reports. The first start erases the reports that an earlier release stored in `nylzo-data` and logs `reports-erased`; `nylzo store-check` says so beforehand. Nylzo ignores a `NYLZO_REPORT_KEY` left in `.env`, so you can remove it.
+The first start of 0.14.0 erases every stored message, the 0.13 seed and any stored abuse reports, so every earlier link stops working. CLIs before 0.14.0 get `client_outdated`. Copying the old seed keeps nothing, since 0.14.0 erases a 0.13 seed wherever it finds one, and it refuses to start while the old `epoch` directory is still in `nylzo-data`.
 
-The Caddyfile requests ordinary 90-day certificates. To match the Hetzner profile, add `issuer acme { profile shortlived }` to the site's `tls` block for 160-hour certificates, and alert on certificate expiry. Publish CAA `issue "letsencrypt.org; validationmethods=http-01,tls-alpn-01; accounturi=…"` and `issuewild ";"` for your domain, and turn off any CDN-managed certificates for it.
+1. Tell your users when open messages will be deleted and that they need CLI 0.14.0 or later.
+2. Install Docker Engine 28.0 or newer, the tmpfiles entry and the swap settings from [Prepare the host](#prepare-the-host). Verify the 0.14 images.
+3. Turn on maintenance mode and stop Nylzo: `sudo touch caddy-state/maintenance && docker compose stop nylzo`.
+4. Erase the old seed directory in place, since `rm` or `mv` would leave its blocks on the disk:
 
-For pepper rotation, keep the previous pepper as a second Docker secret and configure `NYLZO_PEPPER_PREVIOUS_FILE`, then generate the new pepper. The first start with both seals every stored message with the new pepper. Retain the previous pepper for seven days so passphrase checks and leases of live messages still verify. See [Operations](Operations.md#configuration).
+```sh
+data=$(docker volume inspect --format '{{.Mountpoint}}' nylzo_nylzo-data)
+sudo find "$data/epoch" -type f -exec shred --zero --iterations=0 --remove=unlink {} +
+sudo rmdir "$data/epoch"
+```
 
-The example's retention policy does not back up message content. Keep configuration and pepper backups separate from message data. Review your own retention policy before adding database, volume, or host-level backups. The epoch seed stays out of them because it lives on tmpfs, never in `nylzo-data`; never copy `/run/nylzo/epoch` into a backup. A copy of the seed, together with a link and a copy of the message, opens at any later time every message that was live when the copy was taken or whose id the server issued in the rest of that hour. See [Expiry keys](Operations.md#expiry-keys).
+5. Copy in the new release's files, put its references into `.env` and delete `NYLZO_REPORT_KEY`, which 0.14 ignores.
+6. Run the `store-check` above. It should report that the server upgrades the store and erases every message, and that there is no seed.
+7. Run `docker compose up -d` and `docker network rm nylzo_nylzo` for the old network, then `sudo bash check-isolation` and `sudo rm caddy-state/maintenance`.
 
-## Choosing a runtime for a new VPS
-
-For a dedicated Nylzo VPS, rootless Podman managed by systemd Quadlet is a reasonable alternative to the tested Compose example. Caddy can run as a host service and proxy to Nylzo's loopback-only published port. This keeps application containers under a dedicated unprivileged account and uses the host's service manager for startup, restart policy, and resource limits.
-
-Rootless Quadlet requires the user's unit search path and a working user service manager, normally with lingering enabled for the dedicated service account. Adding `User=` or `DynamicUser=` to a rootful Quadlet does not make the container rootless. Use a supported Podman release and cgroup v2. Keep the default seccomp profile and the distribution's AppArmor or SELinux policy enabled.
-
-Carry over the Compose protections: a digest-pinned verified image, read-only root filesystem, no capabilities, no new privileges, explicit memory/process limits, one writable data volume, the epoch seed on host tmpfs, a separately managed pepper secret, and a network that gives Nylzo no route out, such as a Podman `--internal` network. Publishing a port does not limit where Nylzo can connect. Rootless UID mappings differ from host UIDs; do not copy the Compose `chown 65532` command or the tmpfiles entry to a rootless deployment. Confirm the observed proxy address and forwarding-header behavior before configuring the exact trusted proxy. Never expose Nylzo's backend port publicly.
-
-Expose only HTTPS and the ports needed for certificate issuance. Restrict administrative SSH to a VPN or an explicit firewall allowlist, use a dedicated administrator account and strong SSH authentication, and disable password/root SSH login after testing access. Apply supported OS security updates, monitor disk space and health, and keep encrypted backups off the VPS. Test restoration of both application data and the pepper. A live SQLite database needs a consistent backup procedure; copying only its database file can lose WAL state.
-
-A pull-based deployment agent can check for a new image digest, verify its Cosign signature and GitHub provenance against a published immutable release, and update the Quadlet's pinned image reference. Give GitHub no root or SSH credential for the VPS. Check health and reported version after a restart, and define rollback rules around database compatibility and a tested backup. The Nylzo repository does not yet provide a tested Quadlet deployment or production updater.
-
-Coolify offers a convenient deployment dashboard, but it also adds a control plane and privileged server access to maintain. Its own security documentation requires separate host hardening, patching, and workload backups. For one Nylzo instance, choose a dashboard only if its operational convenience justifies that additional component.
-
-- [Podman: Quadlet and rootless units](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)
-- [Caddy: automatic HTTPS](https://caddyserver.com/docs/automatic-https)
-- [Coolify: security model](https://coolify.io/docs/core/security-model)
+The log then shows `store-upgraded` and `epoch-seed-created`, plus `reports-erased` if 0.13 stored abuse reports. Delete any backup or snapshot of `nylzo-data` from before the upgrade: it holds the old seed and messages.

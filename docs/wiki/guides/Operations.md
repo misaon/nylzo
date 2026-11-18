@@ -1,135 +1,142 @@
-# Operating Nylzo
+# Operations
 
-For a deployment with TLS, start with [Self-hosting](Self-hosting.md). This reference covers the server configuration, SQLite database, and file storage.
+This reference helps whoever runs a Nylzo server configure, monitor and troubleshoot it. For a first deployment start with [Self-hosting](Self-hosting.md) or [Hetzner and Flatcar](Hetzner-Flatcar.md).
 
-## Start a local server
+## What the server needs
 
-`mise run dev` provisions development keys automatically. To configure a server manually after `mise run build`, generate a pepper:
+`nylzo serve` refuses to start unless all of these hold:
 
-```sh
-umask 077 && openssl rand -hex 32 > "$HOME/nylzo-pepper"
-export NYLZO_PEPPER_FILE="$HOME/nylzo-pepper"
-```
+- It runs on Linux from a build with `GOEXPERIMENT=runtimesecret` for linux/amd64 or linux/arm64, which erases request keys from memory. Release builds are.
+- The data and epoch directories lie on ext4 without `data=journal`, XFS or tmpfs, where an overwrite lands in place.
+- It can lock its memory: `LimitMEMLOCK=infinity` in systemd, `--ulimit memlock=-1:-1` in Docker, `ulimits: memlock: -1` in Compose, or `CAP_IPC_LOCK` outside a user namespace.
+- `NYLZO_PEPPER_FILE` is set, and a directory named in `NYLZO_EPOCH_DIR` exists.
+- No swap is active while the epoch directory is on a tmpfs, unless the tmpfs has `noswap`.
 
-Then run:
-
-```sh
-bin/nylzo serve
-curl -fsS http://localhost:8080/api/v1/instance
-```
-
-Store the pepper securely; the server reads it only from a file that group and others cannot read. Losing it makes existing tokens unverifiable and live messages inaccessible; `serve` then logs `rows-unopenable`.
-
-The server listens on `127.0.0.1:8080` over plain HTTP and stores `nylzo.db`, `admin.db` and `blobs/` in `./data`. Set `NYLZO_LISTEN=:8080` for a container or remote proxy and terminate TLS at a trusted proxy. The server warns with `plain-http-listener` outside loopback. The server needs Linux with the data directory on ext4 (`data=ordered` or `data=writeback`), XFS or tmpfs, which overwrite a file in place, so a deletion leaves no readable copy; it refuses btrfs, ZFS, overlayfs, network file systems and every system other than Linux. `serve` also locks its memory against swap and refuses a finite memlock limit, which would let it start and then fail under load: `LimitMEMLOCK=infinity` in a systemd unit, `docker run --ulimit memlock=-1:-1` or `ulimits: memlock: -1` in Compose, or `CAP_IPC_LOCK` outside a user namespace (with Docker's `userns-remap` or a rootless runtime only the memlock limit counts). It also refuses a binary built without `GOEXPERIMENT=runtimesecret` for linux/amd64 or linux/arm64, since only that build erases request keys from memory after use; the release binaries and images are built that way. On a development machine, macOS included, `NYLZO_ALLOW_UNERASABLE_STORAGE=1`, `NYLZO_ALLOW_SWAP=1` and `NYLZO_ALLOW_UNERASED_MEMORY=1` start it anyway; `mise run dev` sets all three. On Windows use WSL.
-
-The web client must be built before the Go binary to embed it. `mise run build` does both. Without the client in `internal/server/web/dist`, the server embeds a placeholder page.
+A systemd unit also needs `LimitCORE=0`. The server speaks plain HTTP: put a TLS proxy in front and name it in `NYLZO_TRUSTED_PROXIES`.
 
 ## Configuration
 
-| Variable                                                                         | Default                 | Meaning                                                                                                                                                                                       |
-| -------------------------------------------------------------------------------- | ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NYLZO_PEPPER_FILE` | Required by `serve` | File with the pepper, 32 bytes in hex or base64url, such as a Docker secret; mode 600 or 400; a trailing newline is ignored and an all-equal-byte value is rejected. `NYLZO_PEPPER` in the environment is refused |
-| `NYLZO_PEPPER_PREVIOUS_FILE` | Empty | File with the previous pepper during rotation. At start `serve` seals every stored message with the current pepper; retain the previous one for seven days, the longest a message lives: messages registered under it still open, because their OPAQUE keys come from it, and while the previous pepper is missing, a handshake for such a message counts nothing, answers 503 and logs `registration-pepper-missing` until the pepper is configured again. `NYLZO_PEPPER_PREVIOUS` is refused |
-| `NYLZO_ALLOW_SWAP` | Empty | `1` starts `serve` without locking its memory or the epoch seed file, for a development machine only; for every other command it hides the [swap warning](CLI.md#process-protection) |
-| `NYLZO_ALLOW_UNERASABLE_STORAGE` | Empty | `1` starts on a file system that may keep overwritten data; for a development machine only |
-| `NYLZO_ALLOW_UNERASED_MEMORY` | Empty | `1` starts `serve` from a build that does not erase request keys from memory; for a development machine only |
-| `NYLZO_LISTEN`, `PORT`                                                           | `127.0.0.1:8080`        | Listener address; a hosting platform's `PORT` means listening on all interfaces                                                                                                               |
-| `NYLZO_DATA_DIR`                                                                 | `data`                  | SQLite and blobs; the filesystem must support hard links and directory fsync                                                                                                                  |
-| `NYLZO_EPOCH_DIR`                                                                | `$NYLZO_DATA_DIR/epoch` | The epoch seed of cryptographic expiry; see [Expiry keys](#expiry-keys)                                                                                                                       |
-| `NYLZO_TRUSTED_PROXIES`                                                          | Empty                   | Proxy CIDRs allowed to supply `X-Forwarded-For`                                                                                                                                               |
-| `NYLZO_EDGE_REPORTS`                                                             | Off                     | `1` when the trusted proxy is the nylzo Caddy frontend, which reports the pages it serves for the visit count; leave unset behind any other proxy                                             |
-| `NYLZO_PROXY_MODE`                                                               | Empty                   | `scaleway` reads a single `X-Real-IP`, subject to the trust rules below                                                                                                                       |
-| `NYLZO_SWEEP_INTERVAL`                                                           | `5m`                    | Built-in cleanup interval; `0` disables it, negative values are invalid                                                                                                                       |
-| `NYLZO_MAX_STREAMS`                                                              | `256`                   | Maximum concurrent claim/blob streams; overflow returns 503 with `Retry-After: 5` without consuming an open                                                                                   |
-| `NYLZO_MIN_FREE_BYTES`                                                           | `1073741824`            | Reserved disk space (1 GiB) after pending uploads; `0` disables the check                                                                                                                     |
-| `NYLZO_MAX_FILE_BYTES`                                                           | `5242880`               | File limit; may only be lowered from the protocol maximum                                                                                                                                     |
-| `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL`                                             | `168h`, `24h`           | Maximum/default expiration; allowed range is 60 seconds to seven days                                                                                                                         |
-| `NYLZO_MAX_OPENS`                                                                | `10`                    | Maximum permitted opens, capped at 100                                                                                                                                                        |
-| `NYLZO_RATE_CREATE_HOUR`, `NYLZO_RATE_CREATE_DAY`, `NYLZO_RATE_CREATE_BYTES_DAY` | `20`, `100`, `50000000` | Creation limits per source address bucket; `0` disables the corresponding limit                                                                                                               |
-| `NYLZO_RATE_COARSE_MULTIPLIER`                                                   | `5`                     | Multiplier for coarse address buckets; `0` disables coarse limits                                                                                                                             |
-| `NYLZO_RATE_READ_HOUR`                                                           | `300`                   | Metadata, claim, blob, ack, burn, cancel and status per source bucket                                                                                                                                            |
-| `NYLZO_RATE_READ_BYTES_HOUR`                                                           | `268435456`             | Object bytes of claims and downloads per source bucket and hour; 0 or at least the largest object                                                                                                                                            |
-| `NYLZO_RATE_SOURCE_RPS`, `NYLZO_RATE_SOURCE_BURST`                               | `10`, `20`              | In-memory source token bucket for `/api/*`                                                                                                                                                    |
-| `NYLZO_RATE_BUCKET_RPS`, `NYLZO_RATE_BUCKET_BURST`                               | `500`, `1000`           | Instance-wide in-memory token bucket for `/api/*`, shared fairly among /24 and /48 ranges when under half full                                                                                                                                           |
-| `NYLZO_GLOBAL_DAILY_CREATES`                                                     | `0`                     | Global daily creation cap; `0` disables it. Proof of work starts at 50%; 100% returns 503. Each /24 or /48 may take a twentieth a day and each /16 or /32 a fifth, at least 10.                                                                                                    |
-| `NYLZO_OPERATOR`, `NYLZO_CONTACT`, `NYLZO_HOSTING`                               | Empty                   | Transparency-page operator, email or HTTPS contact, and hosting description; a Caddy front needs the same `NYLZO_CONTACT`, because every page's `Connection-Allowlist` admits the contact; each is at most 200 bytes without control characters                                                             |
-| `NYLZO_PUBLIC_URL`                                                               | Empty                   | Public origin for canonical URLs, language links and social previews; only `https://nylzo.com` also gets indexable home pages and a sitemap. HTTPS, lowercase host, optional port, no path or trailing slash. HTTP is accepted only for localhost/loopback |
-| `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY`                                  | `4`, `4`                | Proof-of-work difficulty (maximum 8) and concurrent verification (maximum 4); each verification uses 16 MiB                                                                                   |
+A source is an IPv4 address or IPv6 /64, a range an IPv4 /24 or IPv6 /48. Durations take seconds or values such as `24h`. See [config.go](../../../internal/server/config/config.go).
 
-## Proxy trust and limits
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `NYLZO_PEPPER_FILE` | required | Pepper file, 32 bytes in hex or base64url, mode 600 or 400 |
+| `NYLZO_PEPPER_PREVIOUS_FILE` | unset | Previous pepper during a [rotation](#rotate-the-pepper) |
+| `NYLZO_LISTEN` | `127.0.0.1:8080` | Listen address; without it, a platform's `PORT` means `:PORT` |
+| `NYLZO_DATA_DIR` | `data` | `nylzo.db`, `admin.db` and `blobs/`; use an absolute path |
+| `NYLZO_EPOCH_DIR` | `$NYLZO_DATA_DIR/epoch` | Epoch seed; put it on a tmpfs |
+| `NYLZO_PUBLIC_URL` | unset | Public origin such as `https://nylzo.example` |
+| `NYLZO_TRUSTED_PROXIES` | unset | Proxy addresses or CIDRs allowed to set `X-Forwarded-For` |
+| `NYLZO_PROXY_MODE` | unset | `scaleway` reads one `X-Real-IP` from a trusted or private address |
+| `NYLZO_EDGE_REPORTS` | off | `1` only behind Nylzo's Caddy, which reports visits |
+| `NYLZO_OPERATOR`, `NYLZO_CONTACT`, `NYLZO_HOSTING` | unset | Transparency page, up to 200 bytes each; contact is one e-mail or `https://` address, the same for Caddy |
+| `NYLZO_GLOBAL_DAILY_CREATES` | `0` (off) | Messages per UTC day. Past half the cap proof of work rises, and at the cap creation answers 503. A range may take a twentieth, an IPv4 /16 or IPv6 /32 a fifth |
+| `NYLZO_MAX_TTL`, `NYLZO_DEFAULT_TTL` | `168h`, `24h` | Longest and default lifetime, 60 seconds to seven days |
+| `NYLZO_MAX_OPENS` | `10` | Opens per message, up to 100 |
+| `NYLZO_MAX_FILE_BYTES` | `5242880` | Attachment limit; can only go lower |
+| `NYLZO_RATE_CREATE_HOUR`, `NYLZO_RATE_CREATE_DAY`, `NYLZO_RATE_CREATE_BYTES_DAY` | `20`, `100`, `50000000` | Creations per source; `0` turns one off |
+| `NYLZO_RATE_READ_HOUR`, `NYLZO_RATE_READ_BYTES_HOUR` | `300`, `268435456` | Message requests and bytes read per source and hour |
+| `NYLZO_RATE_COARSE_MULTIPLIER` | `5` | Range limits as a multiple of source limits; `0` turns them off |
+| `NYLZO_RATE_SOURCE_RPS`, `NYLZO_RATE_SOURCE_BURST` | `10`, `20` | API requests per source |
+| `NYLZO_RATE_BUCKET_RPS`, `NYLZO_RATE_BUCKET_BURST` | `500`, `1000` | API requests for the instance |
+| `NYLZO_POW_DIFFICULTY`, `NYLZO_POW_CONCURRENCY` | `4`, `4` | Proof-of-work difficulty (0 to 8) and parallel checks (1 to 4, 16 MiB each) |
+| `NYLZO_MAX_STREAMS` | `256` | Concurrent uploads and downloads, up to 1024 |
+| `NYLZO_MIN_FREE_BYTES` | `1073741824` | Free disk to keep; below it creation stops |
+| `NYLZO_SWEEP_INTERVAL` | `5m` | Cleanup interval; `0` leaves cleanup to `sweep-once` |
+| `NYLZO_ALLOW_SWAP`, `NYLZO_ALLOW_UNERASABLE_STORAGE`, `NYLZO_ALLOW_UNERASED_MEMORY` | unset | `1` skips a start check, on development machines only |
+| `GOMEMLIMIT` | `192MiB` | Go memory limit; set about half the container's memory |
 
-Configure `NYLZO_TRUSTED_PROXIES` or `NYLZO_PROXY_MODE` behind a reverse proxy. Otherwise clients share the proxy's address bucket. The server counts `forwarded-header-ignored` warnings and writes them with the hourly counts, naming only the ignored header. This can also be triggered by a client sending forwarding headers outside a trusted proxy.
+## Operator commands
 
-In `scaleway` mode, `X-Real-IP` must occur exactly once. With `NYLZO_TRUSTED_PROXIES`, the connection must match one of those CIDRs; without it, only loopback, link-local, private, and CGNAT source addresses are accepted. Use this mode only when every request passes through the intended ingress. That ingress belongs to the provider, so whether it records request headers is the provider's choice: check its logging settings, because protocol §10 forbids recording these headers too.
+Run them on the server host with the same environment as `serve`.
 
-Source buckets use IPv4 /32 or IPv6 /64; coarse buckets use /24 or /48. A request rejected by a source creation limit does not count toward the coarse limit. A coarse API token bucket has half the instance capacity, and while the instance bucket is under half full each /24 or /48 gets its share of it, the rate divided by the active ranges plus one, also when the ranges outnumber the requests per second. One source can hold at most two streaming slots; one coarse range can hold at most four. Every 64 KiB of an upload or download must move within 14 seconds, so a client that stops reading or sending loses its slot within seconds.
+| Command | What it does |
+| --- | --- |
+| `store-check` | Says, without writing, whether this build opens, upgrades or refuses the data; exits 1 where `serve` would refuse. Run it before every upgrade |
+| `sweep-once` | One cleanup run for an external scheduler; upgrade it together with `serve` |
+| `takedown` | Removes the messages whose ids it reads one per line from stdin; readers see them as deleted. A line that is not an id rejects the whole input |
+| `admin-enroll`, `admin-passkeys`, `admin-reset` | Manage the [admin area](#admin-area) |
 
-Address-based limits are in memory, keyed with a random key that the process draws at start and again every UTC day; every minute it drops buckets that no longer limit anything. Addresses are not stored in the database, backups, logs, or pepper. These limits apply per process and reset on restart. While the [admin area](#admin-area) has a passkey, the process also keeps the /32 or /64 of each client a limit refused, in memory, for an hour after its last refusal, so the operator can see it. The global daily cap, proof of work, and passphrase backoff are persisted and shared between instances using the database.
+## Keys
 
-The daily cap reserves space atomically after proof of work and releases it on failure. A 503 may recommend retrying in 60 seconds while uploads hold reservations, including reservations left by a crashed process; that can continue until the UTC day ends. When stored messages fill the cap, the response recommends waiting until the next day. Proof-of-work challenges can be used only once.
+The pepper is a 32-byte server secret that seals stored records and derives passphrase-check keys. Losing it closes every stored message. A leaked pepper plus a copy of the data allows offline passphrase guessing.
 
-## Storage, memory, and cleanup
+The epoch seed is the file `seed` in `NYLZO_EPOCH_DIR`. `serve` starts a generation from fresh entropy every hour and moves every generation forward each minute, so the seed needs no rotation. After a message's deadline, the server can no longer produce its key share. If the file is lost, `serve` starts a new one and every live message ends.
 
-Use a local ext4 (`data=ordered` or `data=writeback`), XFS or tmpfs file system on Linux. A deleted message is erased by overwriting a 4 KiB block at the start of its blob file where it lies, so file systems that write changes to new blocks (btrfs, ZFS, F2FS), overlay and network file systems are refused. So is ext4 that journals file data, whether through `data=journal` in the mount options, the superblock default (`tune2fs -o journal_data`) or `chattr +j` on the data directory, a blob directory or a file, and tmpfs while swap is active. Put the data directory on a Docker volume or bind mount, never in a container's writable layer. `serve`, `sweep-once` and `takedown` check this at start. Keep the data directory private and outside shared locations.
+### Rotate the pepper
 
-Database files, including WAL and SHM files, are created with mode 0600. At startup, the server checks ownership and permissions of the data directory, database, and blobs. It narrows its own files/directories to 0600/0700 and logs `permissions-narrowed`. It rejects foreign ownership or symbolic links. Pepper files readable by the group or others are rejected. SQLite uses `secure_delete` and checkpoints each transaction. The WAL file keeps its size and is never deleted, and after every deletion and sweep the server overwrites all of its frames with zero pages from the `wal_scrub` table, so neither the WAL nor free disk space keeps an older version of a row. This adds disk synchronizations. Do not open the database with another SQLite client while the server runs; a client without persistent WAL mode deletes the WAL when it closes. `admin.db` holds the admin area's passkeys and counts and no message data. It uses `secure_delete` and, in place of a WAL, a rollback journal that SQLite keeps as a file and the server overwrites with zeros after every write, so no older version of a row stays behind in the files or in free space. When it cannot be opened, the server logs `admin-store-unavailable` and runs without the admin area and without counting; messages are not affected.
+1. Keep the current pepper as the previous one and point `NYLZO_PEPPER_PREVIOUS_FILE` at it.
+2. Write a new pepper to `NYLZO_PEPPER_FILE`. If `serve` says both share a `pepper_id`, generate it again.
+3. Restart. `serve` reseals every record with the new pepper and logs `rows-sealed`.
+4. After seven days, the longest a message lives, remove the previous pepper and restart.
 
-Without an explicit `GOMEMLIMIT`, `serve` sets a soft Go memory limit of 192 MiB for a 256 MB container; set `GOMEMLIMIT` to about half of a larger container's memory limit, as the Hetzner profile does with 512 MiB of 1 GiB, because `serve` locks every page it touches and never returns one to the system, and SQLite allocates outside that limit. SQLite's cache is outside that limit and is limited to 512 KiB per connection. The server also keeps every request challenge it issued until a request uses it or it can no longer be used, about 54 bytes each: at most 94,000 (about 4.8 MiB, about 19 MiB if all came from handshakes) with the default instance bucket. The table has room for twice what the instance bucket can issue in 186 seconds, 188,000 challenges at the defaults (about 10 MiB), and for at least 131,072; a higher `NYLZO_RATE_BUCKET_RPS` or `NYLZO_RATE_BUCKET_BURST` raises both in proportion. Past that room, challenge requests answer 503. Cleartext HTTP/2 buffers at most 64 KiB of unread request data per stream and 1 MiB per connection. `serve`, `sweep-once`, `store-check` and `takedown` disable core dumps, refuse to run under a debugger and keep other processes of the same user out of their memory, as the [CLI guide](CLI.md#process-protection) describes for each system. `serve` locks its memory against swap and refuses to start without the lock (see above for the memlock limit); `sweep-once`, `store-check` and `takedown` lock it when the limit allows and otherwise warn about unencrypted swap. Every API request runs in the secret mode of Go's `runtime/secret`, which the release build enables. The deployment profiles also forbid core dumps (`ulimit core=0`); a systemd unit that runs `nylzo serve` directly needs `LimitCORE=0`.
+In Compose, add a second secret, run `sudo mv secrets/pepper secrets/pepper.previous`, create a new pepper as in [Self-hosting](Self-hosting.md#prepare-the-host) and run `docker compose up -d`:
 
-Cleanup runs every five minutes. For an external scheduler, set `NYLZO_SWEEP_INTERVAL=0` and run:
-
-```sh
-bin/nylzo sweep-once
+```yaml
+services:
+  nylzo:
+    environment:
+      NYLZO_PEPPER_PREVIOUS_FILE: /run/secrets/nylzo_pepper_previous
+    secrets: [nylzo_pepper, nylzo_pepper_previous]
+secrets:
+  nylzo_pepper_previous:
+    file: ./secrets/pepper.previous
 ```
 
-Use an absolute `NYLZO_DATA_DIR`. `sweep-once` needs an existing database and blob directory, does not create them, and does not need the pepper. Upgrade the server before upgrading a separately scheduled cleanup image.
+## Logs
 
-## Expiry keys
+The server writes JSON lines to stderr with timestamps rounded to the minute, and no line per request. Every hour it writes one `requests` line per method, route and status with a count, and its error counts, which can lag up to two hours. It never logs message ids, paths, client addresses, `Authorization` or `X-Nylzo-*` headers, or bodies.
 
-A version 2 message opens only with a key share that the server computes from the epoch key of the last minute before the message's deadline. The server fixes the deadline when it issues the message id, as the TTL from then rounded up to the minute, and the message expires at that same instant. Every hour starts a generation with a seed drawn from fresh entropy, and the ids issued in that hour take their shares from it. Every minute the server moves each generation's seeds forward, drops generations whose messages have all expired, overwrites the seed file in place and keeps nothing older. Once a message's deadline has passed, nothing on the server can produce its share again. A copy of the server taken after the deadline, or earlier without the seed file, then opens nothing of the message, even with the link. A copy that holds the seed file does: a disk image or backup opens, together with their links, the messages that were live when it was taken and those whose id the server issued later in the same hour. It predicts nothing of messages whose id was issued in a later hour ([protocol §5.6](../reference/Protocol.md#56-expiry-shares)).
+Keep every proxy, CDN and tracing agent in front of Nylzo from recording headers or paths. With the link, a logged `X-Nylzo-Lease` downloads a message without spending an open. `serve` refuses `GODEBUG=http2debug=1` or `=2`.
 
-- The seeds are in the 24576-byte file `seed` in `NYLZO_EPOCH_DIR`, one 128-byte slot for each of at most 170 generations. `serve` creates it in a directory that holds none and logs `epoch-seed-created`, and rewrites it at the start of every minute; `sweep-once` moves it forward to the current minute but never creates one. A process locks the file while it uses it.
-- A host where `serve` does not run keeps the seeds of the minute in which the file last moved, and with them the shares of messages that expired since. Schedule `sweep-once` there as often as you can; every run erases them.
-- Epochs are minutes, so the clock matters to the minute. A clock that steps back by more than a minute makes `serve` answer new ids with 503 until it catches up, because the ratchet never goes back; a clock that steps forward ends the messages whose deadline it skips at once. Run a time sync that slews small corrections instead of stepping the clock.
-- Every message seals its deadline into the envelope. A `nylzo` CLI before 0.14.0 can neither create nor read messages: the server answers `client_outdated` before a read spends an open. Tell users to update the CLI together with the server.
-- The file must belong to the user that runs nylzo with mode 0600 or 0400, and neither it nor the directory may be a symbolic link. `serve` narrows the directory to 0700 and refuses to start otherwise.
-- When `NYLZO_EPOCH_DIR` names a directory that does not exist, `serve` refuses to start, because an epoch volume that failed to mount looks the same. Without the variable the seed lives in `epoch` inside the data directory, which `serve` creates.
-- When `NYLZO_EPOCH_DIR` names another directory, `serve` and `store-check` refuse to start while the data directory still has an `epoch` directory, whatever it holds. Nothing moves a seed there forward any more, under any file name, so every backup of the data directory would keep the shares of the messages that were live when it was last written. Stop the server. To keep the live messages, copy `epoch/seed` into `NYLZO_EPOCH_DIR` while that directory holds no seed. Then erase every file in `epoch` in place, for example with `shred --zero --iterations=0 --remove=unlink`, and remove the directory; a `mv` to another file system leaves the old blocks on the disk. The [Self-hosting guide](Self-hosting.md#upgrade-and-rotate-keys) has the commands for Compose.
-- `blobs/tmp` holds a pool of empty files that uploads write into, so a file's birth time never dates an upload: between 1024 and 65536 of them, sized from `NYLZO_GLOBAL_DAILY_CREATES`, the sweep interval and the longest TTL. The first start creates the whole pool, and every sweep adds a batch and removes random ones above the size. At most 16 file operations per process run at once.
-- The directory must be on a file system that overwrites in place: ext4 with `data=ordered` or `data=writeback`, XFS or tmpfs on Linux. The server refuses any other. `NYLZO_ALLOW_UNERASABLE_STORAGE=1` skips the check on a development machine and logs `storage-not-erasable`.
-- Never back up, snapshot or restore the seed. A copy of it, together with a link and a copy of the message, opens any message that was live when the copy was taken or whose id the server issued in the rest of that hour; a restored older seed file does the same for every such message that expired since. Leave the epoch directory out of volume and host backups.
-- Recommended: a tmpfs, such as a directory under `/run` that belongs to the user that runs nylzo, with mode 0700. No disk image or backup then holds the seed. The cost is that a host reboot ends every live message, as a lost seed does (below); restarting or updating the server keeps them as long as the directory stays. Reboot the host only when it needs one, such as for an operating system update, and at a time when few messages are waiting to be opened, as the [Self-hosting guide](Self-hosting.md#reboots) describes. A tmpfs page can go to swap, so `serve` refuses a tmpfs while any swap is active, encrypted or not, unless the tmpfs is mounted with `noswap` (Linux 6.4 or later). While it runs, `serve` on Linux locks the pages of the seed file in memory, so swap turned on later does not receive them, and every sweep logs `epoch-storage-not-erasable` once the directory would no longer pass the start check. Hibernation writes all memory to swap, locked pages and `noswap` included, so turn it off on such a host. A virtual machine snapshot that saves memory holds the seed as well. The default inside the data directory survives reboots, and every disk image or backup of the data directory holds the seed; `serve` logs `epoch-seed-on-disk` at start whenever the seed is not on a tmpfs. The Compose example keeps it in `/run/nylzo/epoch` on the host, inside a directory only root can enter, and the Hetzner profile in `/run/nylzo-epoch`.
-- The first start of Nylzo 0.14.0 or later erases every message of an earlier release ([Protocol §15](../reference/Protocol.md)), so `serve` also overwrites and removes the 4096-byte seed file of that release and starts a new ratchet; `nylzo store-check` reports such a file as a seed of a release before 0.14.0. Earlier releases refuse the new file as damaged. Upgrade a separately scheduled `sweep-once` together with `serve`.
-- If the seed file is lost, `serve` starts a new ratchet and logs `epoch-seed-created`. Every live message then ends. The first request about it, the sender's status or a reader opening the link, ends it as `lost` and erases its blob, so the sender and the reader learn that the link no longer opens and that the sender has to send the message again. New messages work at once. A `nylzo` CLI before 0.14.0 does not know the state `lost` and reports a malformed response for such a message, and a web page loaded before the upgrade shows a general error until it is reloaded. A damaged seed file stops the server with an error instead; remove it only if you accept that the live messages end.
+## Monitoring and alerts
 
-## Logging and upgrades
+- Probe `https://your-domain/healthz`; it answers during maintenance too.
+- Run `nylzo verify-client --server https://your-domain` with the CLI of the running release to check the served web client against the signed release.
+- Alert on low disk space and the events marked in [Troubleshooting](#troubleshooting).
 
-The server writes no line per request. At the start of an hour, once a window of at least an hour has passed, it writes one `requests` line per method, route pattern and status with the count of that window, so neither line timestamps nor line order reveal when a request ended or how long it took. The message routes count together as `message` by status class. Errors about requests and messages, a full disk included, are counted and written with the same lines, so they can appear up to two hours late, and the counts of the last window before a restart are lost. Methods the server does not route appear as `OTHER`. Latency and response sizes are never logged. Visit and message counts for the admin area go to `admin.db`, not to the log. Logs omit message IDs, raw paths, blob paths, Authorization and `X-Nylzo-*` headers, bodies, and client addresses. Storage failures log only the operation and system error, while internal HTTP-server errors use categories rather than raw error text. At very low traffic, the hourly count of creates may still correlate with an individual message. Keep every proxy, load balancer, CDN, WAF and tracing agent in front of Nylzo from recording request or response headers or paths ([protocol §10](../reference/Protocol.md#10-logging)): with the link, a logged `X-Nylzo-Lease` downloads the message without spending an open. Caddy redacts only `Authorization`, `Cookie`, `Set-Cookie` and `Proxy-Authorization` in its access log. `nylzo serve` and the other commands that handle a secret refuse to start with `GODEBUG=http2debug=1` or `=2`, because Go's HTTP/2 code then prints every header.
+### Hetzner host readiness
 
-Burn and cancel persist the intended end state before deleting a blob. A later request or cleanup completes an interrupted operation. Expiration follows `expires_at`. A missing blob for a live message without an end state returns 500 rather than deleting the message or consuming an open. So does a blob whose object bytes, length or salt no longer match what the server wrote: claims and downloads of that message then fail, a burn with a passphrase fails when the salt or the length changed, and nothing is spent. The server counts a missing or changed blob of a live message as the error `blob-changed`. Treat that error as a sign that something other than `serve` wrote to the blob directory or that the disk returns damaged data. Messages stored by a release before 0.14.0 have no tag and are served unchecked until they end, at most 7 days after the upgrade. Cleanup runs at startup; orphaned-blob inspection is retried after failure. `sweep-once` returns a nonzero status if any cleanup step fails.
+Every two minutes a Hetzner host writes a report of seven booleans and the time, with no message data, keys or logs: `hostPolicy` (SELinux, kernel, firewall, isolation, encrypted volume), `services` (all units active), `diskReserve` (8 GiB free), `applicationUpdates` (no failed update, a check within 30 minutes), `osUpdates` (update-engine checked within 24 hours), `clock` (two of GitHub, Sigstore and Let's Encrypt agree within a minute) and `certificate` (valid 36 more hours, issued for at most seven days).
 
-Schema 8 stores hashed IDs and sealed 1024-byte message records with their expiry epoch and OPAQUE registration, has the `wal_scrub` table and indexes the rate counters by their purge time. Releases of protocol version 2 wrote schema 7, and Nylzo 0.1 and 0.2 schema 5. The first `serve` of a protocol version 3 release on either deletes every message stored in it, because protocol version 3 cannot read them: it overwrites each blob file in full before it removes it, deletes the rows, overwrites the write-ahead log and then moves the database to schema 8. It logs one `store-upgraded` line, and an interrupted upgrade finishes on the next start. Tell your users before you upgrade that their open messages will be deleted and that older CLI versions must be updated. `sweep-once` refuses a schema 7 or 5 database, so upgrade the server first, and a release of protocol version 2 refuses schema 8. The server and `sweep-once` refuse every other older or newer schema version and name it; schema 6 and versions below 5 come from development builds that no release used, and Nylzo does not convert them, so start such an instance with an empty data directory. Before you switch to a new release, run `nylzo store-check` from it with the same `NYLZO_DATA_DIR` and `NYLZO_EPOCH_DIR`. It opens the database in SQLite's immutable read-only mode, writes nothing, not even the log, and reports whether that release opens the store, upgrades it or refuses it, and what it finds in the epoch directory; it exits 1 where `serve` would refuse to start. The Hetzner updater runs it against the live data, mounted read-only, before it stops the running release. `serve` locks the data directory while it runs and refuses to start while another `serve` holds it. Stop old server processes before opening a database with a newer server, back up according to your retention policy, and do not downgrade a database. The first `serve` of Nylzo 0.14.0 or later seals every stored message with a key from the pepper and logs `rows-sealed`; earlier releases then answer the links of those messages as unknown, so going back to one takes every stored message offline until a current release serves the database again. Every start rebuilds the tables and scrubs the log before it listens, and `serve` refuses to start when that cannot finish. Delete database copies taken before that first start: they still open with a public key that a recorded request carried. Historical token formats and retired passphrase profiles are not compatible; ask senders to create new links.
+The heartbeat is the primary alert. Every five minutes the host posts to a dead-man's switch, its URL when every check passes and `URL/fail` otherwise.
 
-Nylzo 0.14.0 and later take no abuse reports. The first `serve` on a data directory that still holds the reports of an earlier release, in `abuse/` or `abuse-reports.jsonl`, overwrites each report file in full before it removes it and logs `reports-erased`; an interrupted erase finishes on the next start. `nylzo store-check` says beforehand that `serve` will erase them. A host that still sets `NYLZO_REPORT_KEY` starts normally; the server ignores the variable.
+1. Create a check at a service such as [healthchecks.io](https://healthchecks.io/), period 5 minutes, grace 10 minutes.
+2. Set `heartbeatUrl` in `site.json` before provisioning, or write it to `/etc/nylzo/heartbeat.url` (root, mode 600) and re-apply the host bundle.
+3. Stop `nylzo-host-status.timer` for 15 minutes, confirm the alert, and start it again.
 
-## Takedown
+A second channel serves the report on port 8443 to one pinned client certificate. Create the identity with `mise exec go -- go run ./tools/deploy/monitor-identity .deploy/production/monitoring`. Put `client.pem` into `monitorClientCertificate` (or `/etc/nylzo/monitor-client.pem`, then re-apply), and keep `client-key.pem` private. In the GitHub environment `host-monitoring`, limited to `main`, store the secrets `NYLZO_MONITOR_CERT`, `NYLZO_MONITOR_KEY`, `NYLZO_HOST_MONITOR_URL` (`https://your-domain:8443/healthz`) and `NYLZO_HOST_MONITOR_ADDRESS`, then set the variable `NYLZO_HOST_MONITOR_ENABLED=true`. `monitor.yml` then reads the report about every 15 minutes and fails 30 days before the one-year identity expires.
 
-To remove messages, place their IDs in a private file, one per line, and run `nylzo takedown < approved-ids.txt` on the server with the intended `NYLZO_DATA_DIR`. This removes the blob key and blob, leaving the row for cleanup after seven days; it cannot read the message. If any line is not a message ID, the command rejects the whole input. This includes links carrying a secret. It returns a result per ID without logging it to the server log. The recipient sees a deleted message; the sender sees that a recipient or the operator removed it, without an end time.
-
-Follow the terms and privacy policy published by the instance's operator.
+When its variables are set, `monitor.yml` also runs a CLI and a Chrome test against `NYLZO_MONITOR_URL` every hour (about 24 test messages a day each) and checks `NYLZO_MONITOR_DOMAIN`: CAA over DNSSEC, mail records, registrar locks, expiry and Certificate Transparency. GitHub schedules are best effort, so rely on the heartbeat for timely alerts.
 
 ## Admin area
 
-The admin area at `/admin` shows the operator visit counts, message counts, server load and the clients refused in the last hour. It needs a passkey and no other setup, and no environment variable turns it on. Run the commands on the server host with the intended `NYLZO_DATA_DIR`, like `sweep-once`; the database, the blob directory and `admin.db` must already exist, so start the server once before the first command.
+`/admin` shows visit and message counts, server load and the clients refused in the last hour, to passkey holders.
 
-- `nylzo admin-enroll` prints a link such as `https://nylzo.example/admin#enroll=…` that adds one passkey. Open it within 15 minutes in the browser that holds or will create the passkey. A newer link replaces an older one, and a link works once. Without `NYLZO_PUBLIC_URL` the link uses the listen address, and only a loopback address works.
-- `nylzo admin-passkeys` lists the passkeys with their algorithm, whether they are synced or device-bound, and when each was added and last used.
-- `nylzo admin-reset` removes every passkey and any open link. Within a minute every open session ends and counting stops; the counts already stored stay. Use it when a session or a passkey may be in other hands.
+- `nylzo admin-enroll` prints a link that adds one passkey. Open it within 15 minutes in the browser that will hold the passkey; it works once. Without `NYLZO_PUBLIC_URL`, only a loopback listen address gives a working link.
+- `nylzo admin-passkeys` lists the passkeys, up to 8. Enroll a second device.
+- `nylzo admin-reset` removes every passkey and link and ends every session within a minute.
 
-An instance can hold 8 passkeys. Enroll a second one on another device so that losing one device does not lock you out; `admin-reset` and a new link recover access otherwise.
+Counting runs only while a passkey exists. `admin.db` keeps hourly counts for 15 days and daily counts for 400 days, without addresses. Behind Nylzo's Caddy, set `NYLZO_EDGE_REPORTS=1` or robots and scripts stay at zero. Mention the counting in your privacy policy.
 
-The server counts visits and keeps the refused list only while at least one passkey exists, and `/.well-known/nylzo/transparency.json` says so in `visits.counted`. It keeps hourly counts for 15 days and daily counts for 400 days in `admin.db`, with no address and nothing about a single message; visitors are told apart for a day by a keyed hash in memory, and only their country is counted, per UTC day. A count reaches the charts' table only after its hour or day has ended. A clean stop sets the running counts aside in `admin.db` and the next start takes them back, also one that fails before it listens, so a restart loses none; a process that is killed loses the counts of the running hour and day. The refused list lives in memory for an hour and is never written. [Protocol §6.7 and §6.8](../reference/Protocol.md#67-visit-signal) give the exact rules, and §13 says what a copy of `admin.db` reveals.
+## Backups
 
-`admin.db` sits in the data directory, so a backup of the volume includes it. Restoring it brings back the passkeys and counts of that time. Mention the counting in your privacy policy.
+Never back up, snapshot or replicate the data directory (`nylzo.db` with its `-wal` and `-shm` files, `admin.db`, `blobs/`) or the epoch seed. A restored data directory brings back messages that were read, burned or expired, and a copy of the seed opens messages after their deadline. Turn off provider backups of their disk.
 
-The country table is DB-IP IP to Country Lite, built into the binary under CC BY 4.0. The dashboard credits it with "IP Geolocation by DB-IP" and a link, as the license requires. A newer table comes with a new release.
+Never open `nylzo.db` with another SQLite client while `serve` runs, and never point two servers at one data directory. Back up the deployment configuration, and on Hetzner the private operator directory. A pepper copy helps only while its data exists; keep it away from the server.
+
+## Troubleshooting
+
+| Log event or error | Meaning and fix |
+| --- | --- |
+| `epoch-seed-created` | New seed; live messages ended. Expected at the first start and after a reboot, otherwise alert |
+| `epoch-seed-on-disk` | The seed is not on a tmpfs; backups hold it. Move `NYLZO_EPOCH_DIR` |
+| `epoch-storage-not-erasable` | Swap came on. Turn it off (alert) |
+| `epoch-clock-behind` | The clock is behind the seed; new messages answer 503 until it catches up. A forward jump ends messages whose deadline it skips. Fix time sync |
+| `rows-unopenable` | No configured pepper opens some records. Check both pepper files (alert) |
+| `registration-pepper-missing` | A message needs the previous pepper. Restore `NYLZO_PEPPER_PREVIOUS_FILE` |
+| `blob-changed` | Something else wrote to `blobs/`, or the disk returns damaged data (alert) |
+| `disk-full` | Below `NYLZO_MIN_FREE_BYTES`; creation stops, reading continues (alert) |
+| `forwarded-header-ignored` | Forwarding headers came from outside `NYLZO_TRUSTED_PROXIES` |
+| "the data directory still holds an epoch directory" | `NYLZO_EPOCH_DIR` names another directory while the data directory still has `epoch`. Stop `serve`. To keep live messages of this release, copy `epoch/seed` into the empty `NYLZO_EPOCH_DIR`. Then `shred --zero --iterations=0 --remove=unlink` every file in `epoch` and remove it. Upgrading from 0.13? Follow [Self-hosting](Self-hosting.md#from-013-to-014) |
+| "the seed file is damaged" | Moving it aside starts a new seed and ends every live message |

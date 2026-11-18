@@ -107,4 +107,4 @@ The [security model](https://github.com/misaon/nylzo/wiki/Security-model) descri
 
 Read the [contributing guide](CONTRIBUTING.md), pick an [issue](https://github.com/misaon/nylzo/issues), or start a [discussion](https://github.com/misaon/nylzo/discussions). [SUPPORT.md](SUPPORT.md) says where to ask for help.
 
-[MIT license](LICENSE) · [Name and logo](https://github.com/misaon/nylzo/wiki/Name-and-logo) · [Changelog](https://github.com/misaon/nylzo/releases)
+[MIT license](LICENSE) · [Name and logo](https://github.com/misaon/nylzo/wiki/Brand) · [Changelog](https://github.com/misaon/nylzo/releases)

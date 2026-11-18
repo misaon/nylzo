@@ -1,20 +1,16 @@
 # Verify a release
 
-Release builds run in a job with only `contents: read`, without a protected environment or signing credentials. Native archives, SBOMs and multi-platform images are built there; images go only to a disposable loopback registry and are exported as OCI layouts. A separate job in the protected release environment verifies the complete build's SHA-256 manifest, tag and source commit before uploading, signing and attesting the prebuilt artifacts. It does not compile source or install application dependencies. The release still passes vulnerability checks before its stable image tags and immutable GitHub release are published.
+This page is for people who want to check that their `nylzo`, archives or images come from a signed Nylzo release, and to run the web client from that binary so the server cannot hand their browser modified code.
 
-Install the CLI with [Homebrew or Scoop](CLI.md#install). This page shows how to check what they installed, and how to verify the release archives and container images that servers run.
-
-Use only [misaon/homebrew-nylzo](https://github.com/misaon/homebrew-nylzo), [misaon/nylzo releases](https://github.com/misaon/nylzo/releases), `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. Published release tags and assets are immutable. The examples verify the latest release; set `tag` to another stable version from the releases page if you need one:
+Get Nylzo only from [misaon/homebrew-nylzo](https://github.com/misaon/homebrew-nylzo), the [releases page](https://github.com/misaon/nylzo/releases), `ghcr.io/misaon/nylzo` and `ghcr.io/misaon/nylzo-caddy`. You need [GitHub CLI](https://cli.github.com/) and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/). The examples check the latest release; set `tag` to another version to check that one:
 
 ```sh
 tag=$(gh release view --repo misaon/nylzo --json tagName --jq .tagName)
 ```
 
-Install [GitHub CLI](https://cli.github.com/) and [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) from their official sources.
-
 ## Verify a Homebrew or Scoop install
 
-The formula and the manifest pin the SHA-256 hash of each archive, and Homebrew and Scoop refuse a download that does not match. To check the build provenance of the archive you installed on macOS or Linux:
+Homebrew and Scoop refuse an archive whose SHA-256 differs from the one their formula or manifest pins. To check the build provenance of the archive Homebrew installed:
 
 ```sh
 brew fetch --formula misaon/nylzo/nylzo
@@ -31,9 +27,9 @@ $archive = Get-ChildItem -Path "$env:USERPROFILE\scoop\cache" -Filter "nylzo#$ve
 gh attestation verify $archive.FullName --repo misaon/nylzo --signer-workflow misaon/nylzo/.github/workflows/release.yml --source-ref "refs/tags/v$version" --deny-self-hosted-runners
 ```
 
-## Download and verify an archive
+## Verify a downloaded archive
 
-Homebrew, Scoop and servers download these archives. The macOS and Windows binaries carry no Apple notarization or Authenticode signature, and macOS refuses to run a binary from an archive that a browser downloaded, so install the CLI with a package manager on a desktop. From 0.14.0 the macOS binaries carry an ad-hoc signature with the hardened runtime, which the [CLI guide](CLI.md#process-protection) explains; `codesign --display --verbose "$(command -v nylzo)"` then shows `flags=0x10002(adhoc,runtime)`. Earlier binaries show `linker-signed` on arm64 and no signature on amd64. Choose the archive for your platform: `linux`, `darwin` (macOS), or `windows`; architecture `amd64` (x64) or `arm64`. Windows archives are ZIP files; Linux and macOS use `tar.gz`. This example selects Linux x64:
+Archives are named `nylzo_<version>_<system>_<architecture>` with `linux`, `darwin` (macOS) or `windows` and `amd64` or `arm64`; Windows ones are ZIP files. For Linux x64:
 
 ```sh
 archive="nylzo_${tag#v}_linux_amd64.tar.gz"
@@ -50,100 +46,41 @@ gh attestation verify "$archive" --repo misaon/nylzo \
   --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
 ```
 
-Verify the signature **before** trusting the checksums, and require all checks to succeed before extracting or running the binary. Releases that ship Caddy list its Linux archives, `nylzo-caddy_<version>_linux_amd64.tar.gz` and `_arm64`, in the same signed `checksums.txt`; verify them the same way. So is `nylzo-host_<version>.tar`, the Hetzner Flatcar host configuration. On macOS without `sha256sum`, calculate `shasum -a 256 "$archive"` and compare its full value with that archive's entry in the signature-verified manifest. On Windows, use `Get-FileHash -Algorithm SHA256` for the same comparison.
+Trust `checksums.txt` only after its signature checks out, and run the binary only when every command succeeds. Without `sha256sum`, compare the output of `shasum -a 256` on macOS or `Get-FileHash -Algorithm SHA256` on Windows with the archive's line in `checksums.txt`.
 
-A release that lists `nylzo_<version>.intoto.jsonl` also carries its build provenance as a file, one Sigstore bundle per line: the first covers every file in `checksums.txt`, the second the [dependency evidence](#verify-dependency-evidence). `gh` checks it without the attestations API:
+The same signed `checksums.txt` lists the Caddy archives (`nylzo-caddy_<version>_linux_<architecture>.tar.gz`), the Hetzner Flatcar host bundle (`nylzo-host_<version>.tar`), an SPDX SBOM for each archive and every file of the web client. Verify those the same way.
 
-```sh
-gh release download "$tag" --repo misaon/nylzo --pattern "nylzo_${tag#v}.intoto.jsonl"
-gh attestation verify "$archive" --repo misaon/nylzo --bundle "nylzo_${tag#v}.intoto.jsonl" \
-  --signer-workflow misaon/nylzo/.github/workflows/release.yml \
-  --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
-```
-
-With `--bundle`, `gh` compares `--repo` only with the repository name recorded in the signing certificate, so it cannot detect a later rename or transfer. The API-backed command above can, and it is the only option for releases without the file.
-
-Each release includes per-archive SPDX SBOMs. [Versioning and releases](../maintainers/Releasing.md) explains the version, source commit, source date, and modified-source flag embedded in the CLI, server, and web client.
-
-## Map the web client to the signed manifest
-
-The signed `checksums.txt` also lists every file of the web client that the binary embeds and serves. Assets appear under their own names, such as `index-CSp4oozy.js`. The pages come from these templates:
-
-| Template in `checksums.txt` | Pages an instance renders from it |
-| --- | --- |
-| `home.en.html` | `/` |
-| `home.{tag}.html` for the other languages, such as `home.cs.html` or `home.pt-BR.html` | `/{tag in lowercase}/`, such as `/cs/` or `/pt-br/` |
-| `index.html` | `/sent`, `/transparency`, `/terms`, `/agents`, `/r` and `/m/{id}` |
-
-`agents.md`, `favicon.ico` and `llms.txt` are served unchanged on `/agents.md`, `/favicon.ico` and `/llms.txt`. An instance fills its public URL into the marked blocks of a template and serves the result unchanged on every response. Its `/.well-known/nylzo/client.json` lists the template hashes under `templates`, which match `checksums.txt`, and the hashes of the pages as it sends them under `files`. [`nylzo web`](Verified-clients.md) serves the same pages and assets from the binary.
-
-Releases up to `v0.2.3` list `index.html` and the assets but not the two home templates; for those, extract the templates from a rebuild with `mise run release:verify`.
-
-## Verify dependency evidence
-
-Starting with `v0.1.2`, releases also provide a source SPDX inventory for Go and npm, the raw dependency scan, import-graph evidence, and an OpenVEX assessment when applicable. These files use a separate signed manifest:
-
-```sh
-evidence="nylzo_${tag#v}.evidence.sha256"
-gh release download "$tag" --repo misaon/nylzo --pattern "nylzo_${tag#v}.*.json" \
-  --pattern "$evidence"
-
-cosign verify-blob "$evidence" --bundle "${evidence}.sigstore.json" \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${tag}"
-sha256sum -c "$evidence"
-for artifact in nylzo_"${tag#v}".*.json; do
-  case "$artifact" in *.sigstore.json) continue ;; esac
-  gh attestation verify "$artifact" --repo misaon/nylzo \
-    --signer-workflow misaon/nylzo/.github/workflows/release.yml \
-    --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
-done
-```
-
-Verify every listed file. An OpenVEX statement applies only to its named product, component, and vulnerability; read its justification and the [review policy](../maintainers/Security-controls.md#vex-and-review-expiry). It does not waive findings for a different build or a later dependency version.
+The macOS binaries carry an ad-hoc signature with the hardened runtime, but no Apple notarization: `codesign --display --verbose "$(command -v nylzo)"` shows `flags=0x10002(adhoc,runtime)`.
 
 ## Verify a container image
 
-Resolve the selected version to a digest, verify that digest, then deploy that same digest:
+Verify each image by its digest and deploy exactly that digest:
 
 ```sh
-image="ghcr.io/misaon/nylzo:${tag#v}"
-digest=$(docker buildx imagetools inspect "$image" --format '{{.Manifest.Digest}}')
-image="ghcr.io/misaon/nylzo@${digest}"
-
-cosign verify "$image" \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${tag}"
-gh attestation verify "oci://${image}" --repo misaon/nylzo \
-  --signer-workflow misaon/nylzo/.github/workflows/release.yml \
-  --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
-printf 'NYLZO_IMAGE=%s\n' "$image"
+for repository in nylzo nylzo-caddy; do
+  digest=$(docker buildx imagetools inspect "ghcr.io/misaon/${repository}:${tag#v}" --format '{{.Manifest.Digest}}')
+  image="ghcr.io/misaon/${repository}@${digest}"
+  cosign verify "$image" \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+    --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${tag}" &&
+  gh attestation verify "oci://${image}" --repo misaon/nylzo \
+    --signer-workflow misaon/nylzo/.github/workflows/release.yml \
+    --source-ref "refs/tags/${tag}" --deny-self-hosted-runners &&
+  echo "verified ${image}"
+done
 ```
 
-A release that ships Caddy also has a Caddy image. Verify it against the same tag:
+Put both verified references into `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE` in your Compose `.env`. A tag alone does not pin the image you checked. [Self-hosting](Self-hosting.md) covers the deployment.
+
+## Verify the dependency evidence
+
+Each release also publishes its source SPDX inventory, dependency scan and any OpenVEX statement, covered by a separately signed `nylzo_<version>.evidence.sha256`. Check it with the same `cosign verify-blob` command as `checksums.txt`, using its `.sigstore.json` bundle, then run `sha256sum -c` on it. An OpenVEX statement applies only to the product, component and vulnerability it names.
+
+## Rebuild a release yourself
+
+In a clean checkout of the release tag, with [mise](https://mise.jdx.dev/getting-started.html) and a signed-in `gh`:
 
 ```sh
-image="ghcr.io/misaon/nylzo-caddy:${tag#v}"
-digest=$(docker buildx imagetools inspect "$image" --format '{{.Manifest.Digest}}')
-image="ghcr.io/misaon/nylzo-caddy@${digest}"
-
-cosign verify "$image" \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity "https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/${tag}"
-gh attestation verify "oci://${image}" --repo misaon/nylzo \
-  --signer-workflow misaon/nylzo/.github/workflows/release.yml \
-  --source-ref "refs/tags/${tag}" --deny-self-hosted-runners
-printf 'NYLZO_CADDY_IMAGE=%s\n' "$image"
-```
-
-Copy the printed `NYLZO_IMAGE` and `NYLZO_CADDY_IMAGE` into your Compose `.env` only after verification succeeds. A mutable `latest` tag alone does not pin the image you verified. See [Self-hosting](Self-hosting.md) for deployment.
-
-## Rebuild independently
-
-Use a clean checkout of the release tag, install its pinned tools, and sign in with `gh`:
-
-```sh
-git fetch --tags
 git checkout "$tag"
 mise trust
 mise install
@@ -151,10 +88,28 @@ mise run release:verify
 mise run release:verify-image
 ```
 
-Review repository tasks before trusting them. `release:verify` verifies the published manifest signature, rebuilds all six archives, the Caddy archives and the embedded client, and compares their hashes. The rebuild signs the macOS binaries the same way on any system, so their archives match too. From the first release that ships `nylzo_<version>.intoto.jsonl`, it also verifies every rebuilt archive and the host bundle against that provenance. `release:verify-image` compares the binaries in both images with that rebuild. It skips SBOM generation; verify downloaded SBOMs against the signed manifest separately.
+The tasks run code on your machine, so read them first. `release:verify` checks the signature of `checksums.txt`, rebuilds every archive with the embedded web client, compares the hashes and checks the rebuilt archives against the release provenance. `release:verify-image` needs Docker and compares the binaries in both images with your rebuild.
 
-`release:verify-image` requires Docker. It verifies the image signature and provenance, then compares both Linux image binaries with the local rebuild.
+## Use the local web client
 
-Use `v0.1.1` or later for byte-identical complete archives. The v0.1.0 TAR file payloads reproduce, but its headers contain build-host ownership metadata; the release notes record this packaging limitation.
+The website loads its code from the server on every visit, so whoever controls the server, its hosting or a valid certificate for its name can send you a page that reads your message without you noticing. `nylzo web` and `nylzo open` run the web client built into your verified `nylzo` in your own browser instead, and the server receives only encrypted API calls. A message is safe from such a server only when the sender and the reader both use a verified client: the CLI or this local client.
 
-Sigstore signatures do not imply Apple notarization or a Windows Authenticode publisher certificate. Read the [security model](Security-model.md) for the remaining client and server trust boundaries.
+To write a message:
+
+```sh
+nylzo web --server https://nylzo.example
+```
+
+Your browser opens the usual page at a new random `http://….localhost` address. Its links point to the instance, so the reader can open them with any client. Press Ctrl-C when you are done. Track in Sent lasts only until you close the tab; to cancel a message later, create it with `nylzo create --manage-token-file`.
+
+To read a message, run this and paste the link at the hidden prompt, or pipe it in:
+
+```sh
+nylzo open --server https://nylzo.example
+```
+
+The browser gets a one-time address that carries no part of the link and works once, within two minutes, so the link stays out of commands, the address bar and the browser history. `nylzo open` warns if something uses that address twice, and refuses a link for another instance than the one you named.
+
+The local client listens only on loopback, answers only its own random name and loads nothing from the instance. Use Chrome, Edge or Firefox, or Safari from macOS 26; on older macOS the commands print the address for another browser. `--no-browser` prints it instead.
+
+No client protects against malware or an administrator on your computer, another browser extension that can read the page, or a recipient who shares the message. The [protocol, section 14](../reference/Protocol.md#14-client-code-integrity), states the exact rules.
