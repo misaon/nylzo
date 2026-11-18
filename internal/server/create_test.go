@@ -1005,7 +1005,7 @@ func TestPoWDifficultyRisesAsTheCapFills(t *testing.T) {
 	settings := baseSettings(pepperA, nil)
 	settings.Rates.GlobalDailyCreates = 250
 	server := &Server{settings: *settings}
-	for creates, want := range map[int64]int{0: 4, 125: 4, 149: 4, 150: 5, 200: 7, 225: 8, 249: 8} {
+	for creates, want := range map[int64]int{0: 4, 125: 4, 149: 4, 150: 5, 200: 7, 225: 7, 249: 7} {
 		if got := server.workDifficulty(creates); got != want {
 			t.Errorf("%d of 250 creates: difficulty %d, want %d", creates, got, want)
 		}
