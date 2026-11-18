@@ -1,27 +1,39 @@
 package keys_test
 
 import (
-	"regexp"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core/keys"
 )
 
-func TestGeneratedPassphrasesAreStrongAndWellFormed(t *testing.T) {
+func TestGeneratedPassphrasesAreStrongWordsOfTheirLanguage(t *testing.T) {
 	t.Parallel()
-	format := regexp.MustCompile(`^[0-9a-hjkmnp-tv-z]{4}(-[0-9a-hjkmnp-tv-z]{4}){3}$`)
-	seen := map[string]bool{}
-	for range 500 {
-		passphrase := keys.GeneratePassphrase()
-		if !format.MatchString(passphrase) {
-			t.Fatalf("generated passphrase %q has the wrong format", passphrase)
+	for _, language := range keys.PassphraseLanguages {
+		words, layout, err := keys.PassphraseWordList(language)
+		if err != nil {
+			t.Fatal(err)
 		}
-		if err := keys.CheckPassphraseStrength(passphrase); err != nil {
-			t.Fatalf("generated passphrase %q is refused: %v", passphrase, err)
+		seen := map[string]bool{}
+		for range 100 {
+			passphrase, generateErr := keys.GeneratePassphrase(language)
+			if generateErr != nil {
+				t.Fatal(generateErr)
+			}
+			chosen := strings.Split(passphrase, layout.Separator)
+			if len(chosen) != layout.Words || slices.ContainsFunc(chosen, func(word string) bool {
+				return !slices.Contains(words, word)
+			}) {
+				t.Fatalf("%s: generated passphrase %q is not %d words of the list", language, passphrase, layout.Words)
+			}
+			if strengthErr := keys.CheckPassphraseStrength(passphrase); strengthErr != nil {
+				t.Fatalf("%s: generated passphrase %q is refused: %v", language, passphrase, strengthErr)
+			}
+			if seen[passphrase] {
+				t.Fatalf("%s: generator repeated %q", language, passphrase)
+			}
+			seen[passphrase] = true
 		}
-		if seen[passphrase] {
-			t.Fatalf("generator repeated %q", passphrase)
-		}
-		seen[passphrase] = true
 	}
 }

@@ -1724,6 +1724,160 @@
   "passphrase_list_sha256": "c1f4f9bd7d863a844ac373f2d4fa82c72329fd74b710b79ddc449a9cc0d1cf77",
   "unicode_assigned_sha256": "db9696c7b424f6bcb91166c1264646d183dd474a7afccb34297368ce2aa64a61",
   "unicode_assigned_version": "15.1",
+  "passphrase_words": [
+    {
+      "language": "en",
+      "sha256": "2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda",
+      "separator": "-",
+      "words": 5
+    },
+    {
+      "language": "cs",
+      "sha256": "7e80e161c3e93d9554c2efb78d4e3cebf8fc727e9c52e03b83b94406bdcc95fc",
+      "separator": "-",
+      "words": 5
+    },
+    {
+      "language": "de",
+      "sha256": "7965dc8c6b413ccb635d3021043365e18df0367bf5413a50a069a98addfe4e1d",
+      "separator": "-",
+      "words": 5
+    },
+    {
+      "language": "es",
+      "sha256": "825b1c91b0084d16640c9ffbb643acfca15971225e3b8d2e2109fac949f34543",
+      "separator": "-",
+      "words": 5
+    },
+    {
+      "language": "fr",
+      "sha256": "cf8db448ad5ca0b68c3c8f88b51458f20362a5939fef236fac64a303f1485e87",
+      "separator": "-",
+      "words": 5
+    },
+    {
+      "language": "id",
+      "sha256": "5db2b104f5a0df2ecf35a22f86cb81c80810d38cd5f8704d9e4e0aae9a82768a",
+      "separator": "-",
+      "words": 5
+    },
+    {
+      "language": "it",
+      "sha256": "d392c49fdb700a24cd1fceb237c1f65dcc128f6b34a8aacb58b59384b5c648c2",
+      "separator": "-",
+      "words": 5
+    },
+    {
+      "language": "ja",
+      "sha256": "c58cb719f782910cfcedb6ab64dc506322bd7ce4f7cede5a0563ac06d3d5c884",
+      "separator": "　",
+      "words": 5
+    },
+    {
+      "language": "pl",
+      "sha256": "c926d7756395865f37e16fd1005b104da681d3ad56d49b6b080606557207d9e2",
+      "separator": "-",
+      "words": 5
+    },
+    {
+      "language": "pt-BR",
+      "sha256": "2685e9c194c82ae67e10ba59d9ea5345a23dc093e92276fc5361f6667d79cd3f",
+      "separator": "-",
+      "words": 5
+    },
+    {
+      "language": "sk",
+      "sha256": "07342337642a1abb8035c53c65c2fe5f09f1c8130e0eb61d6650d4fc0e490ef7",
+      "separator": "-",
+      "words": 5
+    },
+    {
+      "language": "zh-Hans",
+      "sha256": "afd8bd805b2bafac0f8d5e3bc8b2778905600f745e6087c8b07438b89f5afc97",
+      "separator": " ",
+      "words": 6
+    }
+  ],
+  "generated_passphrase": [
+    {
+      "name": "en words",
+      "language": "en",
+      "random_hex": "9be2d984a8e8d6041034",
+      "passphrase": "labor-correct-brown-scene-alley"
+    },
+    {
+      "name": "cs words",
+      "language": "cs",
+      "random_hex": "16b21f9fe5cd5c226dcd",
+      "passphrase": "troska-zamyslet-sediment-odpad-sediment"
+    },
+    {
+      "name": "de words",
+      "language": "de",
+      "random_hex": "3b9680ff1be2ada279a3",
+      "passphrase": "joggen-beule-kleben-rahmen-dreck"
+    },
+    {
+      "name": "es words",
+      "language": "es",
+      "random_hex": "76d2af48af49528cf1f5",
+      "passphrase": "soltar-titulo-tiza-etnia-cutis"
+    },
+    {
+      "name": "fr words",
+      "language": "fr",
+      "random_hex": "e3e437c18f68df9f1847",
+      "passphrase": "huileux-venerer-tordre-uranium-ajouter"
+    },
+    {
+      "name": "id words",
+      "language": "id",
+      "random_hex": "5418eee3cd03deb39ff6",
+      "passphrase": "lokasi-stoples-pakis-siomai-wisuda"
+    },
+    {
+      "name": "it words",
+      "language": "it",
+      "random_hex": "acf964928813b2cc2ce0",
+      "passphrase": "petulante-orefice-adagio-furgone-penisola"
+    },
+    {
+      "name": "ja words",
+      "language": "ja",
+      "random_hex": "4f9d53e052ca73b7affa",
+      "passphrase": "よかん　ぜんりゃく　ざいりょう　せつめい　わかれる"
+    },
+    {
+      "name": "pl words",
+      "language": "pl",
+      "random_hex": "d16aefb31eb25d96fdd8",
+      "passphrase": "fantazja-wywrotka-szminka-rodzinny-samiec"
+    },
+    {
+      "name": "pt-BR words",
+      "language": "pt-BR",
+      "random_hex": "273f69ad1de33de17889",
+      "passphrase": "tarraxa-chaleira-pinote-pinguim-anel"
+    },
+    {
+      "name": "sk words",
+      "language": "sk",
+      "random_hex": "4178ecf3a2cbb20cbd6a",
+      "passphrase": "grafika-pokles-krmivo-javor-prievan"
+    },
+    {
+      "name": "zh-Hans words",
+      "language": "zh-Hans",
+      "random_hex": "28248078fef4ddc3bbc7be6d",
+      "passphrase": "举办 估计 诗人 碰到 指数 脂肪"
+    },
+    {
+      "name": "five equal words are drawn again",
+      "language": "en",
+      "random_hex": "ffffffffffffffffffff08100a717a025875d8d7",
+      "passphrase": "acoustic-evolve-doctor-attitude-brain"
+    }
+  ],
   "request": [
     {
       "components": {

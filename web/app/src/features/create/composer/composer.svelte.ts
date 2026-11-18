@@ -1,4 +1,10 @@
-import { generatePassphrase, MAX_FILE_BYTES, MAX_TEXT_BYTES, MIN_PASSPHRASE_CHARACTERS } from '@nylzo/core';
+import {
+  generatePassphrase,
+  loadPassphraseWords,
+  MAX_FILE_BYTES,
+  MAX_TEXT_BYTES,
+  MIN_PASSPHRASE_CHARACTERS,
+} from '@nylzo/core';
 import { flushSync, tick } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import { prefersReducedMotion } from 'svelte/motion';
@@ -346,18 +352,26 @@ export class Composer {
 
   readonly toggleMenu = (next: Menu): void => {
     this.menu = this.menu === next ? undefined : next;
+    if (this.menu === 'security') {
+      loadPassphraseWords(this.#translator.language).catch(() => null);
+    }
   };
 
-  readonly generatePassphrase = (): void => {
-    this.passphrase = generatePassphrase();
-    this.#forgetProblems('passphrase');
+  // The word list loads on demand, so what the sender typed meanwhile must win.
+  readonly generatePassphrase = async (): Promise<void> => {
+    const before = this.passphrase;
+    const passphrase = await generatePassphrase(this.#translator.language).catch(() => null);
+    if (passphrase !== null && this.protect && !this.busy && this.passphrase === before) {
+      this.passphrase = passphrase;
+      this.#forgetProblems('passphrase');
+    }
   };
 
   readonly toggleProtect = async (): Promise<void> => {
     this.protect = !this.protect;
     if (this.protect) {
       if (this.passphrase === '') {
-        this.generatePassphrase();
+        await this.generatePassphrase();
       }
       await this.focus.focusAfterUpdate('passphrase');
       return;

@@ -21,25 +21,27 @@ const (
 )
 
 type File struct {
-	Spec             string             `json:"spec"`
-	Generator        string             `json:"generator"`
-	Scrypt           []Scrypt           `json:"scrypt_rfc7914"`
-	Derive           []Derive           `json:"derive"`
-	OPAQUE           []OPAQUE           `json:"opaque"`
-	Envelope         []Envelope         `json:"envelope"`
-	Rejected         []Rejected         `json:"envelope_rejected"`
-	CompressedLength []CompressedLength `json:"compressed_length"`
-	Share            []ShareCase        `json:"share"`
-	ShareKeyRejected []ShareKeyRejected `json:"share_key_rejected"`
-	Link             []Link             `json:"link"`
-	Meta             []MetaCase         `json:"meta"`
-	Strength         []Strength         `json:"passphrase_strength"`
-	ListHash         string             `json:"passphrase_list_sha256"`
-	AssignedHash     string             `json:"unicode_assigned_sha256"`
-	AssignedVersion  string             `json:"unicode_assigned_version"`
-	Request          []Request          `json:"request"`
-	PoW              []PoW              `json:"pow"`
-	Server           Server             `json:"server"`
+	Spec             string                `json:"spec"`
+	Generator        string                `json:"generator"`
+	Scrypt           []Scrypt              `json:"scrypt_rfc7914"`
+	Derive           []Derive              `json:"derive"`
+	OPAQUE           []OPAQUE              `json:"opaque"`
+	Envelope         []Envelope            `json:"envelope"`
+	Rejected         []Rejected            `json:"envelope_rejected"`
+	CompressedLength []CompressedLength    `json:"compressed_length"`
+	Share            []ShareCase           `json:"share"`
+	ShareKeyRejected []ShareKeyRejected    `json:"share_key_rejected"`
+	Link             []Link                `json:"link"`
+	Meta             []MetaCase            `json:"meta"`
+	Strength         []Strength            `json:"passphrase_strength"`
+	ListHash         string                `json:"passphrase_list_sha256"`
+	AssignedHash     string                `json:"unicode_assigned_sha256"`
+	AssignedVersion  string                `json:"unicode_assigned_version"`
+	WordLists        []WordList            `json:"passphrase_words"`
+	Generated        []GeneratedPassphrase `json:"generated_passphrase"`
+	Request          []Request             `json:"request"`
+	PoW              []PoW                 `json:"pow"`
+	Server           Server                `json:"server"`
 }
 
 func Generate() (*File, error) {
@@ -56,6 +58,7 @@ func Generate() (*File, error) {
 		file.link,
 		file.meta,
 		file.strength,
+		file.passphraseWords,
 		file.request,
 		file.pow,
 		file.server,
