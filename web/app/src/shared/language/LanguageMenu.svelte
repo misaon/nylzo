@@ -6,7 +6,7 @@
   import Button from '../ui/button/Button.svelte';
   import Icon from '../ui/icon/Icon.svelte';
   import Popover from '../ui/menu/Popover.svelte';
-  import { LANGUAGE_DETAILS, LANGUAGES } from './language.ts';
+  import { languageDetails, LANGUAGES } from './language.ts';
   import type { Language } from './language.ts';
   import LanguageFlag from './LanguageFlag.svelte';
   import { getTranslator } from './translator.svelte.ts';
@@ -19,7 +19,7 @@
 
   const nameOrder = new Intl.Collator('en');
   const ORDER = LANGUAGES.toSorted((first, second) =>
-    nameOrder.compare(LANGUAGE_DETAILS[first].name, LANGUAGE_DETAILS[second].name),
+    nameOrder.compare(languageDetails(first).name, languageDetails(second).name),
   );
 
   const { placement, onlanguage, class: className }: Props = $props();
@@ -28,7 +28,7 @@
   const id = $props.id();
   let open = $state(false);
   const current = $derived(translator.language);
-  const currentName = $derived(LANGUAGE_DETAILS[current].name);
+  const currentName = $derived(languageDetails(current).name);
   const currentCode = $derived(current.split('-', 1)[0]?.toUpperCase());
   const currentLabel = $derived(translate('language.current', { language: currentName }));
 
@@ -123,7 +123,7 @@
           ]}
         >
           <LanguageFlag {language} />
-          <span class="flex-1 text-left">{LANGUAGE_DETAILS[language].name}</span>
+          <span class="flex-1 text-left">{languageDetails(language).name}</span>
           {#if selected}
             <Icon name="check" class="size-4 shrink-0 text-aegis-200 drop-shadow-[0_0_6px_oklch(0.86_0.06_246/0.7)]" />
           {:else}

@@ -37,10 +37,6 @@ const limits: InstanceLimits = {
   maxOpens: 10,
 };
 
-class TestInput extends Element {
-  value = 'selected-file';
-}
-
 describe('message composer interactions', () => {
   let created: Created;
   let composers: Composer[];
@@ -55,13 +51,11 @@ describe('message composer interactions', () => {
     return form;
   }
 
-  const querySelector = vi.fn<() => { content: string } | null>();
   const reload = vi.fn<(...arguments_: unknown[]) => void>();
 
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.resetAllMocks();
-    querySelector.mockReturnValue(null);
     composers = [];
     vi.mocked(createApi).mockReturnValue(fakeApi());
     created = {
@@ -74,9 +68,7 @@ describe('message composer interactions', () => {
     browser = Object.assign(memoryStore(), { close: vi.fn<() => void>() });
     vi.mocked(browserSentStore).mockReturnValue(browser);
     vi.mocked(rememberSent).mockResolvedValue(true);
-    vi.stubGlobal('document', { querySelector });
     vi.stubGlobal('location', { origin: 'https://nylzo.test', reload });
-    vi.stubGlobal('HTMLInputElement', TestInput);
   });
 
   afterEach(() => {
@@ -85,6 +77,7 @@ describe('message composer interactions', () => {
     }
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    document.head.replaceChildren();
   });
 
   it('loads instance limits, clamps opens and allows retry after a loading failure', async () => {
@@ -108,7 +101,10 @@ describe('message composer interactions', () => {
   });
 
   it('tracks only in the tab, never in browser storage, when served from the verified local client', () => {
-    querySelector.mockReturnValue({ content: 'https://instance.test' });
+    const instance = document.createElement('meta');
+    instance.name = 'nylzo-instance';
+    instance.content = 'https://instance.test';
+    document.head.append(instance);
     const form = composer();
     const stop = form.start({} as HTMLElement);
     expect(form.canKeep).toBe(false);
@@ -172,8 +168,9 @@ describe('message composer interactions', () => {
     ]);
     form.pickFile(new File(['ok'], 'small.txt'));
     expect(form.problems).toEqual([{ field: 'passphrase', code: 'too_short' }]);
-    const input = new TestInput();
-    form.focus.attach('file')(input as unknown as HTMLElement);
+    const input = document.createElement('input');
+    input.value = 'selected-file';
+    form.focus.attach('file')(input);
     form.removeFile();
     expect(form.file).toBeUndefined();
     expect(input.value).toBe('');
@@ -416,8 +413,11 @@ describe('message composer interactions', () => {
     const form = composer();
     form.toggleMenu('ttl');
     expect(form.menu).toBe('ttl');
-    const menu = Object.assign(new Element(), { closest: () => ({}) });
-    form.onWindowClick({ target: menu } as unknown as MouseEvent);
+    const menu = document.createElement('div');
+    const item = document.createElement('button');
+    menu.dataset['menu'] = 'ttl';
+    menu.append(item);
+    form.onWindowClick({ target: item } as unknown as MouseEvent);
     expect(form.menu).toBe('ttl');
     form.onWindowClick({ target: null } as MouseEvent);
     expect(form.menu).toBeUndefined();

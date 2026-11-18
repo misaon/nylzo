@@ -4,7 +4,7 @@ import { loadCatalog } from '../shared/language/catalog.ts';
 import {
   browserPreferences,
   homePath,
-  LANGUAGE_DETAILS,
+  languageDetails,
   savedLanguage,
   storedLanguage,
 } from '../shared/language/language.ts';
@@ -75,7 +75,7 @@ async function boot(): Promise<void> {
   // A prerendered home page shows its content first, so its code waits for that paint; other pages load it with the fonts.
   const appModules = homePage ? undefined : loadApp(language);
   await Promise.race([
-    loadFonts(homePage ? LANGUAGE_DETAILS[homePage].fontSample : ANY_TEXT_SAMPLE),
+    loadFonts(homePage ? languageDetails(homePage).fontSample : ANY_TEXT_SAMPLE),
     delay(FONT_WAIT_MS),
   ]);
   document.documentElement.dataset['fonts'] = '';

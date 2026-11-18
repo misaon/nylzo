@@ -1,4 +1,5 @@
 import { KDF_NONE, KDF_SCRYPT } from '@nylzo/core';
+import type { Window as HappyDomWindow } from 'happy-dom';
 import { flushSync, onDestroy } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -40,9 +41,10 @@ const metadata: Metadata = {
 };
 const file = { name: 'message.pdf', mime: 'application/pdf', bytes: new Uint8Array([1, 2, 3]) };
 function reducedMotion(matches: boolean): void {
-  const query = matchMedia('(prefers-reduced-motion: reduce)') as MediaQueryList & { matches: boolean };
-  query.matches = matches;
-  query.dispatchEvent(new Event('change'));
+  (globalThis as unknown as HappyDomWindow).happyDOM.settings.device.prefersReducedMotion = matches
+    ? 'reduce'
+    : 'no-preference';
+  dispatchEvent(new Event('resize'));
   flushSync();
 }
 

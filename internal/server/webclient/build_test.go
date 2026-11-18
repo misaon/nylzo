@@ -3,7 +3,9 @@ package webclient_test
 import (
 	"bytes"
 	"compress/gzip"
+	"encoding/json"
 	"maps"
+	"os"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -26,7 +28,27 @@ func builtHome(language string) string {
 <script type="module" src="/assets/index-a1.js"></script><link rel="stylesheet" href="/assets/style-b2.css"></head><body><h1>home ` + language + `</h1></body></html>`
 }
 
-var homeLanguages = []string{"en", "cs", "de", "es", "fr", "id", "it", "ja", "pl", "pt-BR", "sk", "zh-Hans"}
+var homeLanguages = languageTags()
+
+func languageTags() []string {
+	data, err := os.ReadFile("languages.json")
+	if err != nil {
+		panic(err)
+	}
+	var table struct {
+		Languages []struct {
+			Tag string `json:"tag"`
+		} `json:"languages"`
+	}
+	if err = json.Unmarshal(data, &table); err != nil {
+		panic(err)
+	}
+	tags := make([]string, 0, len(table.Languages))
+	for _, entry := range table.Languages {
+		tags = append(tags, entry.Tag)
+	}
+	return tags
+}
 
 func homePath(language string) string {
 	if language == "en" {

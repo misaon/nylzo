@@ -48,6 +48,10 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
       /^web\/(.*\/)?(package\.json|bun\.lock|bunfig\.toml)$/u.test(file)
     ) {
       full = true;
+    } else if (file === "internal/server/webclient/languages.json") {
+      groups.go = true;
+      groups.web = true;
+      groups.integration = true;
     } else if (/^(cmd\/|internal\/)/u.test(file) && !file.startsWith("internal/server/web/")) {
       groups.go = true;
       groups.integration = true;

@@ -42,6 +42,9 @@ test("Go and web changes retain integration coverage and their language security
   assert.equal(web.jobs["macos-release"], true);
   assert.equal(web.jobs.go, false);
   assert.equal(planChecks(["web/package.json"], "pull_request").dependencies, true);
+  const languages = planChecks(["internal/server/webclient/languages.json"], "pull_request");
+  assert.equal(languages.jobs.go, true);
+  assert.equal(languages.jobs.web, true);
 });
 
 test("pushes, mixed changes, renames, and full scans cannot hide executable changes behind Markdown", () => {

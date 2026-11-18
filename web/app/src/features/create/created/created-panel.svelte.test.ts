@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { requestKey } from '@nylzo/core';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
