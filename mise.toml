@@ -112,7 +112,7 @@ description = "Web supply-chain policy, dependency audit, Oxfmt, Oxlint, knip, t
 depends = ["install:web"]
 run = [
   "bun automation/web-install/policy.ts",
-  "bun audit --cwd web --audit-level=moderate",
+  "bun automation/source-dependency-gate/audit.ts web",
   "bun run --cwd web lint",
   "bun run --cwd web typecheck",
   "bun run --cwd web --filter @nylzo/web check",
@@ -123,7 +123,7 @@ description = "Automation workspace, repository tools, Wiki links, workflows and
 shell = "bash -o errexit -o pipefail -c"
 depends = ["install:automation"]
 run = [
-  "bun audit --cwd automation --audit-level=moderate",
+  "bun automation/source-dependency-gate/audit.ts automation",
   "bun run --cwd automation lint",
   "bun run --cwd automation typecheck",
   "bun tools/check-syntax.mts",
