@@ -113,8 +113,8 @@ test("the dns plan reads the server outputs with the current server configuratio
     await writeFile(path.join(directory, "server", ".terraform.lock.hcl"), "installed lock");
     const siteFile = path.join(directory, "site.json");
     await writeFile(siteFile, JSON.stringify({ ...testSite, cloudflareAccountId: "a".repeat(32) }));
-    delete process.env.NYLZO_STATE_BUCKET;
-    Object.assign(process.env, { PATH: `${bin}:${saved.PATH}`, TF_ENCRYPTION: "encryption", TF_LOG: "trace", HCLOUD_TOKEN: "h".repeat(40), CLOUDFLARE_API_TOKEN: "c".repeat(40) });
+    delete process.env["NYLZO_STATE_BUCKET"];
+    Object.assign(process.env, { PATH: `${bin}:${saved["PATH"]}`, TF_ENCRYPTION: "encryption", TF_LOG: "trace", HCLOUD_TOKEN: "h".repeat(40), CLOUDFLARE_API_TOKEN: "c".repeat(40) });
     await prepare(siteFile, "dns");
     const environment = await readFile(path.join(directory, "tofu-environment"), "utf8");
     for (const name of ["TF_LOG", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN"]) assert.doesNotMatch(environment, new RegExp(`^${name}=`, "mu"));

@@ -25,7 +25,7 @@ fs.writeFileSync(process.env.COUNTER,String(count+1));process.exit(count<Number(
     for (const name of ["git", "gitsign", "sleep"]) chmodSync(join(root, "bin", name), 0o700);
     const run = (failures: string) => {
       rmSync(join(root, "counter"), { force: true }); writeFileSync(join(root, "delays"), "");
-      return spawnSync("bash", ["tools/security/verify-keyless-tag", "v0.1.8", "a".repeat(40), "workflow_run"], { encoding: "utf8", timeout: 5000, env: { ...process.env, PATH: `${root}/bin:${process.env.PATH}`, GITHUB_REPOSITORY: "misaon/nylzo", COUNTER: join(root, "counter"), DELAYS: join(root, "delays"), FAILURES: failures } });
+      return spawnSync("bash", ["tools/security/verify-keyless-tag", "v0.1.8", "a".repeat(40), "workflow_run"], { encoding: "utf8", timeout: 5000, env: { ...process.env, PATH: `${root}/bin:${process.env["PATH"]}`, GITHUB_REPOSITORY: "misaon/nylzo", COUNTER: join(root, "counter"), DELAYS: join(root, "delays"), FAILURES: failures } });
     };
     const delayed = run("5"); assert.equal(delayed.status, 0, delayed.stderr);
     assert.equal(readFileSync(join(root, "counter"), "utf8"), "6");

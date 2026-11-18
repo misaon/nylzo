@@ -26,7 +26,7 @@ for (const architecture of ["amd64", "arm64"]) {
     await writeFile(`${destination}/${architecture}-${name}.ign`, JSON.stringify(document));
   }
   if (architecture === "amd64") {
-    const { heartbeatUrl, tang, ...site } = result.site;
+    const { heartbeatUrl: _heartbeatUrl, tang: _tang, ...site } = result.site;
     await writeFile(`${destination}/site.json`, JSON.stringify(site));
   }
 }

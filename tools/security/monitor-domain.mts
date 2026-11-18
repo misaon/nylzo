@@ -9,7 +9,7 @@ const day = 86400000;
 const maxJsonBytes = 1 << 20;
 const maxCertificatePages = 50;
 const unquote = (data: string) => data.replace(/^"|"$/gu, "").replace(/"\s*"/gu, "");
-const parameters = (value: string) => value.split(";").map(part => part.trim()).filter(Boolean).sort().join("; ");
+const parameters = (value: string) => value.split(";").map(part => part.trim()).filter(Boolean).toSorted().join("; ");
 
 export function caaProblems(lookup: Lookup, accountUri?: string) {
   const problems: string[] = [];
@@ -91,20 +91,21 @@ const registries: Record<string, string> = {
   net: "https://rdap.verisign.com/net/v1/domain/",
 };
 
-function registration(domain: string) {
+function readRegistration(domain: string) {
   const base = registries[domain.slice(domain.lastIndexOf(".") + 1)];
   assert(base, "Add the RDAP service of this top-level domain to the monitor");
   return json(base + domain) as Promise<Registration>;
 }
 
-export async function domainProblems(domain: string, options: { accountUri?: string; reviewedUntil?: string; now?: number } = {}) {
+const resolveRecords = (name: string, type: string) => json(`https://dns.google/resolve?name=${name}&type=${type}&do=true`) as Promise<Lookup>;
+
+export async function domainProblems(domain: string, options: { accountUri?: string | undefined; reviewedUntil?: string | undefined; now?: number } = {}) {
   assert.match(domain, /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u);
   const now = options.now ?? Date.now();
-  const resolve = (name: string, type: string) => json(`https://dns.google/resolve?name=${name}&type=${type}&do=true`) as Promise<Lookup>;
   const problems = [
-    ...caaProblems(await resolve(domain, "CAA"), options.accountUri),
-    ...mailProblems(await resolve(domain, "MX"), await resolve(domain, "TXT"), await resolve(`_dmarc.${domain}`, "TXT")),
-    ...registrationProblems(await registration(domain), now),
+    ...caaProblems(await resolveRecords(domain, "CAA"), options.accountUri),
+    ...mailProblems(await resolveRecords(domain, "MX"), await resolveRecords(domain, "TXT"), await resolveRecords(`_dmarc.${domain}`, "TXT")),
+    ...registrationProblems(await readRegistration(domain), now),
   ];
   const since = new Date(Math.max(now - 8 * day, options.reviewedUntil ? new Date(options.reviewedUntil).getTime() : 0));
   for (let after = "", page = 0; page < maxCertificatePages; page++) {
@@ -118,7 +119,7 @@ export async function domainProblems(domain: string, options: { accountUri?: str
 
 if (import.meta.main) {
   try {
-    const problems = await domainProblems(process.env.DOMAIN ?? "", { accountUri: process.env.ACME_ACCOUNT || undefined, reviewedUntil: process.env.CT_REVIEWED_UNTIL || undefined });
+    const problems = await domainProblems(process.env["DOMAIN"] ?? "", { accountUri: process.env["ACME_ACCOUNT"] || undefined, reviewedUntil: process.env["CT_REVIEWED_UNTIL"] || undefined });
     for (const problem of problems) console.error(problem);
     if (problems.length > 0) process.exitCode = 1;
     else console.log("DNS, certificate transparency and registration of the domain match the expected state.");

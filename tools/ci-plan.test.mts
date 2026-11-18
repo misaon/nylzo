@@ -68,12 +68,12 @@ test("the required gate rejects failed classification, missing outputs, and ever
     const results: Record<string, { result: string; outputs?: Record<string, string> }> = Object.fromEntries(
       Object.entries(plan.jobs).map(([job, required]) => [job, { result: required ? "success" : "skipped" }]),
     );
-    results.changes = { result: "success", outputs: { jobs: JSON.stringify(plan.jobs) } };
+    results["changes"] = { result: "success", outputs: { jobs: JSON.stringify(plan.jobs) } };
     assert.equal(checksPassed(results), true);
-    for (const job of Object.keys(results)) {
-      for (const result of ["failure", "cancelled", "", results[job].result === "success" ? "skipped" : "success"]) {
+    for (const [job, outcome] of Object.entries(results)) {
+      for (const result of ["failure", "cancelled", "", outcome.result === "success" ? "skipped" : "success"]) {
         assert.equal(
-          checksPassed({ ...results, [job]: { ...results[job], result } }),
+          checksPassed({ ...results, [job]: { ...outcome, result } }),
           false,
           `${event}: ${job} ${result}`,
         );

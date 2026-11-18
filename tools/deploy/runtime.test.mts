@@ -139,12 +139,13 @@ echo VERIFIED_FAILURE_BEHAVIOR
   }
 });
 
+const untouched = (previous: string) => `[[ "$status" != 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/${previous}/caddy && ! -s /tmp/restarts ]]
+[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = ${previous} && ! -e /var/lib/nylzo-deploy/caddy.previous.tag && ! -s /tmp/starts ]]`;
+
 test("Caddy installs only a verified newer release build, keeps it for releases without one, refuses an upstream build, and restores the previous executable on failure", { skip: !available }, () => {
   const releaseSigned = `grep -q '^verify-blob .*--certificate-identity https://github.com/misaon/nylzo/.github/workflows/release.yml@refs/tags/v0.2.1 ' /tmp/verified`;
   const archiveVerified = `grep -qx 'https://github.com/misaon/nylzo/releases/download/v0.2.1/nylzo-caddy_0.2.1_linux_amd64.tar.gz' /tmp/downloads
 grep -q '^attestation verify .*nylzo-caddy_0.2.1_linux_amd64.tar.gz .*--source-ref refs/tags/v0.2.1 ' /tmp/verified`;
-  const untouched = (previous: string) => `[[ "$status" != 0 && "$(readlink /opt/nylzo/bin/caddy)" = /opt/nylzo/caddy/${previous}/caddy && ! -s /tmp/restarts ]]
-[[ "$(cat /var/lib/nylzo-deploy/caddy.tag)" = ${previous} && ! -e /var/lib/nylzo-deploy/caddy.previous.tag && ! -s /tmp/starts ]]`;
   const scenarios: Record<string, { previous: string; listed?: boolean; identical?: boolean; current?: string; fail?: string; release?: string; expectation: string }> = {
     "fresh host": { previous: "", expectation: `${releaseSigned}
 ${archiveVerified}

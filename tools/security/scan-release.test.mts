@@ -31,7 +31,7 @@ test("release scanning covers every archive and image architecture and fails clo
     const scan = (reference = image, exit = "0", caddyReference = caddy, skipReport = "") =>
       spawnSync("bash", ["tools/security/scan-release", reference, caddyReference, directory, join(directory, "reports")], {
         encoding: "utf8",
-        env: { ...process.env, PATH: `${directory}:${process.env.PATH}`, SCAN_LOG: log, SCAN_EXIT: exit, SKIP_REPORT: skipReport },
+        env: { ...process.env, PATH: `${directory}:${process.env["PATH"]}`, SCAN_LOG: log, SCAN_EXIT: exit, SKIP_REPORT: skipReport },
       });
     assert.equal(scan().status, 0);
     const calls = readFileSync(log, "utf8").trim().split("\n");

@@ -12,14 +12,14 @@ const policy = JSON.parse(readFileSync(join(root, "security/sca-policy.json"), "
 
 function ignoredIn(file: string): string[] {
   const { IgnoredVulns = [] } = Bun.TOML.parse(readFileSync(join(root, file), "utf8")) as { IgnoredVulns?: IgnoredVulnerability[] };
-  return IgnoredVulns.map(vulnerability => `${vulnerability.id} until ${vulnerability.ignoreUntil.toString()}`).sort();
+  return IgnoredVulns.map(vulnerability => `${vulnerability.id} until ${vulnerability.ignoreUntil.toString()}`).toSorted();
 }
 
 test("Scorecard ignores exactly the vulnerabilities the SCA policy assessed, until their review dates", () => {
   const expected = new Map<string, string[]>();
   for (const assessment of policy.notAffected) {
     const file = join(dirname(assessment.lockfile), "osv-scanner.toml");
-    expected.set(file, [...(expected.get(file) ?? []), `${assessment.id} until ${Temporal.Instant.from(assessment.reviewUntil).toString()}`].sort());
+    expected.set(file, [...(expected.get(file) ?? []), `${assessment.id} until ${Temporal.Instant.from(assessment.reviewUntil).toString()}`].toSorted());
   }
   const files = execFileSync("git", ["ls-files", "*osv-scanner.toml"], { cwd: root, encoding: "utf8" }).trim().split("\n");
   assert.deepEqual(ignoredIn("security/osv-scanner.toml"), []);
