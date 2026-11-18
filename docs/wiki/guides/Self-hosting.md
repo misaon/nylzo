@@ -143,7 +143,7 @@ sudo find "$data/epoch" -type f -exec shred --zero --iterations=0 --remove=unlin
 sudo rmdir "$data/epoch"
 ```
 
-5. Copy in the new release's files, put its references into `.env` and delete `NYLZO_REPORT_KEY`, which 0.14 ignores.
+5. Copy in the new release's files, put its references into `.env` and delete `NYLZO_REPORT_KEY`, which 0.14 ignores, and `NYLZO_PROXY_MODE`, which stops 0.14 from starting.
 6. Run the `store-check` above. It should report that the server upgrades the store and erases every message, and that there is no seed.
 7. Run `docker compose up -d` and `docker network rm nylzo_nylzo` for the old network, then `sudo bash check-isolation` and `sudo rm caddy-state/maintenance`.
 
