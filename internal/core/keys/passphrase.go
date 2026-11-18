@@ -1,7 +1,6 @@
 package keys
 
 import (
-	"crypto/rand"
 	_ "embed"
 	"errors"
 	"slices"
@@ -17,10 +16,6 @@ const (
 	MinPassphraseCharacters         = 15
 	minPassphraseDistinctCharacters = 6
 	passphraseContextWord           = "nylzo"
-	generatedPassphraseGroups       = 4
-	generatedPassphraseGroupLength  = 4
-	generatedPassphraseAlphabet     = "0123456789abcdefghjkmnpqrstvwxyz"
-	generatedPassphraseSeparator    = '-'
 )
 
 type PassphraseProblem string
@@ -136,24 +131,6 @@ func CheckPassphraseStrength(passphrase string) error {
 		return &WeakPassphraseError{PassphraseCommon}
 	}
 	return nil
-}
-
-func GeneratePassphrase() string {
-	for {
-		var random [generatedPassphraseGroups * generatedPassphraseGroupLength]byte
-		rand.Read(random[:])
-		var builder strings.Builder
-		for index, value := range random {
-			if index > 0 && index%generatedPassphraseGroupLength == 0 {
-				builder.WriteByte(generatedPassphraseSeparator)
-			}
-			builder.WriteByte(generatedPassphraseAlphabet[value&31])
-		}
-		clear(random[:])
-		if candidate := builder.String(); CheckPassphraseStrength(candidate) == nil {
-			return candidate
-		}
-	}
 }
 
 func foldASCII(text string) string {
