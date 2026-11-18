@@ -43,7 +43,6 @@ const (
 	labelPreamble       = "OPAQUEv1-"
 	labelPrefix         = "OPAQUE-"
 	labelHandshake      = "HandshakeSecret"
-	labelSessionKey     = "SessionKey"
 	labelServerMAC      = "ServerMAC"
 	labelClientMAC      = "ClientMAC"
 	diffieHellmanShares = 3
@@ -368,13 +367,11 @@ func GenerateKE1With(
 
 // ClientResult is what a successful KE3 gives the client.
 type ClientResult struct {
-	KE3        [KE3Len]byte
-	SessionKey [HashLen]byte
-	ExportKey  [ExportKeyLen]byte
+	KE3       [KE3Len]byte
+	ExportKey [ExportKeyLen]byte
 }
 
 func (r *ClientResult) Wipe() {
-	clear(r.SessionKey[:])
 	clear(r.ExportKey[:])
 }
 
@@ -419,7 +416,6 @@ func (c *ClientLogin) GenerateKE3(ke2 []byte, config *Config) (ClientResult, err
 		return result, ErrServerAuthentication
 	}
 	copy(result.KE3[:], mac(keys.clientMAC, preambleHash(append(preamble, expectedServerMAC...))))
-	copy(result.SessionKey[:], keys.sessionKey)
 	copy(result.ExportKey[:], recovered.exportKey)
 	return result, nil
 }
@@ -457,10 +453,10 @@ func (c *ClientLogin) recoverCredentials(response []byte, stretch Stretch) (*sto
 	return recovered, serverPublicKey, nil
 }
 
-// ServerLogin is what a server keeps between KE2 and KE3 (ServerState of RFC 9807).
+// ServerLogin is what a server keeps between KE2 and KE3 (ServerState of RFC 9807 without session_key, which Nylzo
+// does not use).
 type ServerLogin struct {
 	ExpectedClientMAC [MACLen]byte
-	SessionKey        [HashLen]byte
 }
 
 // ServerFinish is RFC 9807 section 6.2.4.
@@ -473,7 +469,6 @@ func (s *ServerLogin) ServerFinish(ke3 []byte) error {
 
 func (s *ServerLogin) Wipe() {
 	clear(s.ExpectedClientMAC[:])
-	clear(s.SessionKey[:])
 }
 
 // GenerateKE2 is RFC 9807 section 6.2.2 for a stored record.
@@ -555,7 +550,6 @@ func GenerateKE2With(
 	serverMAC := mac(derived.serverMAC, preambleHash(preamble))
 	var login ServerLogin
 	copy(login.ExpectedClientMAC[:], mac(derived.clientMAC, preambleHash(append(preamble, serverMAC...))))
-	copy(login.SessionKey[:], derived.sessionKey)
 	encoded := append(append(append(response, random.ServerNonce[:]...), keyshareBytes...), serverMAC...)
 	copy(ke2[:], encoded)
 	return ke2, login, nil
@@ -627,18 +621,16 @@ func mac(key, message []byte) []byte {
 }
 
 type akeKeys struct {
-	serverMAC  []byte
-	clientMAC  []byte
-	sessionKey []byte
+	serverMAC []byte
+	clientMAC []byte
 }
 
 func (k *akeKeys) wipe() {
 	clear(k.serverMAC)
 	clear(k.clientMAC)
-	clear(k.sessionKey)
 }
 
-// deriveKeys is DeriveKeys of RFC 9807 section 6.4.2.2.
+// deriveKeys is DeriveKeys of RFC 9807 section 6.4.2.2 without session_key, which Nylzo does not use.
 func deriveKeys(ikm, preamble []byte) (*akeKeys, error) {
 	prk, err := hkdf.Extract(sha512.New, ikm, nil)
 	if err != nil {
@@ -652,9 +644,6 @@ func deriveKeys(ikm, preamble []byte) (*akeKeys, error) {
 	}
 	defer clear(handshake)
 	keys := &akeKeys{}
-	if keys.sessionKey, err = expandLabel(prk, labelSessionKey, transcript); err != nil {
-		return nil, err
-	}
 	if keys.serverMAC, err = expandLabel(handshake, labelServerMAC, nil); err != nil {
 		return nil, err
 	}

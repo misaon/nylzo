@@ -215,7 +215,7 @@ func (s *Server) issueID(creation *creationRequest, now time.Time) (api.Instance
 	var response [opaque.RegistrationResponseLen]byte
 	secretmode.Do(func() {
 		var keys opaque.ServerKeys
-		keys, _, err = s.ring.OPAQUEKeys(id[:], s.ring.CurrentID())
+		keys, err = s.ring.OPAQUEKeys(id[:], s.ring.CurrentID())
 		if err == nil {
 			credential := corekeys.CredentialIdentifier(id, &expiryShare)
 			defer clear(credential)

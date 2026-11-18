@@ -185,17 +185,15 @@ func (r *Ring) Verify(purpose Purpose, input, expected []byte, id byte) bool {
 }
 
 // OPAQUEKeys derives the OPAQUE keys of one message from the pepper that pepperID names (spec section 5.1). With an
-// unknown pepperID it derives them from the current pepper and reports false, so the work is the same.
-func (r *Ring) OPAQUEKeys(messageID []byte, pepperID byte) (opaque.ServerKeys, bool, error) {
+// unknown pepperID it derives them from the current pepper, so the work is the same; Holds tells the two apart.
+func (r *Ring) OPAQUEKeys(messageID []byte, pepperID byte) (opaque.ServerKeys, error) {
 	deriving := r.keyFor(pepperID)
-	known := deriving != nil
-	if !known {
+	if deriving == nil {
 		deriving = r.current
 	}
 	seed := deriving.mac(OPAQUEServer, messageID)
 	defer clear(seed[:])
-	keys, err := opaque.DeriveServerKeys(seed[:], &deriving.oprfSeed)
-	return keys, known, err
+	return opaque.DeriveServerKeys(seed[:], &deriving.oprfSeed)
 }
 
 // Holds reports whether the ring still has the pepper that id names.

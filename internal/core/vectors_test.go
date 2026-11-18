@@ -599,8 +599,8 @@ func checkOPAQUEVector(t *testing.T, vector *vectors.OPAQUE) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	serverKeys, known, err := ring.OPAQUEKeys(id[:], ring.CurrentID())
-	if err != nil || !known || hex.EncodeToString(serverKeys.OPRFSeed[:]) != vector.OPRFSeed ||
+	serverKeys, err := ring.OPAQUEKeys(id[:], ring.CurrentID())
+	if err != nil || hex.EncodeToString(serverKeys.OPRFSeed[:]) != vector.OPRFSeed ||
 		hex.EncodeToString(serverKeys.PublicKey[:]) != vector.ServerPublicKey {
 		t.Fatalf("server keys: %v", err)
 	}

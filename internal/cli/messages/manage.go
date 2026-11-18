@@ -107,7 +107,7 @@ func RunBurn(ctx context.Context, environment *command.Environment, arguments []
 		return command.Failf(environment, "%s", err)
 	}
 	defer link.wipe()
-	metadata, err := server.Metadata(ctx, link.id, &link.keys.R)
+	metadata, err := server.Metadata(ctx, link.id, &link.readSeed)
 	if err == nil {
 		err = checkBurnable(link, &metadata)
 	}
@@ -119,7 +119,7 @@ func RunBurn(ctx context.Context, environment *command.Environment, arguments []
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	defer login.Wipe()
-	if err = server.Burn(ctx, link.id, &link.keys.R, &login); err != nil {
+	if err = server.Burn(ctx, link.id, &link.readSeed, &login); err != nil {
 		return command.Failf(environment, "%s", command.Explain(err))
 	}
 	fmt.Fprintln(environment.Stdout, "deleted")
