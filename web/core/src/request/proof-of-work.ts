@@ -9,7 +9,7 @@ const POW_N = 1 << 14;
 const POW_R = 8;
 const POW_P = 1;
 export const POW_CHALLENGE_LENGTH = 36;
-export const MAX_POW_DIFFICULTY = 8;
+export const MAX_POW_DIFFICULTY = 7;
 
 const NONCE_OFFSET = 4;
 const NONCE_LENGTH = 16;

@@ -113,7 +113,7 @@ func (a *API) handleOverview(w http.ResponseWriter, r *http.Request) {
 			a.writeInternal(w, r, readErr)
 			return
 		}
-		response.Previous = totals(earlier)
+		response.Previous = totals(elapsedPart(earlier, now))
 	}
 	signedIn := sessionOf(r)
 	if err = a.describe(r.Context(), &response, &signedIn); err != nil {
@@ -155,6 +155,26 @@ func (a *API) storage() storageResponse {
 		response.DatabaseBytes = info.Size()
 	}
 	return response
+}
+
+// elapsedPart cuts the span before down to what the running span has had: its last period, which matches the running
+// one, counts in proportion to the part of the running period that has passed, so a trend never compares a part with a
+// whole.
+func elapsedPart(earlier spanCounts, now time.Time) spanCounts {
+	scaleLastPeriod(earlier.periods, now)
+	if earlier.days != earlier.periods {
+		scaleLastPeriod(earlier.days, now)
+	}
+	return earlier
+}
+
+func scaleLastPeriod(series *statistics.Series, now time.Time) {
+	passed := now.Unix() - series.Resolution.Start(now).Unix()
+	for _, values := range series.Values {
+		if last := len(values) - 1; last >= 0 {
+			values[last] = (values[last]*passed + int64(series.Resolution)/2) / int64(series.Resolution)
+		}
+	}
 }
 
 // spanCounts holds the counts of a span by its periods and by the UTC days that begin within it, so a span and the

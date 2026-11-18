@@ -582,7 +582,7 @@ GET  /api/v1/challenge              → 200 {"challenge":"…","expires_at":"…
 - `GET /api/v1/instance` answers the `create` object only when the request carries `X-Nylzo-Ttl` (the TTL in seconds as a canonical decimal, between 60 and the instance maximum), `X-Nylzo-Share-Key` (a share key of suite 1, §5.6) and `X-Nylzo-Registration` (a registration request of §2.1: a canonical 32-byte ristretto255 element other than the identity), each once. With only some of them, a repeated or a malformed one, it answers 400; a share key without a suite, and the first two headers without `X-Nylzo-Registration`, answer 400 `client_outdated` (§15). `epoch` is `e`, `deadline` the deadline of §5.6 in RFC 3339, `share` the wrapped share for the new id, and `registration` the registration response (`CreateRegistrationResponse`, §2.1) for the new id, made with the OPAQUE keys of the current pepper (§5.1). `expires_at` is the expiry of the id token.
 - A client seals `deadline` into the policy (§3) and sends `epoch` back unchanged. It MUST refuse a `deadline` that is not a whole minute, whose minute before is not `epoch`, or that does not lie between `ttl` and `ttl + 61` seconds after the issue time, which is the token's `expires_at` minus 600 s. The server computes it from the same clock reading, so the check needs no correct client clock.
 - Without the headers the response leaves out `create`, for clients that only read the limits. They are headers and not a query, so the TTL a sender chose stays out of the URL that a provider in front of the instance logs, and the local client (§14.1) relays the request unchanged. Compression is the sender's decision (§3.2); the instance response says nothing about it.
-- A client MUST refuse an instance that reports a proof-of-work difficulty above 8 or below 0 (§8.1) before it derives any key.
+- A client MUST refuse an instance that reports a proof-of-work difficulty above 7 or below 0 (§8.1) before it derives any key.
 - `failed_passphrase_attempts` is cumulative over the message lifetime (`fail_count_total`), not per day.
 - Status, cancel and the handshake of a burn end an `available` message whose generation the server no longer holds as `lost`, like metadata (§6.3): status reports it, and a burn or cancel answers 410 `lost`. While the server cannot read its seed file, status reports the stored state and a cancel, which needs no share, goes ahead as usual; a burn needs the share for its handshake and answers 500.
 - Once an ended message's blob is gone, status answers the ended shape: only `state`, `first_opened_at` and `ended_at` are meaningful; `created_at` and `expires_at` are absent and the counters are 0 (§6.3).
@@ -620,10 +620,10 @@ GET    /api/v1/admin/overview?range=24h|7d|30d|90d|12m   signed, purpose admin �
           "storage":{"free_bytes","total_bytes","reserve_bytes","database_bytes"},
           "security":{"passkeys","last_sign_in","session_expires_at"},
           "source":{"countries","attribution","attribution_url"},"version"}
-GET    /api/v1/admin/live                signed, purpose admin → 200
+GET    /api/v1/admin/live[?since=N&refused=N]   signed, purpose admin → 200
          {"challenge","online":N,"people":[30 × N],"robots":[30 × N],"session_expires_at":N,"usage_supported":bool,
           "usage":[{"at","processor","load","memory_used","memory_total","process_bytes"}],
-          "refused":[{"client","country","reasons":{reason:N},"count","first","last"}]}
+          "refused":[{"client","country","reasons":{reason:N},"count","first","last"}]?,"refused_version":N}
 DELETE /api/v1/admin/session             signed, purpose admin → 200 {}
 ```
 
@@ -637,6 +637,8 @@ The admin area belongs to the operator of an instance; visitors still need no ac
 - A session ends after 15 minutes without a request, 12 hours after sign-in, on sign-out, on a restart of the server, within a minute after its passkey was removed (`admin-reset`), and in effect on a reload of the page, which loses the key. A process holds at most 4 sessions and drops the oldest for a fifth.
 - A request without a valid signature of a live session answers 401 `unauthorized`. A failed enrollment or sign-in (a wrong, malformed, used or expired token, a ninth passkey, a passkey the instance already holds, an unknown passkey, or an assertion that is incomplete or fails a check) also answers 401, puts the client on the list of refused clients with reason `admin` (§5.3) and counts as the held event `admin-sign-in-refused` or `admin-enrollment-refused` without an address (§10).
 - No session credential is ambient, and the cross-origin guard of §6 applies to these routes as well. Every answer is `application/json`.
+- `previous` holds the totals of the span before the chosen one, cut to the part the running span has had: the period that matches the running one counts in proportion to how much of the running period has passed. `12m` has none.
+- The page asks for `live` every five seconds and sends what it holds: `since`, the `at` of its newest usage sample, and `refused`, the `refused_version` of its list of refused clients. The answer then carries only the samples taken after `since`, or every sample when none of them was taken at `since`, as after a gap or a clock step, and `refused` only when the list changed; the version changes with every change of the list. A parameter that is not a decimal number answers 400.
 - When `admin.db` cannot be opened or read, the server runs without the admin area and answers its routes with 404. No admin route reads or changes a message.
 
 ## 7. Lifecycle, leases, sweep
@@ -693,12 +695,12 @@ The proof-of-work algorithm uses scrypt with `N = 2^14, r = 8, p = 1` over a ser
 ```
 challenge = base64url( u32be(window_start) || nonce (16 bytes) || HMAC-SHA-256(k_pow, u32be(window_start) || nonce || u8(difficulty))[0:16] )
 token     = challenge || "." || u64be(counter) as 16 lowercase hex digits
-valid     = HMAC tag verifies for some difficulty from 0 to 8, −5 s ≤ now − window_start ≤ 120 s,
+valid     = HMAC tag verifies for some difficulty from 0 to 7, −5 s ≤ now − window_start ≤ 120 s,
             and scrypt(password = nonce || id, salt = u64be(counter), N = 2^14, r = 8, p = 1, dkLen = 32)
             has its first `difficulty` bits equal to zero
 ```
 
-- `GET /api/v1/instance` returns `pow.required`, `pow.difficulty` and, when required, a fresh `pow.challenge` issued with that difficulty. The difficulty is `NYLZO_POW_DIFFICULTY` (default 4, at most 8) plus one for each tenth of the global cap taken past half, at most 8: with a cap of 250 it is 4 up to 149 creates, 5 from 150, 6 from 175, 7 from 200 and 8 from 225. The tag binds the difficulty, so a token must meet the difficulty its challenge was issued with. A client needs about 2^difficulty scrypt evaluations on average and solves at the difficulty of the answer that carried the challenge.
+- `GET /api/v1/instance` returns `pow.required`, `pow.difficulty` and, when required, a fresh `pow.challenge` issued with that difficulty. The difficulty is `NYLZO_POW_DIFFICULTY` (default 4, at most 7) plus one for each tenth of the global cap taken past half, at most 7: with a cap of 250 it is 4 up to 149 creates, 5 from 150, 6 from 175 and 7 from 200. At 7, 95 % of solves need at most 3 · 2^7 scrypt evaluations, which a device that takes 285 ms for one evaluation finishes within the client's 110 s. The tag binds the difficulty, so a token must meet the difficulty its challenge was issued with. A client needs about 2^difficulty scrypt evaluations on average and solves at the difficulty of the answer that carried the challenge.
 - A challenge is single-use. After the tag and window checks pass, the server records the nonce in `rate_counters`, then waits up to 10 s for a verifier slot and runs scrypt. A second token for the same challenge answers 403 without running scrypt. A failed create after that point, including a 503 because no slot freed up in time, needs a fresh challenge.
 - The counter MUST be lowercase hex; a token with `A` to `F` in the counter is invalid.
 - The server verifies with one scrypt call and bounds concurrent verifications (`NYLZO_POW_CONCURRENCY`, default 4, at most 4, since each one holds 16 MiB). The 5 s tolerance before `window_start` absorbs small clock differences between instances. A verification above that bound waits up to 10 s for a slot and then answers 503 with `Retry-After`.

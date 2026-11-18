@@ -1,9 +1,13 @@
 package adminapi
 
 import (
+	"math"
 	"net/http"
+	"slices"
+	"strconv"
 	"time"
 
+	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/server/hostusage"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/visits"
@@ -15,11 +19,12 @@ const UsageShown = 60
 type liveResponse struct {
 	visits.Live
 
-	Challenge        string          `json:"challenge,omitempty"`
-	SessionExpiresAt int64           `json:"session_expires_at"`
-	UsageSupported   bool            `json:"usage_supported"`
-	Usage            []usagePoint    `json:"usage"`
-	Refused          []refusedClient `json:"refused"`
+	Challenge        string           `json:"challenge,omitempty"`
+	SessionExpiresAt int64            `json:"session_expires_at"`
+	UsageSupported   bool             `json:"usage_supported"`
+	Usage            []usagePoint     `json:"usage"`
+	Refused          *[]refusedClient `json:"refused,omitempty"`
+	RefusedVersion   int64            `json:"refused_version"`
 }
 
 type usagePoint struct {
@@ -40,19 +45,38 @@ type refusedClient struct {
 	Last    int64            `json:"last"`
 }
 
+// handleLive sends only the usage samples taken after since and the refused clients only when their list changed
+// since the version the page holds, because the page asks every five seconds. When no sample carries since, after a
+// gap or a clock step, it sends every sample, so the page starts over.
 func (a *API) handleLive(w http.ResponseWriter, r *http.Request) {
+	since, sinceErr := optionalNumber(r, "since")
+	heldVersion, versionErr := optionalNumber(r, "refused")
+	if sinceErr != nil || versionErr != nil {
+		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
+		return
+	}
 	now := time.Now()
 	samples := a.Usage.History()
+	version := a.Refusals.Version()
 	response := liveResponse{
 		Live:             a.Visits.Live(now),
 		Challenge:        a.nextChallenge(now),
 		SessionExpiresAt: sessionOf(r).expiresAt.Unix(),
 		UsageSupported:   hostusage.Supported(),
 		Usage:            make([]usagePoint, 0, len(samples)),
-		Refused:          a.refused(),
+		RefusedVersion:   version,
+	}
+	if !r.URL.Query().Has("refused") || heldVersion != version {
+		response.Refused = new(a.refused())
+	}
+	if !slices.ContainsFunc(samples, func(sample hostusage.Sample) bool { return sample.At.Unix() == since }) {
+		since = math.MinInt64
 	}
 	for index := range samples {
 		sample := &samples[index]
+		if sample.At.Unix() <= since {
+			continue
+		}
 		response.Usage = append(response.Usage, usagePoint{
 			At:           sample.At.Unix(),
 			Processor:    sample.Processor,
@@ -63,6 +87,18 @@ func (a *API) handleLive(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+// optionalNumber reads a query parameter that is either absent or a decimal number of at least 0.
+func optionalNumber(r *http.Request, name string) (int64, error) {
+	if !r.URL.Query().Has(name) {
+		return 0, nil
+	}
+	number, err := strconv.ParseInt(r.URL.Query().Get(name), 10, 64)
+	if err == nil && number < 0 {
+		err = strconv.ErrRange
+	}
+	return number, err
 }
 
 func (a *API) refused() []refusedClient {
