@@ -1,6 +1,8 @@
 # Nylzo CLI
 
-The same `nylzo` binary creates and reads messages, serves a verified web client on your computer, checks an instance's web client, and runs the server. Run `nylzo` for command help. This guide uses `https://nylzo.example` as a placeholder for your own instance.
+This page is for people who send and read Nylzo messages from a terminal. The examples use `https://nylzo.example` for your instance, such as `https://nylzo.com`. Commands that run a server are in [Operations](Operations.md).
+
+`nylzo` lists the commands and `nylzo <command> -h` shows the flags of one.
 
 ## Install
 
@@ -17,90 +19,82 @@ scoop bucket add nylzo https://github.com/misaon/homebrew-nylzo
 scoop install nylzo/nylzo
 ```
 
-Upgrade with `brew upgrade nylzo` or `scoop update nylzo`; only the latest release receives security fixes. The formula and the manifest in [misaon/homebrew-nylzo](https://github.com/misaon/homebrew-nylzo) pin each release archive by its SHA-256 hash. Their workflow writes a new release there only after it has verified the release's signature and build provenance and installed it on macOS, Linux and Windows. [Verify a release](Verify-a-release.md#verify-a-homebrew-or-scoop-install) shows how to check an install yourself.
+Update with `brew upgrade nylzo` or `scoop update nylzo`. Only the latest release receives security fixes. [Verify a release](Verify-a-release.md#verify-a-homebrew-or-scoop-install) shows how to check what you installed.
 
-The macOS and Windows binaries carry no Apple notarization or Authenticode signature. macOS refuses to run a binary from an archive that a browser downloaded. Homebrew does not mark its downloads that way, and Scoop adds no Mark of the Web on Windows. To build from source instead, run `mise run build` in a checkout.
+The macOS and Windows binaries are not notarized or Authenticode-signed, and macOS refuses to run one from an archive a browser downloaded, so install through a package manager.
 
 ## Keep secrets out of arguments
 
-Pass message links, passphrases, and manage tokens through stdin, files, supported `NYLZO_*` variables, or hidden terminal prompts. Keep them out of command arguments, which can appear in process listings and shell history. Arguments resembling a secret-bearing link are rejected before any network request. Prefer private files over environment variables when other processes can inspect your environment.
+Pass links, passphrases and manage tokens on stdin, in files, through the `NYLZO_*` variables below or at a hidden prompt. Other processes and your shell history can read command arguments, so `nylzo` refuses any argument that holds a link with its key.
 
-The files and directories the CLI writes are new and private. It never replaces an existing file or writes through a link that has the file's name. A file gets mode 0600 and a directory mode 0700. macOS checks access control entries before the mode, so there the CLI creates each one without the entries its parent directory would pass on. Go applies no mode beyond read-only on Windows, so there the CLI creates each one with a protected access list that grants only your account. On both systems nothing is inherited from the parent directory, even when other accounts can read it (F04). The CLI then reads the owner and access back and refuses an entry that is not private. It writes only to a local disk whose file system stores and enforces the permissions itself: NTFS or ReFS on Windows, ext4, XFS, Btrfs, tmpfs and similar on Linux, and a local macOS volume that respects ownership. FAT, exFAT, network shares, FUSE and virtual machine shared folders are refused, since a mount option, server or helper decides access there whatever the file reports. `read --out` checks this before it opens the message. It opens the directory it created inside `--out` and writes every file through that handle, so renaming the directory or putting a link in its place does not redirect the files. Administrators on Windows and root elsewhere can still take ownership of any file.
+Files the CLI writes are new and readable only by your account. It refuses file systems that cannot keep them private, such as FAT, exFAT, network shares, FUSE mounts and virtual machine shared folders. Keep your input files private too (`umask 077`).
 
-The CLI requires HTTPS, except for exact localhost and loopback addresses, which bypass proxies and are checked to resolve to loopback. It does not follow redirects. Error messages do not repeat flag values, file paths, server text, or certificate text that could contain secrets. Control characters in errors are escaped.
-
-## Process protection
-
-Every command that may hold a link, passphrase, manage token, message, pepper or epoch key protects its process before it reads anything: `create`, `read`, `open`, `web`, `status`, `cancel` and `burn`, and on the server host `sweep-once`, `store-check`, `takedown`, `admin-enroll`, `admin-passkeys` and `admin-reset`. `serve` takes the first two steps below and then locks its memory itself, refusing to start without the lock (see the [operations guide](Operations.md)). When a step fails, the command stops before it reads a secret.
-
-First, the command sets its core file limit to 0, so a crash writes no core file.
-
-Second, it shuts out debuggers that run as the same user, and it stops when one is already attached. On Linux the process becomes non-dumpable: other processes of the user can neither attach with ptrace nor read `/proc/<pid>/mem` and `/proc/<pid>/environ`. A tracer that attached before keeps its access, so the command refuses to run while any of its threads is traced, as under `strace`, `gdb` or `proot`, and when `/proc` cannot show its threads. A tracer outside the PID namespace that `/proc` belongs to stays invisible, and nothing on any system covers the moment between the start of the program and its protection, in which the environment already holds `NYLZO_LINK`. On macOS `PT_DENY_ATTACH` refuses ptrace. From 0.14.0 the release binaries also carry an ad-hoc signature with the hardened runtime. While System Integrity Protection is on, as it is by default, no other process of the user can then read their memory through the task port, including a debugger the user granted Developer Tools access, and `dyld` ignores `DYLD_INSERT_LIBRARIES`. Apple's analysis tools such as `vmmap` and `stringdups` still see the memory map and read-only memory. Earlier releases and binaries from `go build` or `mise run build` have only the linker's signature or none; `codesign --force --sign - --options runtime` adds the hardened runtime. Every process of the user can still read the environment with `ps eww`, so do not pass `NYLZO_LINK` on macOS. On Windows the process gets a new DACL: a process of the user that opens nylzo by its id can wait for it and end it, but it cannot read the memory, write a dump or change the DACL back. Windows does not separate the processes of one user, though: the handle the shell or console host opened when nylzo started keeps full access, and so do nylzo's threads. Root, an administrator with `SeDebugPrivilege` and the kernel can always read the memory. On every system a process of the user can also replace the `nylzo` binary, which Homebrew and Scoop install where the user can write, or put another `nylzo` earlier in `PATH`, so the protection covers the running command, not the next one. `open` and `web` start the browser without any `NYLZO_*` variable, so the browser, which nylzo does not protect, never holds `NYLZO_LINK`.
-
-Third, on Linux the command locks all of its memory with `mlockall`, so no secret reaches swap, when the memlock limit is unlimited or the process has `CAP_IPC_LOCK` outside a user namespace. It first raises its soft limit to the hard limit. Under a finite limit it does not lock, because an allocation past the limit would later stop the process, and scrypt alone takes 256 MiB. It then reads `/proc/swaps` (or, when that is hidden, asks the kernel whether any swap is active) and warns on stderr about every swap area that dm-crypt does not encrypt on each path down to the disk. zram counts as memory unless it writes pages back to a device, and an area nylzo cannot trace counts as unencrypted. To clear the warning, encrypt swap or give your user an unlimited memlock limit (`memlock` in `/etc/security/limits.conf`, or `LimitMEMLOCK=infinity` in a systemd unit). `NYLZO_ALLOW_SWAP=1` (or `true`) hides it. macOS encrypts swap, and the CLI checks the `vm.swapusage` flag. Go cannot lock its heap on Windows, so turn on BitLocker for the system drive, which also encrypts the page file. Hibernation writes all memory to disk, locked pages included, so only disk encryption covers it.
-
-The same commands refuse to start while `GODEBUG` contains `http2debug=1` or `http2debug=2`. Go's HTTP/2 code would then print every request header to stderr, signatures and leases among them, and a pasted debug log together with the link would let its reader download a message without spending an open (F11).
+The CLI connects only over HTTPS, except to loopback, and follows no redirects.
 
 ## Create a message
 
-Use a private directory and synthetic data while experimenting. Read real secrets from a private input file; avoid typing them into a recorded terminal.
-
 ```sh
-nylzo create --server https://nylzo.example --ttl 1h \
-  --manage-token-file management.txt < message.txt > link.txt
+nylzo create --server https://nylzo.example --ttl 1h --opens 2 \
+  --manage-token-file manage.txt < message.txt > link.txt
 ```
 
-Create input/output files inside a directory accessible only to you, and use a restrictive umask such as `umask 077`. `--ttl` sets how long the link stays valid, up to 7 days, and `--opens` how many times it can be opened, 1 by default up to the instance's limit. `create` prints only the link. It reads text from stdin (one hidden line when stdin is a terminal) and takes an attachment through `--from-file`. `NYLZO_SERVER` can select the instance instead of `--server`.
+`create` reads up to 100 KiB of UTF-8 text from stdin, or one hidden line when stdin is a terminal. It prints the link on stdout and its expiry time on stderr.
 
-`--compress` gzips the attachment on your device before encryption. The CLI keeps the compressed form only when it at least halves the padded size, and sends the file unchanged otherwise. The padded size of a compressed file still says something about its content, so do not compress a file that mixes a secret with bytes someone else can choose. See the [protocol](../reference/Protocol.md#32-compressed-attachments).
+- `--server URL` names the instance; `NYLZO_SERVER` works too.
+- `--ttl DURATION` sets how long the link works, such as `30m` or `24h`, from 1 minute to the instance's maximum; the instance sets the default.
+- `--opens N` sets how many times the message can be opened, 1 by default, up to the instance's maximum.
+- `--from-file FILE` sends this file, up to 5 MiB, instead of text.
+- `--compress` gzips the attachment when that at least halves its stored size.
+- `--generate-passphrase-file FILE` generates a passphrase into a new private file without printing it.
+- `--passphrase-file FILE` uses the first line of the file as the passphrase; `NYLZO_PASSPHRASE_FILE` works too.
+- `--ask-passphrase` asks for the passphrase twice without echo.
+- `--manage-token-file FILE` writes the manage token to a new private file, and `--print-manage-token` prints it after the link.
 
-Passphrase options:
+A passphrase you choose needs at least 15 characters and must pass the checks in [protocol section 2](../reference/Protocol.md#2-key-derivation-client); the CLI warns below 16 characters or 4 words. A generated one is four groups of four random characters, 80 bits.
 
-- `--generate-passphrase-file FILE` creates a strong passphrase in a new private file and does not print it.
-- `--passphrase-file FILE` or `NYLZO_PASSPHRASE_FILE` reads the first line of an existing file.
-- `--ask-passphrase` prompts twice without echo.
+The manage token has two lines: the message address without the key, then the token. Whoever holds it can check the status and cancel the message.
 
-A passphrase you choose needs at least 15 characters and must pass the checks of [protocol section 2](../reference/Protocol.md#2-key-derivation-client); a generated one always does. Passphrase key derivation uses scrypt with `N = 2^18`. The manage token is written only when requested with `--manage-token-file` (a new private file) or `--print-manage-token`. It has two lines: the link, then the manage token. Keep both private.
+With `--compress`, the stored size shows roughly how well the file compresses. Do not compress a file that mixes a secret with bytes someone else chose ([protocol section 3.2](../reference/Protocol.md#32-compressed-attachments)).
 
-## Read, inspect, cancel, or delete
+## Read a message
 
 ```sh
 nylzo read --link-file link.txt --out received
-nylzo status --manage-token-file management.txt
-nylzo cancel --manage-token-file management.txt
-nylzo burn < link.txt
 ```
 
-`read` and `burn` accept the link through stdin, `--link-file`, or `NYLZO_LINK`. Using the environment variable produces a notice on stderr. Links using a newer protocol version prompt an upgrade; links using the retired passphrase profile (`kdf_id` 2) prompt a replacement link from the sender. A link of protocol version 2 (`/r#2.…`) or 1 (`/m/{id}#1.…`) reports that the instance upgrade to protocol version 3 deleted its message.
+`read` takes the link from `--link-file`, `NYLZO_LINK`, stdin or a hidden prompt. It asks for a passphrase when needed, or reads it from `--passphrase-file` or `NYLZO_PASSPHRASE_FILE`. It needs a destination:
 
-A CLI of an earlier protocol version can neither create nor read messages on an instance that runs protocol version 3: the server answers `client_outdated`, or a CLI of Nylzo 0.1 or 0.2 reports a malformed response. A CLI from before 0.14.0 also sends the X25519 share key that later releases replaced with a post-quantum one, so a current instance refuses its creates and reads with `client_outdated`, which such a CLI reports only as status 400; a CLI from 0.14.0 on says that it is older than the server and needs an update, and gets `bad_request` from an older instance. Use a CLI of the same release as the instance. The local client of `nylzo web` and `nylzo open` has the same constraint, and its page then shows only a general error.
+- `--out DIR` creates a new private `nylzo-…` directory inside the existing directory `DIR`, saves `message.txt` and any attachment there and prints their paths. It checks that it can write there before it opens the message.
+- `--stdout` prints the text and writes nothing to disk. It cannot save an attachment, and a link does not show whether one is attached: if one is, the open is spent and the file is lost. Use `--out` when a file may be attached.
 
-`read` requires an explicit destination before making a request:
+On Windows and macOS each saved file gets the mark a browser gives a download, so SmartScreen, Office and Gatekeeper check it when you open it. Nylzo cannot scan attachments for malware. To run one you trust, clear the mark with `Unblock-File` on Windows or `xattr -d com.apple.quarantine` on macOS.
 
-- `--stdout` prints text without writing files, so it cannot deliver an attachment. A message does not show whether it holds a file until it is opened: `--stdout` then prints the text, spends the open and reports the file it did not save. Use `--out` when a file may be attached. Control characters are escaped on a terminal; a pipe or file receives the original text.
-- `--out DIRECTORY` creates a new private subdirectory before opening the message, writes `message.txt` and any attachment there as private files under a sanitized filename, and prints their paths. After it saves an attachment, it warns on stderr that Nylzo cannot scan the file for malware and that it should be opened only if the sender is trusted. `read` saves the files and prints its notices about them on stderr before anything goes to stdout. A closed pipe on stdout or stderr cannot end `read` early: the files stay saved, and `read` exits with `1` when part of its output could not be written. Name collisions do not consume an open. A failed write may be retried in a second new subdirectory beside the first, never in another location. When `read` cannot remove a file that a failed write left behind, it names the file on stderr, because the file may hold all or part of the message in plaintext. Such a file alone does not change the exit status: `read` exits with `1` when it could not save the message.
-- Every file `--out` writes gets the mark a browser gives a download before it holds any content, so Windows SmartScreen, Office Protected View and macOS Gatekeeper check an attachment when it is opened, as they check a browser download (F08). On Windows it is a `Zone.Identifier` stream with `ZoneId=3` and `HostUrl=about:internet`. On macOS it is a `com.apple.quarantine` attribute with only its flags and the time, in the form macOS writes itself; a mark the system has already set stays. The mark records neither the link nor the instance. Linux has no such mark. `read` checks that the new subdirectory can hold the mark before it opens the message.
-- Opening a marked program can make SmartScreen or Gatekeeper look it up online with Microsoft or Apple, as for any download. On Windows, Microsoft Defender with its default cloud protection and automatic sample submission applies block at first sight to programs and scripts from the Internet zone: when its cloud service cannot decide on an unknown one, it uploads a copy to Microsoft for analysis. The mark does not stop a script started through an interpreter. To run an attachment you trust, clear the mark with `Unblock-File` on Windows or `xattr -d com.apple.quarantine` on macOS.
-- The CLI writes the mark itself and does not call Windows Attachment Services: its scan at save time may delete a file after the message's only open was spent. Attachment Manager policies that act when a file is saved therefore do not apply; on-access antivirus scanning still does.
+Saved files hold the plaintext. Delete them when you no longer need them; SSDs and backups may still keep copies.
 
-For passphrase-protected messages, `read` and `burn` prompt without echo or use `--passphrase-file`. The server deletes such a message only with the passphrase; a wrong one deletes nothing and counts against the same attempt limit as a wrong `read`. An older CLI sends no proof of the passphrase with `burn`, so the server refuses to delete such a message for it (`client_outdated`); update the CLI. Ctrl-C at a hidden prompt restores terminal echo and then ends `nylzo` at once by that signal. Interrupted downloads are retried within the same invocation using the lease, without consuming another open.
+Opening the message spends an open. Ctrl-C before that costs nothing. After it, `read` keeps going until the message is saved, and a second Ctrl-C stops it at once and loses that open. A broken download is retried without spending another open.
 
-Ctrl-C before the claim stops `read` without spending the open. The claim spends it, so from then until it exits `read` keeps going and saves the message. On Linux and macOS a hangup, such as a closed terminal window or a dropped SSH session, and a termination request wait until then, and the first Ctrl-C only prints a warning. Once the message is saved, `read` ends by one of these signals, by Ctrl-C if it was among them, as described under [exit codes](#agent-use-and-exit-codes). A second Ctrl-C stops `read` at once: this open is lost, and a file `read` was still writing may stay in a `nylzo-` directory inside `--out`. After a stop request `read` waits for the server no longer than one download of the message may take; after that a further hangup or termination request ends it at once, so a stalling server cannot keep it running. With `--stdout` the text still reaches a file that stdout is redirected to, but not a program in the pipeline that the hangup or Ctrl-C also ended; use `--out` when that matters. When the only output is a terminal, a hangup still ends `read` at once, since the text has nowhere to go. On Windows, closing the console window leaves `read` [5 seconds](https://learn.microsoft.com/en-us/windows/console/handlerroutine#timeouts) before Windows ends it.
+## Check, cancel or delete
 
-`status` supports `--json`. It and `cancel` accept the manage token via stdin, `--manage-token-file`, or `NYLZO_MANAGE_TOKEN_FILE`. `state: lost` means that the server lost the key to the message, usually in a host restart: the link no longer opens, and the message has to be sent again.
+```sh
+nylzo status --manage-token-file manage.txt
+nylzo cancel --manage-token-file manage.txt
+nylzo burn --link-file link.txt
+```
 
-Downloaded files contain plaintext. Delete them when no longer needed, while recognizing that SSDs and backups may retain copies. The CLI makes a best effort to clear keys from its own memory, but Go strings, libraries, garbage collection, terminals, and pipes may retain copies.
+`status` shows the state, the opens used and the times, as JSON with `--json`. The state `lost` means the server can no longer open the message, for example after a host restart, so send it again. `status` and `cancel` also take the manage token on stdin or from the file that `NYLZO_MANAGE_TOKEN_FILE` names.
 
-## Use the web client without trusting the server
+`burn` deletes the remaining opens using the link, as a recipient can. A message with a passphrase needs the passphrase for that.
 
-`nylzo web` and `nylzo open` run the web client embedded in the binary in your own browser, so the instance sends no code to it. [Verified clients](Verified-clients.md) explains the guarantee.
+## Use the web client from your computer
+
+`nylzo web` writes and `nylzo open` reads messages in your browser with the web client built into `nylzo`, so the instance sends your browser no code:
 
 ```sh
 nylzo web --server https://nylzo.example
 nylzo open --server https://nylzo.example < link.txt
 ```
 
-`web` serves the composer under a new random `http://….localhost` address at a random port for every session and opens it in the default browser; on macOS before 26 it prints the address for Chrome, Edge or Firefox instead, because Safari would ask the network for that name. The links it creates point to the instance. `open` reads a link the way `read` does (stdin, a hidden prompt, `--link-file` or `NYLZO_LINK`), refuses a link of another instance than `--server` or `NYLZO_SERVER`, and opens it through a one-time address that carries no part of the link. It writes that address into a private file and opens the file, so no process argument holds it. `--no-browser` prints the address instead, and so does `open` when no browser has taken the link after ten seconds. At start both read the operator's contact from the instance's transparency document, the one outside address their pages may link. Both commands run until Ctrl-C; `open` stops with an error when no browser takes the link within two minutes and warns when something asks for it a second time.
+[Use the local web client](Verify-a-release.md#use-the-local-web-client) explains what this protects and how it works.
 
 ## Verify an instance's web client
 
@@ -108,30 +102,29 @@ nylzo open --server https://nylzo.example < link.txt
 nylzo verify-client --server https://nylzo.example
 ```
 
-This compares the served web client with the client embedded in the binary. It fetches every page and file twice, both without compression and as requested by a browser, and checks content, the static CSP, security headers, the `Connection-Allowlist` with the operator's contact from `/.well-known/nylzo/transparency.json`, and `/.well-known/nylzo/client.json`.
+`verify-client` compares every page, file and security header the instance serves with the web client built into your `nylzo`, which must be of the release the instance runs. It exits with 0 when everything matches, 3 when something differs and 1 when it could not finish. Allow a header that a proxy in front of the instance adds with `--allow-header NAME`; headers that change browser behavior, such as `Set-Cookie` or `Refresh`, cannot be allowed.
 
-It exits with 0 when everything matches, 3 when a page, file, manifest or header differs from the release or the server answers with a redirect or an oversized response, and 1 when the check could not finish. The check compares every page and file even after an unexpected header or a failed request, and exits 1 for those only when nothing differs. A malformed transparency document counts as a difference. For headers added by a proxy or CDN, explicitly allow each with `--allow-header NAME`. Behavior-changing headers such as `Refresh` or `Set-Cookie` always exit 3 and cannot be allowed. The binary and server must run the same version; a binary without an embedded web client cannot perform this check.
+A server can recognize this command and send browsers something else, so a passing check covers only what this run received.
 
-The result applies only to that invocation. A malicious server can recognize the CLI and serve browsers different JavaScript. Run checks regularly and from another network; a successful check does not prove what other visitors receive. The repository's `watch.yml` runs it about every 30 minutes after an operator configures `NYLZO_MONITOR_URL`, using a binary from a signature-verified release.
+## Process protection
 
-## Version and build identity
+Every command that handles a link, passphrase or manage token first protects its process:
 
-`nylzo version` and `nylzo --version` print the application version. `nylzo version --json` additionally prints the source commit, source commit date, and modified-source flag. Release builds derive their version from the signed tag; local builds identify development source explicitly. Version output identifies a build but does not authenticate it: verify the release signatures and provenance as described in [versioning and releases](../maintainers/Releasing.md).
+- It writes no core file if it crashes.
+- It refuses to run under a debugger, and other processes of your account cannot attach to it later. On macOS the release binaries also run with the hardened runtime.
+- On Linux it locks its memory against swap when your memlock limit is unlimited, and otherwise warns about each swap area that is not encrypted. Encrypt swap or set `memlock` to unlimited in `/etc/security/limits.conf`; `NYLZO_ALLOW_SWAP=1` hides the warning. macOS encrypts swap itself. On Windows, turn on BitLocker, which also encrypts the page file.
+- It refuses to run while `GODEBUG` contains `http2debug=1` or `http2debug=2`, which would print request signatures.
 
-## Admin area of a server
+Root and administrators can still read the memory, and hibernation writes it to disk. On macOS every process of your account can read the environment with `ps eww`, so do not use `NYLZO_LINK` there.
 
-```sh
-nylzo admin-enroll
-nylzo admin-passkeys
-nylzo admin-reset
-```
+## Exit status
 
-Run these on the server host. `admin-enroll` prints a one-time link that adds a passkey to the instance's admin area, `admin-passkeys` lists the passkeys, and `admin-reset` removes them all. They read `NYLZO_DATA_DIR` like `sweep-once`; the [operations guide](Operations.md#admin-area) describes them.
+`nylzo` exits with 0 on success, 1 on an error, 2 on invalid usage, including a secret in an argument, and 3 when `verify-client` finds a difference. When Ctrl-C or SIGTERM stops a command before it finished, `nylzo` cleans up and then ends by that signal, so a shell sees 130 or 143. On Windows it exits with that number instead.
 
-## Agent use and exit codes
+## Version
 
-The [Nylzo agent skill](../../../skills/nylzo/SKILL.md) describes using private files outside the repository, keeping secrets and links out of conversations, and delivering decrypted content directly to a program rather than a language model. The skill gives instructions. The CLI, filesystem permissions, and sandbox enforce access rules.
+`nylzo version` prints the version; `--json` adds the source commit, its date and whether the source was modified. It does not prove where the build came from; [verify the release](Verify-a-release.md) for that.
 
-Exit codes: `0` for success, `1` for an operational error, and `2` for invalid usage, including a secret in an argument. For `serve`, `sweep-once`, `store-check`, and `takedown`, see the [operations guide](Operations.md).
+## AI agents
 
-When Ctrl-C (SIGINT) or a termination request (SIGTERM) stops a command, the command cleans up and then ends by that signal rather than with an exit code. The shell reports it as killed by the signal (`$?` is 128 plus the signal number: `130` for Ctrl-C, `143` for SIGTERM, `129` for a hangup that `read` held), so Ctrl-C also stops the Bash script that was waiting for the command, such as a loop over `nylzo read`, and runs that script's own cleanup, such as a trap that deletes the `--out` directory `read` just saved into. systemd counts an end by SIGTERM as a clean stop, except in a `Type=oneshot` unit, which needs `SuccessExitStatus=SIGTERM` for that. A command that had already finished its work when the signal came exits as usual, so `web` and `open`, which run until they are stopped, exit with `0` after a clean stop; `open` stopped before a browser took the link ends by the signal, and the link still works. `serve` always exits with its own status, so systemd or Docker can tell a clean stop (`0`) from a failed shutdown. At a hidden prompt the signal ends any command at once, `open` included, after the terminal echo is restored. A second signal ends a command at once, without cleanup, except where `read` holds it after the claim; a command waiting for input on stdin stops only then. A process that starts with Ctrl-C ignored, as a script's background job does, keeps ignoring it. On Windows, and as the init process of a container, where a process cannot end by a signal it caught, `nylzo` exits with 128 plus the signal number instead. A program that runs `nylzo` sees an end by a signal as such, not as an exit code (Python reports a negative `returncode`), also after `read` saved the message, so check `--out` before it runs `read` again.
+The [Nylzo agent skill](../../../skills/nylzo/SKILL.md) shows how an agent can use the CLI with private files, without putting links or decrypted content into a conversation.
