@@ -147,8 +147,12 @@ jobs:
       - name: Edge marks a file saved on the nylzo open address as from the Internet zone
         shell: pwsh
         run: |
-          & "$env:RUNNER_TEMP/windows-tests/localclient.test.exe" '-test.v' '-test.count=1' '-test.run' '^TestEdgeMarksAFileSavedOnTheOpenAddressAsFromTheInternet$'
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $test = 'TestEdgeMarksAFileSavedOnTheOpenAddressAsFromTheInternet'
+          $output = & "$env:RUNNER_TEMP/windows-tests/localclient.test.exe" '-test.v' '-test.count=1' '-test.timeout=4m' '-test.run' "^$test$"
+          $code = $LASTEXITCODE
+          $output | Write-Host
+          if ($code -ne 0) { exit $code }
+          if (-not ($output -match "^--- PASS: $test ")) { Write-Error "$test did not run"; exit 1 }
 
   macos:
     name: Go platform tests on macOS
