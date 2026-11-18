@@ -6,7 +6,6 @@ import { parseScaPolicy } from './sca-policy.ts';
 
 const policy = parseScaPolicy({
   allowedLicenses: ['MIT'],
-  fixed: [],
   notAffected: [
     {
       ecosystem: 'npm',
