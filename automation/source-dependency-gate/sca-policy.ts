@@ -16,7 +16,7 @@ export interface FixedAssessment extends Assessment {
 }
 
 export interface NotAffectedAssessment extends Assessment {
-  readonly forbiddenImport: string;
+  readonly forbiddenImport?: string;
   readonly justification: string;
 }
 
@@ -51,7 +51,9 @@ function parseNotAffected(value: unknown, location: string): NotAffectedAssessme
   const entry = objectAt(value, location);
   return {
     ...parseAssessment(entry, location),
-    forbiddenImport: textAt(entry['forbiddenImport'], `${location}.forbiddenImport`),
+    ...(entry['forbiddenImport'] !== undefined && {
+      forbiddenImport: textAt(entry['forbiddenImport'], `${location}.forbiddenImport`),
+    }),
     justification: textAt(entry['justification'], `${location}.justification`),
   };
 }
