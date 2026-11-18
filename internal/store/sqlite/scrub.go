@@ -30,8 +30,9 @@ const (
 )
 
 var (
-	ErrCheckpointBusy = errors.New("sqlite: the WAL checkpoint could not finish because a reader held the log")
+	ErrCheckpointBusy = errors.New("sqlite: the WAL checkpoint could not finish while another connection used the log")
 	errScrubShort     = errors.New("sqlite: the scrub table did not grow to the size of the log")
+	errScrubOutgrown  = fmt.Errorf("%w: the scrub table grew behind another connection's commit", ErrCheckpointBusy)
 )
 
 // Checkpoint rebuilds the tables whose rows changed, copies the log into the database and then overwrites every frame
@@ -80,8 +81,14 @@ func withCheckpointTimeout(ctx context.Context, connection *sql.Conn, body func(
 	return err
 }
 
-// scrubAll rewrites one zero-filled page per frame from the start of the log, over every older version of a row.
+// scrubAll rewrites one zero-filled page per frame from the start of the log, over every older version of a row. A
+// commit of another connection meanwhile can outgrow the scrub table; the next full checkpoint, such as the sweep's,
+// then takes the log.
 func (s *Store) scrubAll(ctx context.Context, connection *sql.Conn) error {
+	startVersion, versionErr := dataVersion(ctx, connection)
+	if versionErr != nil {
+		return wrapScrub(versionErr)
+	}
 	for range maxScrubGrowths {
 		if err := restartLog(ctx, connection); err != nil {
 			return err
@@ -98,11 +105,22 @@ func (s *Store) scrubAll(ctx context.Context, connection *sql.Conn) error {
 		if slots >= needed {
 			return rewriteSlots(ctx, connection, slots)
 		}
+		if s.beforeScrubGrowth != nil {
+			s.beforeScrubGrowth()
+		}
 		if growErr := growScrub(ctx, connection, needed-slots); growErr != nil {
 			return growErr
 		}
 	}
-	return errScrubShort
+	endVersion, versionErr := dataVersion(ctx, connection)
+	switch {
+	case versionErr != nil:
+		return wrapScrub(versionErr)
+	case endVersion != startVersion:
+		return errScrubOutgrown
+	default:
+		return errScrubShort
+	}
 }
 
 // scrubFirst rewrites the first writeScrubFrames frames, which hold every frame the writes since the last scrub filled.

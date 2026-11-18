@@ -296,6 +296,14 @@ func TestAnEpochDirectoryLeftInTheDataDirectoryStopsTheServer(t *testing.T) {
 			}
 		}
 		refused("a seed left in the data directory", true)
+		leftSeed := filepath.Join(harness.settings.DataEpochDirectory(), epoch.FileName)
+		if err := os.Chmod(leftSeed, 0o640); err != nil {
+			t.Fatal(err)
+		}
+		refused("a seed that others can read, which a chmod fixes", true)
+		if err := os.Chmod(leftSeed, 0o600); err != nil {
+			t.Fatal(err)
+		}
 		if _, err := os.Lstat(movedSeed); !errors.Is(err, fs.ErrNotExist) {
 			t.Fatalf("the refused start wrote a seed: %v", err)
 		}
@@ -318,6 +326,12 @@ func TestAnEpochDirectoryLeftInTheDataDirectoryStopsTheServer(t *testing.T) {
 			t.Fatal(err)
 		}
 		refused("a seed under another name", false)
+		released := make([]byte, 4096)
+		copy(released, "nylzo-e1")
+		if err = os.WriteFile(filepath.Join(left, epoch.FileName), released, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		refused("a seed of a release before 0.14.0, which serve erases", false)
 		if err = os.RemoveAll(left); err != nil {
 			t.Fatal(err)
 		}

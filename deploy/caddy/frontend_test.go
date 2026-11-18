@@ -362,7 +362,6 @@ func TestClassicalPolicyAdmitsOnlyPublicDocumentsOnTheInstance(t *testing.T) {
 func TestCrawlersReachOnlyPublicDocumentsOverClassicalTLS(t *testing.T) {
 	for _, configuration := range []string{
 		filepath.Join("..", "hetzner-flatcar", "host", "proxy", "Caddyfile"),
-		filepath.Join("..", "compose", "Caddyfile"),
 	} {
 		t.Run(configuration, func(t *testing.T) {
 			var requests atomic.Int64

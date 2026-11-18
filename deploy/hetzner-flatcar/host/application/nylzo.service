@@ -1,6 +1,6 @@
 [Unit]
-Requires=docker.service nylzo-bandwidth.service nylzo-storage.service
-After=docker.service nylzo-bandwidth.service nylzo-storage.service
+Requires=docker.service nylzo-bandwidth.service nylzo-storage.service systemd-time-wait-sync.service
+After=docker.service nylzo-bandwidth.service nylzo-storage.service systemd-time-wait-sync.service time-sync.target
 StartLimitIntervalSec=60
 StartLimitBurst=5
 [Service]
