@@ -335,7 +335,7 @@ func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := time.Now()
 	report, err := sweep.Run(ctx, s.store, s.blobs, now)
 	s.count(statistics.MetricExpired, int64(report.Blobs))
-	return report, errors.Join(err, s.advanceRatchet(now))
+	return report, errors.Join(err, s.advanceRatchet(time.Now()))
 }
 
 // recheckEpochStorage repeats the start check of the epoch directory, so swap turned on later reaches the log; the
@@ -368,7 +368,11 @@ func (s *Server) openRatchet() error {
 	if err := PrepareEpochDirectory(&s.settings); err != nil {
 		return err
 	}
-	options := epoch.Options{Create: true, CheckFileSystem: s.requireErasableEpochDirectory}
+	options := epoch.Options{
+		Create:          true,
+		CheckFileSystem: s.requireErasableEpochDirectory,
+		Replaced:        func() { LogReplacedGeneration(s.logger) },
+	}
 	var (
 		ratchet *epoch.Ratchet
 		created bool
@@ -413,6 +417,16 @@ func (s *Server) warnIfSeedOnDisk() error {
 			"was taken; keep NYLZO_EPOCH_DIR on a tmpfs",
 	)
 	return nil
+}
+
+// LogReplacedGeneration names the loss that a replaced generation causes, which no request would explain.
+func LogReplacedGeneration(logger *slog.Logger) {
+	logger.Error(
+		"epoch-generation-replaced",
+		"notice",
+		"the clock runs more than 5 minutes behind the seed, so the generation of its hour may have started early; "+
+			"the messages created in that hour end as lost",
+	)
 }
 
 // PrepareEpochDirectory creates the default epoch directory inside the data directory. A directory that the
