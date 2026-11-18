@@ -739,7 +739,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': 'Sin la clave del enlace no puede leer ni los metadatos',
   'brute.fact.pass': 'La contraseña no se puede adivinar por la red',
   'brute.fact.pass.note': 'Tras 100\u{A0}contraseñas incorrectas, el mensaje se bloquea',
-  'brute.fact.quantum': 'La computación cuántica no puede leer el mensaje',
+  'brute.fact.quantum': 'Sin el enlace, ni la computación cuántica puede leerlo',
   'brute.fact.quantum.note': 'Una clave de 256\u{A0}bits protege el contenido, y TLS poscuántico, la conexión',
 
   'promise.eyebrow': 'Lo que prometemos',

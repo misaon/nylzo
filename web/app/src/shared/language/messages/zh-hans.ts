@@ -685,7 +685,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': '没有链接中的密钥，连元数据都读不到',
   'brute.fact.pass': '无法通过网络猜出密码',
   'brute.fact.pass.note': '输错 100 次密码后，消息会被锁定',
-  'brute.fact.quantum': '量子计算机读不了消息',
+  'brute.fact.quantum': '没有链接，连量子计算机都读不了',
   'brute.fact.quantum.note': '内容由 256 位密钥保护，连接由后量子 TLS 保护',
 
   'promise.eyebrow': '我们的承诺',

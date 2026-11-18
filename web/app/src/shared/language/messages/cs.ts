@@ -723,7 +723,7 @@ export const messages = {
   'brute.fact.id.note': 'Bez klíče z\u{A0}odkazu nepřečte ani metadata',
   'brute.fact.pass': 'Heslo po síti neuhádne',
   'brute.fact.pass.note': 'Po 100\u{A0}chybných heslech se zpráva zamkne',
-  'brute.fact.quantum': 'Kvantový počítač zprávu nepřečte',
+  'brute.fact.quantum': 'Bez odkazu ji nepřečte ani kvantový počítač',
   'brute.fact.quantum.note': 'Obsah chrání 256bitový klíč a\u{A0}spojení post-kvantové TLS',
 
   'promise.eyebrow': 'Co slibujeme',

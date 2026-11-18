@@ -750,7 +750,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': 'Sans la clé du lien, on ne peut même pas lire les métadonnées',
   'brute.fact.pass': 'Impossible de deviner le mot de passe par le réseau',
   'brute.fact.pass.note': 'Après 100\u{A0}mots de passe erronés, le message se verrouille',
-  'brute.fact.quantum': 'Un ordinateur quantique ne peut pas lire le message',
+  'brute.fact.quantum': 'Sans le lien, même un ordinateur quantique ne peut pas le lire',
   'brute.fact.quantum.note':
     'Le contenu est protégé par une clé de 256\u{A0}bits, la connexion par un TLS post-quantique',
 
