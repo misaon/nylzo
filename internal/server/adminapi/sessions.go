@@ -26,7 +26,9 @@ const (
 	// sessionLife ends a session however busy it is.
 	sessionLife = 12 * time.Hour
 	// ceremonyLife is the timeout the WebAuthn recommendation gives a ceremony.
-	ceremonyLife       = 5 * time.Minute
+	ceremonyLife = 5 * time.Minute
+	// clockSkew is how far past its lifetime a sign-in challenge may still lie ahead, as after a small clock step.
+	clockSkew          = 5 * time.Second
 	ceremonyChallenge  = 32
 	maxSessions        = 4
 	maxEnrollments     = 16
@@ -150,11 +152,16 @@ func (s *sessions) signInOpen(challenge []byte, key sessionKey, now time.Time) b
 		!hmac.Equal(challenge[signInSigned:], s.signInTag(challenge[:signInSigned], key)) {
 		return false
 	}
-	expires := time.Unix(int64(binary.BigEndian.Uint32(challenge[signInNonceLength:signInSigned])), 0)
+	expires := signInExpiry(challenge)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	_, used := s.signedIn[signInNonce(challenge[:signInNonceLength])]
-	return !used && now.Before(expires)
+	return !used && now.Before(expires) && expires.Sub(now) <= ceremonyLife+clockSkew
+}
+
+// signInExpiry is the wall-clock second a sign-in challenge runs out.
+func signInExpiry(challenge []byte) time.Time {
+	return time.Unix(int64(binary.BigEndian.Uint32(challenge[signInNonceLength:signInSigned])), 0)
 }
 
 // open starts the session of a key for the passkey that signed its challenge, which then opens no other session;
@@ -170,7 +177,7 @@ func (s *sessions) open(
 	if _, used := s.signedIn[nonce]; used {
 		return nil, false
 	}
-	s.signedIn[nonce] = now.Add(ceremonyLife)
+	s.signedIn[nonce] = now.Add(ceremonyLife + clockSkew)
 	maps.DeleteFunc(s.live, func(_ sessionKey, held *session) bool { return !held.live(now) })
 	if _, held := s.live[key]; !held && len(s.live) >= maxSessions {
 		var oldest sessionKey
@@ -225,6 +232,11 @@ type signedSession struct {
 // this request used up (spec section 6.8).
 func (a *API) signed(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// The signature covers an empty body, so a request that carries one is not the request that was signed.
+		if r.ContentLength != 0 {
+			writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
+			return
+		}
 		signature, err := signing.ParseAuthorization(r.Header.Get("Authorization"))
 		if err != nil || !a.Spent(r, signature.Challenge) ||
 			!signature.Verify(signing.PurposeAdmin, r.Method, r.URL.RequestURI(), nil, signing.Components{}) {
@@ -234,11 +246,6 @@ func (a *API) signed(next http.HandlerFunc) http.HandlerFunc {
 		signedIn, ok := a.sessions.touch(signature.PublicKey, time.Now())
 		if !ok {
 			writeError(w, http.StatusUnauthorized, api.ErrorUnauthorized)
-			return
-		}
-		// The signature covers an empty body, so a request that carries one is not the request that was signed.
-		if r.ContentLength != 0 {
-			writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
 			return
 		}
 		next(w, withSession(r, &signedIn))
@@ -303,8 +310,12 @@ func (a *API) handleSession(w http.ResponseWriter, r *http.Request) {
 	assertion, complete := decodeAssertion(&request)
 	relyingParty, known := a.relyingParty(r)
 	var key sessionKey
-	if !complete || !known || !core.DecodeInto(key[:], request.Key) {
+	if !known {
 		writeError(w, http.StatusBadRequest, api.ErrorBadRequest)
+		return
+	}
+	if !complete || !core.DecodeInto(key[:], request.Key) {
+		a.refuseSignIn(w, r)
 		return
 	}
 	now := time.Now()

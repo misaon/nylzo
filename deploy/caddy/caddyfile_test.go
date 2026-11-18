@@ -262,6 +262,36 @@ var profileCaddyfiles = map[string]string{
 	"Compose":         filepath.Join("..", "compose", "Caddyfile"),
 }
 
+// TestComposeCaddyfileIsTheHetznerOneWithItsOwnPaths keeps one source for both profiles: Compose differs only in
+// the backend address, the maintenance flag, the crawler exception, which only the Hetzner Flatcar profile keeps, and
+// TLS-ALPN, which Compose keeps as a second challenge because it has no CAA records that name HTTP-01.
+func TestComposeCaddyfileIsTheHetznerOneWithItsOwnPaths(t *testing.T) {
+	t.Parallel()
+	read := func(path string) string {
+		t.Helper()
+		source, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(source)
+	}
+	compose := read(profileCaddyfiles["Hetzner Flatcar"])
+	for _, change := range [][2]string{
+		{"\tnylzo_crawler_tls {$NYLZO_DOMAIN} www.{$NYLZO_DOMAIN}\n", ""},
+		{"maintenance /var/lib/nylzo-directive/maintenance", "maintenance /var/lib/caddy/maintenance"},
+		{"reverse_proxy 172.30.81.2:8080", "reverse_proxy 172.30.82.3:8080"},
+		{"\t\t\tdisable_tlsalpn_challenge\n", ""},
+	} {
+		if strings.Count(compose, change[0]) != 1 {
+			t.Fatalf("the Hetzner Caddyfile holds %q not exactly once", change[0])
+		}
+		compose = strings.Replace(compose, change[0], change[1], 1)
+	}
+	if read(profileCaddyfiles["Compose"]) != compose {
+		t.Fatalf("deploy/compose/Caddyfile differs from the Hetzner one with its own paths; write it as:\n%s", compose)
+	}
+}
+
 // TestCaddyfilesDialTheBackendByAddress covers F19: while the backend is down, Docker passes a lookup of its
 // name to the host's resolvers, so a name could send API requests and their X-Nylzo-* headers to another host.
 func TestCaddyfilesDialTheBackendByAddress(t *testing.T) {

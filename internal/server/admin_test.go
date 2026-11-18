@@ -235,6 +235,11 @@ func TestAK28AdminAnswersOnlyToASessionAPasskeyOpened(t *testing.T) {
 		}
 	}
 	refused("an unsigned request", harness.authorized(http.MethodGet, overview, ""))
+	for _, path := range []string{api.AdminPath, overview, live} {
+		if head := harness.authorized(http.MethodHead, path, ""); head.status != http.StatusNotFound {
+			t.Fatalf("HEAD %s reached a handler: %d", path, head.status)
+		}
+	}
 	passkey := newSoftwarePasskey(t)
 	if status := harness.enroll(harness.openEnrollment(), passkey); status != http.StatusCreated {
 		t.Fatalf("enrollment: %d", status)
@@ -360,15 +365,25 @@ func TestAK29EnrollmentLinkAddsOnePasskeyOnce(t *testing.T) {
 	}
 	token := harness.openEnrollment()
 	guess := core.Encode(make([]byte, 24))
-	response, _ := harness.post(api.AdminPath+"/enrollment/options", map[string]string{"token": guess}, "203.0.113.9")
-	if response.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("a guessed token got %d", response.StatusCode)
+	for _, wrong := range []string{guess, "not base64url!"} {
+		response, _ := harness.post(
+			api.AdminPath+"/enrollment/options",
+			map[string]string{"token": wrong},
+			"203.0.113.9",
+		)
+		if response.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("the token %q got %d", wrong, response.StatusCode)
+		}
 	}
 	if kept := harness.server.refusals.List(); len(kept) != 0 {
 		t.Fatalf("a server without a passkey keeps the addresses of %v", kept)
 	}
-	if status := harness.enroll(token, newSoftwarePasskey(t)); status != http.StatusCreated {
+	enrolled := newSoftwarePasskey(t)
+	if status := harness.enroll(token, enrolled); status != http.StatusCreated {
 		t.Fatalf("enrollment: %d", status)
+	}
+	if status := harness.enroll(harness.openEnrollment(), enrolled); status != http.StatusUnauthorized {
+		t.Fatalf("a passkey the instance already holds got %d", status)
 	}
 	if !harness.server.counts.Enabled() {
 		t.Fatal("the server does not count although a passkey can sign in")
@@ -380,7 +395,7 @@ func TestAK29EnrollmentLinkAddsOnePasskeyOnce(t *testing.T) {
 	if err != nil || held != 1 {
 		t.Fatalf("%d passkeys, %v", held, err)
 	}
-	response, _ = harness.post(api.AdminPath+"/enrollment/options", map[string]string{"token": guess}, "203.0.113.9")
+	response, _ := harness.post(api.AdminPath+"/enrollment/options", map[string]string{"token": guess}, "203.0.113.9")
 	if response.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("a guessed token got %d", response.StatusCode)
 	}

@@ -46,11 +46,12 @@ nylzo create --server https://nylzo.example --ttl 1h --opens 2 \
 - `--from-file FILE` sends this file, up to 5 MiB, instead of text.
 - `--compress` gzips the attachment when that at least halves its stored size.
 - `--generate-passphrase-file FILE` generates a passphrase into a new private file without printing it.
+- `--passphrase-language LANGUAGE` writes the generated passphrase in words of `en`, `cs`, `de`, `es`, `fr`, `id`, `it`, `ja`, `pl`, `pt-BR`, `sk` or `zh-Hans`, `en` by default; `NYLZO_PASSPHRASE_LANGUAGE` works too.
 - `--passphrase-file FILE` uses the first line of the file as the passphrase; `NYLZO_PASSPHRASE_FILE` works too.
 - `--ask-passphrase` asks for the passphrase twice without echo.
 - `--manage-token-file FILE` writes the manage token to a new private file, and `--print-manage-token` prints it after the link.
 
-A passphrase you choose needs at least 15 characters and must pass the checks in [protocol section 2](../reference/Protocol.md#2-key-derivation-client); the CLI warns below 16 characters or 4 words. A generated one is four groups of four random characters, 80 bits.
+A passphrase you choose needs at least 15 characters and must pass the checks in [protocol section 2](../reference/Protocol.md#2-key-derivation-client); the CLI warns below 16 characters or 4 words. A generated one is five random words from a list of 2048, 55 bits; in Chinese it is six words, 66 bits.
 
 The manage token has two lines: the message address without the key, then the token. Whoever holds it can check the status and cancel the message.
 
@@ -67,7 +68,7 @@ nylzo read --link-file link.txt --out received
 - `--out DIR` creates a new private `nylzo-…` directory inside the existing directory `DIR`, saves `message.txt` and any attachment there and prints their paths. It checks that it can write there before it opens the message.
 - `--stdout` prints the text and writes nothing to disk. It cannot save an attachment, and a link does not show whether one is attached: if one is, the open is spent and the file is lost. Use `--out` when a file may be attached.
 
-On Windows and macOS each saved file gets the mark a browser gives a download, so SmartScreen, Office and Gatekeeper check it when you open it. Nylzo cannot scan attachments for malware. To run one you trust, clear the mark with `Unblock-File` on Windows or `xattr -d com.apple.quarantine` on macOS.
+On Windows and macOS each saved file gets the mark a browser gives a download, so SmartScreen, Office and Gatekeeper check it when you open it. Under WSL the Linux build marks nothing, even in a Windows folder under `/mnt/c`; run `nylzo.exe` and save to a Windows folder to get the mark. Nylzo cannot scan attachments for malware. To run one you trust, clear the mark with `Unblock-File` on Windows or `xattr -d com.apple.quarantine` on macOS.
 
 Saved files hold the plaintext. Delete them when you no longer need them; SSDs and backups may still keep copies.
 

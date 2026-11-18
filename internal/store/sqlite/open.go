@@ -50,6 +50,8 @@ type Store struct {
 	changedSinceBuild  atomic.Bool
 	builtAtDataVersion atomic.Int64
 	logResetSkipped    bool
+	// beforeScrubGrowth lets a test commit from another connection between the restart of the log and a growth.
+	beforeScrubGrowth func()
 }
 
 var _ store.Store = (*Store)(nil)

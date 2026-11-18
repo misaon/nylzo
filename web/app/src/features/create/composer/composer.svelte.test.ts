@@ -147,7 +147,7 @@ describe('message composer interactions', () => {
     expect(form.problems).toContainEqual({ field: 'passphrase', code: 'too_short' });
     expect(form.passphraseMessage).not.toBe('');
     expect(createMessage).not.toHaveBeenCalled();
-    form.generatePassphrase();
+    await form.generatePassphrase();
     expect(form.problems).toEqual([]);
     form.forgetPassphrase();
     expect(form.passphrase).toBe('');
@@ -157,6 +157,14 @@ describe('message composer interactions', () => {
     await form.toggleProtect();
     expect(form.protect).toBe(false);
     expect(form.passphrase).toBe('');
+  });
+
+  it('keeps a passphrase typed while the generated words load', async () => {
+    const form = composer();
+    const toggled = form.toggleProtect();
+    form.passphrase = 'my own long passphrase';
+    await toggled;
+    expect(form.passphrase).toBe('my own long passphrase');
   });
 
   it('validates file size immediately, removes obsolete errors and resets the file input', () => {

@@ -151,6 +151,20 @@ interface StrengthVector {
   readonly problem?: string;
 }
 
+interface WordListVector {
+  readonly language: string;
+  readonly sha256: string;
+  readonly separator: string;
+  readonly words: number;
+}
+
+interface GeneratedPassphraseVector {
+  readonly name: string;
+  readonly language: string;
+  readonly random_hex: string;
+  readonly passphrase: string;
+}
+
 interface RequestVector {
   readonly components: {
     readonly share_key: string;
@@ -196,6 +210,8 @@ interface VectorFile {
   readonly passphrase_list_sha256: string;
   readonly unicode_assigned_sha256: string;
   readonly unicode_assigned_version: string;
+  readonly passphrase_words: readonly WordListVector[];
+  readonly generated_passphrase: readonly GeneratedPassphraseVector[];
   readonly request: readonly RequestVector[];
   readonly pow: readonly PowVector[];
 }
@@ -214,6 +230,8 @@ function loadVectors(): VectorFile {
     file.link,
     file.meta,
     file.passphrase_strength,
+    file.passphrase_words,
+    file.generated_passphrase,
     file.request,
     file.pow,
   ];
