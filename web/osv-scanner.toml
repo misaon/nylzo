@@ -3,3 +3,8 @@
 id = "GHSA-gcqx-w48m-w2h4"
 ignoreUntil = 2026-11-27T00:00:00Z
 reason = "Fixed by web/patches/deepmerge@4.3.1.patch, which installation verifies. Assessed in security/sca-policy.json."
+
+[[IgnoredVulns]]
+id = "GHSA-fc5q-39xc-vjpf"
+ignoreUntil = 2027-01-15T00:00:00Z
+reason = "Not affected: picomatch runs only in lint, build and test tools on glob patterns from this repository and is no runtime dependency. Assessed in security/sca-policy.json."
