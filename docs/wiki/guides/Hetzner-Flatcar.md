@@ -171,7 +171,7 @@ For nylzo.com, `watch.yml` checks about every 30 minutes that production serves 
 
 ## Pepper rotation
 
-`prepare` writes a new pepper whose `pepper_id` differs from the previous one, and `nylzo.service` passes `pepper.previous` to Nylzo while it exists:
+`prepare` writes a new pepper, and `nylzo.service` passes `pepper.previous` to Nylzo while it exists:
 
 ```sh
 sudo mv /var/lib/nylzo-secrets/pepper /var/lib/nylzo-secrets/pepper.previous

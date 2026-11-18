@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/misaon/nylzo/internal/core"
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -41,6 +42,7 @@ var contracts = []contract{
 	{"BurnAndCancel", (*fixture).burnAndCancel},
 	{"SecondEndingRecordsNothing", (*fixture).secondEndingRecordsNothing},
 	{"F11TakeBackRestoresOnlyItsOwnWait", (*fixture).takeBackRestoresOnlyItsOwnWait},
+	{"TakeBackDropsAWaitTheCountNoLongerReaches", (*fixture).takeBackDropsAWaitTheCountNoLongerReaches},
 	{"F11EndedMessagesCountNoAttempt", (*fixture).endedMessagesCountNoAttempt},
 	{"TakeDownWithoutTheKey", (*fixture).takeDownWithoutTheKey},
 	{"AK7Expiry", (*fixture).expiry},
@@ -228,7 +230,7 @@ func newMessage(opens uint16, ttlSeconds uint32, passphrase bool) *store.Message
 	}
 	salt := seal.NewEraseSalt()
 	created.Registration = seal.WrapRegistration(&salt, seal.Locator{}, make([]byte, seal.RegistrationLen))
-	created.RegistrationPepperID = 7
+	created.RegistrationPepperID = pepper.ID{7}
 	return created
 }
 
@@ -236,7 +238,7 @@ func claimParameters(record *store.Record, now time.Time, seed int) store.ClaimP
 	return store.ClaimParameters{
 		Clock:         func() time.Time { return now },
 		LeaseMAC:      mac(fmt.Sprintf("lease/%x/%d/%d", record.Row.Locator, now.UnixNano(), seed)),
-		LeasePepperID: 7,
+		LeasePepperID: pepper.ID{7},
 	}
 }
 

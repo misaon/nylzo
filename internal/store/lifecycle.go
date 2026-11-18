@@ -124,13 +124,18 @@ func PassphraseStatus(message *Message, now time.Time) PassphraseError {
 }
 
 // TakeBack undoes the count of a handshake whose KE3 matched, in a transaction of its own, so it stands whatever the
-// claim or burn then answers.
+// claim or burn then answers. A count back within the free attempts drops any wait, also one that a concurrent
+// handshake of a higher count set.
 func TakeBack(ctx context.Context, messages Messages, record *Record, attempt Attempt, now time.Time) error {
 	return record.update(ctx, messages, now, func(current *Record) error {
 		message := current.Message
 		message.FailCountTotal = max(0, message.FailCountTotal-1)
-		if message.NextAttemptAt.Equal(attempt.Set) {
+		switch {
+		case backoff(message.FailCountTotal) == 0:
+			message.NextAttemptAt = time.Time{}
+		case message.NextAttemptAt.Equal(attempt.Set):
 			message.NextAttemptAt = attempt.Previous
+		default:
 		}
 		return nil
 	})

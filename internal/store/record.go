@@ -13,14 +13,15 @@ import (
 
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/epoch"
+	"github.com/misaon/nylzo/internal/pepper"
 	"github.com/misaon/nylzo/internal/seal"
 )
 
 const (
-	recordFormat = 4
+	recordFormat = 5
 	macLen       = 32
-	fieldsLen    = 304
-	leaseLen     = 42
+	fieldsLen    = 311
+	leaseLen     = pepper.IDLen + macLen + uint64Bytes + 1
 )
 
 // BlobReferenceLen is the number of random bytes in a blob reference.
@@ -235,7 +236,7 @@ func encodeMessage(message *Message) []byte {
 	data = binary.BigEndian.AppendUint16(data, message.OpensMax)
 	data = binary.BigEndian.AppendUint16(data, message.OpensRemaining)
 	data = binary.BigEndian.AppendUint64(data, narrow64(message.Size))
-	data = append(data, message.RegistrationPepperID)
+	data = append(data, message.RegistrationPepperID[:]...)
 	data = append(data, fixed(message.Registration, seal.SealedRegistrationLen)...)
 	data = binary.BigEndian.AppendUint16(data, saturate[uint16](int64(message.FailCountTotal)))
 	data = appendTime(data, message.NextAttemptAt)
@@ -246,7 +247,7 @@ func encodeMessage(message *Message) []byte {
 	data = append(data, message.Generation[:]...)
 	data = append(data, saturate[uint8](int64(len(message.Leases))))
 	for _, lease := range message.Leases {
-		data = append(data, lease.PepperID)
+		data = append(data, lease.PepperID[:]...)
 		data = append(data, fixed(lease.MAC, macLen)...)
 		data = appendTime(data, lease.ExpiresAt)
 		data = append(data, saturate[uint8](int64(lease.Downloads)))
@@ -298,7 +299,7 @@ func decodeMessage(data []byte) (*Message, error) {
 	message.OpensMax = fields.readUint16()
 	message.OpensRemaining = fields.readUint16()
 	message.Size = signed(fields.readUint64())
-	message.RegistrationPepperID = fields.readByte()
+	message.RegistrationPepperID = pepper.ID(fields.next(pepper.IDLen))
 	message.Registration = slices.Clone(fields.next(seal.SealedRegistrationLen))
 	message.FailCountTotal = int(fields.readUint16())
 	message.NextAttemptAt = fields.readTime()
@@ -315,7 +316,7 @@ func decodeMessage(data []byte) (*Message, error) {
 	}
 	message.Ending = endings[ending]
 	for range leases {
-		lease := Lease{PepperID: fields.readByte(), MAC: fields.readMAC()}
+		lease := Lease{PepperID: pepper.ID(fields.next(pepper.IDLen)), MAC: fields.readMAC()}
 		lease.ExpiresAt = fields.readTime()
 		lease.Downloads = int(fields.readByte())
 		message.Leases = append(message.Leases, lease)
