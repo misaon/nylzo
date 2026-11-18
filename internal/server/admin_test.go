@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"os"
@@ -269,6 +270,40 @@ func TestAK28AdminAnswersOnlyToASessionAPasskeyOpened(t *testing.T) {
 		t.Fatalf("sign-out: %d", signedOut.status)
 	}
 	refused("a signed-out session", harness.signed(session.seed, http.MethodGet, overview, fresh()))
+}
+
+// The page asks for the live figures every five seconds, so the list of refused clients travels only when it changed
+// since the version the page holds.
+func TestLiveSendsTheRefusedClientsOnlyWhenTheyChanged(t *testing.T) {
+	harness := newAdminHarness(t)
+	passkey := newSoftwarePasskey(t)
+	if status := harness.enroll(harness.openEnrollment(), passkey); status != http.StatusCreated {
+		t.Fatalf("enrollment: %d", status)
+	}
+	session := harness.signIn(passkey)
+	next := session.challenge
+	live := func(query string) answered {
+		t.Helper()
+		answer := harness.signed(session.seed, http.MethodGet, api.AdminPath+"/live"+query, next)
+		next = answer.next
+		return answer
+	}
+	harness.server.refusals.Note(netip.MustParseAddr("192.0.2.1"), "requests", time.Now())
+	first := live("")
+	version := fmt.Sprint(first.fields["refused_version"])
+	if listed, ok := first.fields["refused"].([]any); first.status != http.StatusOK || !ok || len(listed) != 1 {
+		t.Fatalf("the first live answer: %d %v", first.status, first.fields)
+	}
+	if same := live("?since=0&refused=" + version); same.status != http.StatusOK || same.fields["refused"] != nil {
+		t.Fatalf("an unchanged list was sent again: %d %v", same.status, same.fields["refused"])
+	}
+	harness.server.refusals.Note(netip.MustParseAddr("192.0.2.2"), "requests", time.Now())
+	if changed, ok := live("?refused=" + version).fields["refused"].([]any); !ok || len(changed) != 2 {
+		t.Fatalf("a changed list was not sent: %v", changed)
+	}
+	if malformed := live("?since=soon"); malformed.status != http.StatusBadRequest {
+		t.Fatalf("a malformed since: %d", malformed.status)
+	}
 }
 
 // A reset on the server host is the operator's way to shut a session they do not trust: it ends every session at

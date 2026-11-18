@@ -620,10 +620,10 @@ GET    /api/v1/admin/overview?range=24h|7d|30d|90d|12m   signed, purpose admin �
           "storage":{"free_bytes","total_bytes","reserve_bytes","database_bytes"},
           "security":{"passkeys","last_sign_in","session_expires_at"},
           "source":{"countries","attribution","attribution_url"},"version"}
-GET    /api/v1/admin/live                signed, purpose admin → 200
+GET    /api/v1/admin/live[?since=N&refused=N]   signed, purpose admin → 200
          {"challenge","online":N,"people":[30 × N],"robots":[30 × N],"session_expires_at":N,"usage_supported":bool,
           "usage":[{"at","processor","load","memory_used","memory_total","process_bytes"}],
-          "refused":[{"client","country","reasons":{reason:N},"count","first","last"}]}
+          "refused":[{"client","country","reasons":{reason:N},"count","first","last"}]?,"refused_version":N}
 DELETE /api/v1/admin/session             signed, purpose admin → 200 {}
 ```
 
@@ -637,6 +637,8 @@ The admin area belongs to the operator of an instance; visitors still need no ac
 - A session ends after 15 minutes without a request, 12 hours after sign-in, on sign-out, on a restart of the server, within a minute after its passkey was removed (`admin-reset`), and in effect on a reload of the page, which loses the key. A process holds at most 4 sessions and drops the oldest for a fifth.
 - A request without a valid signature of a live session answers 401 `unauthorized`. A failed enrollment or sign-in (a wrong, used or expired token, a ninth passkey, an unknown passkey or an assertion that fails a check) also answers 401, puts the client on the list of refused clients with reason `admin` (§5.3) and counts as the held event `admin-sign-in-refused` or `admin-enrollment-refused` without an address (§10).
 - No session credential is ambient, and the cross-origin guard of §6 applies to these routes as well. Every answer is `application/json`.
+- `previous` holds the totals of the span before the chosen one, cut to the part the running span has had: the period that matches the running one counts in proportion to how much of the running period has passed. `12m` has none.
+- The page asks for `live` every five seconds and sends what it holds: `since`, the `at` of its newest usage sample, and `refused`, the `refused_version` of its list of refused clients. The answer then carries only the samples taken after `since`, or every sample when none of them was taken at `since`, as after a gap or a clock step, and `refused` only when the list changed; the version changes with every change of the list. A parameter that is not a decimal number answers 400.
 - When `admin.db` cannot be opened or read, the server runs without the admin area and answers its routes with 404. No admin route reads or changes a message.
 
 ## 7. Lifecycle, leases, sweep
