@@ -120,7 +120,7 @@ func opaqueSetup(vector opaqueCase) (*opaqueInputs, error) {
 	if inputs.config, err = keys.OPAQUEConfig(inputs.id, vector.kdf); err != nil {
 		return nil, err
 	}
-	if inputs.serverKeys, _, err = ring.OPAQUEKeys(inputs.id[:], ring.CurrentID()); err != nil {
+	if inputs.serverKeys, err = ring.OPAQUEKeys(inputs.id[:], ring.CurrentID()); err != nil {
 		return nil, err
 	}
 	inputs.keySeed = ring.MAC(pepper.OPAQUEServer, inputs.id[:])

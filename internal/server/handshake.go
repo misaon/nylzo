@@ -133,7 +133,7 @@ func (s *Server) generateKE2(
 	message *store.Message,
 	registration, ke1 []byte,
 ) ([opaque.KE2Len]byte, opaque.ServerLogin, error) {
-	serverKeys, _, err := s.ring.OPAQUEKeys(id[:], message.RegistrationPepperID)
+	serverKeys, err := s.ring.OPAQUEKeys(id[:], message.RegistrationPepperID)
 	defer serverKeys.Wipe()
 	if err != nil {
 		return [opaque.KE2Len]byte{}, opaque.ServerLogin{}, err
