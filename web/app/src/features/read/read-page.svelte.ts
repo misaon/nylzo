@@ -62,7 +62,7 @@ const STEPS = [
   { id: 'decrypt', busy: 'decrypting', icon: 'unlock' },
 ] as const satisfies readonly { readonly id: string; readonly busy: BusyStep; readonly icon: IconName }[];
 
-const MIN_MS = { passphrase: 3800, plain: 2600, reduced: 1000 } as const;
+const MIN_MS = { passphrase: 3000, plain: 2000, reduced: 1000 } as const;
 const REVEAL_MS = 900;
 const REVEAL_TICK_MS = 40;
 const SCRAMBLED_CHARACTERS = 2000;

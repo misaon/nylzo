@@ -9,7 +9,12 @@ import { forgetRetiredRecovery } from './retired-recovery.ts';
 
 export function show(path: string, language: Language): void {
   const options = { target: document.body, props: { start: { path, language } } };
-  if (document.body.firstElementChild) {
+  const skeleton = document.body.querySelector(':scope > [data-skeleton]');
+  if (skeleton) {
+    document.documentElement.dataset['skeleton'] = '';
+    mount(App, options);
+    skeleton.remove();
+  } else if (document.body.firstElementChild) {
     hydrate(App, options);
   } else {
     mount(App, options);

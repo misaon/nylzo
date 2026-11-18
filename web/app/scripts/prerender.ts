@@ -14,6 +14,7 @@ interface Prerender {
   readonly agentsMarkdown: () => string;
   readonly llmsText: () => string;
   readonly statusTemplates: (index: string) => ReadonlyMap<string, string>;
+  readonly skeletonIndex: (index: string) => string;
 }
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -46,6 +47,7 @@ const statusPages = prerender.statusTemplates(index);
 for (const [name, page] of statusPages) {
   writeFileSync(path.join(distribution, name), page);
 }
+writeFileSync(path.join(distribution, 'index.html'), prerender.skeletonIndex(index));
 
 const bundled = new Map(
   readdirSync(assets)
