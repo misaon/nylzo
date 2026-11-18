@@ -1,5 +1,6 @@
 import { expect, test } from './support/fixtures.ts';
-import { chooseLanguage, openApp } from './support/pages.ts';
+import { createMessageThroughApi } from './support/messages.ts';
+import { chooseLanguage, createMessageInPage, openApp } from './support/pages.ts';
 import { holdRoute } from './support/routes.ts';
 import { BASE_URL, OFFICIAL_BASE_URL } from './support/servers.ts';
 import { watchViolations } from './support/watchers.ts';
@@ -104,6 +105,53 @@ test('the language switch moves between / and /cs/ in place, a saved choice wins
   await expect(page).toHaveURL(`${BASE_URL}/#create`);
   await openApp(page, '/cs/');
   await expect(page).toHaveURL(`${BASE_URL}/`);
+});
+
+for (const tracking of [false, true]) {
+  test(`back after a language switch keeps the chosen language and the draft without loading again${tracking ? ' while the tab tracks a message' : ''}`, async ({
+    newPage,
+  }) => {
+    const page = await newPage({ locale: 'en-US' });
+    if (tracking) {
+      await createMessageInPage(page, { text: 'tracked', remember: 'tab' });
+      await page.getByRole('button', { name: 'New message' }).click();
+    } else {
+      await openApp(page, '/');
+    }
+    await page.getByLabel('Message text').fill('draft that must survive');
+    await page.evaluate(() => {
+      location.hash = 'faq';
+      Object.assign(globalThis, { nylzoSamePage: true });
+    });
+    await chooseLanguage(page, 'Čeština');
+    await expect(page).toHaveURL(`${BASE_URL}/cs/#faq`);
+    await page.goBack();
+    await expect(page).toHaveURL(`${BASE_URL}/cs/`);
+    await expect(page.getByLabel('Text zprávy')).toHaveValue('draft that must survive');
+    expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(true);
+  });
+}
+
+test('a page whose code fails to load says so and offers to try again', async ({ newPage }) => {
+  const page = await newPage({ locale: 'en-US' });
+  await page.route('**/assets/start-*.js', async (route) => route.fulfill({ status: 503 }), { times: 1 });
+  await page.goto('/terms');
+  await expect(page.getByRole('alert')).toHaveText('The page could not start. Check your connection and try again.');
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Terms of use' })).toBeVisible();
+});
+
+test('a read page whose code fails to load asks to open the link again instead of reloading without its key', async ({
+  newPage,
+}) => {
+  const page = await newPage({ locale: 'en-US' });
+  const message = await createMessageThroughApi();
+  await page.route('**/assets/start-*.js', async (route) => route.fulfill({ status: 503 }), { times: 1 });
+  await page.goto(message.link);
+  await expect(page.getByRole('alert')).toHaveText(
+    'The page could not start. Check your connection and open the link again.',
+  );
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
 });
 
 test('a page without a message switches language after a release removed its catalogs by loading again', async ({

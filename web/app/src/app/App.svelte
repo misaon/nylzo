@@ -52,10 +52,25 @@
   let requestedLanguage = startLanguage;
   const onlanguage = (language: Language) => void switchLanguage(language);
 
-  function returned() {
-    if (location.pathname !== path) {
-      location.reload();
+  function replaceAddress(address: string) {
+    replacingUrl = true;
+    try {
+      history.replaceState(history.state, '', address);
+    } finally {
+      replacingUrl = false;
     }
+  }
+
+  function returned() {
+    if (location.pathname === path) {
+      return;
+    }
+    // A language switch replaces only the current entry, so an earlier home entry still names the old language.
+    if (screen === 'create' && screenOf(location.pathname) === 'create') {
+      replaceAddress(`${path}${location.search}${location.hash}`);
+      return;
+    }
+    location.reload();
   }
 
   // Messages tracked only in this tab live in its memory: moving between screens keeps the document, leaving Nylzo forgets them.
@@ -76,6 +91,15 @@
     const destination = new URL(event.destination.url);
     const next = screenOf(destination.pathname);
     if (!SWITCHABLE.has(screen) || !SWITCHABLE.has(next)) {
+      return;
+    }
+    if (event.navigationType === 'traverse' && screen === 'create' && next === 'create') {
+      event.intercept({
+        handler: async () => {
+          await tick();
+          returned();
+        },
+      });
       return;
     }
     // A home page keeps the language shown, as a reload would through the saved choice.
@@ -131,12 +155,7 @@
     saveLanguage(browserPreferences(), language);
     if (screen === 'create') {
       path = homePath(language);
-      replacingUrl = true;
-      try {
-        history.replaceState(history.state, '', `${path}${location.hash}`);
-      } finally {
-        replacingUrl = false;
-      }
+      replaceAddress(`${path}${location.hash}`);
     }
   }
 </script>

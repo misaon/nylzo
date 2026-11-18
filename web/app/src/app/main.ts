@@ -12,6 +12,7 @@ import type { Language } from '../shared/language/language.ts';
 import { takeHandoff } from '../shared/local-client/handoff.ts';
 import { homeLanguage, screenOf } from './pages.ts';
 import type { Screen } from './pages.ts';
+import { showStartFailure } from './start-failure.ts';
 
 const FONT_WAIT_MS = 1500;
 const PAINT_WAIT_MS = 1000;
@@ -74,6 +75,8 @@ async function boot(): Promise<void> {
   document.documentElement.lang = language;
   // A prerendered home page shows its content first, so its code waits for that paint; other pages load it with the fonts.
   const appModules = homePage ? undefined : loadApp(language);
+  // A failed download is handled where boot awaits it, after the fonts.
+  void appModules?.catch(() => null);
   await Promise.race([
     loadFonts(homePage ? LANGUAGE_DETAILS[homePage].fontSample : ANY_TEXT_SAMPLE),
     delay(FONT_WAIT_MS),
@@ -94,4 +97,10 @@ async function boot(): Promise<void> {
 }
 
 // oxlint-disable-next-line unicorn/prefer-top-level-await -- WebKit font readiness must not wait for this module to finish evaluating.
-void boot();
+boot().catch(() => {
+  const path = location.pathname;
+  showStartFailure(
+    screenOf(path) === 'read',
+    homeLanguage(path) ?? savedLanguage(browserPreferences(), navigator.languages),
+  );
+});

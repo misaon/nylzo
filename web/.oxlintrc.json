@@ -661,7 +661,7 @@
     "no-underscore-dangle": [
       "error",
       {
-        "allow": ["__NYLZO_BUILD_INFO__"]
+        "allow": ["__NYLZO_BUILD_INFO__", "__NYLZO_START_FAILURE__"]
       }
     ],
     "import/no-unassigned-import": [

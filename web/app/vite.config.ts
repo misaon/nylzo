@@ -8,8 +8,22 @@ import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 
 import { buildInfo } from '../../tools/build-info.mts';
+import { catalogOf, loadCatalog } from './src/shared/language/catalog.ts';
+import { LANGUAGES } from './src/shared/language/language.ts';
 
 const information = buildInfo();
+
+await Promise.all(LANGUAGES.map(async (language) => loadCatalog(language)));
+// The start failure notice must show when no catalog could load, so its text ships in the entry.
+const startFailure = Object.fromEntries(
+  LANGUAGES.map((language) => {
+    const catalog = catalogOf(language);
+    return [
+      language,
+      { message: catalog['start.failed'], reopen: catalog['start.failed.reopen'], retry: catalog['action.retry'] },
+    ];
+  }),
+);
 
 const outputDirectory = path.resolve(import.meta.dirname, '../../internal/server/web/dist');
 const developmentApi = process.env['NYLZO_DEV_API'] ?? 'http://127.0.0.1:8080';
@@ -141,7 +155,10 @@ export default defineConfig(({ isSsrBuild, mode }) => ({
           precompress(),
         ]),
   ],
-  define: { __NYLZO_BUILD_INFO__: JSON.stringify(information) },
+  define: {
+    __NYLZO_BUILD_INFO__: JSON.stringify(information),
+    __NYLZO_START_FAILURE__: JSON.stringify(startFailure),
+  },
   server: { strictPort: true, proxy: { '/api': developmentApi } },
   build: {
     ...(!isSsrBuild && { target: BROWSER_TARGETS }),

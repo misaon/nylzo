@@ -3,6 +3,8 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Coba lagi',
   'app.crashed': 'Terjadi kesalahan di halaman ini. Muat ulang halamannya.',
+  'start.failed': 'Halaman gagal dijalankan. Periksa koneksi Anda, lalu coba lagi.',
+  'start.failed.reopen': 'Halaman gagal dijalankan. Periksa koneksi Anda, lalu buka tautannya lagi.',
 
   'hero.eyebrow': 'Tautan terenkripsi sekali pakai',
   'hero.steps': 'Cara kerjanya',
