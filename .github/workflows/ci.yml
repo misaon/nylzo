@@ -106,9 +106,9 @@ jobs:
       - uses: $/.github/actions/setup
         with:
           tools: go
-      - name: Cross-compile the private file, download mark, process hardening, stop signal and entry point tests for Windows
+      - name: Cross-compile the private file, download mark, process hardening, stop signal, local client and entry point tests for Windows
         run: |
-          for package in internal/privatefile internal/quarantine internal/cli/harden internal/cli/stopsignal cmd/nylzo; do
+          for package in internal/privatefile internal/quarantine internal/cli/harden internal/cli/stopsignal internal/localclient cmd/nylzo; do
             GOOS=windows GOARCH=amd64 go test -c -o "$RUNNER_TEMP/windows-tests/${package##*/}.test.exe" "./${package}/"
           done
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -144,6 +144,15 @@ jobs:
             & "$env:RUNNER_TEMP/windows-tests/$test.test.exe" '-test.v' '-test.count=1'
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
+      - name: Edge marks a file saved on the nylzo open address as from the Internet zone
+        shell: pwsh
+        run: |
+          $test = 'TestEdgeMarksAFileSavedOnTheOpenAddressAsFromTheInternet'
+          $output = & "$env:RUNNER_TEMP/windows-tests/localclient.test.exe" '-test.v' '-test.count=1' '-test.timeout=4m' '-test.run' "^$test$"
+          $code = $LASTEXITCODE
+          $output | Write-Host
+          if ($code -ne 0) { exit $code }
+          if (-not ($output -match "^--- PASS: $test ")) { Write-Error "$test did not run"; exit 1 }
 
   macos:
     name: Go platform tests on macOS
@@ -589,6 +598,9 @@ jobs:
           sudo install -m 0644 nylzo-epoch.conf /etc/tmpfiles.d/nylzo-epoch.conf
           sudo systemd-tmpfiles --create nylzo-epoch.conf
           printf 'NYLZO_DOMAIN=localhost\nNYLZO_IMAGE=nylzo:ci\nNYLZO_CADDY_IMAGE=caddy:ci\n' > .env
+          # No ACME issuer gives localhost a certificate; without the block, Caddy's internal CA issues it.
+          sed -i '/issuer acme {/,/}/d' Caddyfile
+          if grep -q 'issuer acme' Caddyfile; then exit 1; fi
           docker compose up -d
           for service in nylzo caddy; do
             docker inspect "nylzo-${service}-1" --format '{{.HostConfig.Memory}} {{.HostConfig.PidsLimit}} {{.HostConfig.NanoCpus}} {{json .HostConfig.Ulimits}}' | tee "$RUNNER_TEMP/limits"

@@ -335,7 +335,7 @@ func (s *Server) sweepOnce(ctx context.Context) (store.SweepReport, error) {
 	now := time.Now()
 	report, err := sweep.Run(ctx, s.store, s.blobs, now)
 	s.count(statistics.MetricExpired, int64(report.Blobs))
-	return report, errors.Join(err, s.advanceRatchet(now))
+	return report, errors.Join(err, s.advanceRatchet(time.Now()))
 }
 
 // recheckEpochStorage repeats the start check of the epoch directory, so swap turned on later reaches the log; the
@@ -365,7 +365,11 @@ func (s *Server) openRatchet() error {
 	if err := PrepareEpochDirectory(&s.settings); err != nil {
 		return err
 	}
-	options := epoch.Options{Create: true, CheckFileSystem: s.requireErasableEpochDirectory}
+	options := epoch.Options{
+		Create:          true,
+		CheckFileSystem: s.requireErasableEpochDirectory,
+		Replaced:        func() { LogReplacedGeneration(s.logger) },
+	}
 	var (
 		ratchet *epoch.Ratchet
 		created bool
@@ -412,6 +416,16 @@ func (s *Server) warnIfSeedOnDisk() error {
 	return nil
 }
 
+// LogReplacedGeneration names the loss that a replaced generation causes, which no request would explain.
+func LogReplacedGeneration(logger *slog.Logger) {
+	logger.Error(
+		"epoch-generation-replaced",
+		"notice",
+		"the clock runs more than 5 minutes behind the seed, so the generation of its hour may have started early; "+
+			"the messages created in that hour end as lost",
+	)
+}
+
 // PrepareEpochDirectory creates the default epoch directory inside the data directory. A directory that the
 // operator names must exist already, so a volume that failed to mount stops the server instead of a new seed.
 func PrepareEpochDirectory(settings *config.Server) error {
@@ -441,13 +455,28 @@ func RefuseEpochInDataDirectory(settings *config.Server) error {
 	return fmt.Errorf("%w: %s; %s", ErrEpochInDataDirectory, inData, advice)
 }
 
-// leftoverAdvice offers the copy only while NYLZO_EPOCH_DIR holds no seed, which the copy would overwrite.
+// leftoverAdvice offers the copy only while NYLZO_EPOCH_DIR holds no seed, which the copy would overwrite, and never
+// for a damaged seed or one of a release before 0.14.0, which serve erases with its messages. A seed that fails
+// another check keeps the offer and names the check.
 func leftoverAdvice(inData, named string) string {
 	const eraseAll = "erase every file in it in place (shred --zero --iterations=0 --remove=unlink) and remove it"
-	if exists(filepath.Join(inData, epoch.FileName)) && !exists(filepath.Join(named, epoch.FileName)) {
-		return "copy its seed into " + named + " first to keep the live messages, then " + eraseAll
+	if !exists(filepath.Join(inData, epoch.FileName)) || exists(filepath.Join(named, epoch.FileName)) {
+		return eraseAll
 	}
-	return eraseAll
+	var (
+		held epoch.State
+		err  error
+	)
+	secretmode.Do(func() { held, err = epoch.Inspect(inData) })
+	copySeed := "copy its seed into " + named + " first to keep the live messages, then " + eraseAll
+	switch {
+	case errors.Is(err, epoch.ErrCorrupt), err == nil && held != epoch.StateSeed:
+		return eraseAll
+	case err != nil:
+		return "fix the seed (" + err.Error() + "), " + copySeed
+	default:
+		return copySeed
+	}
 }
 
 func exists(path string) bool {

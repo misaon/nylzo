@@ -4,9 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
+	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/misaon/nylzo/internal/cli/command"
@@ -151,13 +152,25 @@ func adminStorePath(dataDirectory string) string {
 	return filepath.Join(dataDirectory, adminstore.FileName)
 }
 
-// adminAddress is the public URL of the instance; a server without one is reached where it listens.
+// adminAddress is the public URL of the instance; a server without one is reached on this host where it listens,
+// as localhost when it listens there, which the admin area accepts without NYLZO_PUBLIC_URL.
 func adminAddress(settings *config.Server) string {
-	origin := settings.PublicURL
-	if origin == "" {
-		origin = "http://" + strings.Replace(settings.Listen, "127.0.0.1", "localhost", 1)
+	if settings.PublicURL != "" {
+		return settings.PublicURL + webclient.AdminPath
 	}
-	return origin + webclient.AdminPath
+	host, port, err := net.SplitHostPort(settings.Listen)
+	if err != nil {
+		return "http://" + settings.Listen + webclient.AdminPath
+	}
+	address, parseErr := netip.ParseAddr(host)
+	switch {
+	case host == "", parseErr == nil && address.IsUnspecified(), host == "127.0.0.1", host == "::1":
+		host = "localhost"
+	case parseErr == nil && address.Zone() != "":
+		host = address.WithZone("").String() + "%25" + address.Zone()
+	default:
+	}
+	return "http://" + net.JoinHostPort(host, port) + webclient.AdminPath
 }
 
 func describePasskey(held *adminstore.Passkey) string {

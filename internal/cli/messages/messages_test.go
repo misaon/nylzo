@@ -601,26 +601,43 @@ func TestReadSavesTheMessageThroughStopSignalsAfterTheClaim(t *testing.T) {
 	}
 }
 
-// readThroughStopSignals cancels the context as cli.Run does on a first Ctrl-C or SIGTERM, sends the process a hangup,
-// a termination request and a Ctrl-C while the claim is on its way to the server, and with --stdout sends the first two
-// again while read prints the text.
+// readThroughStopSignals cancels the context as cli.Run does on a first Ctrl-C or SIGTERM. It sends the process a
+// hangup, a termination request and a Ctrl-C while the claim is on its way to the server; with --stdout it sends only
+// the first two, while read prints the text, so the signal read holds can only come from them.
 func readThroughStopSignals(t *testing.T) {
 	t.Helper()
+	// Listening for a hangup clears an ignore that nohup set, so a hangup read leaves alone is never sent.
+	hangupIgnored := signal.Ignored(syscall.SIGHUP)
+	sendable := func(signals ...os.Signal) []os.Signal {
+		return slices.DeleteFunc(signals, func(sent os.Signal) bool { return hangupIgnored && sent == syscall.SIGHUP })
+	}
 	var verdicts []string
-	for _, arguments := range [][]string{nil, {"--stdout"}} {
+	for _, variant := range []struct {
+		arguments                  []string
+		duringClaim, whilePrinting []os.Signal
+		held                       os.Signal
+	}{
+		{nil, sendable(syscall.SIGHUP, syscall.SIGTERM, os.Interrupt), nil, os.Interrupt},
+		{[]string{"--stdout"}, nil, sendable(syscall.SIGHUP, syscall.SIGTERM), syscall.SIGHUP},
+	} {
+		arguments := variant.arguments
+		wantHeld := variant.held
+		if hangupIgnored && wantHeld == syscall.SIGHUP {
+			wantHeld = syscall.SIGTERM
+		}
 		ctx, stop := context.WithCancel(t.Context())
 		instance := serveWith(t, func(request *http.Request) {
 			if strings.HasSuffix(request.URL.Path, api.ClaimAction) {
 				stop()
-				signalSelf(t, syscall.SIGHUP, syscall.SIGTERM, os.Interrupt)
+				deliverToSelf(t, variant.duringClaim...)
 			}
 		})
 		text := "after the claim"
 		link := createWithFile(t, instance, text, "signals.bin", []byte{1})
 		out := t.TempDir()
 		stdout := &recordingStdout{}
-		if arguments != nil {
-			stdout.beforeFirstWrite = func() { signalSelf(t, syscall.SIGHUP, syscall.SIGTERM) }
+		if variant.whilePrinting != nil {
+			stdout.beforeFirstWrite = func() { deliverToSelf(t, variant.whilePrinting...) }
 		}
 		stderr := &lockedBuffer{}
 		environment := readEnvironment(link, stdout, stderr)
@@ -631,12 +648,10 @@ func readThroughStopSignals(t *testing.T) {
 		got := deliveredText(arguments, stdout.String(), saved)
 		verdict := "saved"
 		held := environment.Stop.Signal()
-		if code != command.ExitOK || !environment.Stop.Held() || held != os.Interrupt || len(saved) != 1 ||
-			got != text ||
-			!strings.Contains(
-				stderr.String(),
-				"a second Ctrl-C",
-			) || strings.Contains(stderr.String(), "did not confirm") {
+		warned := strings.Contains(stderr.String(), "a second Ctrl-C")
+		if code != command.ExitOK || !environment.Stop.Held() || held != wantHeld || len(saved) != 1 ||
+			got != text || warned != slices.Contains(variant.duringClaim, os.Interrupt) ||
+			strings.Contains(stderr.String(), "did not confirm") {
 			verdict = fmt.Sprintf(
 				"%v: exit %d, held %v, attachment %v, text %q, stderr %q",
 				arguments,
@@ -713,6 +728,22 @@ func skipIfCtrlCIsIgnored(t *testing.T) {
 	t.Helper()
 	if signal.Ignored(os.Interrupt) {
 		t.Skip("the tests run with Ctrl-C ignored, which read then leaves ignored")
+	}
+}
+
+// deliverToSelf waits for each signal, since the kernel may deliver one after kill returns and after read let it go.
+func deliverToSelf(t *testing.T, signals ...os.Signal) {
+	t.Helper()
+	for _, sent := range signals {
+		delivered := make(chan os.Signal, 1)
+		signal.Notify(delivered, sent)
+		signalSelf(t, sent)
+		select {
+		case <-delivered:
+		case <-time.After(time.Minute):
+			t.Error("a signal sent to the process did not arrive")
+		}
+		signal.Stop(delivered)
 	}
 }
 
