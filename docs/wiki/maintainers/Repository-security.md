@@ -92,7 +92,7 @@ Other artifacts are kept for 14 days. The inventory scans the latest release, th
 
 ## Handling a finding
 
-- Fix a dependency finding by updating, removing or patching the package. An exception goes into [security/sca-policy.json](../../../security/sca-policy.json) with the lockfile, package, version, advisory, evidence and a `reviewUntil` date; once that date passes, the finding blocks again. Known malware always blocks.
+- Fix a dependency finding by updating, removing or patching the package. An exception goes into [security/sca-policy.json](../../../security/sca-policy.json) with the lockfile, package, version, advisory, evidence and a `reviewUntil` date; once that date passes, the finding blocks again. The gate accepts two kinds of "not affected": Go code whose release builds never import the vulnerable package, and an npm package that `bun.lock` shows no workspace needs at runtime, so only lint, build and test tools run it. Known malware always blocks.
 - Dismiss a CodeQL alert only after reading its data flow, with the reason on the alert. Never disable a query to get a green run.
 
 ## Credentials and incidents
