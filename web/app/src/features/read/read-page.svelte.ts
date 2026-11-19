@@ -120,7 +120,7 @@ export class ReadPage {
   revealRest = $state('');
   marked = $state.raw<MarkedText>();
   confirmingCopy = $state(false);
-  clipboard = $state<'cleared' | 'copied' | 'untouched'>('untouched');
+  clipboard = $state<'cleared' | 'copied' | 'failed' | 'untouched'>('untouched');
   linkInHistory = $state(false);
   noise = $state('');
   settled = $state(false);
@@ -309,6 +309,7 @@ export class ReadPage {
       this.copied.show();
     } catch {
       this.copied.hide();
+      this.clipboard = 'failed';
     }
   };
 

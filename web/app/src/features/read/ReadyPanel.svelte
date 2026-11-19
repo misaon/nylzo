@@ -147,14 +147,14 @@
               onkeydown={submitOnEnter}
               class="h-11 min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-mute md:h-10"
             />
-            <button
-              type="button"
+            <Button
+              variant="plain"
+              size="icon"
               onclick={() => (page.showPassphrase = !page.showPassphrase)}
               aria-label={translate(page.showPassphrase ? 'open.passphrase.hide' : 'open.passphrase.show')}
-              class="group/action grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition hover:bg-white/6 hover:text-ink md:size-9"
             >
               <SwapIcon from="eye" to="eyeOff" swapped={page.showPassphrase} size="size-[18px]" animated />
-            </button>
+            </Button>
           </div>
           {@render revealButton('w-full sm:w-auto')}
         </div>

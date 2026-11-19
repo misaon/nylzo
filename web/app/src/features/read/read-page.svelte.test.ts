@@ -318,11 +318,16 @@ describe('read page interactions', () => {
     await page.copyText();
     expect(writeText).not.toHaveBeenCalled();
     notify({ view: 'revealed', text: 'hello', burnable: false, opensRemaining: 0 });
+    vi.mocked(writeText).mockRejectedValueOnce(new Error('clipboard denied'));
+    await page.copyText();
+    expect(page.copied.shown).toBe(false);
+    expect(page.clipboard).toBe('failed');
     await page.askCopy();
     expect(page.copied.shown).toBe(true);
     vi.mocked(writeText).mockRejectedValue(new Error('clipboard denied'));
     await page.copyText();
     expect(page.copied.shown).toBe(false);
+    expect(page.clipboard).toBe('failed');
     await page.clearClipboard();
     expect(page.clipboard).toBe('copied');
   });

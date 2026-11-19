@@ -18,13 +18,16 @@
   const { text, label, class: className, labelClass }: Props = $props();
   const { translate } = getTranslator();
   const copied = new Flash(COPIED_MS);
+  const failed = new Flash(COPIED_MS);
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(text);
+      failed.hide();
       copied.show();
     } catch {
       copied.hide();
+      failed.show();
     }
   }
 </script>
@@ -37,7 +40,12 @@
   onclick={() => void copy()}
 >
   <span class="stack justify-items-center">
-    <span class={['flex items-center gap-2 fade-swap', copied.shown ? 'pointer-events-none opacity-0' : 'opacity-100']}>
+    <span
+      class={[
+        'flex items-center gap-2 fade-swap',
+        copied.shown || failed.shown ? 'pointer-events-none opacity-0' : 'opacity-100',
+      ]}
+    >
       <Icon name="copy" animated />
       <span class={labelClass}>{translate('action.copy')}</span>
     </span>
@@ -50,6 +58,17 @@
       <Icon name="check" stroke={2.2} />
       <span class={labelClass}>{translate('action.copied')}</span>
     </span>
+    <span
+      class={[
+        'flex items-center gap-2 text-rose-300 fade-swap',
+        failed.shown ? 'opacity-100' : 'pointer-events-none opacity-0',
+      ]}
+    >
+      <Icon name="alert" stroke={2} />
+      <span class={labelClass}>{translate('action.copy_failed')}</span>
+    </span>
   </span>
 </Button>
-<span class="sr-only" role="status">{copied.shown ? translate('action.copied') : ''}</span>
+<span class="sr-only" role="status"
+  >{copied.shown ? translate('action.copied') : failed.shown ? translate('action.copy_failed') : ''}</span
+>
