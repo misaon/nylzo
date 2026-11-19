@@ -31,7 +31,7 @@
 <div
   class={[
     'flex flex-col items-center justify-center gap-7 px-5 py-12 text-center fade-swap sm:px-10 md:py-14',
-    panelClasses(page.phase === 'notice', page.phase),
+    panelClasses(page.phase === 'notice'),
   ]}
   inert={page.phase !== 'notice'}
 >

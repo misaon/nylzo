@@ -8,7 +8,7 @@ import { clearClipboard } from '../../shared/clipboard/clear-clipboard.ts';
 import { revokeSavedFiles } from '../../shared/files/save-file.ts';
 import { stopRunningWorkers, stretchInWorker } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
-import { formatClock, formatMoment } from '../../shared/language/format.ts';
+import { formatMoment } from '../../shared/language/format.ts';
 import type { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
@@ -16,6 +16,7 @@ import { randomText } from '../../shared/pipeline/random-text.ts';
 import { FocusTargets } from '../../shared/ui/focus/focus.ts';
 import type { IconName } from '../../shared/ui/icon/icons.ts';
 import { Flash } from '../../shared/ui/transition/flash.svelte.ts';
+import { openedFacts } from './read-facts.ts';
 import { burnText, noticeOf } from './read-notice.ts';
 import type { Burned, Notice } from './read-notice.ts';
 import { readerSession } from './reader-session.ts';
@@ -46,13 +47,9 @@ export type FocusTarget =
   | 'readyArea'
   | 'revealedTitle';
 
-export function panelClasses(shown: boolean, phase: Phase): string {
-  if (shown) {
-    return 'relative translate-y-0 opacity-100';
-  }
-  return phase === 'revealed'
-    ? 'pointer-events-none absolute inset-x-0 top-0 translate-y-3 opacity-0'
-    : 'pointer-events-none relative translate-y-3 opacity-0';
+// Hidden panels keep their place, so the card never shrinks under a short message.
+export function panelClasses(shown: boolean): string {
+  return shown ? 'relative translate-y-0 opacity-100' : 'pointer-events-none relative translate-y-3 opacity-0';
 }
 
 const STEPS = [
@@ -125,6 +122,7 @@ export class ReadPage {
   noise = $state('');
   settled = $state(false);
   secondsLeft = $state<number>();
+  reservedOpens = $state<number>();
   readonly copied = new Flash(FLASH_MS);
   readonly downloaded = new Flash(FLASH_MS);
   readonly focus = new FocusTargets<FocusTarget>();
@@ -213,14 +211,7 @@ export class ReadPage {
     const { translate } = this.#translator;
     if (this.revealed) {
       const more = this.revealed.burnable && !this.restDeleted;
-      const facts: Fact[] = [
-        { icon: 'check', text: translate('open.chip.now') },
-        { icon: 'eye', text: more ? this.opensLeft(this.revealed.opensRemaining) : translate('open.chip.last') },
-      ];
-      if (this.secondsLeft !== undefined) {
-        facts.unshift({ icon: 'timer', text: translate('open.chip.clears', { time: formatClock(this.secondsLeft) }) });
-      }
-      return facts;
+      return openedFacts(this.#translator, more ? this.revealed.opensRemaining : 0, this.secondsLeft);
     }
     if (this.notice === 'burned') {
       return [{ icon: 'check', text: translate('open.chip.burned') }];
@@ -245,9 +236,17 @@ export class ReadPage {
     if (this.#missingPassphrase()) {
       return;
     }
+    this.#reserveBar();
     this.askingDelete = true;
     await this.focus.focusAfterUpdate('keepMessage');
   };
+
+  // The first reveal or delete click gives the bar its final height while the click still excuses the change.
+  #reserveBar(): void {
+    if (this.ready) {
+      this.reservedOpens ??= this.ready.metadata.opensRemaining - (this.ready.resumable ? 0 : 1);
+    }
+  }
 
   readonly burn = async (): Promise<void> => {
     this.askingDelete = false;
@@ -374,6 +373,8 @@ export class ReadPage {
     }
     if (this.shown.view === 'loading') {
       this.#revealWhenReady = true;
+      // Before the metadata arrives, room for a second open and its delete button is the safe reservation.
+      this.reservedOpens ??= 2;
       return;
     }
     this.#submit();
@@ -399,6 +400,7 @@ export class ReadPage {
     this.askingDelete = false;
     this.deleteIntent = false;
     this.burned = undefined;
+    this.#reserveBar();
     const entered = this.passphrase;
     this.passphrase = '';
     this.#revealing = true;

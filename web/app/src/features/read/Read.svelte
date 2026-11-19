@@ -65,7 +65,7 @@
         <h2 id="read-title" {@attach page.focus.attach('readTitle')} tabindex="-1" class="sr-only">
           {translate('read.title')}
         </h2>
-        <div class={['relative stack', page.phase !== 'revealed' && 'min-h-[420px] md:min-h-[440px]']}>
+        <div class="relative stack min-h-[420px] md:min-h-[440px]">
           <ReadyPanel {page} {formId} />
           <OpeningPanel {page} />
           <RevealedPanel {page} />

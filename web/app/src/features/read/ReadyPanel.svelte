@@ -21,6 +21,9 @@
   const { translate } = translator;
   const id = $props.id();
 
+  let lastReady: typeof page.ready;
+  // Hidden after the click, the panel keeps its last ready view, so the card height it sets stays the same.
+  const ready = $derived.by(() => (lastReady = page.ready ?? (page.phase === 'ready' ? undefined : lastReady)));
   const loading = $derived(page.shown.view === 'loading');
   const revealable = $derived(
     page.ready !== undefined && !page.deleting && !page.askingDelete && page.phase === 'ready',
@@ -29,7 +32,7 @@
     if (page.emptyPassphrase) {
       return translate(page.deleteIntent ? 'read.delete.passphrase' : 'open.passphrase.empty');
     }
-    const rejected = page.typedAgain ? undefined : page.ready?.rejected;
+    const rejected = page.typedAgain ? undefined : ready?.rejected;
     if (rejected === undefined) {
       return '';
     }
@@ -47,14 +50,14 @@
     });
   });
   const alert = $derived.by(() => {
-    if (page.ready?.deviceFailed) {
+    if (ready?.deviceFailed) {
       return translate('read.device');
     }
-    const rejected = page.ready?.rejected;
+    const rejected = ready?.rejected;
     if (!page.passphraseRequired && rejected?.reason === 'wrong' && rejected.retryAfter > 0) {
       return translate('read.wait', { time: formatWait(rejected.retryAfter, translator.plural) });
     }
-    return page.ready?.leaseEnded ? translate('read.lease_ended') : '';
+    return ready?.leaseEnded ? translate('read.lease_ended') : '';
   });
   const passphraseAlert = $derived(passphraseError || alert);
   const keepAlert = lingering();
@@ -63,7 +66,7 @@
     if (loading) {
       return translate('open.loading.text');
     }
-    return translate(page.ready?.resumable ? 'read.resumable' : 'open.ready.sub');
+    return translate(ready?.resumable ? 'read.resumable' : 'open.ready.sub');
   });
 </script>
 
@@ -89,7 +92,7 @@
   {@attach page.focus.attach('readyArea')}
   class={[
     'flex flex-col items-center justify-center gap-7 px-5 py-12 text-center fade-swap sm:px-10 md:py-14',
-    panelClasses(page.phase === 'ready', page.phase),
+    panelClasses(page.phase === 'ready'),
   ]}
   inert={page.phase !== 'ready'}
   data-paused={page.phase !== 'ready' || undefined}
