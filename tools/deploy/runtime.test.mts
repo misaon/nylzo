@@ -10,7 +10,7 @@ test("runtime staging bounds downloads and preserves the active extension on siz
     const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
       "--tmpfs", "/opt:exec", "--tmpfs", "/etc/extensions", "--tmpfs", "/tmp:exec",
       "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/host/update/runtime-stage")},target=/test-runtime-stage,readonly`,
-      "ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5", "bash", "-s"], {
+      "ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8", "bash", "-s"], {
       encoding: "utf8", timeout: 60000, input: `set -euo pipefail
 mkdir -p /opt/nylzo/bin /opt/nylzo/extensions
 case "$(uname -m)" in x86_64) asset=x86-64 ;; aarch64) asset=arm64 ;; *) exit 1 ;; esac
@@ -69,7 +69,7 @@ test("a failed OS health-marker flush preserves the previous recovery target", {
     const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
       "--tmpfs", "/opt:exec", "--tmpfs", "/var/lib",
       "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/host/application/health")},target=/test-health,readonly`,
-      "ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5", "bash", "-s"], {
+      "ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8", "bash", "-s"], {
       encoding: "utf8", timeout: 60000, input: `set -euo pipefail
 umask 077
 mkdir -p /opt/nylzo/bin /opt/nylzo/runtime /var/lib/nylzo-deploy
@@ -103,7 +103,7 @@ test("host-tool tampering fails closed and preserves a previously verified gener
     const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
       "--tmpfs", "/opt", "--tmpfs", "/var/cache", "--tmpfs", "/etc/nylzo", "--tmpfs", "/tmp:exec",
       "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/host/update/install-tools")},target=/test-install,readonly`,
-      "ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5", "bash", "-s"], {
+      "ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8", "bash", "-s"], {
       encoding: "utf8", timeout: 60000,
       input: `set -euo pipefail
 mkdir -p /tmp/bin /opt/nylzo/tools
@@ -206,7 +206,7 @@ ${untouched("release-v0.2.0")}` },
     const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--read-only", "--cap-drop", "ALL",
       "--tmpfs", "/opt", "--tmpfs", "/var/lib", "--tmpfs", "/var/tmp", "--tmpfs", "/run", "--tmpfs", "/etc/nylzo", "--tmpfs", "/tmp:exec",
       "--mount", `type=bind,source=${path.resolve("deploy/hetzner-flatcar/host/update/update")},target=/test-update,readonly`,
-      "ubuntu:24.04@sha256:2198e4c65076e9cb0b3d695219df667c0e3b0072da64ca3c2648aca17dcecaf5", "bash", "-s"], {
+      "ubuntu:24.04@sha256:73b999393d07f2bf65a40373778a44dc9a6d54ad7718d29247d8ff9413c4d6a8", "bash", "-s"], {
       encoding: "utf8", timeout: 60000, input: `set -euo pipefail
 mkdir -p /opt/nylzo/bin /var/lib/nylzo-deploy /tmp/bin /tmp/fixture
 printf '{"tag":"${current}"}\\n' > /var/lib/nylzo-deploy/current.json
