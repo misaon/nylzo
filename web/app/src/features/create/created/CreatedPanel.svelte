@@ -268,14 +268,15 @@
                   : 'truncate tracking-[0.18em]',
               ]}>{passphraseShown ? passphrase : PASSPHRASE_MASK}</span
             >
-            <button
-              type="button"
+            <Button
+              variant="plain"
+              size="icon"
               aria-label={translate(passphraseShown ? 'created.passphrase.hide' : 'created.passphrase.show')}
               onclick={() => (passphraseShown = !passphraseShown)}
-              class="group/action ml-auto grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition hover:bg-white/6 hover:text-ink md:size-9"
+              class="ml-auto"
             >
               <SwapIcon from="eye" to="eyeOff" swapped={passphraseShown} />
-            </button>
+            </Button>
           </div>
           <Button variant="tint" size="large" onclick={() => void copyPassphrase()} class="w-full sm:w-auto">
             <SwapIcon from="copy" to="check" swapped={passphraseCopied.shown} />
@@ -316,7 +317,7 @@
           ]}
         >
           <span class="text-pretty">{clipboard === 'untouched' ? '' : clipboardText}</span>
-          {#if clipboard === 'copied'}
+          {#if clipboard === 'copied' || clipboard === 'failed'}
             <Button variant="ghost" size="compact" onclick={() => void clearCopies()}>
               {translate('clipboard.clear')}
             </Button>

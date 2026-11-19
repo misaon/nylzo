@@ -3,7 +3,7 @@
   import { LONGEST_TTL_DAYS } from '../../../shared/ttl/ttl-choices.ts';
   import Accordion from '../../../shared/ui/accordion/Accordion.svelte';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
-  import { FAQ_COLUMNS } from './faq-entries.ts';
+  import { FAQ_KEYS } from './faq-entries.ts';
 
   const translator = getTranslator();
   const { translate } = translator;
@@ -23,18 +23,14 @@
       {translate('faq.title')}
     </h2>
     <div class="mt-10 grid gap-4 md:grid-cols-2 md:items-start">
-      {#each FAQ_COLUMNS as items, column (column)}
-        <div class="grid content-start gap-4 max-md:contents">
-          {#each items as item (item.key)}
-            <Accordion
-              summary={translate(`${item.key}.question`)}
-              class={['reveal-rise [--reveal-y:16px]', item.order, COLUMN_DELAYS[column]]}
-              attachment={reveal}
-            >
-              {translate(`${item.key}.answer`, { days: longest })}
-            </Accordion>
-          {/each}
-        </div>
+      {#each FAQ_KEYS as key, index (key)}
+        <Accordion
+          summary={translate(`${key}.question`)}
+          class={['reveal-rise [--reveal-y:16px]', COLUMN_DELAYS[index % COLUMN_DELAYS.length]]}
+          attachment={reveal}
+        >
+          {translate(`${key}.answer`, { days: longest })}
+        </Accordion>
       {/each}
     </div>
   </div>

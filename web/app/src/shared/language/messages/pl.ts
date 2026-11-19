@@ -139,6 +139,7 @@ export const messages: Catalog = {
     other: '{count}\u{A0}godziny',
   },
   'action.copied': 'Skopiowano',
+  'action.copy_failed': 'Błąd',
   'error.notFound.label': 'Błąd 404',
   'error.notFound.title': 'Ta strona nie istnieje',
   'error.notFound.lead': 'Adres może zawierać literówkę albo być niepełny.',
@@ -310,6 +311,7 @@ export const messages: Catalog = {
   'read.note':
     'Bezpłatnie i\u{A0}bez rejestracji. Strona z\u{A0}wiadomością nie używa plików cookie ani nie mierzy ruchu.',
   'read.terms': 'Wyświetlając wiadomość, akceptujesz {link}.',
+  'read.copy_failed': 'Nie udało się skopiować. Zaznacz tekst wiadomości i\u{A0}skopiuj go ręcznie.',
   'read.delete.confirm': 'Potem nikt już jej nie otworzy, nawet ty.',
   'read.delete.yes': 'Tak, usuń',
   'read.delete.no': 'Nie usuwaj',

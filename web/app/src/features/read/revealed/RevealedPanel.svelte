@@ -24,6 +24,12 @@
   const settled = $derived(page.marked !== undefined && page.revealText === page.marked.shown);
   const lastOpen = $derived(page.revealed !== undefined && !page.revealed.burnable && !page.restDeleted);
   const historyNoted = $derived(page.linkInHistory && ((page.revealed?.burnable ?? false) || page.restDeleted));
+  const CLIPBOARD_TEXT = {
+    untouched: 'clipboard.copied',
+    copied: 'clipboard.copied',
+    cleared: 'clipboard.cleared',
+    failed: 'read.copy_failed',
+  } as const;
 </script>
 
 <div
@@ -67,7 +73,13 @@
           <SwapIcon class="relative" from="copy" to="check" swapped={page.copied.shown} toTone="text-aegis-200" />
           <span class="relative hidden sm:inline">{translate('open.copy.text')}</span>
         </Button>
-        <span class="sr-only" role="status">{page.copied.shown ? translate('open.copied.text') : ''}</span>
+        <span class="sr-only" role="status"
+          >{page.copied.shown
+            ? translate('open.copied.text')
+            : page.clipboard === 'failed'
+              ? translate('read.copy_failed')
+              : ''}</span
+        >
       {/if}
       {#if page.confirmingCopy}
         <ConfirmDialog
@@ -149,10 +161,13 @@
             {@attach page.focus.attach('clipboard')}
             role="status"
             tabindex="-1"
-            class="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 outline-none"
+            class={[
+              'flex flex-wrap items-center gap-x-3 gap-y-1 px-1 outline-none',
+              page.clipboard === 'failed' && 'text-rose-300',
+            ]}
           >
-            {translate(page.clipboard === 'cleared' ? 'clipboard.cleared' : 'clipboard.copied')}
-            {#if page.clipboard === 'copied'}
+            {translate(CLIPBOARD_TEXT[page.clipboard])}
+            {#if page.clipboard === 'copied' || page.clipboard === 'failed'}
               <Button variant="ghost" size="compact" onclick={() => void page.clearClipboard()}>
                 {translate('clipboard.clear')}
               </Button>

@@ -126,13 +126,14 @@ describe('created message panel', () => {
     await vi.waitFor(() => expect(document.activeElement?.getAttribute('role')).toBe('status'));
   });
 
-  it('selects the link for manual copy if the clipboard API refuses', async () => {
+  it('selects the link for manual copy if the clipboard API refuses and keeps clearing available', async () => {
     writeText.mockRejectedValue(new Error('permission denied'));
     show();
     button('created.copy').click();
     await tick();
     expect(document.activeElement).toBe(target.querySelector('input'));
-    expect(status()).toBe(translator.translate('created.copy_failed'));
+    expect(status()).toContain(translator.translate('created.copy_failed'));
+    expect(button('clipboard.clear').disabled).toBe(false);
   });
 
   it('keeps clearing available if the clipboard refuses to clear', async () => {

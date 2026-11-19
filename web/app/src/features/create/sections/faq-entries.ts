@@ -1,19 +1,11 @@
-export const FAQ_COLUMNS = [
-  [
-    { key: 'faq.securely', order: 'max-md:order-0' },
-    { key: 'faq.unopened', order: 'max-md:order-1' },
-    { key: 'faq.passphrase', order: 'max-md:order-3' },
-    { key: 'faq.save', order: 'max-md:order-5' },
-    { key: 'faq.operator', order: 'max-md:order-7' },
-  ],
-  [
-    { key: 'faq.opened', order: 'max-md:order-2' },
-    { key: 'faq.intercepted', order: 'max-md:order-4' },
-    { key: 'faq.free', order: 'max-md:order-6' },
-    { key: 'faq.verify', order: 'max-md:order-8' },
-  ],
+export const FAQ_KEYS = [
+  'faq.securely',
+  'faq.unopened',
+  'faq.opened',
+  'faq.passphrase',
+  'faq.intercepted',
+  'faq.save',
+  'faq.free',
+  'faq.operator',
+  'faq.verify',
 ] as const;
-
-export const FAQ_KEYS = FAQ_COLUMNS.flat()
-  .toSorted((first, second) => first.order.localeCompare(second.order))
-  .map(({ key }) => key);

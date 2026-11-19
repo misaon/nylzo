@@ -107,6 +107,7 @@ export const messages: Catalog = {
   'wait.minute': { one: '{count}\u{A0}Minute', other: '{count}\u{A0}Minuten' },
   'wait.hour': { one: '{count}\u{A0}Stunde', other: '{count}\u{A0}Stunden' },
   'action.copied': 'Kopiert',
+  'action.copy_failed': 'Fehler',
   'error.notFound.label': 'Fehler 404',
   'error.notFound.title': 'Diese Seite gibt es nicht',
   'error.notFound.lead': 'Die Adresse enthält vielleicht einen Tippfehler oder ist unvollständig.',
@@ -289,6 +290,8 @@ export const messages: Catalog = {
   'read.note':
     'Kostenlos und ohne Registrierung. Die Seite mit der Nachricht verwendet keine Cookies und keine Reichweitenmessung.',
   'read.terms': 'Mit dem Anzeigen der Nachricht stimmen Sie den {link} zu.',
+  'read.copy_failed':
+    'Kopieren ist fehlgeschlagen. Markieren Sie den Text der Nachricht und kopieren Sie ihn von Hand.',
   'read.delete.confirm': 'Danach kann niemand die Nachricht mehr öffnen, auch Sie nicht.',
   'read.delete.yes': 'Ja, löschen',
   'read.delete.no': 'Nicht löschen',
