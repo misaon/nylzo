@@ -32,7 +32,7 @@ export class MalformedPassphraseError extends Error {
 
 export class LongPassphraseError extends Error {
   override readonly name = 'LongPassphraseError';
-  constructor(message = 'passphrase is longer than 65503 bytes after NFC') {
+  constructor(message = 'passphrase is longer than 65503 bytes after normalization') {
     super(message);
   }
 }

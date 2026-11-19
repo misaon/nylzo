@@ -45,3 +45,9 @@ describe('OPAQUE password (spec 2.1)', () => {
     expect(opaquePassword(salt, KDF_NONE, 'other')).toEqual(salt);
   });
 });
+
+describe('pw turns every space separator into U+0020 before NFC, as the Go core does', () => {
+  it.each(vectors.passphrase_normalization)('$name', (vector) => {
+    expect(opaquePassword(salt, KDF_SCRYPT, vector.passphrase).subarray(salt.length).toHex()).toBe(vector.pw_hex);
+  });
+});

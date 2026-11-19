@@ -63,7 +63,7 @@ type opaqueCase struct {
 
 var opaqueCases = []opaqueCase{
 	{"no-passphrase", core.KDFNone, ""},
-	{"scrypt-ascii", core.KDFScrypt, "correct horse battery staple"},
+	{"scrypt-ascii", core.KDFScrypt, fourWordPassphrase},
 	{"scrypt-nfc-decomposed", core.KDFScrypt, "héslo s češtinou"},
 }
 
