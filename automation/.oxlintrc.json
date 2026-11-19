@@ -684,7 +684,7 @@
           {
             "patterns": [
               {
-                "regex": "^(?!node:|\\./[^/]+$|\\.\\./(source-dependency-gate|web-install)/[^/]+$)",
+                "group": ["*", "!node:*", "!node:*/*", "!./*", "!../source-dependency-gate/*", "!../web-install/*"],
                 "message": "The source dependency gate runs before automation dependencies are installed; use node: modules."
               }
             ]
