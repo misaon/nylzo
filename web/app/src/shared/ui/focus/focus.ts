@@ -2,9 +2,12 @@ import { tick } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 
 // A plain focus() jumps the page to the element; this scrolls only when needed, with the page's smooth scrolling.
+// An element that cannot take focus, such as one inside an inert placeholder, moves nothing.
 function focusGently(element: HTMLElement | undefined): void {
   element?.focus({ preventScroll: true });
-  element?.scrollIntoView({ block: 'nearest' });
+  if (element !== undefined && document.activeElement === element) {
+    element.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 export function keepFocus(fallback: HTMLElement | undefined): void {

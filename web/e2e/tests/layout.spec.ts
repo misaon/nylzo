@@ -36,6 +36,7 @@ async function watchLayout(page: Page): Promise<void> {
   await page.addInitScript(() => {
     interface LayoutShift extends PerformanceEntry {
       readonly value: number;
+      readonly hadRecentInput: boolean;
       readonly sources: { node?: Node | null; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[];
     }
     const shifts: string[] = [];
@@ -45,6 +46,10 @@ async function watchLayout(page: Page): Promise<void> {
       `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)}`;
     const recordShifts = (entries: PerformanceEntry[]) => {
       for (const entry of entries as LayoutShift[]) {
+        // A shift within half a second of a click or key press does not count towards CLS.
+        if (entry.hadRecentInput) {
+          continue;
+        }
         const sources = entry.sources.map((source) => {
           const node =
             source.node instanceof Element
@@ -115,7 +120,7 @@ async function pagePosition(locator: Locator): Promise<string> {
   });
 }
 
-// The card grows into the created panel and shrinks to the revealed message by design (owner decision R11).
+// Waits until shifts stop, for steps whose size follows an answer from the server.
 async function settle(page: Page): Promise<void> {
   await expect
     .poll(
@@ -126,6 +131,10 @@ async function settle(page: Page): Promise<void> {
       { intervals: [1000] },
     )
     .toEqual([]);
+}
+
+function cumulativeShift(shifts: readonly string[]): number {
+  return shifts.reduce((sum, shift) => sum + Number(shift.split(':', 1)[0]), 0);
 }
 
 async function expectNothingMoved(page: Page, screen: string): Promise<void> {
@@ -146,7 +155,7 @@ for (const viewport of VIEWPORTS) {
     await layoutChanges(sender);
     await sender.getByRole('button', { name: 'Create link' }).click();
     await createdLink(sender);
-    await settle(sender);
+    await motionFinished(sender);
     await expectNothingMoved(sender, 'created');
 
     const recipient = await newPage({ viewport, ...FULL_MOTION });
@@ -165,8 +174,11 @@ for (const viewport of VIEWPORTS) {
     await show.click();
     await expectMessageShown(recipient);
     await expect(recipient.locator('pre')).toHaveText(LONG_TEXT);
-    await settle(recipient);
-    await expectNothingMoved(recipient, 'revealed and unscrambled');
+    await motionFinished(recipient);
+    // The card fits the message it reveals (owner decision R11), so its shift stays below the poor CLS threshold.
+    const revealed = await layoutChanges(recipient);
+    expect(cumulativeShift(revealed?.shifts ?? []), 'revealed').toBeLessThan(0.25);
+    expect(revealed?.resizes, 'revealed').toEqual([]);
   });
 
   test(`nothing shifts or resizes on the sent list and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({

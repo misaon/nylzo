@@ -19,7 +19,7 @@
   import { linkSegments } from './link-segments.ts';
 
   interface Props {
-    readonly created: Created;
+    readonly created: Pick<Created, 'expiresAt' | 'link'>;
     readonly opensMax: number;
     readonly passphrase: string;
     readonly canKeep: boolean;
@@ -27,9 +27,20 @@
     readonly remembered: Remembered;
     readonly onremember: (label: string, keep: boolean) => void;
     readonly onanother: () => void;
+    readonly sizing?: boolean;
   }
 
-  const { created, opensMax, passphrase, canKeep, canTrackInTab, remembered, onremember, onanother }: Props = $props();
+  const {
+    created,
+    opensMax,
+    passphrase,
+    canKeep,
+    canTrackInTab,
+    remembered,
+    onremember,
+    onanother,
+    sizing = false,
+  }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
   const id = $props.id();
@@ -143,7 +154,11 @@
     </span>
     <h2
       {@attach focus.attach('title')}
-      {@attach () => focus.focus('title')}
+      {@attach () => {
+        if (!sizing) {
+          focus.focus('title');
+        }
+      }}
       tabindex="-1"
       class={[
         'relative mt-5 font-display text-panel font-light text-ink delay-120 outline-none md:text-panel-lg',
@@ -201,7 +216,9 @@
                     {/if}
                   {/each}
                 </p>
-                <label class="sr-only" for="{id}-link">{translate('created.link')}</label>
+                {#if !sizing}
+                  <label class="sr-only" for="{id}-link">{translate('created.link')}</label>
+                {/if}
                 <input
                   id="{id}-link"
                   {@attach focus.attach('link')}

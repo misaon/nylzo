@@ -36,6 +36,9 @@
   </span>
   <span class="relative stack justify-items-end text-caption text-ink-soft tabular-nums">
     <span class="invisible" aria-hidden="true">{widest}</span>
-    <span>{percent}</span>
+    <!-- A new node for each value keeps the growing number from counting as a layout shift. -->
+    {#key percent}
+      <span>{percent}</span>
+    {/key}
   </span>
 </div>

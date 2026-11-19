@@ -39,7 +39,7 @@
 </script>
 
 <div
-  class="group relative"
+  class="group relative flex-1"
   role="presentation"
   ondragover={composer.onDragOver}
   ondragenter={composer.onDragOver}
