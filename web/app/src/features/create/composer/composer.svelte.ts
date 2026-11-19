@@ -1,13 +1,20 @@
 import {
+  formatLink,
   generatePassphrase,
+  ID_LENGTH,
+  KDF_NONE,
+  KDF_SCRYPT,
   loadPassphraseWords,
   MAX_FILE_BYTES,
   MAX_TEXT_BYTES,
   MIN_PASSPHRASE_CHARACTERS,
+  OBJECT_HASH_LENGTH,
+  SECRET_LENGTH,
 } from '@nylzo/core';
 import { flushSync, tick } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import { prefersReducedMotion } from 'svelte/motion';
+import { SvelteDate } from 'svelte/reactivity';
 
 import { createApi } from '../../../shared/api/api.ts';
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
@@ -23,6 +30,7 @@ import { browserSentStore, rememberSent } from '../../../shared/sent-records/sen
 import type { SentStore } from '../../../shared/sent-records/sent-store.ts';
 import { ttlChoices, ttlKey } from '../../../shared/ttl/ttl-choices.ts';
 import { FocusTargets } from '../../../shared/ui/focus/focus.ts';
+import { Glide } from '../../../shared/ui/transition/glide.ts';
 import {
   CreateError,
   createMessage,
@@ -120,10 +128,27 @@ export class Composer {
   remembered = $state<Remembered>('off');
   kept = $state(false);
   readonly focus = new FocusTargets<ComposerTarget>();
+  readonly glide = new Glide();
 
   readonly timeline = new PacedTimeline(timelineSettings);
 
   readonly busy = $derived(this.phase !== 'compose');
+
+  // A link of the final length lets the created panel take its size at the click, so nothing moves when it arrives.
+  readonly placeholder = $derived(
+    this.phase === 'encrypting'
+      ? {
+          link: formatLink(
+            instanceOrigin(),
+            new Uint8Array(ID_LENGTH),
+            this.sealingWithPassphrase ? KDF_SCRYPT : KDF_NONE,
+            new Uint8Array(SECRET_LENGTH),
+            new Uint8Array(OBJECT_HASH_LENGTH),
+          ),
+          expiresAt: new SvelteDate(Date.now() + this.ttlSeconds * 1000).toISOString(),
+        }
+      : undefined,
+  );
 
   readonly usesPassphrase = $derived(
     this.phase === 'compose' ? this.protect && this.passphrase !== '' : this.sealingWithPassphrase,
@@ -461,7 +486,7 @@ export class Composer {
     this.passphrase = '';
     this.protect = false;
     this.removeFile();
-    this.phase = 'compose';
+    this.#enterPhase('compose');
   }
 
   async #send(limits: InstanceLimits): Promise<void> {
@@ -527,7 +552,7 @@ export class Composer {
         return;
       }
       this.timeline.stop();
-      this.phase = 'compose';
+      this.#enterPhase('compose');
       if (error instanceof CreateError && error.failure.kind === 'invalid') {
         await this.#showProblems(error.failure.problems);
         return;
@@ -550,11 +575,18 @@ export class Composer {
     }
   }
 
+  // The intro collapses or returns with these phases, so what follows glides into place.
+  #enterPhase(phase: 'compose' | 'encrypting'): void {
+    void this.glide.around(() => {
+      this.phase = phase;
+    });
+  }
+
   #startTimeline(source: string): void {
     const plain = source.replaceAll(/\s+/gu, ' ').slice(0, CIPHER_SOURCE_CHARACTERS);
     this.proving = false;
     this.cipher = cipherText(plain, 0);
-    this.phase = 'encrypting';
+    this.#enterPhase('encrypting');
     let cipherStep = -1;
     this.timeline.start(() => {
       const { step, progress, finished } = this.timeline.paced;

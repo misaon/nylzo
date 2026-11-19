@@ -38,6 +38,8 @@ export {
   MAX_OBJECT_BYTES,
   MAX_TEXT_BYTES,
   MIN_TTL_SECONDS,
+  OBJECT_HASH_LENGTH,
+  SECRET_LENGTH,
   transferSeconds,
 } from './limits.ts';
 export { assertProfile, formatLink, isReadPath, type Link, parseFragment, parseLink } from './link/link.ts';

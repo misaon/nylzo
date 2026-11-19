@@ -42,6 +42,7 @@
     { key: 'hero.proof.tls', icon: 'atom' },
     { key: 'hero.proof.open', icon: 'code' },
   ] as const;
+  const PENDING_PASSPHRASE = 'pending';
 </script>
 
 <svelte:window
@@ -60,7 +61,7 @@
   {@attach composer.start}
   {@attach pauseOffscreen}
 >
-  <div class="mx-auto max-w-column text-center">
+  <div class="relative mx-auto max-w-column text-center">
     <p class="mb-3 animate-rise text-eyebrow text-aegis-300 uppercase">{translate('hero.eyebrow')}</p>
     <h1 class="animate-rise-visible font-display text-hero font-light text-balance md:text-hero-lg">
       <Interpolated text={translate('hero.title')} placeholder="accent"
@@ -69,10 +70,10 @@
     </h1>
     <div
       class={[
-        'transition-[opacity,height,padding] duration-500 [interpolate-size:allow-keywords]',
-        composer.phase === 'done' ? 'h-0 overflow-y-clip pt-0 opacity-0' : 'h-auto pt-6 opacity-100',
+        'pt-6 transition-opacity duration-300',
+        composer.phase === 'compose' ? 'opacity-100' : 'pointer-events-none absolute inset-x-0 opacity-0',
       ]}
-      inert={composer.phase === 'done'}
+      inert={composer.phase !== 'compose'}
     >
       <p class="mx-auto mb-6 max-w-[36rem] animate-rise text-body text-pretty text-ink-soft [animation-delay:80ms]">
         {translate('hero.lead')}
@@ -103,78 +104,97 @@
     </div>
   </div>
 
-  <div class="relative z-20 mx-auto mt-8 max-w-column animate-rise [animation-delay:240ms]">
-    <div class="glow-under" aria-hidden="true"></div>
-    <div class="glass rounded-card">
-      <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
-      <h2 id="{id}-title" class="sr-only">{translate('create.title')}</h2>
+  <div {@attach composer.glide.attach}>
+    <div class="relative z-20 mx-auto mt-8 max-w-column animate-rise [animation-delay:240ms]">
+      <div class="glow-under" aria-hidden="true"></div>
+      <div class="glass rounded-card">
+        <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
+        <h2 id="{id}-title" class="sr-only">{translate('create.title')}</h2>
 
-      <div class="relative stack">
-        <form
-          class={[
-            'flex flex-col text-left fade-swap',
-            composer.phase === 'done' ? 'pointer-events-none translate-y-3 opacity-0' : 'translate-y-0 opacity-100',
-          ]}
-          inert={composer.phase === 'done'}
-          onsubmit={(event) => void composer.submit(event)}
-          autocomplete="off"
-          novalidate
-        >
-          <MessageField {composer} {noticeId} />
-          <ComposerBar {composer} {noticeId} />
-        </form>
+        <div class="relative stack">
+          <form
+            class={[
+              'flex flex-col text-left fade-swap',
+              composer.phase === 'done' ? 'pointer-events-none translate-y-3 opacity-0' : 'translate-y-0 opacity-100',
+            ]}
+            inert={composer.phase === 'done'}
+            onsubmit={(event) => void composer.submit(event)}
+            autocomplete="off"
+            novalidate
+          >
+            <MessageField {composer} {noticeId} />
+            <ComposerBar {composer} {noticeId} />
+          </form>
 
-        <!-- Leaving destroys the panel without its outro, which a frozen page would never finish. -->
-        {#if !composer.left}
-          {#if composer.sealed}
-            <CreatedPanel
-              created={composer.sealed.created}
-              opensMax={composer.sealed.opensMax}
-              passphrase={composer.sealed.passphrase}
-              canKeep={composer.canKeep}
-              canTrackInTab={composer.canTrackInTab}
-              remembered={composer.remembered}
-              onremember={(label, keep) => void composer.remember(label, keep)}
-              onanother={() => void composer.another()}
-            />
+          <!-- Leaving destroys the panel without its outro, which a frozen page would never finish. -->
+          {#if !composer.left}
+            {#if composer.sealed}
+              <CreatedPanel
+                created={composer.sealed.created}
+                opensMax={composer.sealed.opensMax}
+                passphrase={composer.sealed.passphrase}
+                canKeep={composer.canKeep}
+                canTrackInTab={composer.canTrackInTab}
+                remembered={composer.remembered}
+                onremember={(label, keep) => void composer.remember(label, keep)}
+                onanother={() => void composer.another()}
+              />
+            {:else if composer.placeholder}
+              <!-- Sized like the panel to come; the inner block keeps its fade-out from outliving the swap. -->
+              <div class="invisible" inert aria-hidden="true">
+                {#key composer.placeholder}
+                  <CreatedPanel
+                    sizing
+                    created={composer.placeholder}
+                    opensMax={composer.opensMax}
+                    passphrase={composer.sealingWithPassphrase ? PENDING_PASSPHRASE : ''}
+                    canKeep={composer.canKeep}
+                    canTrackInTab={composer.canTrackInTab}
+                    remembered="off"
+                    onremember={(label, keep) => void composer.remember(label, keep)}
+                    onanother={() => void composer.another()}
+                  />
+                {/key}
+              </div>
+            {/if}
           {/if}
-        {/if}
+        </div>
       </div>
     </div>
-  </div>
 
-  <ComposerNotes {composer} {noticeId} />
-  <ul
-    role="list"
-    aria-label={translate('hero.proof.label')}
-    class="glass-soft mx-auto mt-6 hidden w-fit animate-rise overflow-hidden rounded-full shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] [animation-delay:280ms] md:flex"
-  >
-    {#each HERO_PROOFS as proof (proof.key)}
-      <li
-        class="flex items-center gap-2.5 border-white/8 px-4 py-2 text-caption whitespace-nowrap text-ink-soft not-first:border-l"
-      >
-        <Icon name={proof.icon} class="size-4 shrink-0 text-aegis-300" />
-        <span>{translate(proof.key)}</span>
-      </li>
-    {/each}
-  </ul>
-  <p class="sr-only" role="status" aria-live="polite">{composer.stepTitle}</p>
-
-  <a
-    href="#how-it-works"
-    aria-label={translate('nav.how')}
-    class="group mx-auto mt-12 flex w-fit animate-rise rounded-control p-3 [animation-delay:320ms]"
-  >
-    <span
-      class="hidden h-10 w-6 justify-center rounded-full border border-ink-mute/60 pt-2 transition-colors group-hover:border-ink-soft md:flex"
-      aria-hidden="true"
+    <ComposerNotes {composer} {noticeId} />
+    <ul
+      role="list"
+      aria-label={translate('hero.proof.label')}
+      class="glass-soft mx-auto mt-6 hidden w-fit animate-rise overflow-hidden rounded-full shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] [animation-delay:280ms] md:flex"
     >
-      <span class="h-2 w-0.5 rounded-full bg-aegis-300 motion-safe:animate-wheel"></span>
-    </span>
-    <Icon
-      name="chevronDown"
-      class="size-5 text-ink-mute transition-colors group-hover:text-ink motion-safe:animate-bounce md:hidden"
-      stroke={1.7}
-    />
-  </a>
+      {#each HERO_PROOFS as proof (proof.key)}
+        <li
+          class="flex items-center gap-2.5 border-white/8 px-4 py-2 text-caption whitespace-nowrap text-ink-soft not-first:border-l"
+        >
+          <Icon name={proof.icon} class="size-4 shrink-0 text-aegis-300" />
+          <span>{translate(proof.key)}</span>
+        </li>
+      {/each}
+    </ul>
+    <p class="sr-only" role="status" aria-live="polite">{composer.stepTitle}</p>
+
+    <a
+      href="#how-it-works"
+      aria-label={translate('nav.how')}
+      class="group mx-auto mt-12 flex w-fit animate-rise rounded-control p-3 [animation-delay:320ms]"
+    >
+      <span
+        class="hidden h-10 w-6 justify-center rounded-full border border-ink-mute/60 pt-2 transition-colors group-hover:border-ink-soft md:flex"
+        aria-hidden="true"
+      >
+        <span class="h-2 w-0.5 rounded-full bg-aegis-300 motion-safe:animate-wheel"></span>
+      </span>
+      <Icon
+        name="chevronDown"
+        class="size-5 text-ink-mute transition-colors group-hover:text-ink motion-safe:animate-bounce md:hidden"
+        stroke={1.7}
+      />
+    </a>
+  </div>
 </section>
