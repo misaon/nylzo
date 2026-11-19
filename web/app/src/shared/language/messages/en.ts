@@ -270,6 +270,7 @@ export const messages: Catalog = {
   'read.delete.rest.confirm': 'Delete the remaining opens?',
   'read.delete.confirm.title': 'Delete the message without opening it?',
   'read.note': 'Free, with no sign-up. The message page uses no cookies and no visitor measurement.',
+  'read.terms': 'By showing the message you agree to the {link}.',
   'read.delete.confirm': 'After that nobody can open it, you included.',
   'read.delete.yes': 'Yes, delete',
   'read.delete.no': 'Do not delete',
@@ -495,7 +496,9 @@ export const messages: Catalog = {
   'compose.attach': 'File up to {size}',
   'compose.submit': 'Create link',
   'compose.encrypting': 'Encrypting',
-  'compose.note': 'Free, with no sign-up and no cookies.',
+  'compose.note': 'Free, with no sign-up and no cookies. By creating a link you agree to the {link}.',
+  'terms.agree.link': 'terms of use',
+  'link.new_tab': '(opens in a new tab)',
 
   'step.counter': 'Step {step} of {total}',
   'step.key.label': 'Key',

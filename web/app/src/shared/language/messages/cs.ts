@@ -267,6 +267,7 @@ export const messages = {
   'read.delete.rest.confirm': 'Smazat zbývající otevření?',
   'read.delete.confirm.title': 'Smazat zprávu bez otevření?',
   'read.note': 'Zdarma a\u{A0}bez registrace. Stránka se zprávou nepoužívá cookies ani měření návštěvnosti.',
+  'read.terms': 'Zobrazením zprávy souhlasíte s\u{A0}{link}.',
   'read.delete.confirm': 'Zprávu pak už nikdo neotevře, ani vy.',
   'read.delete.yes': 'Ano, smazat',
   'read.delete.no': 'Nemazat',
@@ -493,7 +494,9 @@ export const messages = {
   'compose.attach': 'Příloha do {size}',
   'compose.submit': 'Vytvořit odkaz',
   'compose.encrypting': 'Šifrujeme',
-  'compose.note': 'Zdarma, bez registrace a\u{A0}bez cookies.',
+  'compose.note': 'Zdarma, bez registrace a\u{A0}bez cookies. Vytvořením odkazu souhlasíte s\u{A0}{link}.',
+  'terms.agree.link': 'podmínkami užívání',
+  'link.new_tab': '(otevře se v\u{A0}nové kartě)',
 
   'step.counter': 'Krok {step} z\u{A0}{total}',
   'step.key.label': 'Klíč',

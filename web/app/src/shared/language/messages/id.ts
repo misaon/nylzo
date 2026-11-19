@@ -282,6 +282,7 @@ export const messages: Catalog = {
   'read.delete.rest.confirm': 'Hapus pesan agar tidak bisa dibuka lagi?',
   'read.delete.confirm.title': 'Hapus pesan tanpa membukanya?',
   'read.note': 'Gratis dan tanpa pendaftaran. Halaman pesan tidak memakai cookie dan tidak mengukur kunjungan.',
+  'read.terms': 'Dengan menampilkan pesan, Anda menyetujui {link}.',
   'read.delete.confirm': 'Setelah itu, tidak ada yang bisa membuka pesan ini lagi, termasuk Anda.',
   'read.delete.yes': 'Ya, hapus',
   'read.delete.no': 'Jangan hapus',
@@ -510,7 +511,9 @@ export const messages: Catalog = {
   'compose.attach': 'File maks. {size}',
   'compose.submit': 'Buat tautan',
   'compose.encrypting': 'Mengenkripsi',
-  'compose.note': 'Gratis, tanpa pendaftaran, dan tanpa cookie.',
+  'compose.note': 'Gratis, tanpa pendaftaran, dan tanpa cookie. Dengan membuat tautan, Anda menyetujui {link}.',
+  'terms.agree.link': 'ketentuan penggunaan',
+  'link.new_tab': '(terbuka di tab baru)',
 
   'step.counter': 'Langkah {step} dari {total}',
   'step.key.label': 'Kunci',

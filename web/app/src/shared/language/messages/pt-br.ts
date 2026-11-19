@@ -276,6 +276,7 @@ export const messages: Catalog = {
   'read.delete.rest.confirm': 'Apagar as aberturas restantes?',
   'read.delete.confirm.title': 'Apagar a mensagem sem abri-la?',
   'read.note': 'Gratuito e sem cadastro. A página da mensagem não usa cookies nem mede visitas.',
+  'read.terms': 'Ao mostrar a mensagem, você aceita os {link}.',
   'read.delete.confirm': 'Depois disso, ninguém mais poderá abri-la, nem você.',
   'read.delete.yes': 'Sim, apagar',
   'read.delete.no': 'Não apagar',
@@ -504,7 +505,9 @@ export const messages: Catalog = {
   'compose.attach': 'Anexo até {size}',
   'compose.submit': 'Criar link',
   'compose.encrypting': 'Criptografando',
-  'compose.note': 'Gratuito, sem cadastro e sem cookies.',
+  'compose.note': 'Gratuito, sem cadastro e sem cookies. Ao criar um link, você aceita os {link}.',
+  'terms.agree.link': 'termos de uso',
+  'link.new_tab': '(abre em uma nova aba)',
 
   'step.counter': 'Etapa {step} de {total}',
   'step.key.label': 'Chave',
