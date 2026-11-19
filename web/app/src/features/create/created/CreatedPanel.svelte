@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { fade, slide } from 'svelte/transition';
+  import { slide } from 'svelte/transition';
 
   import { clearClipboard } from '../../../shared/clipboard/clear-clipboard.ts';
   import { formatMoment } from '../../../shared/language/format.ts';
@@ -13,7 +13,7 @@
   import Switch from '../../../shared/ui/switch/Switch.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
   import { Flash } from '../../../shared/ui/transition/flash.svelte.ts';
-  import { motionMs } from '../../../shared/ui/transition/motion.ts';
+  import { collapse, motionMs } from '../../../shared/ui/transition/motion.ts';
   import type { Remembered } from '../composer/composer.svelte.ts';
   import type { Created } from '../create-message.ts';
   import { linkSegments } from './link-segments.ts';
@@ -121,7 +121,7 @@
 
 <div
   class="relative flex flex-col overflow-hidden text-left fade-swap starting:[translate:0_0.75rem] starting:opacity-0"
-  out:fade={{ duration: motionMs(400) }}
+  out:collapse={{ duration: motionMs(400) }}
 >
   <div
     class="relative flex min-h-0 flex-1 flex-col items-center justify-center px-5 py-9 text-center sm:px-10 md:py-12"

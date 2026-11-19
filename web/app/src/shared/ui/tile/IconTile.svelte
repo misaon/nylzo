@@ -26,6 +26,9 @@
   const { icon, tone, size = 'large', class: className, stroke }: Props = $props();
 </script>
 
-<span class={['grid shrink-0 place-items-center', SIZES[size].tile, TONES[tone], className]} aria-hidden="true">
+<span
+  class={['grid shrink-0 place-items-center tile-blend', SIZES[size].tile, TONES[tone], className]}
+  aria-hidden="true"
+>
   <Icon name={icon} class={SIZES[size].icon} stroke={stroke ?? SIZES[size].stroke} />
 </span>

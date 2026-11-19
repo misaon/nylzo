@@ -44,7 +44,7 @@ const ANIMATABLE = new Set([
   'pointer-events',
   'animation-timing-function',
 ]);
-const GRADIENT_STOP = /^--tw-gradient-(?:from|via|to)$/u;
+const COLOR_STOP = /^--(?:tw-gradient-(?:from|via|to)|edge-(?:from|via|to)|tile-(?:glow|top|bottom))$/u;
 const NOBLE_SCRYPT_MARKER = 'maxmem';
 
 function builtAssets(suffix: string): string[] {
@@ -91,7 +91,7 @@ function motionProblems(css: string): { readonly problems: string[]; readonly an
       return;
     }
     animated = true;
-    if (!ANIMATABLE.has(property) && !GRADIENT_STOP.test(property)) {
+    if (!ANIMATABLE.has(property) && !COLOR_STOP.test(property)) {
       problems.push(`${where} animates ${property}`);
     }
   };

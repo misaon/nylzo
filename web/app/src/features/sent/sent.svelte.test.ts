@@ -120,7 +120,7 @@ describe('sent messages interface', () => {
     expect(page.refresh).toHaveBeenCalledExactlyOnceWith(item().id);
   });
 
-  it('renders opens, attempts, first-opened time and an ended timestamp without retaining counters', () => {
+  it('renders opens, attempts, first-opened time and an ended timestamp without retaining counters', async () => {
     const openedAt = new Date(NOW + 1000).toISOString();
     const loaded: ItemState = {
       kind: 'loaded',
@@ -145,7 +145,9 @@ describe('sent messages interface', () => {
     expect(target.textContent).toContain(
       translator.translate('sent.ended.expired', { time: formatMoment(openedAt, translator.language) }),
     );
-    expect(target.textContent).not.toContain(translator.translate('sent.opens', { used: 1, max: 3 }));
+    await expect
+      .poll(() => target.textContent, { timeout: 5000 })
+      .not.toContain(translator.translate('sent.opens', { used: 1, max: 3 }));
     expect(() => button(translator.translate('sent.cancel'))).toThrow('missing button');
   });
 

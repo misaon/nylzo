@@ -18,9 +18,9 @@
   ]}
 >
   {#if loading === undefined}
-    {@render children?.()}
+    <div class="flex animate-appear flex-col items-center">{@render children?.()}</div>
   {:else}
-    <span class="grid size-14 place-items-center text-aegis-300" aria-hidden="true">
+    <span class="grid size-14 animate-appear place-items-center text-aegis-300" aria-hidden="true">
       <svg
         class="size-8 motion-safe:animate-spin"
         viewBox="0 0 24 24"
@@ -33,6 +33,6 @@
         <path d="M21 12a9 9 0 0 0-9-9"></path>
       </svg>
     </span>
-    <p role="status" class="mt-5 text-body text-ink-soft">{loading}</p>
+    <p role="status" class="mt-5 animate-appear text-body text-ink-soft">{loading}</p>
   {/if}
 </div>

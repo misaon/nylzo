@@ -71,5 +71,62 @@ export function markHiddenCharacters(text: string): MarkedText {
   }
   flush();
   const hidden = pieces.filter((piece) => piece.hidden).length;
-  return { pieces, hidden, shown: pieces.map((piece) => (piece.hidden ? `⟨${piece.text}⟩` : piece.text)).join('') };
+  return { pieces, hidden, shown: pieces.map((piece) => shownText(piece)).join('') };
+}
+
+function characterList(text: string): readonly string[] {
+  return text.match(/./gsu) ?? [];
+}
+
+function shownText(piece: TextPiece): string {
+  return piece.hidden ? `⟨${piece.text}⟩` : piece.text;
+}
+
+const PIECE_ENDS = new WeakMap<MarkedText, readonly number[]>();
+
+function pieceEnds(marked: MarkedText): readonly number[] {
+  let ends = PIECE_ENDS.get(marked);
+  if (ends === undefined) {
+    let total = 0;
+    ends = marked.pieces.map((piece) => (total += characterList(shownText(piece)).length));
+    PIECE_ENDS.set(marked, ends);
+  }
+  return ends;
+}
+
+function afterCharacters(text: string, count: number): string {
+  let offset = 0;
+  for (let index = 0; index < count; index += 1) {
+    offset += (text.codePointAt(offset) ?? 0) > 0xff_ff ? 2 : 1;
+  }
+  return text.slice(offset);
+}
+
+// The scramble keeps every character of the head in place and leaves the rest alone, so only head pieces change.
+export function piecesOf(head: string, marked: MarkedText): readonly TextPiece[] {
+  const scrambled = characterList(head);
+  const ends = pieceEnds(marked);
+  if (scrambled.length > (ends.at(-1) ?? 0)) {
+    return marked.pieces;
+  }
+  const pieces: TextPiece[] = [];
+  let start = 0;
+  for (const [index, piece] of marked.pieces.entries()) {
+    const end = ends[index] ?? start;
+    if (start >= scrambled.length) {
+      return [...pieces, ...marked.pieces.slice(index)];
+    }
+    if (piece.hidden) {
+      pieces.push(piece);
+    } else if (end <= scrambled.length) {
+      pieces.push({ ...piece, text: scrambled.slice(start, end).join('') });
+    } else {
+      pieces.push(
+        { ...piece, text: scrambled.slice(start).join('') },
+        { key: -1 - piece.key, text: afterCharacters(piece.text, scrambled.length - start), hidden: false },
+      );
+    }
+    start = end;
+  }
+  return pieces;
 }

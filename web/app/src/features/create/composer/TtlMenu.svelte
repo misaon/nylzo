@@ -48,17 +48,19 @@
         <span class="h-1 w-14 shrink-0 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
           <span
             class={[
-              'block h-full rounded-full',
+              'block h-full rounded-full bg-linear-to-r transition duration-300',
               LENGTHS[index],
-              selected ? 'bg-linear-to-r from-aegis-500 to-aegis-300 shadow-glow' : 'bg-white/25',
+              selected ? 'from-aegis-500 to-aegis-300 shadow-glow' : 'from-white/25 to-white/25',
             ]}
           ></span>
         </span>
-        {#if selected}
-          <Icon name="check" class="size-4 shrink-0 text-aegis-200 drop-shadow-[0_0_6px_oklch(0.86_0.06_246/0.7)]" />
-        {:else}
-          <span class="size-4 shrink-0" aria-hidden="true"></span>
-        {/if}
+        <Icon
+          name="check"
+          class={[
+            'size-4 shrink-0 text-aegis-200 drop-shadow-[0_0_6px_oklch(0.86_0.06_246/0.7)] transition-opacity duration-300',
+            selected ? 'opacity-100' : 'opacity-0',
+          ]}
+        />
       </button>
     {/each}
   </div>

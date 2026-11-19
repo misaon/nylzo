@@ -124,11 +124,13 @@
         >
           <LanguageFlag {language} />
           <span class="flex-1 text-left">{languageDetails(language).name}</span>
-          {#if selected}
-            <Icon name="check" class="size-4 shrink-0 text-aegis-200 drop-shadow-[0_0_6px_oklch(0.86_0.06_246/0.7)]" />
-          {:else}
-            <span class="size-4 shrink-0" aria-hidden="true"></span>
-          {/if}
+          <Icon
+            name="check"
+            class={[
+              'size-4 shrink-0 text-aegis-200 drop-shadow-[0_0_6px_oklch(0.86_0.06_246/0.7)] transition-opacity duration-300',
+              selected ? 'opacity-100' : 'opacity-0',
+            ]}
+          />
         </li>
       {/each}
     </ul>
