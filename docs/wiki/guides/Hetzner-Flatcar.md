@@ -7,7 +7,7 @@ This runbook is for whoever runs the hardened production profile in [deploy/hetz
 - Three OpenTofu stacks with encrypted state and plans: `image` builds a verified Flatcar snapshot, `server` creates the server and its cloud firewall, `dns` manages a Cloudflare zone without proxying.
 - Flatcar Stable updates itself and reboots between 03:00 and 04:00 UTC, which ends every live message. A new OS version that fails Nylzo's health check reboots back to the previous one.
 - Nylzo runs in Docker with user namespace remapping and SELinux enforcing, 1 GiB of memory, `GOMEMLIMIT=512MiB` and no route out. Caddy runs on the host and serves the web client from its own binary.
-- The cloud firewall and an nftables policy on the host each admit only 80/tcp, 443/tcp and 443/udp, ICMP, SSH from the administrator networks, and 8443/tcp when the [host monitor](Operations.md#hetzner-host-readiness) is on. Each IPv4 address or IPv6 /64 may hold 64 connections to the web ports, and outgoing traffic is capped at 40 Mbit/s.
+- The cloud firewall and an nftables policy on the host each admit only 80/tcp, 443/tcp and 443/udp, ICMP, and SSH from the administrator networks. Each IPv4 address or IPv6 /64 may hold 64 connections to the web ports, and outgoing traffic is capped at 40 Mbit/s.
 - Caddy accepts only TLS 1.3 with X25519MLKEM768 ([transport](Security-model.md#transport)), gets Let's Encrypt `shortlived` certificates over HTTP-01 and writes no access log.
 - SSH admits only user `core` with a hardware-backed key and a touch on every login.
 - With the `strict` profile, data, pepper, Caddy's keys and the journal live on an [encrypted volume](#encrypted-data-volume) that opens only while your Tang servers answer.
@@ -46,7 +46,7 @@ mise run deploy init "$HOME/.ssh/id_ed25519_sk.pub" .deploy/production
 | `automaticUpdates` | `true` installs signed releases on its own |
 | `profile`, `tang` | `"strict"` requires `tang`: a `threshold` and two to five servers with `url` and `thumbprint` |
 | `publicAccess` | `false` lets only the administrator networks reach HTTPS |
-| `heartbeatUrl`, `monitorClientCertificate` | Optional [host monitoring](Operations.md#hetzner-host-readiness) |
+| `heartbeatUrl` | Optional [heartbeat](Operations.md#hetzner-host-readiness) |
 
 Read a Tang thumbprint with `jose jwk thp -a S256 -i <signing key>.jwk`.
 
@@ -136,10 +136,10 @@ The first start of 0.14.0 erases every stored message, the 0.13 seed and any sto
 | `host.env` | `AUTOMATIC_UPDATES`, `PUBLIC_ACCESS`, `ADMINISTRATOR_NETWORKS`, `HARDWARE_KEYS_ONLY`, `ENCRYPTED_STORAGE_REQUIRED`, `WWW_REDIRECT` |
 | `service.env` | Nylzo's environment ([configuration](Operations.md#configuration)) |
 | `caddy.env` | Domain and contact for Caddy; activation copies the contact from `service.env` |
-| `heartbeat.url`, `monitor-client.pem` | Host monitoring |
+| `heartbeat.url` | Heartbeat address |
 | `tang.json` | Tang servers |
 
-After changing `host.env`, `heartbeat.url`, `monitor-client.pem` or the contact, re-apply the current host bundle. After any change to `service.env`, also restart Nylzo:
+After changing `host.env`, `heartbeat.url` or the contact, re-apply the current host bundle. After any change to `service.env`, also restart Nylzo:
 
 ```sh
 sudo /opt/nylzo/runtime/activate "$(readlink -e /opt/nylzo/host/current)"

@@ -175,7 +175,7 @@ export async function prepare(siteFile: string, kind: string, verify = verifyChe
     assert.equal(image.version, toolchain.flatcar);
     assert.equal(image.architecture, site.architecture);
     assert(Number.isSafeInteger(image.id) && image.id > 0);
-    variables = { ...variables, image_id: image.id, flatcar_version: toolchain.flatcar, architecture: site.architecture, administrator_networks: site.administratorNetworks, public_access: site.publicAccess ?? false, monitoring_enabled: Boolean(site.monitorClientCertificate) };
+    variables = { ...variables, image_id: image.id, flatcar_version: toolchain.flatcar, architecture: site.architecture, administrator_networks: site.administratorNetworks, public_access: site.publicAccess ?? false };
   }
   if (kind === "dns") {
     assert.match(site.cloudflareAccountId, /^[a-f0-9]{32}$/u, "Set the Cloudflare account ID in site.json");

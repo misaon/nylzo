@@ -51,7 +51,6 @@ composed=$(mktemp /run/nylzo-caddyfile.XXXXXXXX)
 trap 'rm -f "$composed"' EXIT
 cat "$generation/proxy/Caddyfile" > "$composed"
 if [[ "$(setting WWW_REDIRECT)" = true ]]; then printf '\n' >> "$composed"; cat "$generation/proxy/www.Caddyfile" >> "$composed"; fi
-if [[ -s /etc/nylzo/monitor-client.pem ]]; then printf '\n' >> "$composed"; cat "$generation/proxy/monitor.Caddyfile" >> "$composed"; fi
 chmod 0644 "$composed"
 domain=$(sed -n 's/^NYLZO_DOMAIN=//p' /etc/nylzo/caddy.env)
 [[ "$domain" =~ ^[a-z0-9.-]{1,253}$ ]] || fail 'NYLZO_DOMAIN in /etc/nylzo/caddy.env is invalid'

@@ -98,15 +98,13 @@ Keep every proxy, CDN and tracing agent in front of Nylzo from recording headers
 
 Every two minutes a Hetzner host writes a report of seven booleans and the time, with no message data, keys or logs: `hostPolicy` (SELinux, kernel, firewall, isolation, encrypted volume), `services` (all units active), `diskReserve` (8 GiB free), `applicationUpdates` (no failed update, a check within 30 minutes), `osUpdates` (update-engine checked within 24 hours), `clock` (two of GitHub, Sigstore and Let's Encrypt agree within a minute) and `certificate` (valid 36 more hours, issued for at most seven days).
 
-The heartbeat is the primary alert. Every five minutes the host posts to a dead-man's switch, its URL when every check passes and `URL/fail` otherwise.
+The report stays on the host. Every five minutes the heartbeat posts to a dead-man's switch: its URL when every check passes and `URL/fail` otherwise.
 
 1. Create a check at a service such as [healthchecks.io](https://healthchecks.io/), period 5 minutes, grace 10 minutes.
 2. Set `heartbeatUrl` in `site.json` before provisioning, or write it to `/etc/nylzo/heartbeat.url` (root, mode 600) and re-apply the host bundle.
 3. Stop `nylzo-host-status.timer` for 15 minutes, confirm the alert, and start it again.
 
-A second channel serves the report on port 8443 to one pinned client certificate. Create the identity with `mise exec go -- go run ./tools/deploy/monitor-identity .deploy/production/monitoring`. Put `client.pem` into `monitorClientCertificate` (or `/etc/nylzo/monitor-client.pem`, then re-apply), and keep `client-key.pem` private. In the GitHub environment `host-monitoring`, limited to `main`, store the secrets `NYLZO_MONITOR_CERT`, `NYLZO_MONITOR_KEY`, `NYLZO_HOST_MONITOR_URL` (`https://your-domain:8443/healthz`) and `NYLZO_HOST_MONITOR_ADDRESS`, then set the variable `NYLZO_HOST_MONITOR_ENABLED=true`. `monitor.yml` then reads the report about every 15 minutes and fails 30 days before the one-year identity expires.
-
-When its variables are set, `monitor.yml` also runs a CLI and a Chrome test against `NYLZO_MONITOR_URL` every hour (about 24 test messages a day each) and checks `NYLZO_MONITOR_DOMAIN`: CAA over DNSSEC, mail records, registrar locks, expiry and Certificate Transparency. GitHub schedules are best effort, so rely on the heartbeat for timely alerts.
+When its variables are set, `monitor.yml` runs a CLI and a Chrome test against `NYLZO_MONITOR_URL` every hour (about 24 test messages a day each) and checks `NYLZO_MONITOR_DOMAIN`: CAA over DNSSEC, mail records, registrar locks, expiry and Certificate Transparency. GitHub schedules are best effort, so rely on the heartbeat for timely alerts.
 
 ## Admin area
 

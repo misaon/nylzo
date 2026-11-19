@@ -103,7 +103,6 @@ test("a profile Caddyfile runs the Go job, which tests what Caddy logs and lets 
     ["deploy/compose/Caddyfile", "compose"],
     ["deploy/hetzner-flatcar/host/proxy/Caddyfile", "deployment"],
     ["deploy/hetzner-flatcar/host/proxy/www.Caddyfile", "deployment"],
-    ["deploy/hetzner-flatcar/host/proxy/monitor.Caddyfile", "deployment"],
   ] as const) {
     const plan = planChecks([file], "pull_request");
     assert.equal(plan.jobs.go, true, file);
