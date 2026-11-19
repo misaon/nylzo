@@ -1,4 +1,5 @@
 import { KDF_NONE } from '@nylzo/core';
+import type { Page } from '@playwright/test';
 
 import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
@@ -287,6 +288,45 @@ test('the reader stops before the handshake when the server reports another pass
   await expect(notInert(page, page.getByRole('button', { name: 'Show message' }))).toHaveCount(0);
   expect(sensitive).toEqual([]);
   expect(await message.status()).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
+});
+
+async function pasted(into: Page): Promise<string> {
+  await into.setContent('<textarea></textarea>');
+  await into.locator('textarea').focus();
+  await into.keyboard.press('ControlOrMeta+v');
+  return into.locator('textarea').inputValue();
+}
+
+test('a hand copy of a message keeps its hidden characters, not their labels', async ({ newPage }) => {
+  const text = 'pay \u{202E}0001 tnuocca\npass\u{200B}word \u{3164}x';
+  const message = await createMessageThroughApi({ text });
+  const page = await newPage();
+  const paste = await newPage();
+  await showMessage(page, message.link);
+  await expectMessageShown(page);
+  await expect(page.locator('pre mark')).toHaveCount(3);
+  await page.locator('pre').evaluate((pre) => getSelection()?.selectAllChildren(pre));
+  await page.keyboard.press('ControlOrMeta+c');
+  expect(await pasted(paste)).toBe(text);
+  await page.locator('pre').evaluate((pre) => {
+    const label = pre.querySelector('mark')?.firstChild;
+    if (label) {
+      getSelection()?.setBaseAndExtent(pre, 0, label, 3);
+    }
+  });
+  await page.keyboard.press('ControlOrMeta+c');
+  expect(await pasted(paste), 'a selection that ends inside a label').toBe('pay \u{202E}');
+  await page.locator('pre').evaluate((pre) => {
+    const label = pre.querySelector('mark')?.firstChild;
+    if (label) {
+      getSelection()?.setBaseAndExtent(label, label.textContent?.length ?? 0, pre, pre.childNodes.length);
+    }
+  });
+  await page.keyboard.press('ControlOrMeta+c');
+  expect(await pasted(paste), 'a selection that starts after a label').toBe(text.slice('pay \u{202E}'.length));
+  await page.locator('pre mark').first().click({ clickCount: 3 });
+  await page.keyboard.press('ControlOrMeta+c');
+  expect(await pasted(paste), 'a triple click on the first line').toMatch(/^pay \u{202E}0001 tnuocca/u);
 });
 
 test(
