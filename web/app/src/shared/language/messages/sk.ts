@@ -735,7 +735,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': 'Bez kľúča z\u{A0}odkazu neprečíta ani metadáta',
   'brute.fact.pass': 'Heslo cez sieť neuhádne',
   'brute.fact.pass.note': 'Po 100\u{A0}chybných heslách sa správa zamkne',
-  'brute.fact.quantum': 'Kvantový počítač správu neprečíta',
+  'brute.fact.quantum': 'Bez odkazu ju neprečíta ani kvantový počítač',
   'brute.fact.quantum.note': 'Obsah chráni 256-bitový kľúč a\u{A0}spojenie postkvantové TLS',
 
   'promise.eyebrow': 'Čo sľubujeme',

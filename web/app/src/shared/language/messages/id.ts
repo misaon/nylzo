@@ -746,7 +746,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': 'Tanpa kunci dari tautan, metadata pun tidak bisa dibaca',
   'brute.fact.pass': 'Kata sandi tidak bisa ditebak lewat jaringan',
   'brute.fact.pass.note': 'Setelah 100\u{A0}kata sandi salah, pesan akan terkunci',
-  'brute.fact.quantum': 'Komputer kuantum tidak bisa membaca pesan',
+  'brute.fact.quantum': 'Tanpa tautan, komputer kuantum pun tidak bisa membacanya',
   'brute.fact.quantum.note': 'Isi dilindungi kunci 256-bit, dan koneksi dilindungi TLS pascakuantum',
 
   'promise.eyebrow': 'Janji kami',

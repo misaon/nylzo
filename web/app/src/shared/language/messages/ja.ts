@@ -733,7 +733,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': 'リンクの鍵がなければ、メタデータも読めません',
   'brute.fact.pass': 'ネットワーク越しにパスワードは当てられない',
   'brute.fact.pass.note': 'パスワードを100回間違えると、メッセージはロックされます',
-  'brute.fact.quantum': '量子コンピューターでもメッセージは読めない',
+  'brute.fact.quantum': 'リンクがなければ、量子コンピューターでも読めない',
   'brute.fact.quantum.note': '内容は256ビットの鍵が、通信はポスト量子TLSが守ります',
 
   'promise.eyebrow': '私たちの約束',

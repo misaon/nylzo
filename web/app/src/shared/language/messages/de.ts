@@ -752,7 +752,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': 'Ohne den Schlüssel aus dem Link liest er nicht einmal die Metadaten',
   'brute.fact.pass': 'Über das Netz errät er das Passwort nicht',
   'brute.fact.pass.note': 'Nach 100\u{A0}falschen Passwörtern wird die Nachricht gesperrt',
-  'brute.fact.quantum': 'Ein Quantencomputer kann die Nachricht nicht lesen',
+  'brute.fact.quantum': 'Ohne den Link kann sie nicht einmal ein Quantencomputer lesen',
   'brute.fact.quantum.note': 'Den Inhalt schützt ein 256-Bit-Schlüssel, die Verbindung Post-Quanten-TLS',
 
   'promise.eyebrow': 'Was wir versprechen',

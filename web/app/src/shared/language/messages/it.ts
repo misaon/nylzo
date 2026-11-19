@@ -740,7 +740,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': 'Senza la chiave del link non legge nemmeno i metadati',
   'brute.fact.pass': 'La password non si indovina via rete',
   'brute.fact.pass.note': 'Dopo 100\u{A0}password errate il messaggio si blocca',
-  'brute.fact.quantum': 'Un computer quantistico non legge il messaggio',
+  'brute.fact.quantum': 'Senza il link non lo legge nemmeno un computer quantistico',
   'brute.fact.quantum.note':
     'Il contenuto è protetto da una chiave a 256\u{A0}bit, la connessione da TLS post-quantistico',
 
