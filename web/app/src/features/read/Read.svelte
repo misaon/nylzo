@@ -34,7 +34,7 @@
 <section id="open" class="px-4 pt-16 pb-20 sm:px-6 md:pt-24 md:pb-28" aria-labelledby="read-title">
   <p class="sr-only" role="status" aria-live="polite">{page.status}</p>
   {#if page.settled}
-    <div class="mx-auto flex max-w-column flex-col items-center text-center">
+    <div class="relative mx-auto flex max-w-column flex-col items-center text-center">
       <p class="animate-rise text-eyebrow text-aegis-300 uppercase" aria-hidden="true">{translate('read.title')}</p>
       <h1
         class="mt-3 animate-rise-visible font-display text-hero font-light text-balance [animation-delay:80ms] md:text-hero-lg"
@@ -43,8 +43,8 @@
       </h1>
       <div
         class={[
-          'transition-[opacity,height,padding] duration-500 [interpolate-size:allow-keywords]',
-          ended ? 'h-0 overflow-y-clip pt-0 opacity-0' : 'h-auto pt-5 opacity-100',
+          'pt-5 transition-opacity duration-500',
+          ended ? 'pointer-events-none absolute inset-x-0 top-full opacity-0' : 'opacity-100',
         ]}
         inert={ended}
       >
@@ -56,29 +56,33 @@
       </div>
     </div>
 
-    <div class="relative z-20 mx-auto mt-10 max-w-column animate-rise [animation-delay:240ms]">
-      <div class="glow-under" aria-hidden="true"></div>
-      <div
-        class="glass rounded-card shadow-[0_30px_80px_-30px_rgb(40_70_200/0.45),inset_0_1px_0_rgb(255_255_255/0.08)]"
-      >
-        <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
-        <h2 id="read-title" {@attach page.focus.attach('readTitle')} tabindex="-1" class="sr-only">
-          {translate('read.title')}
-        </h2>
-        <div class="relative stack min-h-[420px] md:min-h-[440px]">
-          <ReadyPanel {page} {formId} />
-          <OpeningPanel {page} />
-          <RevealedPanel {page} />
-          <NoticePanel {page} />
+    <div {@attach page.glide.attach}>
+      <div class="relative z-20 mx-auto mt-10 max-w-column animate-rise [animation-delay:240ms]">
+        <div class="glow-under" aria-hidden="true"></div>
+        <div
+          class="glass rounded-card shadow-[0_30px_80px_-30px_rgb(40_70_200/0.45),inset_0_1px_0_rgb(255_255_255/0.08)]"
+        >
+          <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
+          <h2 id="read-title" {@attach page.focus.attach('readTitle')} tabindex="-1" class="sr-only">
+            {translate('read.title')}
+          </h2>
+          <div class="relative stack min-h-[420px] md:min-h-[440px]">
+            <ReadyPanel {page} {formId} />
+            <OpeningPanel {page} />
+            <RevealedPanel {page} />
+            <NoticePanel {page} />
+          </div>
+          <CardBars {page} />
         </div>
-        <CardBars {page} />
       </div>
-    </div>
 
-    <MessageActions {page} />
+      <MessageActions {page} />
+    </div>
   {/if}
 </section>
 
 {#if page.settled}
-  <TrustCards />
+  <div {@attach page.glide.attach}>
+    <TrustCards />
+  </div>
 {/if}
