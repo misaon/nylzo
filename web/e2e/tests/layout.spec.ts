@@ -133,10 +133,6 @@ async function settle(page: Page): Promise<void> {
     .toEqual([]);
 }
 
-function cumulativeShift(shifts: readonly string[]): number {
-  return shifts.reduce((sum, shift) => sum + Number(shift.split(':', 1)[0]), 0);
-}
-
 async function expectNothingMoved(page: Page, screen: string): Promise<void> {
   expect(await layoutChanges(page), screen).toEqual({ shifts: [], resizes: [] });
 }
@@ -175,10 +171,7 @@ for (const viewport of VIEWPORTS) {
     await expectMessageShown(recipient);
     await expect(recipient.locator('pre')).toHaveText(LONG_TEXT);
     await motionFinished(recipient);
-    // The card fits the message it reveals (owner decision R11), so its shift stays below the poor CLS threshold.
-    const revealed = await layoutChanges(recipient);
-    expect(cumulativeShift(revealed?.shifts ?? []), 'revealed').toBeLessThan(0.25);
-    expect(revealed?.resizes, 'revealed').toEqual([]);
+    await expectNothingMoved(recipient, 'revealed');
   });
 
   test(`nothing shifts or resizes on the sent list and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({
