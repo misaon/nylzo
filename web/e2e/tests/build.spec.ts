@@ -6,7 +6,7 @@ import type { Declaration, TokenOrValue } from 'lightningcss';
 import { expect, test } from './support/fixtures.ts';
 
 const ASSETS = new URL('../../../internal/server/web/dist/assets/', import.meta.url);
-// AK20 as amended by the owner on 7 Nov 2026: paint changes and collapsing heights may animate, layout offsets never.
+// Owner decision of 7 Nov 2026: paint changes and collapsing heights may animate, layout offsets never.
 const ANIMATABLE = new Set([
   'transform',
   'opacity',
@@ -137,7 +137,7 @@ function motionProblems(css: string): { readonly problems: string[]; readonly an
   return { problems, animated };
 }
 
-test('the motion check reads shorthands and keyframes (AK19)', () => {
+test('the motion check reads shorthands and keyframes', () => {
   expect(motionProblems('a { transition: opacity .2s, transform .2s }').problems).toEqual([]);
   expect(motionProblems('a { transition: width 1s }').problems).toEqual(['transition animates width']);
   expect(motionProblems('a { transition: opacity .3s, display .3s allow-discrete }').problems).toEqual([]);
@@ -159,7 +159,7 @@ test('the motion check reads shorthands and keyframes (AK19)', () => {
   expect(motionProblems('a { transition: none }')).toEqual({ problems: [], animated: false });
 });
 
-test('the built client animates no layout offset and evaluates no code (AK19, AK20)', () => {
+test('the built client animates no layout offset and evaluates no code', () => {
   const css = builtAssets('.css')
     .map((name) => readAsset(name))
     .join('\n');

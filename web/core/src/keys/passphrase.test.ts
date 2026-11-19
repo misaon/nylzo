@@ -18,7 +18,7 @@ function upperHex(codePoint: number): string {
   return codePoint.toString(16).toUpperCase();
 }
 
-describe('AK9: passphrase strength vectors', () => {
+describe('passphrase strength vectors', () => {
   const accepted = vectors.passphrase_strength.filter((vector) => vector.accepted);
   const rejected = vectors.passphrase_strength.filter((vector) => !vector.accepted);
 

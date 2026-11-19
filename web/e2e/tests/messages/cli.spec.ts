@@ -53,7 +53,7 @@ test('the CLI reads messages and files created in the browser', async ({ page })
 });
 
 test(
-  'an attachment the CLI sender chose to compress opens and downloads unchanged in every browser (W2-06, F6)',
+  'an attachment the CLI sender chose to compress opens and downloads unchanged in every browser',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const directory = mkdtempSync(path.join(tmpdir(), 'nylzo-compressed-'));
@@ -75,7 +75,7 @@ test(
 );
 
 test(
-  'the browser never compresses an attachment on its own and the CLI restores its bytes (W2-06, F6)',
+  'the browser never compresses an attachment on its own and the CLI restores its bytes',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const bytes = Buffer.from('row,1,alpha\n'.repeat(20_000));

@@ -13,7 +13,7 @@ async function publicKeyOf(seed: Uint8Array): Promise<string> {
   return encodeBase64url(key.publicKey);
 }
 
-describe('AK9: derive vectors', () => {
+describe('derive vectors', () => {
   it.each(vectors.derive)('$name', async (vector) => {
     const id = parseId(vector.id);
     const secret = hexToBytes(vector.s);
@@ -51,7 +51,7 @@ describe('key derivation (spec 2)', () => {
     await expect(crypto.subtle.wrapKey('raw', contentKey, wrappingKey, 'AES-KW')).rejects.toBeInstanceOf(Error);
   });
 
-  it('F3: needs the share', async () => {
+  it('needs the share', async () => {
     await expect(deriveContent(randomId(), newSecret(), exportKey, undefined)).rejects.toBeInstanceOf(ShareError);
   });
 

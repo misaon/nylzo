@@ -11,7 +11,7 @@ const salt = new Uint8Array(32).fill(5);
 const loneSurrogate = 'caf\u{D800}';
 const heavyTestsEnabled = process.env['NYLZO_HEAVY_TESTS'] === '1';
 
-describe('AK9: scrypt vectors of RFC 7914 for the pinned @noble/hashes', () => {
+describe('scrypt vectors of RFC 7914 for the pinned @noble/hashes', () => {
   const light = vectors.scrypt_rfc7914.filter((vector) => !vector.heavy);
   const heavy = vectors.scrypt_rfc7914.filter((vector) => vector.heavy);
   const derivedHex = async (vector: (typeof light)[number]): Promise<string> => {

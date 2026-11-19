@@ -92,7 +92,7 @@ for (const problem of ['checksum', 'expansion', 'trailing', 'multiple frames'] a
 
 for (const file of ATTACHMENTS) {
   test(
-    `the attachment ${file.shown} downloads only after a warning, once per double click, under its sanitised name and as application/octet-stream (AK13, D35, F09)`,
+    `the attachment ${file.shown} downloads only after a warning, once per double click, under its sanitised name and as application/octet-stream`,
     { tag: '@cross-browser' },
     async ({ page }) => {
       const message = await createMessageThroughApi({

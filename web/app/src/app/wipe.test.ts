@@ -145,7 +145,7 @@ function readerFor(api: FakeApi, link: string) {
 // The sender keeps S, salt_pw, the OPAQUE password and its copy in the registration, E, P, and R with salt_pw again.
 const SENDER_SECRETS = 8;
 
-describe('secrets are wiped after use (SEC-8, D39, D41)', () => {
+describe('secrets are wiped after use (SEC-8)', () => {
   beforeEach(() => {
     captured.length = 0;
     stretched.length = 0;

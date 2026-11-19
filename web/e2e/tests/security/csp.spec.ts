@@ -28,7 +28,7 @@ function withHashPlaceholders(policy: string): string {
 
 for (const path of PAGES) {
   test(
-    `the ${path} page renders under exactly the CSP of spec section 9 without a violation (AK10, AK19)`,
+    `the ${path} page renders under exactly the CSP of spec section 9 without a violation`,
     { tag: '@cross-browser' },
     async ({ newPage }) => {
       expect(htmlPolicy, 'spec section 9 lost the CSP line for HTML responses').toContain(

@@ -221,7 +221,7 @@ async function storeRaw(
 }
 
 describe('reading a message', () => {
-  it('keeps the link secret out of session storage while a lease is pending (W2-01)', async () => {
+  it('keeps the link secret out of session storage while a lease is pending', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ passphrase: 'four random words here' }), createDependencies(api));
     const display = Promise.withResolvers<undefined>();
@@ -244,7 +244,7 @@ describe('reading a message', () => {
     await revealing;
   });
 
-  it('asks for the link again after a reload with a pending lease, before any request (W2-01)', async () => {
+  it('asks for the link again after a reload with a pending lease, before any request', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const session = memorySession();
@@ -257,7 +257,7 @@ describe('reading a message', () => {
     expect(session.map.get(LEASE_KEY)).toBe(await leaseValue(created.link, 'pending-lease'));
   });
 
-  it('drops the fragment before its first request and acknowledges only once the page shows the message (D95)', async () => {
+  it('drops the fragment before its first request and acknowledges only once the page shows the message', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const display = Promise.withResolvers<undefined>();
@@ -275,7 +275,7 @@ describe('reading a message', () => {
     expect(reader.dropped()).toBe(1);
   });
 
-  it('explains after a reload before the claim that the key left the address (D95)', async () => {
+  it('explains after a reload before the claim that the key left the address', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const reader = openReader(api, created.link);
@@ -456,7 +456,7 @@ describe('reading a message', () => {
     });
   });
 
-  it('stops before any handshake when the server reports another profile (AK24)', async () => {
+  it('stops before any handshake when the server reports another profile', async () => {
     const api = fakeApi({ metadataKdfId: KDF_NONE });
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const reader = openReader(api, created.link);
@@ -468,7 +468,7 @@ describe('reading a message', () => {
 
   it.each<[string, FakeOptions]>([
     ['another profile in X-Nylzo-Policy', { servedKdfId: KDF_SCRYPT }],
-    ['F13: a deadline in X-Nylzo-Policy that the metadata does not report', { servedDeadline: 1_797_000_000 }],
+    ['a deadline in X-Nylzo-Policy that the metadata does not report', { servedDeadline: 1_797_000_000 }],
     ['opens_max in X-Nylzo-Policy that the object does not carry', { servedOpensMax: 2 }],
     ['ttl_s in X-Nylzo-Policy that the object does not carry', { servedTtlSeconds: 7200 }],
     ['metadata whose opens_max differs from X-Nylzo-Policy (SEC-9)', { metadataOpensMax: 2 }],
@@ -716,20 +716,17 @@ describe('reading through the lease and claim edge cases', () => {
   it.each([
     ['ended', true],
     ['ended while its blob is still being deleted', false],
-  ])(
-    'shows a message whose key the server lost and %s as ended before asking to reveal it (F21)',
-    async (_, tombstone) => {
-      const options: FakeOptions = {};
-      const api = fakeApi(options);
-      const created = await createMessage(input(), createDependencies(api));
-      storedOf(api, created.link).state = 'lost';
-      options.tombstone = tombstone;
-      const reader = openReader(api, created.link);
-      await reader.load();
-      expect(reader.last()).toMatchObject({ view: 'ended', state: 'lost' });
-      expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
-    },
-  );
+  ])('shows a message whose key the server lost and %s as ended before asking to reveal it', async (_, tombstone) => {
+    const options: FakeOptions = {};
+    const api = fakeApi(options);
+    const created = await createMessage(input(), createDependencies(api));
+    storedOf(api, created.link).state = 'lost';
+    options.tombstone = tombstone;
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(reader.last()).toMatchObject({ view: 'ended', state: 'lost' });
+    expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
+  });
 
   it.each([
     [429, 'rate_limited', 7],
@@ -954,7 +951,7 @@ describe('leaving the page', () => {
   });
 });
 
-describe('deleting from the read page (D40)', () => {
+describe('deleting from the read page', () => {
   it('deletes a message before showing it and then refuses to reveal it', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
@@ -1001,7 +998,7 @@ describe('deleting from the read page (D40)', () => {
     expect(api.calls.filter((call) => call.startsWith('handshake'))).toHaveLength(2);
   });
 
-  it('deletes a message with a passphrase only with that passphrase, without showing a reveal (F05)', async () => {
+  it('deletes a message with a passphrase only with that passphrase, without showing a reveal', async () => {
     const api = fakeApi();
     const passphrase = 'tři slova a ještě čtvrté';
     const created = await createMessage(input({ passphrase }), createDependencies(api));
@@ -1015,7 +1012,7 @@ describe('deleting from the read page (D40)', () => {
     expect(reader.views.some((view) => view.view === 'busy')).toBe(false);
   });
 
-  it('deletes the remaining opens of a message with a passphrase with the passphrase of its reveal (F05)', async () => {
+  it('deletes the remaining opens of a message with a passphrase with the passphrase of its reveal', async () => {
     const api = fakeApi({ failBurn: [new ApiError(403, 'passphrase', { retryAfter: 60, attemptsLeft: 0 })] });
     const passphrase = 'tři slova a ještě čtvrté';
     const created = await createMessage(input({ opensMax: 3, passphrase }), createDependencies(api));
@@ -1123,7 +1120,7 @@ describe('deleting from the read page (D40)', () => {
   });
 });
 
-describe('native signing after a PKCS#8 import failure (WebKit on Linux, D66)', () => {
+describe('native signing after a PKCS#8 import failure (WebKit on Linux)', () => {
   it('reads and deletes with a non-extractable native key after PKCS#8 refusal', async () => {
     const refuse = refuseSigningKeyImport();
     try {

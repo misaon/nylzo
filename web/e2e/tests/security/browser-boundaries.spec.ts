@@ -195,7 +195,7 @@ test(
   },
 );
 
-test("native Trusted Types reject string sinks, unapproved policies and the app's own policy names, and CSP rejects eval (W2-10)", async ({
+test("native Trusted Types reject string sinks, unapproved policies and the app's own policy names, and CSP rejects eval", async ({
   page,
 }) => {
   await openApp(page, '/');
@@ -255,7 +255,7 @@ test("native Trusted Types reject string sinks, unapproved policies and the app'
 });
 
 test(
-  'the entry module claims its Trusted Types policy name before the rest of the client loads (W2-10)',
+  'the entry module claims its Trusted Types policy name before the rest of the client loads',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi();

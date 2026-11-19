@@ -180,7 +180,7 @@ function faceRanges(css: string, family: string): Map<string, number[]> {
   return faces;
 }
 
-describe('Czech font subsets (D86)', () => {
+describe('Czech font subsets', () => {
   const css = readFileSync(new URL('../styles/fonts.css', import.meta.url), 'utf8');
 
   it.each(FAMILIES)('$name comes from the same font release as the packaged latin-ext file', ({ file }) => {

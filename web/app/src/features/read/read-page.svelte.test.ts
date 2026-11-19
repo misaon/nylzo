@@ -245,7 +245,7 @@ describe('read page interactions', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('asks before every download, a file named like a PDF included (F09)', async () => {
+  it('asks before every download, a file named like a PDF included', async () => {
     const page = new ReadPage(new Translator('en'));
     const click = { detail: 1 } as MouseEvent;
     const doubleClick = { detail: 2 } as MouseEvent;
@@ -358,7 +358,7 @@ describe('read page interactions', () => {
     expect(page.burned).toEqual({ outcome, afterReveal: true });
   });
 
-  it('asks for the passphrase before deleting a message that has one and hands it to the reader (F05)', async () => {
+  it('asks for the passphrase before deleting a message that has one and hands it to the reader', async () => {
     const page = new ReadPage(new Translator('en'));
     ready({ kdfId: KDF_SCRYPT });
     const focus = focusTarget(page, 'passphrase');
@@ -415,7 +415,7 @@ describe('read page interactions', () => {
     expect(remove).toHaveBeenCalledOnce();
   });
 
-  it('forgets an opened message once it was on screen for the shown time (D124)', () => {
+  it('forgets an opened message once it was on screen for the shown time', () => {
     const page = new ReadPage(new Translator('en'));
     notify({ view: 'revealed', text: 'secret', file, burnable: false, opensRemaining: 0 });
     expect(page.afterFacts[0]).toEqual({ icon: 'timer', text: 'Deleted in 15:00' });
@@ -431,7 +431,7 @@ describe('read page interactions', () => {
     expect(revokeSavedFiles).toHaveBeenCalledOnce();
   });
 
-  it('forgets an opened message when the device slept past the shown time (D124)', () => {
+  it('forgets an opened message when the device slept past the shown time', () => {
     const page = new ReadPage(new Translator('en'));
     notify({ view: 'revealed', text: 'secret', file, burnable: false, opensRemaining: 0 });
     const shown = Date.now();

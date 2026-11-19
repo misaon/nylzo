@@ -17,7 +17,7 @@ vi.mock('@noble/hashes/sha2.js', async (importOriginal) => {
   return { ...original, sha512: Object.assign(recorded, original.sha512) };
 });
 
-describe('seed-derived Ed25519 material (W2-09)', () => {
+describe('seed-derived Ed25519 material', () => {
   it('overwrites the SHA-512 digest of a seed once its public key is derived', async () => {
     const seed = new Uint8Array(SEED_LENGTH).fill(7);
     const key = await requestKey(Uint8Array.from(seed));

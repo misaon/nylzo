@@ -149,7 +149,7 @@ function runGuard(href: string) {
   return { replaced, session, take, context, changeHash };
 }
 
-describe('the fragment guard at the start of every page (W2-04)', () => {
+describe('the fragment guard at the start of every page', () => {
   it.each([
     ['/r?x=1', '#2.0.id.secret.hash', 'r'],
     ['/m/AAAAAAAAAAAAAAAAAAAAAA?x=1', '#1.0.secret', 'AAAAAAAAAAAAAAAAAAAAAA'],

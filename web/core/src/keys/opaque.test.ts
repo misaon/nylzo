@@ -149,7 +149,7 @@ function stretchFor(vector: OpaqueVector): Stretch {
   return kdfIdOf(vector.kdf_id) === KDF_SCRYPT ? (message) => Promise.resolve(stretchScrypt(message)) : identityStretch;
 }
 
-describe('AK9: OPAQUE runs with the configuration of spec 2.1', () => {
+describe('OPAQUE runs with the configuration of spec 2.1', () => {
   it.each(vectors.opaque)('$name', { timeout: 120_000 }, async (vector) => {
     const id = parseId(vector.id);
     const kdfId = kdfIdOf(vector.kdf_id);

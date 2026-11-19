@@ -230,7 +230,7 @@ export function servedPolicy(header: string | null): ServedPolicy {
 }
 
 // deadlineMatchesExpiry accepts a deadline that the metadata reports as the expiry, which the envelope then
-// authenticates (F13).
+// authenticates.
 export function deadlineMatchesExpiry(policy: ServedPolicy, expiresAt: string | undefined): boolean {
   return policy.deadline * 1000 === Date.parse(expiresAt ?? '');
 }

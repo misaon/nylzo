@@ -4,7 +4,7 @@ import { homePath, LANGUAGES } from '../shared/language/language.ts';
 import { homeLanguage } from './pages.ts';
 
 describe('pages', () => {
-  it('gives each language of the home page its own address (D82)', () => {
+  it('gives each language of the home page its own address', () => {
     expect(homeLanguage('/')).toBe('en');
     expect(homeLanguage('/cs/')).toBe('cs');
     expect(homeLanguage('/cs')).toBeUndefined();

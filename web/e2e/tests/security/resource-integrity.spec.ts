@@ -122,7 +122,7 @@ test('requires SRI metadata before a same-origin script request can leave the br
 });
 
 test(
-  'runs only a key derivation worker whose bytes match the import map, fetched before any request names the message (A3-03)',
+  'runs only a key derivation worker whose bytes match the import map, fetched before any request names the message',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const passphrase = 'four random words here';

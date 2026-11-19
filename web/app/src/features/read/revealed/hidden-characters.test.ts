@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { markHiddenCharacters, piecesOf } from './hidden-characters.ts';
 
-describe('hidden characters in revealed text (W2-12)', () => {
+describe('hidden characters in revealed text', () => {
   it.each([
     ['a bidi override', 'pay \u{202E}0001 tnuocca', 'pay ⟨U+202E⟩0001 tnuocca'],
     ['a zero-width space', 'pass\u{200B}word', 'pass⟨U+200B⟩word'],

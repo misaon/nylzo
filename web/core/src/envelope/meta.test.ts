@@ -19,7 +19,7 @@ function padded(length: number): string {
   return `{"v":1,"text":"x","pad":"${'p'.repeat(length)}"}`;
 }
 
-describe('AK9: meta vectors', () => {
+describe('meta vectors', () => {
   const valid = vectors.meta.filter((vector) => vector.valid);
   const invalid = vectors.meta.filter((vector) => !vector.valid);
 

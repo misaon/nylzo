@@ -23,7 +23,7 @@ describe('create form', () => {
     expect(await readAttachment(undefined, limits)).toEqual({ file: undefined });
   });
 
-  it('reports a file it cannot read, such as a dropped folder, instead of failing the submit (A-03)', async () => {
+  it('reports a file it cannot read, such as a dropped folder, instead of failing the submit', async () => {
     const folder = {
       name: 'folder',
       size: 0,

@@ -12,7 +12,7 @@ const PASSPHRASE = 'four random words here';
 const WRONG_PASSPHRASE = 'definitely the wrong one';
 
 test(
-  'a message with a passphrase and a file goes between two browsers under the enforced CSP, a wrong passphrase spends no open and no secret leaves either browser (AK1, AK2, AK5, AK10)',
+  'a message with a passphrase and a file goes between two browsers under the enforced CSP, a wrong passphrase spends no open and no secret leaves either browser',
   { tag: '@cross-browser' },
   async ({ newPage }) => {
     const sender = await newPage();
@@ -75,7 +75,7 @@ test(
 );
 
 test(
-  'no field for a secret offers it to spell checkers, translators, writing assistants or password managers (D38, D41, W2-03, W2-05)',
+  'no field for a secret offers it to spell checkers, translators, writing assistants or password managers',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi({ passphrase: PASSPHRASE, opensMax: 2 });

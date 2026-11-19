@@ -13,13 +13,13 @@ const htmlPolicy = /^- HTML responses carry `Content-Security-Policy: ([^`]+)`/m
 
 async function composeMessage(page: Page, path: string): Promise<void> {
   if (path === '/' || path === '/cs/') {
-    await page.getByRole('textbox').first().fill('F01 plaintext must stay in this page');
+    await page.getByRole('textbox').first().fill('plaintext that must stay in this page');
   }
 }
 
 for (const origin of [OFFICIAL, BASE_URL]) {
   test(
-    `${origin} loads no third-party scripts or analytics while composing a message (F01)`,
+    `${origin} loads no third-party scripts or analytics while composing a message`,
     { tag: '@cross-browser' },
     async ({ newPage }) => {
       expect(htmlPolicy, 'spec section 9 lost the HTML policy').not.toBe('');

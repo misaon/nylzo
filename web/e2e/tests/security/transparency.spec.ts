@@ -16,7 +16,7 @@ interface ClientBuild {
   readonly dirty: boolean;
 }
 
-test('nylzo verify-client finds the embedded web client unchanged on the server (D61)', () => {
+test('nylzo verify-client finds the embedded web client unchanged on the server', () => {
   const output = execFileSync(NYLZO_BINARY, ['verify-client', '--server', BASE_URL], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -24,7 +24,7 @@ test('nylzo verify-client finds the embedded web client unchanged on the server 
   expect(output).toMatch(/^the server sends the web client of nylzo \S+ unchanged: 18 pages and \d+ files checked\n$/u);
 });
 
-test('the transparency page shows its embedded client build, reported server version and file hashes (D61)', async ({
+test('the transparency page shows its embedded client build, reported server version and file hashes', async ({
   page,
   request,
 }) => {
