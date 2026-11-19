@@ -810,7 +810,7 @@ export const messages: Catalog = {
   'tech.crypto.title': 'Enkripsi',
   'tech.crypto.text': 'AES\u{2011}256\u{2011}GCM dan TLS pascakuantum',
   'tech.server.title': 'Server',
-  'tech.server.text': 'Go dan SQLite, hanya 6\u{A0}dependensi langsung',
+  'tech.server.text': 'Go dan SQLite, hanya 7\u{A0}dependensi langsung',
   'tech.web.title': 'Klien web',
   'tech.web.text': 'Svelte\u{A0}5, sidik jari SHA\u{2011}384, dan tanpa cookie',
   'tech.release.title': 'Pengembangan dan rilis',

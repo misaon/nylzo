@@ -747,7 +747,7 @@ export const messages: Catalog = {
   'tech.crypto.title': '加密',
   'tech.crypto.text': 'AES\u{2011}256\u{2011}GCM 和后量子 TLS',
   'tech.server.title': '服务器',
-  'tech.server.text': 'Go 和 SQLite，直接依赖仅有 6 个',
+  'tech.server.text': 'Go 和 SQLite，直接依赖仅有 7 个',
   'tech.web.title': '网页端',
   'tech.web.text': 'Svelte 5、SHA\u{2011}384 哈希，不使用 Cookie',
   'tech.release.title': '开发与发布',

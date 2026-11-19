@@ -843,7 +843,7 @@ export const messages: Catalog = {
   'tech.crypto.title': 'Szyfrowanie',
   'tech.crypto.text': 'AES\u{2011}256\u{2011}GCM i\u{A0}postkwantowy TLS',
   'tech.server.title': 'Serwer',
-  'tech.server.text': 'Go i\u{A0}SQLite, tylko 6\u{A0}bezpośrednich zależności',
+  'tech.server.text': 'Go i\u{A0}SQLite, tylko 7\u{A0}bezpośrednich zależności',
   'tech.web.title': 'Klient webowy',
   'tech.web.text': 'Svelte\u{A0}5 i\u{A0}odciski SHA\u{2011}384, bez plików cookie',
   'tech.release.title': 'Rozwój i\u{A0}wydania',

@@ -59,6 +59,7 @@
       class="glass mt-4 reveal-rise overflow-hidden rounded-card outline-offset-3 outline-transparent transition-[outline-color] not-forced-colors:outline-2 has-focus-visible:outline-2 has-focus-visible:outline-aegis-300 md:mt-12"
       {@attach reveal}
     >
+      <!-- The table scrolls sideways on a phone, so keyboard users must be able to focus it. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div class="overflow-x-auto outline-none" role="region" aria-labelledby="compare-title" tabindex="0">
         <table

@@ -790,7 +790,7 @@ export const messages = {
   'tech.crypto.title': 'Šifrování',
   'tech.crypto.text': 'AES\u{2011}256\u{2011}GCM a\u{A0}post\u{2011}kvantové TLS',
   'tech.server.title': 'Server',
-  'tech.server.text': 'Go a\u{A0}SQLite, jen 6\u{A0}přímých závislostí',
+  'tech.server.text': 'Go a\u{A0}SQLite, jen 7\u{A0}přímých závislostí',
   'tech.web.title': 'Web',
   'tech.web.text': 'Svelte\u{A0}5, otisky SHA\u{2011}384 a\u{A0}žádné cookies',
   'tech.release.title': 'Vývoj a\u{A0}vydání',

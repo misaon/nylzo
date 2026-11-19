@@ -805,7 +805,7 @@ export const messages: Catalog = {
   'tech.crypto.title': 'Cifratura',
   'tech.crypto.text': 'AES\u{2011}256\u{2011}GCM e TLS post\u{2011}quantistico',
   'tech.server.title': 'Server',
-  'tech.server.text': 'Go e SQLite, solo 6\u{A0}dipendenze dirette',
+  'tech.server.text': 'Go e SQLite, solo 7\u{A0}dipendenze dirette',
   'tech.web.title': 'Web',
   'tech.web.text': 'Svelte\u{A0}5, impronte SHA\u{2011}384 e nessun cookie',
   'tech.release.title': 'Sviluppo e rilasci',
