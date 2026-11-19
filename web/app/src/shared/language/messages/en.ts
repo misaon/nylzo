@@ -28,6 +28,7 @@ export const messages: Catalog = {
   'terms.operator.1':
     'The service at nylzo.com is run by a private individual (the “operator”) free of charge, without ads and outside any business.',
   'terms.operator.2': 'The Nylzo software is open source under the MIT license. These terms apply only to nylzo.com.',
+  'terms.operator.identity': 'We disclose the operator’s identity on request through GitHub.',
   'terms.agreement.title': 'Agreement',
   'terms.agreement.1': 'By creating or opening a message you agree to these terms.',
   'terms.service.title': 'How the service works',
@@ -47,6 +48,9 @@ export const messages: Catalog = {
   'terms.forbidden.6': 'Getting around the limits of the service or attacking it.',
   'terms.forbidden.note': 'Whoever creates a message is responsible for its content.',
   'terms.removal.title': 'Removing messages',
+  'terms.removal.notice':
+    'Report unlawful content through a {link} on GitHub. Give the reason and the message ID, which sits after the # in the link, between the second and third dot. Do not send the whole link.',
+  'terms.removal.notice.link': 'private report',
   'terms.removal.1': 'If a message breaks the law or these terms, we delete it. Deletion cannot be undone.',
   'terms.removal.2': 'We report a suspected crime that threatens someone’s life or safety to the police.',
   'terms.removal.3':

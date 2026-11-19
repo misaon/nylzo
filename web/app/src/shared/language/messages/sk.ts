@@ -27,6 +27,7 @@ export const messages: Catalog = {
   'terms.operator.1':
     'Službu na nylzo.com prevádzkuje súkromná osoba (ďalej „prevádzkovateľ“) bezplatne, bez reklamy a\u{A0}mimo svojho podnikania.',
   'terms.operator.2': 'Softvér Nylzo je open source pod licenciou MIT. Tieto podmienky platia len pre nylzo.com.',
+  'terms.operator.identity': 'Totožnosť prevádzkovateľa oznámime na požiadanie cez GitHub.',
   'terms.agreement.title': 'Súhlas',
   'terms.agreement.1': 'Vytvorením alebo otvorením správy s\u{A0}týmito podmienkami súhlasíte.',
   'terms.service.title': 'Ako služba funguje',
@@ -45,6 +46,9 @@ export const messages: Catalog = {
   'terms.forbidden.6': 'Obchádzanie limitov služby a\u{A0}útoky na ňu.',
   'terms.forbidden.note': 'Za obsah správy zodpovedá ten, kto ju vytvoril.',
   'terms.removal.title': 'Odstránenie správ',
+  'terms.removal.notice':
+    'Nezákonný obsah nahláste {link} na GitHube. Uveďte dôvod a\u{A0}ID správy, ktoré v\u{A0}odkaze stojí za znakom # medzi druhou a\u{A0}treťou bodkou. Celý odkaz neposielajte.',
+  'terms.removal.notice.link': 'súkromným hlásením',
   'terms.removal.1': 'Ak správa porušuje právo alebo tieto podmienky, vymažeme ju. Vymazanie sa nedá vrátiť.',
   'terms.removal.2': 'Podozrenie z\u{A0}trestného činu, ktorý ohrozuje život alebo bezpečnosť, oznámime polícii.',
   'terms.removal.3':
