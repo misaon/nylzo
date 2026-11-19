@@ -127,6 +127,7 @@ export class Composer {
   sealingWithPassphrase = $state(false);
   remembered = $state<Remembered>('off');
   kept = $state(false);
+  trackingPanelLeft = $state(false);
   readonly focus = new FocusTargets<ComposerTarget>();
   readonly glide = new Glide();
 
@@ -435,8 +436,13 @@ export class Composer {
     this.#pending = undefined;
     this.sealed = result;
     this.phase = 'done';
+    this.#forgetTracking();
+  }
+
+  #forgetTracking(): void {
     this.remembered = 'off';
     this.kept = false;
+    this.trackingPanelLeft = false;
   }
 
   #forgetProblems(...fields: readonly CreateField[]): void {
@@ -480,8 +486,7 @@ export class Composer {
 
   #reset(): void {
     this.sealed = undefined;
-    this.remembered = 'off';
-    this.kept = false;
+    this.#forgetTracking();
     this.text = '';
     this.passphrase = '';
     this.protect = false;

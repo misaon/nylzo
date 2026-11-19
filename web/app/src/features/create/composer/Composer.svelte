@@ -137,6 +137,7 @@
                 canTrackInTab={composer.canTrackInTab}
                 remembered={composer.remembered}
                 onremember={(label, keep) => void composer.remember(label, keep)}
+                ontrackingleft={() => (composer.trackingPanelLeft = true)}
                 onanother={() => void composer.another()}
               />
             {:else if composer.placeholder}
@@ -152,6 +153,7 @@
                     canTrackInTab={composer.canTrackInTab}
                     remembered="off"
                     onremember={(label, keep) => void composer.remember(label, keep)}
+                    ontrackingleft={() => (composer.trackingPanelLeft = true)}
                     onanother={() => void composer.another()}
                   />
                 {/key}

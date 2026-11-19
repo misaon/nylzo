@@ -26,6 +26,7 @@
     readonly canTrackInTab: boolean;
     readonly remembered: Remembered;
     readonly onremember: (label: string, keep: boolean) => void;
+    readonly ontrackingleft: () => void;
     readonly onanother: () => void;
     readonly sizing?: boolean;
   }
@@ -38,6 +39,7 @@
     canTrackInTab,
     remembered,
     onremember,
+    ontrackingleft,
     onanother,
     sizing = false,
   }: Props = $props();
@@ -347,7 +349,10 @@
   {#if trackingShown}
     <div
       out:slide={{ duration: motionMs(400) }}
-      onoutroend={() => keepFocus(focus.get('title'))}
+      onoutroend={() => {
+        keepFocus(focus.get('title'));
+        ontrackingleft();
+      }}
       class={[
         'flex flex-col gap-3 border-t border-white/8 px-4 py-4 text-left delay-220 sm:flex-row sm:items-center sm:gap-4',
         RISE,

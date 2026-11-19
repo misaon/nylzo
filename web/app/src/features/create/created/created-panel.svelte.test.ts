@@ -18,6 +18,7 @@ describe('created message panel', () => {
   const translator = new Translator('en');
   const another = vi.fn<() => void>();
   const remember = vi.fn<(label: string, keep: boolean) => void>();
+  const trackingLeft = vi.fn<() => void>();
   const writeText = vi.fn<(text: string) => Promise<void>>();
   const share = vi.fn<() => Promise<void>>();
   const canShare = vi.fn<() => boolean>();
@@ -46,6 +47,7 @@ describe('created message panel', () => {
         canTrackInTab,
         remembered,
         onremember: remember,
+        ontrackingleft: trackingLeft,
         onanother: another,
       },
     });
