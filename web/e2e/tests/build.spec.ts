@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, statSync } from 'node:fs';
 
 import { transform } from 'lightningcss';
 import type { Declaration, TokenOrValue } from 'lightningcss';
@@ -46,6 +46,8 @@ const ANIMATABLE = new Set([
 ]);
 const COLOR_STOP = /^--(?:tw-gradient-(?:from|via|to)|edge-(?:from|via|to)|tile-(?:glow|top|bottom))$/u;
 const NOBLE_SCRYPT_MARKER = 'maxmem';
+// Gzip bytes the server sends: the size on 19 Nov 2026 plus 10 % (owner decision, #424).
+const SIZE_BUDGET = { startup: 181_000, scripts: 525_000, styles: 32_000 } as const;
 
 function builtAssets(suffix: string): string[] {
   return readdirSync(ASSETS).filter((name) => name.endsWith(suffix));
@@ -184,4 +186,21 @@ test('the built client animates no layout offset and evaluates no code (AK19, AK
 test('noble scrypt ships only in the key derivation worker (P5)', () => {
   const withScrypt = builtAssets('.js').filter((name) => readAsset(name).includes(NOBLE_SCRYPT_MARKER));
   expect(withScrypt).toEqual([expect.stringMatching(/^kdf-worker-[\w-]+\.js$/u)]);
+});
+
+function gzippedBytes(matches: (name: string) => boolean): number {
+  return builtAssets('.gz')
+    .filter((name) => matches(name.slice(0, -'.gz'.length)) && !name.startsWith('admin-'))
+    .reduce((total, name) => total + statSync(new URL(name, ASSETS)).size, 0);
+}
+
+test('the public client stays within its compressed size budget', () => {
+  const startup = gzippedBytes((name) => /^(?:index|start)-[\w-]+\.js$/u.test(name));
+  const scripts = gzippedBytes((name) => name.endsWith('.js'));
+  const styles = gzippedBytes((name) => name.endsWith('.css'));
+  expect(startup, 'JavaScript every page loads').toBeGreaterThan(0);
+  expect(startup, 'JavaScript every page loads').toBeLessThanOrEqual(SIZE_BUDGET.startup);
+  expect(scripts, 'all JavaScript').toBeLessThanOrEqual(SIZE_BUDGET.scripts);
+  expect(styles, 'CSS').toBeGreaterThan(0);
+  expect(styles, 'CSS').toBeLessThanOrEqual(SIZE_BUDGET.styles);
 });
