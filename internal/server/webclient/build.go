@@ -72,6 +72,7 @@ var assetTypes = map[string]string{
 	".woff2": "font/woff2",
 	".svg":   "image/svg+xml",
 	".png":   "image/png",
+	".jpg":   "image/jpeg",
 }
 
 var assetReference = regexp.MustCompile(

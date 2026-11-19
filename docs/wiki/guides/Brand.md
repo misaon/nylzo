@@ -20,7 +20,7 @@ Files ending in `-background.svg` have a solid background, white `#FFFFFF` in th
 
 ## Web client icons
 
-[web/app/icons](../../../web/app/icons) holds `favicon.svg`, a copy of `dark/nylzo-icon-dark-background.svg`, its PNG renders and the social preview `og-image.svg`. [web/app/public/favicon.ico](../../../web/app/public/favicon.ico) serves clients that ask for `/favicon.ico`. To render the bitmaps again with librsvg and ImageMagick, from the repository root:
+[web/app/icons](../../../web/app/icons) holds `favicon.svg`, a copy of `dark/nylzo-icon-dark-background.svg`, its PNG renders and the social preview `og-image.svg` with its JPEG render. [web/app/public/favicon.ico](../../../web/app/public/favicon.ico) serves clients that ask for `/favicon.ico`. To render the bitmaps again with librsvg and ImageMagick, from the repository root:
 
 ```sh
 icon=assets/brand/dark/nylzo-icon-dark-background.svg
@@ -28,7 +28,7 @@ rsvg-convert -w 96 -h 96 -o web/app/icons/favicon-96.png "$icon"
 rsvg-convert -w 180 -h 180 -o web/app/icons/apple-touch-icon.png "$icon"
 for size in 16 32 48; do rsvg-convert -w "$size" -h "$size" -o "favicon-$size.png" "$icon"; done
 magick favicon-16.png favicon-32.png favicon-48.png web/app/public/favicon.ico
-rsvg-convert -w 1200 -h 630 -o web/app/icons/og-image.png web/app/icons/og-image.svg
+rsvg-convert -w 1200 -h 630 web/app/icons/og-image.svg | magick - -quality 85 -strip -interlace JPEG web/app/icons/og-image.jpg
 ```
 
 ## Fonts
