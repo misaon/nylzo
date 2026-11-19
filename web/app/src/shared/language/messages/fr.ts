@@ -491,6 +491,8 @@ export const messages: Catalog = {
 
   'hero.title': 'Un secret qui ne s’ouvre {accent}',
   'hero.title.accent': 'qu’une fois',
+  'hero.lead':
+    'Envoyez en toute sécurité un mot de passe, une clé API ou un fichier par un lien qui ne s’ouvre qu’une fois.',
   'seo.title': 'Envoyer un mot de passe en sécurité\u{A0}: lien à usage unique | Nylzo',
   'seo.description':
     'Envoyez un mot de passe, une clé API ou un fichier par un lien qui ne s’ouvre qu’une fois. Le chiffrement se fait dès votre navigateur. Gratuit et sans inscription.',
@@ -923,10 +925,13 @@ export const messages: Catalog = {
   'about.terms.link': 'conditions d’utilisation',
   'faq.eyebrow': 'Questions fréquentes',
   'faq.title': 'Avant d’envoyer votre premier message',
+  'faq.securely.question': 'Comment envoyer un mot de passe en toute sécurité\u{A0}?',
+  'faq.securely.answer':
+    'Collez-le dans Nylzo et n’envoyez que le lien. Votre navigateur le chiffre avant l’envoi, et le serveur le supprime après la dernière ouverture.',
   'faq.unopened.question': 'Et si le destinataire n’ouvre pas le lien\u{A0}?',
   'faq.unopened.answer':
     'À l’expiration de sa validité, le message se supprime de lui-même. Vous choisissez la validité entre 1\u{A0}heure et {days}.',
-  'faq.passphrase.question': 'Comment transmettre le mot de passe\u{A0}?',
+  'faq.passphrase.question': 'Comment transmettre le mot de passe du message\u{A0}?',
   'faq.passphrase.answer':
     'Par un autre moyen que le lien. Par exemple, le lien par e-mail et le mot de passe par téléphone ou par SMS.',
   'faq.save.question': 'Le destinataire peut-il enregistrer le message\u{A0}?',

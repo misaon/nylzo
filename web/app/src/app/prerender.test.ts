@@ -86,7 +86,7 @@ describe('homeTemplate', () => {
     expect(data['@graph'][2]?.description).toBe(description);
     expect(data['@graph'][2]?.url).toBe('__NYLZO_PUBLIC_URL__/cs/');
     const questions = data['@graph'][3]?.mainEntity ?? [];
-    expect(questions).toHaveLength(8);
+    expect(questions).toHaveLength(9);
     const visible = (text: string) => page.includes(text.replaceAll('\u{A0}', '&nbsp;')) || page.includes(text);
     expect(questions.filter(({ name, acceptedAnswer }) => !visible(name) || !visible(acceptedAnswer.text))).toEqual([]);
   });

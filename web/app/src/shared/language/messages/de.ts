@@ -490,6 +490,8 @@ export const messages: Catalog = {
 
   'hero.title': 'Ein Geheimnis, das sich {accent}',
   'hero.title.accent': 'nur einmal öffnet',
+  'hero.lead':
+    'Senden Sie ein Passwort, einen API-Schlüssel oder eine Datei sicher per Link, der sich nur einmal öffnet.',
   'seo.title': 'Passwort sicher senden: verschlüsselter Einmal-Link | Nylzo',
   'seo.description':
     'Senden Sie ein Passwort, einen API-Schlüssel oder eine Datei per Link, der sich nur einmal öffnet. Verschlüsselt im Browser, kostenlos und ohne Registrierung.',
@@ -920,10 +922,13 @@ export const messages: Catalog = {
   'about.terms.link': 'Nutzungsbedingungen',
   'faq.eyebrow': 'Häufige Fragen',
   'faq.title': 'Bevor Sie Ihre erste Nachricht senden',
+  'faq.securely.question': 'Wie sende ich ein Passwort sicher?',
+  'faq.securely.answer':
+    'Fügen Sie es in Nylzo ein und senden Sie nur den Link. Ihr Browser verschlüsselt es vor dem Senden, und der Server löscht es nach dem letzten Öffnen.',
   'faq.unopened.question': 'Was, wenn der Empfänger den Link nicht öffnet?',
   'faq.unopened.answer':
     'Nach Ablauf der Gültigkeit löscht sich die Nachricht von selbst. Die Gültigkeit wählen Sie selbst: mindestens 1\u{A0}Stunde, höchstens {days}.',
-  'faq.passphrase.question': 'Wie übermittle ich das Passwort?',
+  'faq.passphrase.question': 'Wie übermittle ich das Passwort zur Nachricht?',
   'faq.passphrase.answer':
     'Auf einem anderen Weg als den Link. Zum Beispiel den Link per E-Mail und das Passwort per Telefon oder SMS.',
   'faq.save.question': 'Kann der Empfänger die Nachricht speichern?',

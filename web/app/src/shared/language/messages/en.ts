@@ -468,6 +468,7 @@ export const messages: Catalog = {
 
   'hero.title': 'A secret that {accent}',
   'hero.title.accent': 'opens once',
+  'hero.lead': 'Send a password, API key or file securely with a link that opens only once.',
   'seo.title': 'Share passwords and files securely with one-time links | Nylzo',
   'seo.description':
     'Send a password, API key or file through a link that opens only once. Your browser encrypts it before sending. Free, no account needed.',
@@ -888,6 +889,9 @@ export const messages: Catalog = {
   'about.terms.link': 'terms of use',
   'faq.eyebrow': 'Questions',
   'faq.title': 'Before you send your first message',
+  'faq.securely.question': 'How do I send a password securely?',
+  'faq.securely.answer':
+    'Paste it into Nylzo and send only the link. Your browser encrypts it before sending, and the server deletes it after the last opening.',
   'faq.unopened.question': 'What if the recipient never opens the link?',
   'faq.unopened.answer': 'The message deletes itself when it expires. You choose the expiry from 1 hour to {days}.',
   'faq.passphrase.question': 'How do I share the passphrase?',

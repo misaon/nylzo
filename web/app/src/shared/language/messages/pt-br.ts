@@ -477,6 +477,7 @@ export const messages: Catalog = {
 
   'hero.title': 'Um segredo que {accent}',
   'hero.title.accent': 'se abre uma só vez',
+  'hero.lead': 'Envie com segurança uma senha, chave de API ou arquivo por um link que abre só uma vez.',
   'seo.title': 'Como enviar uma senha com segurança: link de uso único | Nylzo',
   'seo.description':
     'Envie uma senha, uma chave de API ou um arquivo por um link que só abre uma vez. A criptografia já acontece no seu navegador. Gratuito e sem cadastro.',
@@ -902,10 +903,13 @@ export const messages: Catalog = {
   'about.terms.link': 'termos de uso',
   'faq.eyebrow': 'Perguntas frequentes',
   'faq.title': 'Antes de enviar sua primeira mensagem',
+  'faq.securely.question': 'Como enviar uma senha com segurança?',
+  'faq.securely.answer':
+    'Cole-a no Nylzo e envie só o link. Seu navegador a criptografa antes de enviar, e o servidor a apaga depois da última abertura.',
   'faq.unopened.question': 'E se o destinatário não abrir o link?',
   'faq.unopened.answer':
     'Quando a validade termina, a mensagem é apagada automaticamente. Você escolhe a validade de 1\u{A0}hora a {days}.',
-  'faq.passphrase.question': 'Como passar a senha?',
+  'faq.passphrase.question': 'Como passar a senha da mensagem?',
   'faq.passphrase.answer':
     'Por um canal diferente do link. Por exemplo, o link por e-mail e a senha por telefone ou SMS.',
   'faq.save.question': 'O destinatário pode guardar a mensagem?',
