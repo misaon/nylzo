@@ -41,7 +41,7 @@ async function extractableKey(): Promise<RequestKey> {
   };
 }
 
-describe('stored records of sent messages (D39)', () => {
+describe('stored records of sent messages', () => {
   it('refuses to store an extractable manage key', async () => {
     const record = { id: ID, createdAt: NOW, expiresAt: NOW, manageKey: await extractableKey() };
     expect(() => storedForm(record)).toThrow(ExtractableKeyError);

@@ -19,7 +19,7 @@ function vectorKey(seedHex: string, clientKey: string): ShareKey {
 
 const wiped = (bytes: Uint8Array) => bytes.every((byte) => byte === 0);
 
-describe('AK9: share vectors (spec 5.6)', () => {
+describe('share vectors (spec 5.6)', () => {
   it.each(vectors.share.filter((vector) => vector.valid))('$name unwraps to E', async (vector) => {
     const key = vectorKey(vector.client_seed_hex, vector.client_key);
     const share = await unwrapShare(key, parseWrappedShare(vector.wrapped));

@@ -17,7 +17,7 @@ function confirmation(page: Page) {
   return notInert(page, page.getByRole('alertdialog'));
 }
 
-test('the recipient deletes a message without showing it, and a dismissed confirmation deletes nothing (D40)', async ({
+test('the recipient deletes a message without showing it, and a dismissed confirmation deletes nothing', async ({
   page,
   newPage,
 }) => {
@@ -54,7 +54,7 @@ test('the recipient deletes a message without showing it, and a dismissed confir
   await expect(late.getByText('The message was deleted')).toBeVisible();
 });
 
-test('the recipient deletes the remaining opens, keeps reading and keeps the message while the language changes (D40)', async ({
+test('the recipient deletes the remaining opens, keeps reading and keeps the message while the language changes', async ({
   page,
   newPage,
 }) => {
@@ -92,7 +92,7 @@ test('the recipient deletes the remaining opens, keeps reading and keeps the mes
   await expect(late.getByText('The message was deleted')).toBeVisible();
 });
 
-test('the recipient needs the passphrase to delete a message that has one, before and after showing it (F05)', async ({
+test('the recipient needs the passphrase to delete a message that has one, before and after showing it', async ({
   page,
 }) => {
   const passphrase = 'four random words here';

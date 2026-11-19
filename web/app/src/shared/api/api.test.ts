@@ -188,7 +188,7 @@ describe('api client', () => {
     expect(server.last().headers.has('X-Nylzo-Share-Key')).toBe(false);
   });
 
-  it('A-04: refuses a proof-of-work difficulty above the spec maximum before any work', async () => {
+  it('refuses a proof-of-work difficulty above the spec maximum before any work', async () => {
     const server = fakeServer(() =>
       json(200, { ...instanceBody, pow: { required: true, difficulty: 8, challenge: 'x' } }),
     );
@@ -212,7 +212,7 @@ describe('api client', () => {
     await expect(malformed.api.instance()).rejects.toThrow(ResponseError);
   });
 
-  it('refuses a JSON body larger than 64 KiB, with or without Content-Length (A-02)', async () => {
+  it('refuses a JSON body larger than 64 KiB, with or without Content-Length', async () => {
     const padded = { ...instanceBody, padding: 'x'.repeat(64 * 1024) };
     const declared = fakeServer(() => json(200, padded));
     await expect(declared.api.instance()).rejects.toThrow(ResponseError);
@@ -770,7 +770,7 @@ describe('transparency', () => {
   });
 });
 
-describe('F13: deadlines', () => {
+describe('deadlines', () => {
   it('refuses an X-Nylzo-Policy without a deadline of 32 bits', () => {
     for (const changed of [{}, { deadline: 0 }, { deadline: 2 ** 32 }]) {
       expect(() => servedPolicy(policyWith(changed))).toThrow(ResponseError);
@@ -783,21 +783,21 @@ describe('F13: deadlines', () => {
     ['a deadline more than a minute after the TTL', { deadline: '2026-10-23T11:02:00Z', epoch: ISSUED_EPOCH + 2 }],
     ['a deadline inside a minute', { deadline: '2026-10-23T11:00:30Z' }],
     ['an epoch of another minute', { epoch: ISSUED_EPOCH + 1 }],
-  ])('F13: refuses an id with %s', async (_, changed) => {
+  ])('refuses an id with %s', async (_, changed) => {
     const server = fakeServer(() => json(200, { ...instanceBody, create: { ...instanceBody.create, ...changed } }));
     await expect(server.api.instance({ ttlSeconds: 3600, shareKey, registrationRequest })).rejects.toThrow(
       ResponseError,
     );
   });
 
-  it('F13: accepts a deadline rounded up to the next minute', async () => {
+  it('accepts a deadline rounded up to the next minute', async () => {
     const changed = { deadline: '2026-10-23T11:01:00Z', epoch: ISSUED_EPOCH + 1 };
     const server = fakeServer(() => json(200, { ...instanceBody, create: { ...instanceBody.create, ...changed } }));
     const instance = await server.api.instance({ ttlSeconds: 3600, shareKey, registrationRequest });
     expect(instance.create?.epoch).toBe(ISSUED_EPOCH + 1);
   });
 
-  it('F13: refuses a created message that expires at another time than its sealed deadline', async () => {
+  it('refuses a created message that expires at another time than its sealed deadline', async () => {
     const server = fakeServer(() => json(201, { id: 'AAAAAAAAAAAAAAAAAAAAAA', expires_at: '2026-10-24T09:01:00Z' }));
     const request = {
       id: randomId(),

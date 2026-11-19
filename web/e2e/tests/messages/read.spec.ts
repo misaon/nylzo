@@ -22,7 +22,7 @@ const LEFT = 'You left the page, so it no longer shows the message.';
 const REMOVED = /^The key is no longer in the address bar$/u;
 
 test(
-  'pagehide removes decrypted text before the browser can freeze the document (D95)',
+  'pagehide removes decrypted text before the browser can freeze the document',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi({ text: 'clear this before freezing', opensMax: 2 });
@@ -37,7 +37,7 @@ test(
   },
 );
 
-test('loading drops the key from the address, and reloading or a return from the back/forward cache spend no open (AK3, D95)', async ({
+test('loading drops the key from the address, and reloading or a return from the back/forward cache spend no open', async ({
   page,
 }) => {
   const message = await createMessageThroughApi({ text: 'still unread' });
@@ -123,7 +123,7 @@ test(
   },
 );
 
-test('the reader acknowledges the open only once the message is on the screen, and leaving before that keeps the lease (D79)', async ({
+test('the reader acknowledges the open only once the message is on the screen, and leaving before that keeps the lease', async ({
   newPage,
 }) => {
   const message = await createMessageThroughApi({ text: 'on screen' });
@@ -199,7 +199,7 @@ test('leaving the page wipes the shown message and closes its dialogs without de
   expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
 });
 
-test('a prefetch or prerender reaches the read page and the API only as a refused Sec-Purpose request and spends no open (AK16)', async ({
+test('a prefetch or prerender reaches the read page and the API only as a refused Sec-Purpose request and spends no open', async ({
   page,
   request,
 }) => {
@@ -249,7 +249,7 @@ const HIDDEN_STATES = {
 };
 
 for (const [state, hide] of Object.entries(HIDDEN_STATES)) {
-  test(`a ${state} page does not start reading until it is shown (AK16)`, async ({ page }) => {
+  test(`a ${state} page does not start reading until it is shown`, async ({ page }) => {
     const message = await createMessageThroughApi({ passphrase: PASSPHRASE, text: 'shown' });
     const field = page.getByLabel('Passphrase', { exact: true });
     const show = page.getByRole('button', { name: 'Show message' });
@@ -269,9 +269,7 @@ for (const [state, hide] of Object.entries(HIDDEN_STATES)) {
   });
 }
 
-test('the reader stops before the handshake when the server reports another passphrase profile (AK24)', async ({
-  page,
-}) => {
+test('the reader stops before the handshake when the server reports another passphrase profile', async ({ page }) => {
   const message = await createMessageThroughApi({ passphrase: PASSPHRASE });
   const sensitive: string[] = [];
   page.on('request', (request) => {
@@ -292,7 +290,7 @@ test('the reader stops before the handshake when the server reports another pass
 });
 
 test(
-  'marks hidden and direction-changing characters and asks before copying them (W2-12)',
+  'marks hidden and direction-changing characters and asks before copying them',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi({ text: 'pay \u{202E}0001 tnuocca' });

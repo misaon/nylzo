@@ -217,7 +217,7 @@ async function exhaustCreatesWithoutProofOfWork(): Promise<void> {
   }
 }
 
-test('the client solves the proof of work the instance asks for (D19)', async ({ newPage }) => {
+test('the client solves the proof of work the instance asks for', async ({ newPage }) => {
   await exhaustCreatesWithoutProofOfWork();
   const sender = await newPage();
   const violations = await watchViolations(sender);
@@ -233,9 +233,7 @@ test('the client solves the proof of work the instance asks for (D19)', async ({
   await expect(recipient.locator('pre')).toHaveText('pow');
 });
 
-test('the sender can hand the link to the share sheet and clear the clipboard after copying (W2-07)', async ({
-  page,
-}) => {
+test('the sender can hand the link to the share sheet and clear the clipboard after copying', async ({ page }) => {
   await page.addInitScript(() => {
     const calls: string[] = [];
     Object.defineProperty(globalThis, 'nylzoClipboard', { value: calls });

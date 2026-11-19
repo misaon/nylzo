@@ -10,7 +10,7 @@ import { assertProfile, formatLink, isReadPath, parseFragment, parseLink } from 
 
 const base = 'https://nylzo.example';
 
-describe('AK9: link vectors', () => {
+describe('link vectors', () => {
   const valid = vectors.link.filter((vector) => vector.valid);
   const canonical = valid.filter((vector) => vector.canonical === true);
   const invalid = vectors.link.filter((vector) => !vector.valid);
@@ -37,7 +37,7 @@ describe('AK9: link vectors', () => {
   });
 });
 
-describe('AK24: the kdf profile comes from the fragment only', () => {
+describe('the kdf profile comes from the fragment only', () => {
   it.each<[KdfId, number]>([
     [KDF_SCRYPT, KDF_NONE],
     [KDF_NONE, KDF_SCRYPT],

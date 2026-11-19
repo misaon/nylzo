@@ -74,7 +74,7 @@ async function openFresh(page: Page, url: string): Promise<void> {
   await page.goto(url);
 }
 
-test('the home page, its tabs, the composer popovers, an attachment and a refused passphrase pass axe with 44 px targets on a phone (AK20)', async ({
+test('the home page, its tabs, the composer popovers, an attachment and a refused passphrase pass axe with 44 px targets on a phone', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -117,7 +117,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
   await expectAccessible(page, 'refused passphrase', '#create');
 });
 
-test('the read page in every state, with its delete and download confirmations, passes axe with 44 px targets on a phone (AK20)', async ({
+test('the read page in every state, with its delete and download confirmations, passes axe with 44 px targets on a phone', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -160,7 +160,7 @@ test('the read page in every state, with its delete and download confirmations, 
   await expectAccessible(page, 'damaged link');
 });
 
-test('the sent list, empty and with a message, and its cancel dialog pass axe with 44 px targets on a phone (AK20)', async ({
+test('the sent list, empty and with a message, and its cancel dialog pass axe with 44 px targets on a phone', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -233,7 +233,7 @@ test('with reduced motion the confirmation backdrop appears without a fade (WCAG
   expect(Math.max(...durations)).toBeLessThan(0.01);
 });
 
-test('the transparency, terms, agents and not found pages pass axe with 44 px targets on a phone (AK20)', async ({
+test('the transparency, terms, agents and not found pages pass axe with 44 px targets on a phone', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -252,7 +252,7 @@ test('the transparency, terms, agents and not found pages pass axe with 44 px ta
   await expectAccessible(page, 'not found');
 });
 
-test('the admin page set up, enrolling and signing in passes axe with 44 px targets on a phone (AK20)', async ({
+test('the admin page set up, enrolling and signing in passes axe with 44 px targets on a phone', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);

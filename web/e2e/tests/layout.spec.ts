@@ -142,7 +142,7 @@ async function expectNothingMoved(page: Page, screen: string): Promise<void> {
 }
 
 for (const viewport of VIEWPORTS) {
-  test(`nothing shifts or resizes after loading or a click while creating and reading at ${viewport.width}x${viewport.height} (AK18)`, async ({
+  test(`nothing shifts or resizes after loading or a click while creating and reading at ${viewport.width}x${viewport.height}`, async ({
     newPage,
   }) => {
     const sender = await newPage({ viewport, ...FULL_MOTION });
@@ -181,7 +181,7 @@ for (const viewport of VIEWPORTS) {
     expect(revealed?.resizes, 'revealed').toEqual([]);
   });
 
-  test(`nothing shifts or resizes on the sent list and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({
+  test(`nothing shifts or resizes on the sent list and the read actions at ${viewport.width}x${viewport.height}`, async ({
     newPage,
   }) => {
     const sender = await newPage({ viewport });

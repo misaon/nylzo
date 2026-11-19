@@ -20,7 +20,7 @@ import type { RequestKey } from './signature.ts';
 
 const path = '/api/v1/messages/ye0eIOs8vLjsJSKaFFBFyg';
 
-describe('AK9: request vectors', () => {
+describe('request vectors', () => {
   it.each(vectors.request)('$name', async (vector) => {
     const seed = hexToBytes(vector.seed_hex);
     const key = await requestKey(seed);
@@ -90,7 +90,7 @@ describe('request signatures (spec 5.5)', () => {
     await expect(requestMessage(PURPOSE_READ, 'GET', path, short, new Uint8Array(0))).rejects.toBeInstanceOf(Error);
   });
 
-  it('generates a manage key whose private half never leaves Web Crypto (D39)', async () => {
+  it('generates a manage key whose private half never leaves Web Crypto', async () => {
     const key = await newRequestKey();
     expect(key.privateKey.extractable).toBe(false);
     expect(key.privateKey.usages).toEqual(['sign']);

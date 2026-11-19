@@ -324,7 +324,7 @@ describe('the sent page', () => {
     expect(sent.items().map((item) => item.state.kind)).toEqual(['failed', 'retry_later', 'retry_later']);
   });
 
-  it('removes an ended message from storage once it shows the outcome, and keeps an unseen one a day past expiry (F16)', async () => {
+  it('removes an ended message from storage once it shows the outcome, and keeps an unseen one a day past expiry', async () => {
     const { api, record, store, sent } = await setup({}, 2);
     await api.cancel(parseId(record(0).id), record(0).manageKey);
     await sent.load();

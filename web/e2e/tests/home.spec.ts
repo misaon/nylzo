@@ -14,7 +14,7 @@ const HOMES = [
 ];
 
 for (const home of HOMES) {
-  test(`${home.path} comes prerendered in ${home.language} with its search and preview tags, may be indexed only on the official instance and shows its content without JavaScript (D82 to D84, D134)`, async ({
+  test(`${home.path} comes prerendered in ${home.language} with its search and preview tags, may be indexed only on the official instance and shows its content without JavaScript`, async ({
     request,
     newPage,
   }) => {
@@ -58,7 +58,7 @@ for (const home of HOMES) {
 }
 
 test(
-  'the home page shows before the app starts, keeps text typed in the meantime and takes over without an error or a second copy (D83, D86)',
+  'the home page shows before the app starts, keeps text typed in the meantime and takes over without an error or a second copy',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const violations = await watchViolations(page);
@@ -87,7 +87,7 @@ test(
   },
 );
 
-test('the language switch moves between / and /cs/ in place, a saved choice wins and the browser language does not (D82)', async ({
+test('the language switch moves between / and /cs/ in place, a saved choice wins and the browser language does not', async ({
   newPage,
 }) => {
   const page = await newPage({ locale: 'cs-CZ' });

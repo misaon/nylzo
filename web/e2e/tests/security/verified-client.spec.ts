@@ -124,7 +124,7 @@ function runNylzo(parameters: readonly string[], input = ''): Running {
 }
 
 test(
-  'a hostile instance reads a message opened on its website, but sees only API calls from the verified client (A3-01)',
+  'a hostile instance reads a message opened on its website, but sees only API calls from the verified client',
   { tag: '@cross-browser' },
   async ({ newPage }) => {
     test.setTimeout(120_000);
