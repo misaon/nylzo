@@ -444,6 +444,36 @@ jobs:
             sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/apt-mirrors.txt
           fi
           printf 'Acquire::http::Timeout "30";\nAcquire::https::Timeout "30";\nAcquire::Retries "2";\n' | sudo tee /etc/apt/apt.conf.d/80nylzo-ci > /dev/null
+      # apt checks every cached package against the signed index, so a restored cache cannot change what installs.
+      - name: Keep the browser packages apt downloads
+        id: browser-packages
+        if: runner.os == 'Linux'
+        env:
+          BROWSER: ${{ matrix.browser }}
+          MAIN_PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        run: |
+          archives="$RUNNER_TEMP/browser-packages"
+          mkdir -p "$archives/partial"
+          printf 'Dir::Cache::Archives "%s";\nAPT::Keep-Downloaded-Packages "true";\n' "$archives" | sudo tee /etc/apt/apt.conf.d/81nylzo-browser-packages > /dev/null
+          prefix="browser-packages-${ImageOS}-${BROWSER}-"
+          {
+            echo "path=${archives}/*.deb"
+            echo "prefix=${prefix}"
+            echo "key=${prefix}${ImageVersion}-$(date -u +%G-W%V)"
+            echo "save=${MAIN_PUSH}"
+          } >> "${GITHUB_OUTPUT}"
+      - if: steps.browser-packages.outputs.save == 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.browser-packages.outputs.path }}
+          key: ${{ steps.browser-packages.outputs.key }}
+          restore-keys: ${{ steps.browser-packages.outputs.prefix }}
+      - if: runner.os == 'Linux' && steps.browser-packages.outputs.save != 'true'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.browser-packages.outputs.path }}
+          key: ${{ steps.browser-packages.outputs.key }}
+          restore-keys: ${{ steps.browser-packages.outputs.prefix }}
       - name: Install Linux browser libraries
         if: runner.os == 'Linux'
         working-directory: web/e2e

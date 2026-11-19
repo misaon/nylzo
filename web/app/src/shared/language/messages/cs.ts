@@ -27,6 +27,7 @@ export const messages = {
   'terms.operator.1':
     'Službu na nylzo.com provozuje soukromá osoba (dále „provozovatel“) bezplatně, bez reklamy a\u{A0}mimo své podnikání.',
   'terms.operator.2': 'Software Nylzo je open source pod licencí MIT. Tyto podmínky platí jen pro nylzo.com.',
+  'terms.operator.identity': 'Totožnost provozovatele sdělíme na vyžádání přes GitHub.',
   'terms.agreement.title': 'Souhlas',
   'terms.agreement.1': 'Vytvořením nebo otevřením zprávy s\u{A0}těmito podmínkami souhlasíte.',
   'terms.service.title': 'Jak služba funguje',
@@ -45,6 +46,9 @@ export const messages = {
   'terms.forbidden.6': 'Obcházení limitů služby a\u{A0}útoky na ni.',
   'terms.forbidden.note': 'Za obsah zprávy odpovídá ten, kdo ji vytvořil.',
   'terms.removal.title': 'Odstranění zpráv',
+  'terms.removal.notice':
+    'Nezákonný obsah nahlaste {link} na GitHubu. Uveďte důvod a\u{A0}ID zprávy, které v\u{A0}odkazu stojí za znakem # mezi druhou a\u{A0}třetí tečkou. Celý odkaz neposílejte.',
+  'terms.removal.notice.link': 'soukromým hlášením',
   'terms.removal.1': 'Pokud zpráva porušuje právo nebo tyto podmínky, smažeme ji. Smazání nejde vrátit.',
   'terms.removal.2': 'Podezření na trestný čin, který ohrožuje život nebo bezpečnost, oznámíme policii.',
   'terms.removal.3':
