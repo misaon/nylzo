@@ -3,6 +3,8 @@ package keys
 import (
 	"errors"
 	"slices"
+	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/scrypt"
@@ -25,14 +27,25 @@ const MaxPassphraseBytes = opaque.MaxInputLen - PassphraseSaltLen
 
 var (
 	ErrMalformedPassphrase = errors.New("core: passphrase is not well-formed Unicode")
-	ErrLongPassphrase      = errors.New("core: passphrase is longer than 65503 bytes after NFC")
+	ErrLongPassphrase      = errors.New("core: passphrase is longer than 65503 bytes after normalization")
 )
 
 // derivations admits one scrypt at a time: each one holds 256 MiB, and no caller gains from two at once.
 var derivations = make(chan struct{}, 1)
 
 func NormalizePassphrase(passphrase string) []byte {
-	return []byte(norm.NFC.String(passphrase))
+	return []byte(normalizedPassphrase(passphrase))
+}
+
+func normalizedPassphrase(passphrase string) string {
+	return norm.NFC.String(strings.Map(spaceSeparatorToSpace, passphrase))
+}
+
+func spaceSeparatorToSpace(character rune) rune {
+	if unicode.Is(unicode.Zs, character) {
+		return ' '
+	}
+	return character
 }
 
 // Password is the OPRF input salt_pw || pw of spec section 2.1; pw is empty without a passphrase.

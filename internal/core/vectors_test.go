@@ -667,3 +667,18 @@ func TestOPAQUEVectorsNormalizeThePassphrase(t *testing.T) {
 	}
 	t.Fatal("no vector with a decomposed passphrase")
 }
+
+func TestPassphraseVectorsTurnEverySpaceSeparatorIntoASpace(t *testing.T) {
+	t.Parallel()
+	secret := core.NewSecret()
+	salt, err := keys.PassphraseSalt(secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, vector := range loadVectors(t).Normalization {
+		password, passwordErr := keys.Password(secret, core.KDFScrypt, vector.Passphrase)
+		if passwordErr != nil || hex.EncodeToString(password) != hex.EncodeToString(salt[:])+vector.Normalized {
+			t.Errorf("%s: %v", vector.Name, passwordErr)
+		}
+	}
+}

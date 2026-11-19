@@ -33,6 +33,7 @@ type File struct {
 	ShareKeyRejected []ShareKeyRejected    `json:"share_key_rejected"`
 	Link             []Link                `json:"link"`
 	Meta             []MetaCase            `json:"meta"`
+	Normalization    []Normalization       `json:"passphrase_normalization"`
 	Strength         []Strength            `json:"passphrase_strength"`
 	ListHash         string                `json:"passphrase_list_sha256"`
 	AssignedHash     string                `json:"unicode_assigned_sha256"`
@@ -57,6 +58,7 @@ func Generate() (*File, error) {
 		file.shareKeyRejected,
 		file.link,
 		file.meta,
+		file.normalization,
 		file.strength,
 		file.passphraseWords,
 		file.request,

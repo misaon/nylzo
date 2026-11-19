@@ -1,6 +1,7 @@
 import { MalformedPassphraseError, WeakPassphraseError } from '../errors.ts';
 import type { PassphraseProblem } from '../errors.ts';
 import { COMMON_PASSPHRASES } from './common-passphrases.ts';
+import { normalizePassphrase } from './kdf.ts';
 import { loadPassphraseWords, WORD_LIST_LENGTH } from './passphrase-words.ts';
 import type { PassphraseLanguage, PassphraseWords } from './passphrase-words.ts';
 import { ASSIGNED_RANGE_DELTAS } from './unicode-assigned.ts';
@@ -61,7 +62,7 @@ export function passphraseProblem(passphrase: string): PassphraseProblem | 'malf
   if (codePoints(passphrase).some((character) => !assigned(character.codePointAt(0) ?? 0))) {
     return 'unassigned';
   }
-  return strengthProblem(passphrase.normalize('NFC'));
+  return strengthProblem(normalizePassphrase(passphrase));
 }
 
 export function assertStrongPassphrase(passphrase: string): void {

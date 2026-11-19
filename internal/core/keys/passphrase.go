@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync"
 	"unicode/utf8"
-
-	"golang.org/x/text/unicode/norm"
 )
 
 const (
@@ -114,7 +112,7 @@ func CheckPassphraseStrength(passphrase string) error {
 	if strings.ContainsFunc(passphrase, func(character rune) bool { return !assigned(character) }) {
 		return &WeakPassphraseError{PassphraseUnassigned}
 	}
-	normalized := norm.NFC.String(passphrase)
+	normalized := normalizedPassphrase(passphrase)
 	if utf8.RuneCountInString(normalized) < MinPassphraseCharacters {
 		return &WeakPassphraseError{PassphraseShort}
 	}

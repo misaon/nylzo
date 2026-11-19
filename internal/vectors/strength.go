@@ -10,6 +10,38 @@ import (
 	"github.com/misaon/nylzo/internal/core/keys"
 )
 
+const (
+	face               = "\U0001F600"
+	fourWordPassphrase = "correct horse battery staple"
+)
+
+type Normalization struct {
+	Name       string `json:"name"`
+	Passphrase string `json:"passphrase"`
+	Normalized string `json:"pw_hex"`
+}
+
+type normalizationCase struct {
+	name, passphrase, normalized string
+}
+
+var normalizationCases = []normalizationCase{
+	{"ASCII spaces", fourWordPassphrase, fourWordPassphrase},
+	{"ideographic spaces", "correct\u3000horse\u3000battery\u3000staple", fourWordPassphrase},
+	{"no-break spaces", "correct\u00a0horse\u00a0battery\u00a0staple", fourWordPassphrase},
+	{
+		"every space separator",
+		"a b\u00a0c\u1680d\u2000e\u2001f\u2002g\u2003h\u2004i\u2005j\u2006k\u2007l\u2008m\u2009n\u200ao\u202fp\u205fq\u3000r",
+		"a b c d e f g h i j k l m n o p q r",
+	},
+	{"leading, trailing and repeated spaces stay", "\u3000 two\u00a0\u00a0spaces \u3000", "  two  spaces  "},
+	{
+		"tabs, line breaks and zero-width characters stay",
+		"tab\tline\nnext\u0085line\u2028paragraph\u2029zero\u200bwidth\ufeffvowel\u180eend",
+		"tab\tline\nnext\u0085line\u2028paragraph\u2029zero\u200bwidth\ufeffvowel\u180eend",
+	},
+}
+
 type Strength struct {
 	Name       string                 `json:"name"`
 	Passphrase string                 `json:"passphrase"`
@@ -17,9 +49,10 @@ type Strength struct {
 	Problem    keys.PassphraseProblem `json:"problem,omitempty"`
 }
 
-const face = "\U0001F600"
-
-var errProblemDiffers = errors.New("vectors: strength case")
+var (
+	errProblemDiffers    = errors.New("vectors: strength case")
+	errNormalizedDiffers = errors.New("vectors: normalization case")
+)
 
 var strengthCases = []Strength{
 	{"empty", "", false, keys.PassphraseShort},
@@ -49,6 +82,12 @@ var strengthCases = []Strength{
 	{"QWERTY row", "qwertyuiopasdfg", false, keys.PassphraseSequential},
 	{"QWERTZ row in capitals", "QWERTZUIOPASDFGH", false, keys.PassphraseSequential},
 	{"alphabet with separators", "a-b c_d.e-f g_h.i j", false, keys.PassphraseSequential},
+	{
+		"alphabet with ideographic spaces",
+		"a\u3000b\u3000c\u3000d\u3000e\u3000f\u3000g\u3000h",
+		false,
+		keys.PassphraseSequential,
+	},
 	{"service name twice", "nylzonylzo12345", false, keys.PassphraseContext},
 	{"service name with a short word", "NylzoPassword12", false, keys.PassphraseContext},
 	{"common password", "polniypizdec0211", false, keys.PassphraseCommon},
@@ -64,7 +103,7 @@ var strengthCases = []Strength{
 	{"emoji of Unicode 16", "tired face \U0001FAE9 is new", false, keys.PassphraseUnassigned},
 	{"ideograph of Unicode 15.1", "ideograph \U0002EBF0 from 15.1", true, ""},
 	{"generated passphrase", "k7m2-x9pz-b4tf-hq3w", true, ""},
-	{"four words", "correct horse battery staple", true, ""},
+	{"four words", fourWordPassphrase, true, ""},
 }
 
 func (f *File) strength() error {
@@ -89,5 +128,20 @@ func (f *File) strength() error {
 	assigned := sha256.Sum256([]byte(keys.AssignedCodePointList))
 	f.AssignedHash = hex.EncodeToString(assigned[:])
 	f.AssignedVersion = keys.AssignedUnicodeVersion
+	return nil
+}
+
+func (f *File) normalization() error {
+	for _, vector := range normalizationCases {
+		normalized := keys.NormalizePassphrase(vector.passphrase)
+		if string(normalized) != vector.normalized {
+			return fmt.Errorf("%w %q gives %q", errNormalizedDiffers, vector.name, normalized)
+		}
+		f.Normalization = append(f.Normalization, Normalization{
+			Name:       vector.name,
+			Passphrase: vector.passphrase,
+			Normalized: hex.EncodeToString(normalized),
+		})
+	}
 	return nil
 }

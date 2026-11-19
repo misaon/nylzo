@@ -1528,6 +1528,38 @@
       "valid": false
     }
   ],
+  "passphrase_normalization": [
+    {
+      "name": "ASCII spaces",
+      "passphrase": "correct horse battery staple",
+      "pw_hex": "636f727265637420686f727365206261747465727920737461706c65"
+    },
+    {
+      "name": "ideographic spaces",
+      "passphrase": "correct　horse　battery　staple",
+      "pw_hex": "636f727265637420686f727365206261747465727920737461706c65"
+    },
+    {
+      "name": "no-break spaces",
+      "passphrase": "correct horse battery staple",
+      "pw_hex": "636f727265637420686f727365206261747465727920737461706c65"
+    },
+    {
+      "name": "every space separator",
+      "passphrase": "a b c d e f g h i j k l m n o p q　r",
+      "pw_hex": "6120622063206420652066206720682069206a206b206c206d206e206f207020712072"
+    },
+    {
+      "name": "leading, trailing and repeated spaces stay",
+      "passphrase": "　 two  spaces 　",
+      "pw_hex": "202074776f20207370616365732020"
+    },
+    {
+      "name": "tabs, line breaks and zero-width characters stay",
+      "passphrase": "tab\tline\nnextline\u2028paragraph\u2029zero​width﻿vowel᠎end",
+      "pw_hex": "746162096c696e650a6e657874c2856c696e65e280a8706172616772617068e280a97a65726fe2808b7769647468efbbbf766f77656ce1a08e656e64"
+    }
+  ],
   "passphrase_strength": [
     {
       "name": "empty",
@@ -1654,6 +1686,12 @@
     {
       "name": "alphabet with separators",
       "passphrase": "a-b c_d.e-f g_h.i j",
+      "accepted": false,
+      "problem": "sequential"
+    },
+    {
+      "name": "alphabet with ideographic spaces",
+      "passphrase": "a　b　c　d　e　f　g　h",
       "accepted": false,
       "problem": "sequential"
     },
