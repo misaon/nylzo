@@ -107,8 +107,33 @@ test(
     expect(await databaseNames(page)).toEqual([]);
 
     await createMessageInPage(page, { text: 'left behind', remember: 'tab' });
+    await page.evaluate(() => {
+      const log: string[] = [];
+      Reflect.set(globalThis, 'navigationLog', log);
+      const stamp = () => performance.now().toFixed(0);
+      const describe = (node: EventTarget | null) => (node instanceof Element ? node.outerHTML.slice(0, 160) : String(node));
+      log.push(`${stamp()} start ${location.href} entries=${navigation.entries().length} current=${navigation.currentEntry?.url} transition=${String(navigation.transition?.navigationType)}`);
+      navigation.addEventListener('navigate', (event) => {
+        log.push(`${stamp()} navigate ${event.navigationType} ${event.destination.url} canIntercept=${event.canIntercept} userInitiated=${event.userInitiated} cancelable=${event.cancelable} prevented=${event.defaultPrevented}`);
+      });
+      navigation.addEventListener('navigatesuccess', () => log.push(`${stamp()} navigatesuccess ${location.href}`));
+      navigation.addEventListener('navigateerror', (event) => log.push(`${stamp()} navigateerror ${String(event.message)}`));
+      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+        document.addEventListener(type, (event) => log.push(`${stamp()} ${type} capture target=${describe(event.target)} active=${describe(document.activeElement)}`), true);
+        addEventListener(type, (event) => log.push(`${stamp()} ${type} bubble prevented=${event.defaultPrevented}`));
+      }
+      for (const type of ['beforeunload', 'pagehide', 'popstate', 'hashchange']) {
+        addEventListener(type, () => log.push(`${stamp()} ${type}`));
+      }
+    });
     await page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: 'Sent' }).click();
-    await expect(page).toHaveURL(/\/sent$/u);
+    const reached = await page.waitForURL(/\/sent$/u, { timeout: 5000 }).then(
+      () => true,
+      () => false,
+    );
+    const navigationLog: unknown = await page.evaluate(() => Reflect.get(globalThis, 'navigationLog'));
+    console.log(`NAVIGATION LOG reached=${String(reached)}\n${JSON.stringify(navigationLog, null, 1)}`);
+    expect(reached, JSON.stringify(navigationLog, null, 1)).toBe(true);
     await expect(item.getByText('Waiting to be opened')).toBeVisible();
     await page.evaluate(() => {
       dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
