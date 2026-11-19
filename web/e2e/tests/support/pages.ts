@@ -48,7 +48,8 @@ async function openSecurityMenu(page: Page): Promise<void> {
 }
 
 export async function trackInSent(page: Page, label = '', where: 'browser' | 'tab' = 'browser'): Promise<void> {
-  await page.getByLabel('Label, only you see it').fill(label);
+  const labelField = page.getByLabel('Label, only you see it');
+  await labelField.fill(label);
   if (where === 'browser') {
     await page.getByRole('switch', { name: 'Keep after closing this tab' }).click();
   }
@@ -60,6 +61,10 @@ export async function trackInSent(page: Page, label = '', where: 'browser' | 'ta
         : 'This tab remembers the message, at most until you close or reload it.',
     ),
   ).toBeVisible();
+  // The panel leaves 900 ms after a save and lifts the page under it; a press that straddles the lift clicks nothing.
+  if (await page.getByText('This device could not remember the message').isHidden()) {
+    await expect(labelField).toBeHidden();
+  }
 }
 
 export async function chooseLanguage(page: Page, name: 'Čeština' | 'English'): Promise<void> {
