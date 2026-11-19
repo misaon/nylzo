@@ -3,6 +3,8 @@ import type { CatalogShape } from '../catalog.ts';
 export const messages = {
   'action.retry': 'Zkusit znovu',
   'app.crashed': 'Stránka narazila na chybu. Načtěte ji znovu.',
+  'start.failed': 'Stránku se nepodařilo spustit. Zkontrolujte připojení a\u{A0}zkuste to znovu.',
+  'start.failed.reopen': 'Stránku se nepodařilo spustit. Zkontrolujte připojení a\u{A0}otevřete odkaz znovu.',
 
   'hero.eyebrow': 'Jednorázové šifrované odkazy',
   'hero.steps': 'Jak to funguje',

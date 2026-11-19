@@ -1,3 +1,5 @@
+import { CAUTION_PATHS } from './caution.ts';
+
 type Shape =
   | { readonly path: string }
   | { readonly circle: readonly [cx: number, cy: number, r: number] }
@@ -27,7 +29,7 @@ export const ICONS = {
   burst: [{ path: 'M12 4v3M12 17v3M4 12h3M17 12h3M6.5 6.5l2 2M15.5 15.5l2 2M6.5 17.5l2-2M15.5 8.5l2-2' }],
   cancel: [clockFace, { path: 'M9 9l6 6M15 9l-6 6' }],
   caretDown: [{ path: 'M7 10l5 5 5-5' }],
-  caution: [{ path: 'M12 4.5 3 19.5h18z' }, { path: 'M12 10v4M12 16.8h.01' }],
+  caution: CAUTION_PATHS.map((path) => ({ path })),
   check: [{ path: 'M5 12.5l4.5 4.5L19 7.5' }],
   chevronsUpDown: [{ path: 'M8 9.5l4-4 4 4M8 14.5l4 4 4-4' }],
   chevronDown: [{ path: 'M6 9l6 6 6-6' }],

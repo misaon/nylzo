@@ -3,6 +3,8 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': '再試行',
   'app.crashed': 'ページでエラーが発生しました。再読み込みしてください。',
+  'start.failed': 'ページを読み込めませんでした。接続を確認して、もう一度お試しください。',
+  'start.failed.reopen': 'ページを読み込めませんでした。接続を確認して、リンクをもう一度開いてください。',
 
   'hero.eyebrow': 'ワンタイム暗号化リンク',
   'hero.steps': '仕組み',

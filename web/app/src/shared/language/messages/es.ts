@@ -3,6 +3,8 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Reintentar',
   'app.crashed': 'Se produjo un error en la página. Vuelve a cargarla.',
+  'start.failed': 'La página no se ha podido iniciar. Comprueba la conexión y vuelve a intentarlo.',
+  'start.failed.reopen': 'La página no se ha podido iniciar. Comprueba la conexión y vuelve a abrir el enlace.',
 
   'hero.eyebrow': 'Enlaces cifrados de un solo uso',
   'hero.steps': 'Cómo funciona',
