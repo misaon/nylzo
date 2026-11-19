@@ -30,6 +30,7 @@ export const messages: Catalog = {
     'Layanan di nylzo.com dijalankan oleh perorangan (selanjutnya disebut “operator”) secara gratis, tanpa iklan, dan di luar kegiatan usahanya.',
   'terms.operator.2':
     'Perangkat lunak Nylzo bersifat open source dengan lisensi MIT. Ketentuan ini hanya berlaku untuk nylzo.com.',
+  'terms.operator.identity': 'Identitas operator kami berikan atas permintaan melalui GitHub.',
   'terms.agreement.title': 'Persetujuan',
   'terms.agreement.1': 'Dengan membuat atau membuka pesan, Anda menyetujui ketentuan ini.',
   'terms.service.title': 'Cara kerja layanan',
@@ -50,6 +51,9 @@ export const messages: Catalog = {
   'terms.forbidden.6': 'Mengakali batas layanan dan menyerang layanan.',
   'terms.forbidden.note': 'Isi pesan menjadi tanggung jawab orang yang membuatnya.',
   'terms.removal.title': 'Pesan yang diturunkan',
+  'terms.removal.notice':
+    'Laporkan konten ilegal melalui {link} di GitHub. Sertakan alasannya dan ID pesan, yang ada di tautan setelah tanda # di antara titik kedua dan ketiga. Jangan kirim tautan lengkapnya.',
+  'terms.removal.notice.link': 'laporan privat',
   'terms.removal.1':
     'Jika pesan melanggar hukum atau ketentuan ini, kami akan menghapusnya. Pesan yang dihapus tidak dapat dikembalikan.',
   'terms.removal.2': 'Dugaan tindak pidana yang mengancam nyawa atau keselamatan akan kami laporkan ke polisi.',

@@ -2,6 +2,7 @@
   import type { MessageKey } from '../../shared/language/catalog.ts';
   import Interpolated from '../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import { PRIVATE_REPORT_URL } from '../../shared/shell/repository.ts';
   import { LONGEST_TTL_DAYS } from '../../shared/ttl/ttl-choices.ts';
   import { INLINE_TARGET, TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
   import CheckList from '../../shared/ui/list/CheckList.svelte';
@@ -16,7 +17,7 @@
   const SUMMARY = ['terms.summary.1', 'terms.summary.2', 'terms.summary.3', 'terms.summary.4'] as const;
 
   const SECTIONS: readonly TermsSection[] = [
-    { title: 'terms.operator.title', items: ['terms.operator.1', 'terms.operator.2'] },
+    { title: 'terms.operator.title', items: ['terms.operator.1', 'terms.operator.2', 'terms.operator.identity'] },
     { title: 'terms.agreement.title', items: ['terms.agreement.1'] },
     {
       title: 'terms.service.title',
@@ -34,7 +35,11 @@
       ],
       note: 'terms.forbidden.note',
     },
-    { title: 'terms.removal.title', items: ['terms.removal.1', 'terms.removal.2', 'terms.removal.3'] },
+    {
+      title: 'terms.removal.title',
+      link: { lead: 'terms.removal.notice', label: 'terms.removal.notice.link', href: PRIVATE_REPORT_URL },
+      items: ['terms.removal.1', 'terms.removal.2', 'terms.removal.3'],
+    },
     { title: 'terms.warranty.title', items: ['terms.warranty.1', 'terms.warranty.2', 'terms.warranty.3'] },
     { title: 'terms.liability.title', items: ['terms.liability.1'] },
     { title: 'terms.brand.title', items: ['terms.brand.1'] },
@@ -75,7 +80,10 @@
       {#if section.link}
         <li>
           <Interpolated text={translate(section.link.lead)} placeholder="link"
-            ><a href={section.link.href} class={[TEXT_LINK, INLINE_TARGET]}>{translate(section.link.label)}</a
+            ><a
+              href={section.link.href}
+              rel={section.link.href.startsWith('/') ? undefined : 'noreferrer'}
+              class={[TEXT_LINK, INLINE_TARGET]}>{translate(section.link.label)}</a
             ></Interpolated
           >
         </li>
