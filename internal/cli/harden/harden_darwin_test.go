@@ -2,7 +2,8 @@ package harden
 
 import "testing"
 
-// TestProtectOnMacOS covers F07: no core file, PT_DENY_ATTACH set without error, and swap that macOS encrypts.
+// TestProtectOnMacOS checks that a protected process writes no core file, sets PT_DENY_ATTACH without error and swaps
+// only to storage that macOS encrypts.
 func TestProtectOnMacOS(t *testing.T) {
 	_, report := startChild(t, "full")
 	if report.Facts["core_soft"] != 0 || report.Facts["core_hard"] != 0 {

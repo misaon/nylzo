@@ -79,8 +79,8 @@ func escape(path string) string {
 	return out.String()
 }
 
-// TestClearSwapNamesOnlyAreasThatReachADiskInClear covers F07: dm-crypt must sit under every path of the stack, zram
-// counts as memory only without a writeback device, and whatever nylzo cannot follow counts as clear.
+// dm-crypt must sit under every path of the stack, zram counts as memory only without a writeback device, and
+// whatever nylzo cannot follow counts as clear.
 func TestClearSwapNamesOnlyAreasThatReachADiskInClear(t *testing.T) {
 	tree := sysfs{t: t, root: t.TempDir()}
 	tree.add("259:0", "nvme0n1", "")

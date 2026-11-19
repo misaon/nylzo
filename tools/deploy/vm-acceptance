@@ -216,7 +216,7 @@ else
   verify_client
   release=$(/opt/nylzo/bin/jq -er .tag /var/lib/nylzo-deploy/current.json)
   earliest=$(printf '%s\n' v0.14.0 "$release" | sort --version-sort | sed -n 1p)
-  # Releases before 0.14.0 end such a message as deleted at its first open, later ones as lost at any request (F21).
+  # Releases before 0.14.0 end such a message as deleted at its first open, later ones as lost at any request.
   ending='the message was deleted'
   if [[ "$earliest" = v0.14.0 ]]; then
     ending='the server lost the key to the message'

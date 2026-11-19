@@ -7,8 +7,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// TestProtectHidesTheProcessFromTheSameUser covers F07: another process of the same user can still wait for and end
-// a protected process, but can neither read its memory nor change its DACL to grant itself that right.
+// Another process of the same user can still wait for and end a protected process, but can neither read its memory
+// nor change its DACL to grant itself that right.
 func TestProtectHidesTheProcessFromTheSameUser(t *testing.T) {
 	dropPrivileges(t)
 	plain, _ := startChild(t, "plain")

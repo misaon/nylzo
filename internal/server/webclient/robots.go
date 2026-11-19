@@ -15,7 +15,7 @@ const (
 )
 
 // official holds for the project's own instance. Every other instance serves the same text, so only this one may
-// appear in search results (D134).
+// appear in search results.
 func official(publicURL string) bool {
 	parsed, err := url.Parse(publicURL)
 	return err == nil && parsed.Scheme == "https" && parsed.Hostname() == officialHost &&

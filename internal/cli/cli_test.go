@@ -1025,8 +1025,8 @@ func TestCreateRetriesWithANewIDAndSignedRequestsRetryA404(t *testing.T) {
 	}
 }
 
-// F7, F05, F11: the headers of the requests that create, read and burn a message have one length whether or not the
-// message has a passphrase.
+// The headers of the requests that create, read and burn a message have one length whether or not the message has a
+// passphrase.
 func TestRequestHeadersDoNotShowAPassphrase(t *testing.T) {
 	t.Parallel()
 	instance := newTestServer(t, nil)

@@ -160,7 +160,7 @@ jobs:
         run: bun tools/security/monitor-instance.mts
 
   browser:
-    name: A browser receives the signed web client (A3-07)
+    name: A browser receives the signed web client
     needs: [web-client]
     runs-on: ubuntu-26.04
     timeout-minutes: 15

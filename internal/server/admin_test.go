@@ -221,10 +221,10 @@ func (h *adminHarness) authorized(method, path, authorization string) answered {
 	return answered{status: response.StatusCode, fields: fields, next: next}
 }
 
-// TestAK28AdminAnswersOnlyToASessionAPasskeyOpened covers the admin area's one gate: a figure leaves the server
+// TestAdminAnswersOnlyToASessionAPasskeyOpened covers the admin area's one gate: a figure leaves the server
 // only for a request that a live session signed over a challenge of its own, and the session exists only after a
 // passkey of the instance signed it in.
-func TestAK28AdminAnswersOnlyToASessionAPasskeyOpened(t *testing.T) {
+func TestAdminAnswersOnlyToASessionAPasskeyOpened(t *testing.T) {
 	harness := newAdminHarness(t)
 	overview, live := api.AdminPath+"/overview?range=24h", api.AdminPath+"/live"
 	fresh := func() string { return core.Encode(new(harness.challenge())[:]) }
@@ -356,9 +356,9 @@ func TestAdminResetEndsOpenSessions(t *testing.T) {
 	}
 }
 
-// TestAK29EnrollmentLinkAddsOnePasskeyOnce covers the only way into the admin area: the token that the operator
+// TestEnrollmentLinkAddsOnePasskeyOnce covers the only way into the admin area: the token that the operator
 // drew on the server host enrolls one passkey, and a wrong or used token puts its sender among the refused clients.
-func TestAK29EnrollmentLinkAddsOnePasskeyOnce(t *testing.T) {
+func TestEnrollmentLinkAddsOnePasskeyOnce(t *testing.T) {
 	harness := newAdminHarness(t)
 	if harness.server.counts.Enabled() {
 		t.Fatal("a server without a passkey counts")
@@ -425,10 +425,10 @@ func (h *adminHarness) visit(signal, page, address, userAgent string, navigation
 	}
 }
 
-// TestAK30VisitCountsKeepNoAddress covers the promise of spec §5.3 for the visit counts: what the server writes
+// TestVisitCountsKeepNoAddress covers the promise of spec §5.3 for the visit counts: what the server writes
 // about visits is a count per hour, and neither the admin database nor the log holds the address of a visitor or of
 // a client that a limit refused.
-func TestAK30VisitCountsKeepNoAddress(t *testing.T) {
+func TestVisitCountsKeepNoAddress(t *testing.T) {
 	harness := newAdminHarness(t)
 	if status := harness.enroll(harness.openEnrollment(), newSoftwarePasskey(t)); status != http.StatusCreated {
 		t.Fatalf("enrollment: %d", status)

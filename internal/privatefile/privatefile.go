@@ -1,4 +1,4 @@
-// Package privatefile creates new files and directories that only the user of the process can open (F04).
+// Package privatefile creates new files and directories that only the user of the process can open.
 package privatefile
 
 import "errors"

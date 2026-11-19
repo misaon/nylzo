@@ -39,8 +39,8 @@ func protectedRun(
 	return commandResult{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }
 
-// TestEveryCommandProtectsItsProcessFirst covers F07: each command that can hold a secret hardens its process
-// before it parses a flag or reads anything, and a new command needs a decision here.
+// Each command that can hold a secret hardens its process before it parses a flag or reads anything, and a new command
+// needs a decision here.
 func TestEveryCommandProtectsItsProcessFirst(t *testing.T) {
 	want := map[string]harden.Level{
 		"create": harden.Full, "read": harden.Full, "open": harden.Full, "web": harden.Full,
@@ -98,8 +98,8 @@ func TestACommandReadsNoSecretWithoutProtection(t *testing.T) {
 	}
 }
 
-// TestACommandRefusesSettingsThatLogRequestHeaders covers F11: GODEBUG=http2debug makes net/http print every header,
-// signatures and leases included, and the refusal comes before stdin is read.
+// GODEBUG=http2debug makes net/http print every header, signatures and leases included, and the refusal comes before
+// stdin is read.
 func TestACommandRefusesSettingsThatLogRequestHeaders(t *testing.T) {
 	for _, listed := range commands() {
 		if listed.protect == harden.Off {

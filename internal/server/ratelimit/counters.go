@@ -72,7 +72,7 @@ func (c *Counters) Count(hits []Hit, now time.Time) time.Duration {
 	return 0
 }
 
-// Purge drops every counter whose window has ended, so the table holds only the current windows (A4-3).
+// Purge drops every counter whose window has ended, so the table holds only the current windows.
 func (c *Counters) Purge(now time.Time) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()

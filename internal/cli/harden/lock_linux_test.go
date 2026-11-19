@@ -19,7 +19,7 @@ const (
 	finiteChildVariable = "NYLZO_TEST_FINITE_LOCK_CHILD"
 )
 
-// TestLockMemoryKeepsThePagesOutOfSwap covers A4-2; a child process locks itself, so the test binary stays unlocked.
+// A child process locks itself, so the test binary stays unlocked.
 func TestLockMemoryKeepsThePagesOutOfSwap(t *testing.T) {
 	if os.Getenv(lockChildVariable) == "1" {
 		var limit unix.Rlimit
@@ -51,8 +51,8 @@ func TestLockMemoryKeepsThePagesOutOfSwap(t *testing.T) {
 	}
 }
 
-// TestAFiniteMemoryLockLimitIsRefused covers the final review's L5: mlockall accepts a finite limit while the heap is
-// small, and the process would stop once the runtime maps past it. A child lowers its hard limit, which it cannot undo.
+// mlockall accepts a finite limit while the heap is small, and the process would stop once the runtime maps past it.
+// A child lowers its hard limit, which it cannot undo.
 func TestAFiniteMemoryLockLimitIsRefused(t *testing.T) {
 	if os.Getenv(finiteChildVariable) == "1" {
 		var limit unix.Rlimit

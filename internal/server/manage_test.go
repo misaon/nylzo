@@ -394,7 +394,7 @@ func TestBurnAndCancelEndpoints(t *testing.T) {
 	})
 }
 
-func TestF05BurnNeedsThePassphrase(t *testing.T) {
+func TestBurnNeedsAPassphraseHandshake(t *testing.T) {
 	t.Parallel()
 	synctest.Test(t, func(t *testing.T) {
 		harness := newHarness(t, baseSettings(pepperA, nil))
@@ -446,7 +446,7 @@ func TestF05BurnNeedsThePassphrase(t *testing.T) {
 		}
 		if _, status := harness.status(message); response.StatusCode != http.StatusInternalServerError ||
 			status["failed_passphrase_attempts"].(float64) != 3 {
-			t.Fatalf("F14: a changed salt must be refused before it costs a passphrase attempt: %d %v",
+			t.Fatalf("a changed salt must be refused before it costs a passphrase attempt: %d %v",
 				response.StatusCode, status)
 		}
 		changedBody := bytes.Clone(original)

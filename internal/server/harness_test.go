@@ -322,7 +322,7 @@ func (h *testHarness) statusFrom(request *testRequest) int {
 	return response.StatusCode
 }
 
-// recordSecretHeaders keeps the exact header values a request carried, so a test can look for them as sent (F11).
+// recordSecretHeaders keeps the exact header values a request carried, so a test can look for them as sent.
 func (h *testHarness) recordSecretHeaders(header http.Header) {
 	h.captureMu.Lock()
 	defer h.captureMu.Unlock()
@@ -1095,7 +1095,7 @@ func (m *testMessage) createHeader(sizeOverride int64) string {
 }
 
 // createRequestFor sends a create without an address of its own from a /16 of its own, since the global cap gives
-// each /24 and /16 only a share of the day (F11).
+// each /24 and /16 only a share of the day.
 func createRequestFor(message *testMessage) *testRequest {
 	address := message.address
 	if address == "" {

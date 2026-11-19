@@ -172,7 +172,7 @@ func decodeCreateHeader(data []byte, header *api.CreateHeader) bool {
 		json.Unmarshal(data, header, json.RejectUnknownMembers(true)) == nil
 }
 
-// decodeKeys refuses a key that is not a canonical point of full order and two equal keys (D18).
+// decodeKeys refuses a key that is not a canonical point of full order and two equal keys (spec §6.2).
 func (c *createRequest) decodeKeys() bool {
 	var err error
 	if c.readKey, err = core.DecodeExact(c.header.ReadKey, signing.PublicKeyLen); err != nil {
@@ -277,7 +277,7 @@ func (s *Server) rejectCapped(w http.ResponseWriter, r *http.Request, now time.T
 	writeUnavailable(w, retry)
 }
 
-// idAvailable answers the same 409 for a live message and an ended one (AK21).
+// idAvailable answers the same 409 for a live message and an ended one, so the answer does not tell whether it ended.
 func (s *Server) idAvailable(w http.ResponseWriter, r *http.Request, id core.ID) bool {
 	_, err := s.store.Load(r.Context(), seal.LocatorOf(id[:]))
 	switch {

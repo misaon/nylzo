@@ -33,7 +33,7 @@ func TestPaddedSizeFollowsPadme(t *testing.T) {
 	}
 }
 
-// F10: the record key seals the fields and wraps the blob key only through keys of their own.
+// The record key seals the fields and wraps the blob key only through keys of their own.
 func TestRecordKeyServesEachPurposeThroughItsOwnKey(t *testing.T) {
 	t.Parallel()
 	recordKey, blobKey := seal.NewKey(), seal.NewBlobKey()
@@ -135,7 +135,7 @@ func TestResealWrapMovesEveryWrapUnderTheCurrentPepperKey(t *testing.T) {
 	}
 }
 
-// F14: the tag follows spec §5.2 and covers the salt and every encrypted byte, so no change to a stored blob passes.
+// The tag follows spec §5.2 and covers the salt and every encrypted byte, so no change to a stored blob passes.
 func TestTheBlobTagCoversTheSaltAndEveryEncryptedByte(t *testing.T) {
 	t.Parallel()
 	blob, salt := seal.NewBlobKey(), seal.NewEraseSalt()
@@ -195,7 +195,7 @@ func TestABlobWrapHoldsTheTagAndOneOfAnEarlierReleaseHasNone(t *testing.T) {
 	}
 }
 
-// F14: a burn trusts the salt through a tag of its own, which follows spec §5.2.
+// A burn trusts the salt through a tag of its own, which follows spec §5.2.
 func TestTheSaltTagFollowsTheSpecAndRefusesAnotherSalt(t *testing.T) {
 	t.Parallel()
 	blob, salt := seal.NewBlobKey(), seal.NewEraseSalt()

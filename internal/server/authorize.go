@@ -24,7 +24,7 @@ type access struct {
 	signature signing.Signature
 }
 
-// authorize does the same work for an unknown id, a wrong key and a failed signature (spec §5.5, AK21).
+// authorize does the same work for an unknown id, a wrong key and a failed signature (spec §5.5).
 func (s *Server) authorize(
 	ctx context.Context,
 	r *http.Request,
@@ -114,7 +114,7 @@ func (s *Server) openRow(row *store.Row, purpose seal.Purpose, publicKey []byte)
 	return record, err
 }
 
-// forget clears the record key when the request ends, so a later memory image does not hold it (A4-2).
+// forget clears the record key when the request ends, so a later memory image does not hold it.
 func (a *access) forget() {
 	clear(a.record.Key[:])
 }

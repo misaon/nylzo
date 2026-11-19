@@ -109,7 +109,8 @@ test(
     expect(await databaseNames(page)).toEqual([]);
 
     await createMessageInPage(page, { text: 'left behind', remember: 'tab' });
-    await page.getByRole('link', { name: 'Open Sent' }).click();
+    await page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: 'Sent' }).click();
+    await expect(page).toHaveURL(/\/sent$/u);
     await expect(item.getByText('Waiting to be opened')).toBeVisible();
     await page.evaluate(() => {
       dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));

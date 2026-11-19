@@ -1,5 +1,0 @@
-# Scorecard reads this file; the dependency gate passes security/osv-scanner.toml instead and checks security/sca-policy.json.
-[[IgnoredVulns]]
-id = "GHSA-fc5q-39xc-vjpf"
-ignoreUntil = 2027-01-15T00:00:00Z
-reason = "Not affected: picomatch runs only in a lint plugin on glob patterns from this repository and is no runtime dependency. Assessed in security/sca-policy.json."

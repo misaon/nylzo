@@ -185,15 +185,15 @@ func TestIDTokensFollowTheSpec(t *testing.T) {
 		t.Fatal("a token outside its window or for another id was accepted")
 	}
 	if valid(tokens, id, shareEpoch+1, ttl, ahead, now) {
-		t.Fatal("F3: a token was accepted for another epoch than its share")
+		t.Fatal("a token was accepted for another epoch than its share")
 	}
 	if valid(tokens, id, shareEpoch, ttl+60, ahead, now) {
-		t.Fatal("F13: a token was accepted for another TTL than its deadline came from")
+		t.Fatal("a token was accepted for another TTL than its deadline came from")
 	}
 	passed := epoch.Minute(now)
 	late, _ := tokens.Issue(id, passed, ttl, generation, now)
 	if valid(tokens, id, passed, ttl, late, epoch.Deadline(passed)) {
-		t.Fatal("F13: a token was accepted at the deadline of its share")
+		t.Fatal("a token was accepted at the deadline of its share")
 	}
 	raw, err := core.DecodeExact(ahead, idTokenLength)
 	if err != nil {

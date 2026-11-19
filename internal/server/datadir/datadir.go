@@ -1,4 +1,4 @@
-// Package datadir keeps the server's files private to the user that runs it (spec section 13, D99).
+// Package datadir keeps the server's files private to the user that runs it (spec section 13).
 package datadir
 
 import "errors"

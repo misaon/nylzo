@@ -63,7 +63,8 @@ func TestPurgedMessageLeavesNoResidue(t *testing.T) {
 	}
 }
 
-// TestTheDatabaseHoldsNoMessageFieldInTheClear covers D101: only the locator, sealed bytes and two rounded times stay readable.
+// TestTheDatabaseHoldsNoMessageFieldInTheClear checks that only the locator, sealed bytes and two rounded times stay
+// readable.
 func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
@@ -121,8 +122,7 @@ func TestTheDatabaseHoldsNoMessageFieldInTheClear(t *testing.T) {
 	}
 }
 
-// TestLookupDoesTheSameWorkForEveryLocator covers AK21 and F1; it runs alone because allocations are counted per
-// process.
+// TestLookupDoesTheSameWorkForEveryLocator runs alone because allocations are counted per process.
 func TestLookupDoesTheSameWorkForEveryLocator(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "nylzo.db")
 	storage := openStore(t, path)
@@ -294,7 +294,7 @@ func TestPreparedStatementsReleaseTheLog(t *testing.T) {
 	}
 }
 
-// TestTheLogKeepsItsBlocksAndHoldsNoOlderRowVersion covers A4-1: a truncated log leaves its frames in freed blocks.
+// A truncated log leaves its frames in freed blocks.
 func TestTheLogKeepsItsBlocksAndHoldsNoOlderRowVersion(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "nylzo.db")
