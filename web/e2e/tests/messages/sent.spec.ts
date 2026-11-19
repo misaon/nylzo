@@ -20,6 +20,46 @@ import {
 import { holdRoute } from '../support/routes.ts';
 import { watchViolations } from '../support/watchers.ts';
 
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    const log: string[] = [];
+    Reflect.set(globalThis, 'navigationLog', log);
+    const stamp = () => performance.now().toFixed(0);
+    const describe = (node: EventTarget | null) => (node instanceof Element ? node.outerHTML.slice(0, 140) : String(node));
+    log.push(`${stamp()} document ${location.href} entries=${String(globalThis.navigation?.entries().length)}`);
+    globalThis.navigation?.addEventListener('navigate', (event) => {
+      log.push(`${stamp()} navigate ${event.navigationType} ${event.destination.url} canIntercept=${event.canIntercept} userInitiated=${event.userInitiated} prevented=${event.defaultPrevented}`);
+    });
+    globalThis.navigation?.addEventListener('navigatesuccess', () => log.push(`${stamp()} navigatesuccess ${location.href}`));
+    globalThis.navigation?.addEventListener('navigateerror', (event) => log.push(`${stamp()} navigateerror ${String(event.message)}`));
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+      addEventListener(type, (event) => {
+        const pointer = event as MouseEvent;
+        const hit = document.elementFromPoint(pointer.clientX, pointer.clientY);
+        log.push(`${stamp()} ${type} at=${pointer.clientX},${pointer.clientY} scrollY=${scrollY} target=${describe(event.target)} hit=${describe(hit)}`);
+      }, true);
+      addEventListener(type, (event) => log.push(`${stamp()} ${type} bubble prevented=${event.defaultPrevented}`));
+    }
+    for (const type of ['beforeunload', 'pagehide', 'pageshow', 'popstate', 'hashchange', 'focusin']) {
+      addEventListener(type, (event) => log.push(`${stamp()} ${type} ${type === 'focusin' ? describe(event.target) : ''}`), true);
+    }
+    let lastScroll = -1;
+    addEventListener('scroll', () => {
+      if (Math.abs(scrollY - lastScroll) > 2) {
+        lastScroll = scrollY;
+        log.push(`${stamp()} scroll ${scrollY}`);
+      }
+    }, true);
+  });
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  if (testInfo.status !== testInfo.expectedStatus) {
+    const log: unknown = await page.evaluate(() => Reflect.get(globalThis, 'navigationLog')).catch(() => 'unavailable');
+    console.log(`NAVIGATION LOG ${testInfo.title}\n${JSON.stringify(log, null, 1)}`);
+  }
+});
+
 const REMEMBERED = 'This device remembered the message.';
 const NOTHING_REMEMBERED = 'Nothing here yet';
 
@@ -107,33 +147,8 @@ test(
     expect(await databaseNames(page)).toEqual([]);
 
     await createMessageInPage(page, { text: 'left behind', remember: 'tab' });
-    await page.evaluate(() => {
-      const log: string[] = [];
-      Reflect.set(globalThis, 'navigationLog', log);
-      const stamp = () => performance.now().toFixed(0);
-      const describe = (node: EventTarget | null) => (node instanceof Element ? node.outerHTML.slice(0, 160) : String(node));
-      log.push(`${stamp()} start ${location.href} entries=${navigation.entries().length} current=${navigation.currentEntry?.url} transition=${String(navigation.transition?.navigationType)}`);
-      navigation.addEventListener('navigate', (event) => {
-        log.push(`${stamp()} navigate ${event.navigationType} ${event.destination.url} canIntercept=${event.canIntercept} userInitiated=${event.userInitiated} cancelable=${event.cancelable} prevented=${event.defaultPrevented}`);
-      });
-      navigation.addEventListener('navigatesuccess', () => log.push(`${stamp()} navigatesuccess ${location.href}`));
-      navigation.addEventListener('navigateerror', (event) => log.push(`${stamp()} navigateerror ${String(event.message)}`));
-      for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
-        document.addEventListener(type, (event) => log.push(`${stamp()} ${type} capture target=${describe(event.target)} active=${describe(document.activeElement)}`), true);
-        addEventListener(type, (event) => log.push(`${stamp()} ${type} bubble prevented=${event.defaultPrevented}`));
-      }
-      for (const type of ['beforeunload', 'pagehide', 'popstate', 'hashchange']) {
-        addEventListener(type, () => log.push(`${stamp()} ${type}`));
-      }
-    });
     await page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: 'Sent' }).click();
-    const reached = await page.waitForURL(/\/sent$/u, { timeout: 5000 }).then(
-      () => true,
-      () => false,
-    );
-    const navigationLog: unknown = await page.evaluate(() => Reflect.get(globalThis, 'navigationLog'));
-    console.log(`NAVIGATION LOG reached=${String(reached)}\n${JSON.stringify(navigationLog, null, 1)}`);
-    expect(reached, JSON.stringify(navigationLog, null, 1)).toBe(true);
+    await expect(page).toHaveURL(/\/sent$/u);
     await expect(item.getByText('Waiting to be opened')).toBeVisible();
     await page.evaluate(() => {
       dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
