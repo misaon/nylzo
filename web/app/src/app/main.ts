@@ -82,7 +82,7 @@ async function boot(): Promise<void> {
     delay(FONT_WAIT_MS),
   ]);
   document.documentElement.dataset['fonts'] = '';
-  if (document.body.firstElementChild) {
+  if (homePage && document.body.firstElementChild) {
     await contentPainted();
   }
   const { prepare, show, tidy } = await (appModules ?? loadApp(language));

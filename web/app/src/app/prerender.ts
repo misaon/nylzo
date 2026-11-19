@@ -9,6 +9,7 @@ import { loadCatalog } from '../shared/language/catalog.ts';
 import { DEFAULT_LANGUAGE, homePath, languageDetails, LANGUAGES } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
+import PageSkeleton from '../shared/shell/PageSkeleton.svelte';
 import { REPOSITORY_URL } from '../shared/shell/repository.ts';
 import { LONGEST_TTL_DAYS } from '../shared/ttl/ttl-choices.ts';
 import App from './App.svelte';
@@ -237,4 +238,14 @@ export function statusTemplates(index: string): ReadonlyMap<string, string> {
       LANGUAGES.map((language) => [`${page}.${language}.html`, statusTemplate(index, page, language)] as const),
     ),
   );
+}
+
+const HIDE_SPINNER_WITHOUT_SCRIPT = `<noscript><style>[data-skeleton] [aria-hidden="true"]{display:none}</style></noscript>`;
+
+// Every page but a home page starts from this index, so its skeleton has no text and needs no fonts.
+export function skeletonIndex(index: string): string {
+  const { body } = render(PageSkeleton);
+  let page = replaceOnce(index, '<html lang=', '<html data-fonts lang=');
+  page = replaceOnce(page, '</head>', `${HIDE_SPINNER_WITHOUT_SCRIPT}\n</head>`);
+  return replaceOnce(page, '<body></body>', `<body>${body}</body>`);
 }

@@ -69,7 +69,7 @@ const REACHED: Readonly<Record<CreateProgress['step'], number>> = {
   uploading: 3,
 };
 const STEPS = 5;
-const MIN_MS = 5000;
+const MIN_MS = 3500;
 const REDUCED_MIN_MS = 1200;
 const SAVE_TIMEOUT_MS = 5000;
 const DEFAULT_TTL_SECONDS = 86_400;

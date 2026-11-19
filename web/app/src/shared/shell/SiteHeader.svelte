@@ -31,7 +31,7 @@
 
 <header class="sticky top-0 z-40 px-3 pt-3 sm:px-6">
   <nav
-    class="glass-soft mx-auto flex h-14 max-w-page animate-rise items-center justify-between gap-3 rounded-card pr-2 pl-4 sm:gap-4"
+    class="glass-soft mx-auto flex h-14 max-w-page animate-rise items-center justify-between gap-3 rounded-card pr-2 pl-4 sm:gap-4 [html[data-skeleton]_&]:animate-none"
     aria-label={translate('nav.label')}
   >
     <a
