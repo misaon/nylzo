@@ -37,6 +37,8 @@
   const COPIED_MS = 2400;
   const SAVED_MS = 900;
   const PASSPHRASE_MASK = '•'.repeat(18);
+  // Safari stops breaking after hyphens under keep-all, so only CJK passphrases keep their words whole.
+  const CJK = /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Hangul}]/u;
   const RISE = 'transition-[opacity,translate] duration-500 starting:[translate:0_0.375rem] starting:opacity-0';
 
   const copied = new Flash(COPIED_MS);
@@ -246,13 +248,25 @@
         <div
           class="mt-3 flex flex-col gap-2.5 rounded-card text-left well max-sm:p-2 sm:flex-row sm:items-center sm:gap-3 sm:p-2 sm:pl-4"
         >
-          <div class="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-pane px-2 sm:px-0">
+          <div
+            class={[
+              'flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-pane px-2 sm:px-0',
+              passphraseShown && 'max-sm:flex-wrap',
+            ]}
+          >
             <Icon name="key" class="size-4 shrink-0 text-nebula-300" />
             <span class="shrink-0 text-body-sm text-ink-mute">{translate('create.passphrase')}</span>
             <span
               translate="no"
-              class={['truncate text-body font-medium text-ink', passphraseShown ? '' : 'tracking-[0.18em]']}
-              >{passphraseShown ? passphrase : PASSPHRASE_MASK}</span
+              class={[
+                'min-w-0 text-body font-medium text-ink',
+                passphraseShown
+                  ? [
+                      'wrap-break-word whitespace-pre-wrap max-sm:order-last max-sm:basis-full max-sm:pb-2 max-sm:pl-7 sm:py-1.5',
+                      CJK.test(passphrase) && 'break-keep',
+                    ]
+                  : 'truncate tracking-[0.18em]',
+              ]}>{passphraseShown ? passphrase : PASSPHRASE_MASK}</span
             >
             <button
               type="button"
