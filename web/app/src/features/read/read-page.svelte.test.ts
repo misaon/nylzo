@@ -488,6 +488,27 @@ describe('read page interactions', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('starts the passphrase shown where it needs an input method and returns to that after forgetting it', () => {
+    const page = new ReadPage(new Translator('ja'));
+    expect(page.showPassphrase).toBe(true);
+    page.showPassphrase = false;
+    expect(page.showPassphrase).toBe(false);
+    page.passphrase = 'さくら';
+    page.forgetPassphrase();
+    expect(page.showPassphrase).toBe(true);
+  });
+
+  it('keeps what the reader typed shown or masked when the page language changes', () => {
+    const translator = new Translator('zh-Hans');
+    const page = new ReadPage(translator);
+    page.passphrase = '月亮';
+    page.typed();
+    translator.language = 'en';
+    expect(page.showPassphrase).toBe(true);
+    page.forgetPassphrase();
+    expect(page.showPassphrase).toBe(false);
+  });
+
   it('forgets a visible passphrase and reloads restored documents or newly pasted fragments', () => {
     const page = new ReadPage(new Translator('en'));
     page.passphrase = 'secret';

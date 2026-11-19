@@ -1,4 +1,4 @@
-import { KDF_NONE } from '@nylzo/core';
+import { INPUT_METHOD_LANGUAGES, KDF_NONE } from '@nylzo/core';
 import { flushSync, onDestroy } from 'svelte';
 import { prefersReducedMotion } from 'svelte/motion';
 
@@ -105,7 +105,7 @@ export class ReadPage {
   view = $state.raw<ReadView>({ view: 'loading' });
   shown = $state.raw<ReadView>({ view: 'loading' });
   passphrase = $state('');
-  showPassphrase = $state(false);
+  #passphraseShown = $state<boolean>();
   emptyPassphrase = $state(false);
   typedAgain = $state(false);
   passphraseRequired = $state(false);
@@ -145,6 +145,14 @@ export class ReadPage {
   readonly ready = $derived(this.shown.view === 'ready' ? this.shown : undefined);
   readonly revealed = $derived(this.shown.view === 'revealed' ? this.shown : undefined);
   readonly locked = $derived(this.ready?.rejected?.reason === 'wrong' && this.ready.rejected.locked);
+
+  get showPassphrase(): boolean {
+    return this.#passphraseShown ?? INPUT_METHOD_LANGUAGES.has(this.#translator.language);
+  }
+
+  set showPassphrase(shown: boolean) {
+    this.#passphraseShown = shown;
+  }
 
   readonly phase: Phase = $derived.by(() => {
     if (this.opening) {
@@ -253,7 +261,7 @@ export class ReadPage {
     this.deleting = false;
     if (!afterReveal && !UNSENT_BURNS.has(outcome.outcome)) {
       this.passphrase = '';
-      this.showPassphrase = false;
+      this.#passphraseShown &&= undefined;
     }
     this.deleteIntent &&= outcome.outcome === 'rejected' || UNSENT_BURNS.has(outcome.outcome);
     this.restDeleted ||= afterReveal && (outcome.outcome === 'deleted' || outcome.outcome === 'ended');
@@ -306,7 +314,7 @@ export class ReadPage {
 
   readonly forgetPassphrase = (): void => {
     this.passphrase = '';
-    this.showPassphrase = false;
+    this.#passphraseShown = undefined;
     flushSync();
   };
 
@@ -386,7 +394,7 @@ export class ReadPage {
       return;
     }
     this.emptyPassphrase = false;
-    this.showPassphrase = false;
+    this.#passphraseShown &&= undefined;
     this.askingDelete = false;
     this.deleteIntent = false;
     this.burned = undefined;
@@ -399,6 +407,8 @@ export class ReadPage {
   readonly typed = (): void => {
     this.emptyPassphrase = false;
     this.typedAgain = true;
+    // A language switch must not reveal or mask what the reader has typed.
+    this.#passphraseShown ??= this.showPassphrase;
   };
 
   constructor(translator: Translator) {
@@ -523,7 +533,7 @@ export class ReadPage {
     this.burned = undefined;
     this.download.close();
     this.askingDelete = false;
-    this.showPassphrase = false;
+    this.#passphraseShown = undefined;
     this.passphrase = '';
     this.#pending = undefined;
     this.#clearReveal();

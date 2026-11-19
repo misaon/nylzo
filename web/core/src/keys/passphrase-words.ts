@@ -15,6 +15,9 @@ export const PASSPHRASE_LANGUAGES = [
 
 export type PassphraseLanguage = (typeof PASSPHRASE_LANGUAGES)[number];
 
+// Password fields turn input methods off, and these word lists cannot be typed without one.
+export const INPUT_METHOD_LANGUAGES: ReadonlySet<PassphraseLanguage> = new Set(['ja', 'zh-Hans']);
+
 export const WORD_LIST_LENGTH = 2048;
 
 interface Layout {
