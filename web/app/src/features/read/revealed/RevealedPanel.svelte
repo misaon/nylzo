@@ -6,6 +6,7 @@
   import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
   import Tooltip from '../../../shared/ui/tooltip/Tooltip.svelte';
   import type { ReadPage } from '../read-page.svelte.ts';
+  import { piecesOf } from './hidden-characters.ts';
   import RevealedFile from './RevealedFile.svelte';
 
   interface Props {
@@ -21,7 +22,6 @@
 
   const shown = $derived(page.phase === 'revealed');
   const hiddenCount = $derived(page.marked?.hidden ?? 0);
-  const settled = $derived(page.marked !== undefined && page.revealText === page.marked.shown);
   const lastOpen = $derived(page.revealed !== undefined && !page.revealed.burnable && !page.restDeleted);
   const historyNoted = $derived(page.linkInHistory && ((page.revealed?.burnable ?? false) || page.restDeleted));
 </script>
@@ -97,7 +97,7 @@
               role="region"
               aria-labelledby="{id}-revealed-title"
               translate="no"
-              class="max-h-[320px] min-h-[136px] overflow-auto rounded-pane bg-[linear-gradient(180deg,oklch(1_0_0/0.06),oklch(1_0_0/0.025))] px-5 py-4 font-sans text-lead break-words whitespace-pre-wrap text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.06),0_18px_40px_-18px_oklch(0.05_0.03_275/0.9)] sm:min-h-[160px] sm:px-6 sm:py-5 md:max-h-[360px] md:text-lead-lg">{#if settled && page.marked}{#each page.marked.pieces as piece (piece.key)}{#if piece.hidden}<mark
+              class="max-h-[320px] min-h-[136px] overflow-auto rounded-pane bg-[linear-gradient(180deg,oklch(1_0_0/0.06),oklch(1_0_0/0.025))] px-5 py-4 font-sans text-lead break-words whitespace-pre-wrap text-ink shadow-[inset_0_1px_0_oklch(1_0_0/0.06),0_18px_40px_-18px_oklch(0.05_0.03_275/0.9)] sm:min-h-[160px] sm:px-6 sm:py-5 md:max-h-[360px] md:text-lead-lg">{#if page.marked && page.marked.hidden > 0}{#each piecesOf(page.revealHead ?? '', page.marked) as piece (piece.key)}{#if piece.hidden}<mark
                       class="mx-px rounded-[4px] bg-rose-500/15 px-1 text-micro text-rose-200 ring-1 ring-rose-300/40"
                       >{piece.text}</mark
                     >{:else}{piece.text}{/if}{/each}{:else}<span>{page.revealHead}</span>{page.revealRest}{/if}</pre>

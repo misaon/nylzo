@@ -6,6 +6,7 @@
   import { privatePassphrase, submitOnEnter } from '../../../shared/ui/field/private-fields.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import Switch from '../../../shared/ui/switch/Switch.svelte';
+  import { lingering } from '../../../shared/ui/transition/lingering.ts';
   import { WEAK_BELOW_WORDS } from '../create-message.ts';
   import type { Composer } from './composer.svelte.ts';
   import ComposerMenu from './ComposerMenu.svelte';
@@ -17,6 +18,8 @@
   const { composer }: Props = $props();
   const { translate } = getTranslator();
   const id = $props.id();
+  const problem = $derived(composer.problemOf.passphrase !== undefined);
+  const keepProblem = lingering();
 </script>
 
 <ComposerMenu
@@ -70,8 +73,8 @@
             min: MIN_PASSPHRASE_CHARACTERS,
             words: WEAK_BELOW_WORDS,
           })}
-          aria-invalid={composer.problemOf.passphrase !== undefined}
-          aria-describedby="{id}-passphrase-hint {id}-passphrase-problem"
+          aria-invalid={problem}
+          aria-describedby={problem ? `${id}-passphrase-hint ${id}-passphrase-problem` : `${id}-passphrase-hint`}
           class="h-full min-w-0 flex-1 bg-transparent text-ui text-ink outline-none placeholder:text-ink-mute"
         />
       </div>
@@ -80,15 +83,23 @@
         {translate('compose.passphrase.generate')}
       </Button>
     </div>
-    <div class="mt-2 grid *:col-start-1 *:row-start-1">
+    <div class="relative mt-2 grid *:col-start-1 *:row-start-1">
       <p
         id="{id}-passphrase-hint"
-        class={['text-micro text-pretty text-ink-mute', composer.problemOf.passphrase !== undefined && 'invisible']}
+        class={['text-micro text-pretty text-ink-mute transition-opacity duration-300', problem && 'opacity-0']}
+        aria-hidden={problem}
       >
         {translate('create.passphrase.hint')}
       </p>
-      <p id="{id}-passphrase-problem" class="flex items-start gap-1.5 text-caption text-rose-300 empty:invisible">
-        {composer.problemOf.passphrase === undefined ? '' : composer.passphraseMessage}
+      <p
+        id="{id}-passphrase-problem"
+        class={[
+          'flex items-start gap-1.5 text-caption text-rose-300 transition-opacity duration-300',
+          !problem && 'absolute inset-x-0 top-0 opacity-0',
+        ]}
+        aria-hidden={!problem}
+      >
+        {keepProblem(problem ? composer.passphraseMessage : '')}
       </p>
     </div>
   </div>

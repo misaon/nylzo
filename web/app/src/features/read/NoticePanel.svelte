@@ -37,7 +37,7 @@
 >
   <span
     class={[
-      'grid size-20 place-items-center rounded-tile',
+      'grid size-20 place-items-center rounded-tile tile-blend',
       isAlarming(page.notice) ? 'text-white tile-danger' : 'text-ink-soft tile-neutral',
     ]}
     aria-hidden="true"

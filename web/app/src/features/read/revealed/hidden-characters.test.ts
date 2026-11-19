@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { markHiddenCharacters } from './hidden-characters.ts';
+import { markHiddenCharacters, piecesOf } from './hidden-characters.ts';
 
 describe('hidden characters in revealed text (W2-12)', () => {
   it.each([
@@ -24,5 +24,20 @@ describe('hidden characters in revealed text (W2-12)', () => {
     ['a subdivision flag made of tag characters', '🏴󠁧󠁢󠁳󠁣󠁴󠁿'],
   ])('leaves %s alone', (_, text) => {
     expect(markHiddenCharacters(text)).toEqual({ pieces: [{ key: 0, text, hidden: false }], hidden: 0, shown: text });
+  });
+
+  it('splits scrambled text along the marked pieces, so the marks keep their place while it unscrambles', () => {
+    const marked = markHiddenCharacters('😀pass\u{200B}word');
+    expect(piecesOf(marked.shown, marked)).toEqual(marked.pieces);
+    expect(piecesOf(marked.shown.replaceAll(/[^⟨]/gu, 'x'), marked)).toEqual([
+      { key: 0, text: 'xxxxx', hidden: false },
+      { key: 1, text: 'U+200B', hidden: true },
+      { key: 2, text: 'xxxx', hidden: false },
+    ]);
+    expect(piecesOf('xxx', marked)).toEqual([
+      { key: 0, text: 'xxx', hidden: false },
+      { key: -1, text: 'ss', hidden: false },
+      ...marked.pieces.slice(1),
+    ]);
   });
 });

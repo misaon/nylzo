@@ -73,7 +73,7 @@
         type="submit"
         disabled={!composer.limits || composer.busy}
         class={[
-          'w-full transition-[opacity,translate,scale] duration-500 max-sm:h-auto max-sm:min-h-11 max-sm:py-2.5 max-sm:text-left max-sm:whitespace-normal',
+          'w-full transition-[opacity,translate,scale,filter] duration-500 max-sm:h-auto max-sm:min-h-11 max-sm:py-2.5 max-sm:text-left max-sm:whitespace-normal',
           composer.busy ? 'pointer-events-none opacity-0' : 'opacity-100',
         ]}
       >

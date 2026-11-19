@@ -19,7 +19,7 @@
   import { FocusTargets, keepFocus } from '../../shared/ui/focus/focus.ts';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import StateCard from '../../shared/ui/notice/StateCard.svelte';
-  import { motionMs } from '../../shared/ui/transition/motion.ts';
+  import { collapse, motionMs } from '../../shared/ui/transition/motion.ts';
   import { createSentPage } from './sent-page.ts';
   import type { CancelOutcome, ItemState, SentItem, SentView } from './sent-page.ts';
 
@@ -35,6 +35,14 @@
   const focus = new FocusTargets<string>();
   const retention = $derived(translator.plural('count.day', RETENTION_DAYS));
   const items = $derived(view.view === 'list' ? view.items : []);
+  let listedIds = '';
+  // Items glide only when the list itself changes; a status change resizes its own item with a slide.
+  const listChanged = $derived.by(() => {
+    const ids = items.map((item) => item.id).join(' ');
+    const changed = listedIds !== '' && ids !== listedIds;
+    listedIds = ids;
+    return changed;
+  });
 
   // A session of the local client has an origin nobody purges later, so it opens no storage (Protocol §14.1).
   const browser = servedByLocalClient() ? undefined : browserSentStore();
@@ -249,14 +257,14 @@
   </div>
 
   {#if items.length > 0}
-    <ul role="list" class="mt-8 grid gap-3">
+    <ul role="list" class="mt-8 grid animate-appear gap-3">
       {#each items as item (item.id)}
         {const badge = $derived(badgeOf(item))}
         {const pending = $derived(item.state.kind === 'loading')}
         {const live = $derived(pending || (item.state.kind === 'loaded' && !item.ended))}
         <li
           class="rounded-pane bg-white/4 p-4 shadow-rim ring-1 ring-white/8 sm:p-6"
-          animate:flip={{ duration: motionMs(500), easing: cubicOut }}
+          animate:flip={{ duration: listChanged ? motionMs(500) : 0, easing: cubicOut }}
           out:fade={{ duration: motionMs(300) }}
         >
           <div
@@ -264,7 +272,7 @@
           >
             <span
               class={[
-                'grid size-10 shrink-0 place-items-center rounded-full',
+                'grid size-10 shrink-0 place-items-center rounded-full tile-blend',
                 item.ended ? 'text-ink-soft tile-neutral' : 'text-white tile-current',
               ]}
               aria-hidden="true"
@@ -319,6 +327,7 @@
                 { key: 'sent.label.attempts', value: known && String(known.failedPassphraseAttempts) },
               ] as const)}
               <dl
+                transition:collapse={{ duration: motionMs(400), easing: cubicOut }}
                 class="col-span-2 mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-pane bg-white/3 p-3.5 ring-1 ring-white/6 sm:col-span-2 sm:col-start-2 sm:mt-5 sm:gap-x-6 sm:gap-y-3.5 sm:p-4 md:grid-cols-[minmax(0,1.35fr)_repeat(3,minmax(0,1fr))]"
               >
                 {#each facts as fact (fact.key)}
@@ -330,6 +339,7 @@
               </dl>
             {:else}
               <p
+                transition:collapse={{ duration: motionMs(400), easing: cubicOut }}
                 class={[
                   'col-span-2 mt-3 text-ui text-pretty max-sm:text-body-sm sm:col-span-2 sm:col-start-2',
                   badge.tone === 'problem' ? 'text-rose-200' : 'text-ink-soft',
