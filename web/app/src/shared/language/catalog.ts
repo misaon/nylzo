@@ -1,4 +1,3 @@
-import type { Language } from './language.ts';
 import type { messages as czech } from './messages/cs.ts';
 
 export type PluralForms = Readonly<Partial<Record<Intl.LDMLPluralRule, string>>> & { readonly other: string };
@@ -26,7 +25,13 @@ const CATALOG_SOURCES = {
   'pt-BR': async () => import('./messages/pt-br.ts'),
   sk: async () => import('./messages/sk.ts'),
   'zh-Hans': async () => import('./messages/zh-hans.ts'),
-} satisfies Readonly<Record<Language, () => Promise<{ readonly messages: Catalog }>>>;
+} satisfies Readonly<Record<string, () => Promise<{ readonly messages: Catalog }>>>;
+
+export type Language = keyof typeof CATALOG_SOURCES;
+
+export function hasCatalog(tag: string): tag is Language {
+  return Object.hasOwn(CATALOG_SOURCES, tag);
+}
 
 const catalogs = new Map<Language, Catalog>();
 

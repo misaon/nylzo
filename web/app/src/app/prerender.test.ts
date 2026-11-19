@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { homePath, LANGUAGE_DETAILS, LANGUAGES } from '../shared/language/language.ts';
+import { homePath, languageDetails, LANGUAGES } from '../shared/language/language.ts';
 import { homeTemplate } from './prerender.ts';
 
 const INDEX = `<!doctype html>
@@ -56,7 +56,7 @@ describe('homeTemplate', () => {
     expect(block).toContain('<link rel="alternate" hreflang="x-default" href="__NYLZO_PUBLIC_URL__/">');
     expect(block).toContain(`<meta property="og:image" content="__NYLZO_PUBLIC_URL__${IMAGE.path}">`);
     expect(page.replace(block, '')).not.toContain('__NYLZO_PUBLIC_URL__');
-    expect(page).toContain(`<meta property="og:locale" content="${LANGUAGE_DETAILS[language].openGraphLocale}">`);
+    expect(page).toContain(`<meta property="og:locale" content="${languageDetails(language).openGraphLocale}">`);
     expect(page).toContain('<noscript><style>');
     const hidden = page.indexOf('<style>html:not([data-fonts]) body{content-visibility:hidden}</style>');
     expect(hidden).toBeGreaterThan(-1);

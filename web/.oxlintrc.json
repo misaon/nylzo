@@ -1,11 +1,7 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "import", "promise", "node", "jsdoc"],
-  "jsPlugins": [
-    "eslint-plugin-regexp",
-    "@eslint-community/eslint-plugin-eslint-comments",
-    "eslint-plugin-perfectionist"
-  ],
+  "jsPlugins": ["eslint-plugin-regexp", "@eslint-community/eslint-plugin-eslint-comments"],
   "categories": {
     "correctness": "error",
     "suspicious": "error",
@@ -366,22 +362,11 @@
         "additionalDirectives": ["oxlint-disable", "oxlint-disable-next-line", "oxlint-disable-line", "oxlint-enable"]
       }
     ],
-    "perfectionist/sort-named-imports": [
+    "sort-imports": [
       "error",
       {
-        "type": "natural"
-      }
-    ],
-    "perfectionist/sort-named-exports": [
-      "error",
-      {
-        "type": "natural"
-      }
-    ],
-    "perfectionist/sort-exports": [
-      "error",
-      {
-        "type": "natural"
+        "ignoreCase": true,
+        "ignoreDeclarationSort": true
       }
     ],
     "typescript/await-thenable": "error",

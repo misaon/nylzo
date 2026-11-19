@@ -20,7 +20,6 @@
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@sveltejs/mcp": "0.1.30",
     "@types/bun": "1.4.4",
-    "eslint-plugin-perfectionist": "5.13.0",
     "eslint-plugin-playwright": "2.12.2",
     "eslint-plugin-regexp": "3.3.3",
     "knip": "6.45.1",

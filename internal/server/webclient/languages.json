@@ -1,0 +1,126 @@
+{
+  "languages": [
+    {
+      "tag": "en",
+      "name": "English",
+      "openGraphLocale": "en_US",
+      "fontSample": "Aa"
+    },
+    {
+      "tag": "cs",
+      "name": "Čeština",
+      "openGraphLocale": "cs_CZ",
+      "fontSample": "Aáčř"
+    },
+    {
+      "tag": "de",
+      "name": "Deutsch",
+      "openGraphLocale": "de_DE",
+      "fontSample": "Aäß"
+    },
+    {
+      "tag": "es",
+      "name": "Español",
+      "openGraphLocale": "es_ES",
+      "fontSample": "Añá"
+    },
+    {
+      "tag": "fr",
+      "name": "Français",
+      "openGraphLocale": "fr_FR",
+      "fontSample": "Aàç"
+    },
+    {
+      "tag": "id",
+      "name": "Bahasa Indonesia",
+      "openGraphLocale": "id_ID",
+      "fontSample": "Aa"
+    },
+    {
+      "tag": "it",
+      "name": "Italiano",
+      "openGraphLocale": "it_IT",
+      "fontSample": "Aàè"
+    },
+    {
+      "tag": "ja",
+      "name": "日本語",
+      "openGraphLocale": "ja_JP",
+      "fontSample": "Aa"
+    },
+    {
+      "tag": "pl",
+      "name": "Polski",
+      "openGraphLocale": "pl_PL",
+      "fontSample": "Aąłó"
+    },
+    {
+      "tag": "pt-BR",
+      "name": "Português (Brasil)",
+      "openGraphLocale": "pt_BR",
+      "fontSample": "Aãç"
+    },
+    {
+      "tag": "sk",
+      "name": "Slovenčina",
+      "openGraphLocale": "sk_SK",
+      "fontSample": "Aáčľ"
+    },
+    {
+      "tag": "zh-Hans",
+      "name": "简体中文",
+      "openGraphLocale": "zh_CN",
+      "fontSample": "Aa"
+    }
+  ],
+  "previews": {
+    "en": {
+      "title": "One-time message · Nylzo",
+      "description": "Open the link in your browser. The message appears only after a click."
+    },
+    "cs": {
+      "title": "Jednorázová zpráva · Nylzo",
+      "description": "Otevřete odkaz v prohlížeči, zpráva se zobrazí až po kliknutí."
+    },
+    "de": {
+      "title": "Einmalige Nachricht · Nylzo",
+      "description": "Öffnen Sie den Link im Browser. Die Nachricht erscheint erst nach einem Klick."
+    },
+    "es": {
+      "title": "Mensaje de un solo uso · Nylzo",
+      "description": "Abre el enlace en tu navegador. El mensaje aparece solo después de hacer clic."
+    },
+    "fr": {
+      "title": "Message à usage unique · Nylzo",
+      "description": "Ouvrez le lien dans votre navigateur. Le message n’apparaît qu’après un clic."
+    },
+    "id": {
+      "title": "Pesan sekali buka · Nylzo",
+      "description": "Buka tautan di browser Anda. Pesan baru muncul setelah Anda mengeklik."
+    },
+    "it": {
+      "title": "Messaggio monouso · Nylzo",
+      "description": "Apri il link nel browser. Il messaggio compare solo dopo un clic."
+    },
+    "ja": {
+      "title": "一度だけ開けるメッセージ · Nylzo",
+      "description": "ブラウザーでリンクを開いてください。メッセージはクリックした後に表示されます。"
+    },
+    "pl": {
+      "title": "Jednorazowa wiadomość · Nylzo",
+      "description": "Otwórz link w przeglądarce. Wiadomość pojawi się dopiero po kliknięciu."
+    },
+    "pt-BR": {
+      "title": "Mensagem de uso único · Nylzo",
+      "description": "Abra o link no navegador. A mensagem só aparece depois de um clique."
+    },
+    "sk": {
+      "title": "Jednorazová správa · Nylzo",
+      "description": "Otvorte odkaz v prehliadači, správa sa zobrazí až po kliknutí."
+    },
+    "zh-Hans": {
+      "title": "一次性消息 · Nylzo",
+      "description": "请在浏览器中打开链接。点击后才会显示消息。"
+    }
+  }
+}

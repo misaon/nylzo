@@ -1,6 +1,10 @@
 package webclient
 
 import (
+	_ "embed"
+	"encoding/json"
+	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -12,52 +16,45 @@ type language struct {
 	preview previewText
 }
 
-// languages lists the languages of the web client in web/app/src/shared/language/language.ts.
+// languagesTable is the language table the web client in web/app/src/shared/language/language.ts reads too.
 //
-//nolint:gosmopolitan // Link previews speak the reader's language, Japanese and Chinese included.
-var languages = []language{
-	{
-		"en",
-		previewText{
-			"One-time message · Nylzo",
-			"Open the link in your browser. The message appears only after a click.",
-		},
-	},
-	{"cs", previewText{"Jednorázová zpráva · Nylzo", "Otevřete odkaz v prohlížeči, zpráva se zobrazí až po kliknutí."}},
-	{"de", previewText{
-		"Einmalige Nachricht · Nylzo",
-		"Öffnen Sie den Link im Browser. Die Nachricht erscheint erst nach einem Klick.",
-	}},
-	{"es", previewText{
-		"Mensaje de un solo uso · Nylzo",
-		"Abre el enlace en tu navegador. El mensaje aparece solo después de hacer clic.",
-	}},
-	{"fr", previewText{
-		"Message à usage unique · Nylzo",
-		"Ouvrez le lien dans votre navigateur. Le message n’apparaît qu’après un clic.",
-	}},
-	{"id", previewText{
-		"Pesan sekali buka · Nylzo",
-		"Buka tautan di browser Anda. Pesan baru muncul setelah Anda mengeklik.",
-	}},
-	{
-		"it",
-		previewText{"Messaggio monouso · Nylzo", "Apri il link nel browser. Il messaggio compare solo dopo un clic."},
-	},
-	{"ja", previewText{
-		"一度だけ開けるメッセージ · Nylzo",
-		"ブラウザーでリンクを開いてください。メッセージはクリックした後に表示されます。",
-	}},
-	{"pl", previewText{
-		"Jednorazowa wiadomość · Nylzo",
-		"Otwórz link w przeglądarce. Wiadomość pojawi się dopiero po kliknięciu.",
-	}},
-	{"pt-BR", previewText{
-		"Mensagem de uso único · Nylzo",
-		"Abra o link no navegador. A mensagem só aparece depois de um clique.",
-	}},
-	{"sk", previewText{"Jednorazová správa · Nylzo", "Otvorte odkaz v prehliadači, správa sa zobrazí až po kliknutí."}},
-	{"zh-Hans", previewText{"一次性消息 · Nylzo", "请在浏览器中打开链接。点击后才会显示消息。"}},
+//go:embed languages.json
+var languagesTable []byte
+
+var languages = mustParseLanguages(languagesTable)
+
+var languageTag = regexp.MustCompile(`^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$`)
+
+func mustParseLanguages(data []byte) []language {
+	var table struct {
+		Languages []struct {
+			Tag string `json:"tag"`
+		} `json:"languages"`
+		Previews map[string]struct {
+			Title       string `json:"title"`
+			Description string `json:"description"`
+		} `json:"previews"`
+	}
+	if err := json.Unmarshal(data, &table); err != nil {
+		panic(fmt.Sprintf("webclient: languages.json: %v", err))
+	}
+	parsed := make([]language, 0, len(table.Languages))
+	for _, entry := range table.Languages {
+		if !languageTag.MatchString(entry.Tag) || slices.ContainsFunc(parsed, func(known language) bool {
+			return strings.EqualFold(known.tag, entry.Tag)
+		}) {
+			panic("webclient: languages.json has an invalid or repeated tag " + entry.Tag)
+		}
+		preview, ok := table.Previews[entry.Tag]
+		if !ok || preview.Title == "" || preview.Description == "" {
+			panic("webclient: languages.json has no link preview for " + entry.Tag)
+		}
+		parsed = append(parsed, language{entry.Tag, previewText{preview.Title, preview.Description}})
+	}
+	if !slices.ContainsFunc(parsed, func(known language) bool { return known.tag == defaultLanguage }) {
+		panic("webclient: languages.json has no " + defaultLanguage)
+	}
+	return parsed
 }
 
 var traditionalChinese = []string{"hant", "hk", "mo", "tw"}

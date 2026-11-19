@@ -1,8 +1,16 @@
+import { languages as table } from '../../../../../internal/server/webclient/languages.json';
 import { servedByLocalClient } from '../local-client/instance-origin.ts';
+import { hasCatalog } from './catalog.ts';
+import type { Language } from './catalog.ts';
 
-export const LANGUAGES = ['en', 'cs', 'de', 'es', 'fr', 'id', 'it', 'ja', 'pl', 'pt-BR', 'sk', 'zh-Hans'] as const;
+export type { Language } from './catalog.ts';
 
-export type Language = (typeof LANGUAGES)[number];
+export const LANGUAGES: readonly Language[] = table.map(({ tag }) => {
+  if (!hasCatalog(tag)) {
+    throw new Error(`languages.json names ${tag}, which has no message catalog`);
+  }
+  return tag;
+});
 
 export const DEFAULT_LANGUAGE = 'en' satisfies Language;
 
@@ -12,20 +20,15 @@ interface LanguageDetails {
   readonly fontSample: string;
 }
 
-export const LANGUAGE_DETAILS = {
-  en: { name: 'English', openGraphLocale: 'en_US', fontSample: 'Aa' },
-  cs: { name: 'Čeština', openGraphLocale: 'cs_CZ', fontSample: 'Aáčř' },
-  de: { name: 'Deutsch', openGraphLocale: 'de_DE', fontSample: 'Aäß' },
-  es: { name: 'Español', openGraphLocale: 'es_ES', fontSample: 'Añá' },
-  fr: { name: 'Français', openGraphLocale: 'fr_FR', fontSample: 'Aàç' },
-  id: { name: 'Bahasa Indonesia', openGraphLocale: 'id_ID', fontSample: 'Aa' },
-  it: { name: 'Italiano', openGraphLocale: 'it_IT', fontSample: 'Aàè' },
-  ja: { name: '日本語', openGraphLocale: 'ja_JP', fontSample: 'Aa' },
-  pl: { name: 'Polski', openGraphLocale: 'pl_PL', fontSample: 'Aąłó' },
-  'pt-BR': { name: 'Português (Brasil)', openGraphLocale: 'pt_BR', fontSample: 'Aãç' },
-  sk: { name: 'Slovenčina', openGraphLocale: 'sk_SK', fontSample: 'Aáčľ' },
-  'zh-Hans': { name: '简体中文', openGraphLocale: 'zh_CN', fontSample: 'Aa' },
-} as const satisfies Readonly<Record<Language, LanguageDetails>>;
+const DETAILS: ReadonlyMap<string, LanguageDetails> = new Map(table.map(({ tag, ...details }) => [tag, details]));
+
+export function languageDetails(language: Language): LanguageDetails {
+  const details = DETAILS.get(language);
+  if (details === undefined) {
+    throw new Error(`languages.json has no entry for ${language}`);
+  }
+  return details;
+}
 
 export interface PreferenceStore {
   getItem: (key: string) => string | null;

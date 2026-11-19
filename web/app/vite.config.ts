@@ -186,7 +186,7 @@ export default defineConfig(({ isSsrBuild, mode }) => ({
         test: {
           name: 'client',
           include: ['src/**/*.svelte.test.ts'],
-          environment: './client-environment.ts',
+          environment: 'happy-dom',
           setupFiles: ['src/shared/language/test-catalogs.ts'],
         },
       },

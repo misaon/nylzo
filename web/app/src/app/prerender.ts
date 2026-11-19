@@ -6,7 +6,7 @@ import { STATUS_PAGES } from '../features/errors/status-page.ts';
 import type { StatusPage } from '../features/errors/status-page.ts';
 import StatusDocument from '../features/errors/StatusDocument.svelte';
 import { loadCatalog } from '../shared/language/catalog.ts';
-import { DEFAULT_LANGUAGE, homePath, LANGUAGE_DETAILS, LANGUAGES } from '../shared/language/language.ts';
+import { DEFAULT_LANGUAGE, homePath, languageDetails, LANGUAGES } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
 import { REPOSITORY_URL } from '../shared/shell/repository.ts';
@@ -170,9 +170,9 @@ function seoHead(language: Language, image: OgImage, logo: string): string {
     meta('og:site_name', 'Nylzo'),
     meta('og:title', translate('seo.title')),
     meta('og:description', translate('seo.description')),
-    meta('og:locale', LANGUAGE_DETAILS[language].openGraphLocale),
+    meta('og:locale', languageDetails(language).openGraphLocale),
     ...LANGUAGES.filter((other) => other !== language).map((other) =>
-      meta('og:locale:alternate', LANGUAGE_DETAILS[other].openGraphLocale),
+      meta('og:locale:alternate', languageDetails(other).openGraphLocale),
     ),
     '<meta name="twitter:card" content="summary_large_image">',
   ];
@@ -197,7 +197,7 @@ function fontPreloads(page: string, language: Language): string {
   if (matchCount(page, CZECH_FONT_PRELOAD) === 0 || matchCount(page, EXTENDED_FONT_PRELOAD) === 0) {
     throw new Error('prerender: the index preloads no Czech or extended Latin fonts');
   }
-  const { fontSample } = LANGUAGE_DETAILS[language];
+  const { fontSample } = languageDetails(language);
   const home = OTHER_EXTENDED_LETTERS.test(fontSample) ? page : page.replaceAll(EXTENDED_FONT_PRELOAD, '');
   return CZECH_LETTERS.test(fontSample) ? home : home.replaceAll(CZECH_FONT_PRELOAD, '');
 }
