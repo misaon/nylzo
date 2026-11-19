@@ -16,6 +16,7 @@ import { randomText } from '../../shared/pipeline/random-text.ts';
 import { FocusTargets } from '../../shared/ui/focus/focus.ts';
 import type { IconName } from '../../shared/ui/icon/icons.ts';
 import { Flash } from '../../shared/ui/transition/flash.svelte.ts';
+import { Glide } from '../../shared/ui/transition/glide.ts';
 import { openedFacts } from './read-facts.ts';
 import { burnText, noticeOf } from './read-notice.ts';
 import type { Burned, Notice } from './read-notice.ts';
@@ -25,6 +26,7 @@ import type { BurnOutcome, BusyStep, ClosedView, Reader, ReadView } from './read
 import { DownloadConfirmation } from './revealed/download-confirmation.svelte.ts';
 import { markHiddenCharacters } from './revealed/hidden-characters.ts';
 import type { MarkedText } from './revealed/hidden-characters.ts';
+import { charactersOf, scramble } from './scramble.ts';
 
 export type Phase = 'notice' | 'opening' | 'ready' | 'revealed';
 
@@ -63,7 +65,6 @@ const MIN_MS = { passphrase: 3000, plain: 2000, reduced: 1000 } as const;
 const REVEAL_MS = 900;
 const REVEAL_TICK_MS = 40;
 const SCRAMBLED_CHARACTERS = 2000;
-const SCRAMBLE_LEAD = 1.15;
 const FLASH_MS = 2400;
 const NOISE_CHARACTERS = 260;
 const NOISE_GROWTH = 900;
@@ -72,19 +73,6 @@ const COUNTDOWN_TICK_MS = 1000;
 export const SHOWN_SECONDS = 15 * 60;
 const FAILED_BURNS: ReadonlySet<BurnOutcome['outcome']> = new Set(['failed', 'retry_later', 'unknown', 'waiting']);
 const UNSENT_BURNS: ReadonlySet<BurnOutcome['outcome']> = new Set(['failed', 'ignored', 'retry_later']);
-const WHITESPACE: ReadonlySet<string> = new Set([' ', '\n', '\t']);
-
-function scramble(characters: readonly string[], progress: number): string {
-  const cut = Math.floor(characters.length * Math.min(1, progress * SCRAMBLE_LEAD));
-  const noise = randomText(characters.length);
-  return characters
-    .map((character, index) => (index < cut || WHITESPACE.has(character) ? character : noise.charAt(index)))
-    .join('');
-}
-
-function charactersOf(text: string): readonly string[] {
-  return text.match(/./gsu) ?? [];
-}
 
 export class ReadPage {
   #left = false;
@@ -126,6 +114,7 @@ export class ReadPage {
   readonly copied = new Flash(FLASH_MS);
   readonly downloaded = new Flash(FLASH_MS);
   readonly focus = new FocusTargets<FocusTarget>();
+  readonly glide = new Glide();
   readonly download = new DownloadConfirmation(
     async (target) => this.focus.focusAfterUpdate(target),
     () => this.downloaded.show(),
@@ -551,7 +540,10 @@ export class ReadPage {
 
   #show(next: ReadView): void {
     const wasRevealed = this.shown.view === 'revealed';
-    this.shown = next;
+    // An ended message drops the intro, so what follows the title glides up.
+    void this.glide.around(() => {
+      this.shown = next;
+    });
     if (next.view !== 'loading') {
       clearTimeout(this.#settleTimer);
       this.settled = true;
