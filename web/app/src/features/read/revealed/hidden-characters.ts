@@ -1,7 +1,10 @@
+import type { Attachment } from 'svelte/attachments';
+
 interface TextPiece {
   readonly key: number;
   readonly text: string;
   readonly hidden: boolean;
+  readonly original?: string;
 }
 
 export interface MarkedText {
@@ -44,7 +47,7 @@ function splitGrapheme(grapheme: string, add: (text: string, hidden: boolean) =>
   const emoji = PICTOGRAPHIC.test(grapheme);
   for (const [index, character] of characters.entries()) {
     const hidden = SUSPECT.test(character) && !(emoji && allowedInEmoji(codePoints, index));
-    add(hidden ? codeLabel(codePoints[index] ?? 0) : character, hidden);
+    add(character, hidden);
   }
 }
 
@@ -64,7 +67,7 @@ export function markHiddenCharacters(text: string): MarkedText {
       return;
     }
     flush();
-    pieces.push({ key: pieces.length, text: piece, hidden: true });
+    pieces.push({ key: pieces.length, text: codeLabel(piece.codePointAt(0) ?? 0), hidden: true, original: piece });
   };
   for (const { segment } of segmenter.segment(text)) {
     splitGrapheme(segment, appendPiece);
@@ -130,3 +133,56 @@ export function piecesOf(head: string, marked: MarkedText): readonly TextPiece[]
   }
   return pieces;
 }
+
+function editing(): boolean {
+  const active = document.activeElement;
+  return (
+    active instanceof HTMLInputElement ||
+    active instanceof HTMLTextAreaElement ||
+    (active?.closest('[contenteditable]') ?? null) !== null
+  );
+}
+
+// A copy made inside the message by hand carries the hidden characters themselves, not the labels that show them.
+export const copyOriginals: Attachment<HTMLElement> = (message) => {
+  const listening = new AbortController();
+  document.addEventListener(
+    'copy',
+    (event) => {
+      const selection = getSelection();
+      if (selection === null || selection.rangeCount !== 1 || event.clipboardData === null || editing()) {
+        return;
+      }
+      const range = selection.getRangeAt(0);
+      if (!range.intersectsNode(message)) {
+        return;
+      }
+      // A triple click or a drag past the end also selects the space after the message, which the copy keeps out.
+      const inside = range.cloneRange();
+      if (!message.contains(range.startContainer)) {
+        inside.setStart(message, 0);
+      }
+      if (!message.contains(range.endContainer)) {
+        inside.setEnd(message, message.childNodes.length);
+      }
+      if (range.toString().trim() !== inside.toString().trim()) {
+        return;
+      }
+      const copied = inside.cloneContents();
+      let replaced = false;
+      for (const mark of copied.querySelectorAll<HTMLElement>('mark[data-original]')) {
+        const touched = mark.textContent !== '';
+        mark.replaceWith(touched ? (mark.dataset['original'] ?? '') : '');
+        replaced ||= touched;
+      }
+      if (replaced) {
+        event.clipboardData.setData('text/plain', copied.textContent);
+        event.preventDefault();
+      }
+    },
+    { signal: listening.signal },
+  );
+  return () => {
+    listening.abort();
+  };
+};
