@@ -20,7 +20,10 @@
   const keepProblem = lingering();
   const problemNotice = $derived(keepProblem(composer.problemNotice));
   const quiet = $derived(composer.notice === '' && composer.phase !== 'done');
-  const rememberedShown = $derived(composer.remembered === 'remembered' || composer.remembered === 'failed');
+  // The tracking panel lifts this row when it leaves, so a saved message waits for that and appears in its final place.
+  const rememberedShown = $derived(
+    (composer.remembered === 'remembered' && composer.trackingPanelLeft) || composer.remembered === 'failed',
+  );
   const rememberedText = $derived.by(() => {
     if (composer.remembered === 'remembered') {
       return translate(composer.kept ? 'created.remembered' : 'created.remembered.session');

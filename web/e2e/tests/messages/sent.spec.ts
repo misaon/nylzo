@@ -166,6 +166,19 @@ test('this device remembers a new message only when the sender saves it in the c
   await expect(page.getByText('Waiting to be opened')).toBeVisible();
 });
 
+test('the link to Sent appears where it stays, after the tracking panel has left', async ({ page }) => {
+  await openApp(page, '/');
+  await page.getByLabel('Message text').fill('settled');
+  await page.getByRole('button', { name: 'Create link' }).click();
+  await createdLink(page);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const link = notInert(page, page.getByRole('link', { name: 'Open Sent' }));
+  await expect(link).toBeVisible();
+  const shownAt = await link.boundingBox();
+  await expect(page.getByLabel('Label, only you see it')).toBeHidden();
+  expect(await link.boundingBox()).toEqual(shownAt);
+});
+
 test(
   'the manage key lies in IndexedDB only as a non-extractable Ed25519 signing key',
   { tag: '@cross-browser' },
