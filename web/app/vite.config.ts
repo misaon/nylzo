@@ -182,6 +182,8 @@ export default defineConfig(({ isSsrBuild, mode }) => ({
   ssr: { noExternal: ['@nylzo/core'] },
   worker: { format: 'es' },
   test: {
+    // happy-dom rejects a cancelled animation's finished promise without marking it handled, as browsers do.
+    onUnhandledError: (error) => !(error.name === 'AbortError' && error.message === 'The animation was canceled.'),
     coverage: {
       provider: 'istanbul',
       reporter: ['text', 'lcov', 'html'],
