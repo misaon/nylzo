@@ -20,15 +20,15 @@
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
     "@types/bun": "1.4.4",
     "@types/node": "26.6.6",
-    "eslint-plugin-perfectionist": "5.13.0",
+    "eslint-plugin-perfectionist": "5.14.0",
     "eslint-plugin-regexp": "3.3.3",
-    "oxfmt": "0.78.0",
-    "oxlint": "1.93.0",
+    "oxfmt": "0.79.0",
+    "oxlint": "1.94.0",
     "oxlint-tsgolint": "7.0.2007",
     "typescript": "7.0.2"
   },
   "overrides": {
-    "minimatch": "11.0.8"
+    "minimatch": "11.0.9"
   },
   "engines": {
     "bun": "1.4.4"
