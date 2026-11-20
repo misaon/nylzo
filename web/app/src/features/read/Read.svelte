@@ -36,14 +36,18 @@
   {#if page.settled}
     <div class="relative mx-auto flex max-w-column flex-col items-center text-center">
       <p class="animate-rise text-eyebrow text-aegis-300 uppercase" aria-hidden="true">{translate('read.title')}</p>
-      <h1
-        class="mt-3 animate-rise-visible font-display text-hero font-light text-balance [animation-delay:80ms] md:text-hero-lg"
-      >
-        {translate(ended ? 'open.title.ended' : 'open.title')}
-      </h1>
+      <!-- A title that changes in place counts as a layout shift; a new one rises in like the first. -->
+      {#key ended}
+        <h1
+          class="mt-3 animate-rise-visible font-display text-hero font-light text-balance [animation-delay:80ms] md:text-hero-lg"
+        >
+          {translate(ended ? 'open.title.ended' : 'open.title')}
+        </h1>
+      {/key}
       <div
+        {@attach page.glide.attach}
         class={[
-          'pt-5 transition-opacity duration-500',
+          'w-full pt-5 transition-opacity duration-500',
           ended ? 'pointer-events-none absolute inset-x-0 top-full opacity-0' : 'opacity-100',
         ]}
         inert={ended}

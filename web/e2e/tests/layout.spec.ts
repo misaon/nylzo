@@ -1,3 +1,5 @@
+import { setTimeout as delay } from 'node:timers/promises';
+
 import type { Locator, Page } from '@playwright/test';
 
 import { expect, test } from './support/fixtures.ts';
@@ -218,6 +220,12 @@ for (const viewport of VIEWPORTS) {
     const deleter = await newPage({ viewport, ...FULL_MOTION });
     await watchLayout(deleter);
     await deleter.goto(unopened.link);
+    await expect(deleter.getByRole('button', { name: 'Show message' })).toBeVisible();
+    // A shift within half a second of a click does not count, so the answer that ends the message comes later.
+    await deleter.route(/\/api\//u, async (route) => {
+      await delay(600);
+      await route.continue();
+    });
     await deleter.getByRole('button', { name: 'Delete without opening' }).click();
     await deleter.getByRole('alertdialog').getByRole('button', { name: 'Yes, delete' }).click();
     await expect(deleter.getByText('You deleted the message')).toBeVisible();
