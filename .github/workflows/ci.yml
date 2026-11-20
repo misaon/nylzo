@@ -756,7 +756,7 @@ jobs:
         with:
           distribution: goreleaser
           # renovate: datasource=github-releases depName=goreleaser/goreleaser
-          version: v2.20.2
+          version: v2.20.3
           install-only: true
       - name: Build through the readonly release path, including both image architectures
         timeout-minutes: 8
