@@ -37,8 +37,11 @@ function actionTagClaims(workflow: string): Map<string, UpstreamClaim> {
   );
 }
 
-export const workflow: FileRule = (path, before, after) => {
-  const review = compareSnapshots(path, snapshot(before, workflowValues), snapshot(after, workflowValues));
+export const workflow: FileRule = ({ after, before, path }) => {
+  const review = compareSnapshots(path, {
+    after: snapshot(after, workflowValues),
+    before: snapshot(before, workflowValues),
+  });
   const existing = actionTagClaims(before);
   for (const [key, claim] of actionTagClaims(after)) {
     if (!existing.has(key)) {

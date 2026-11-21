@@ -44,8 +44,7 @@ export async function branchTip(client: GitHubClient, branch: string): Promise<s
 
 export async function mergedPullRequest(
   client: GitHubClient,
-  commit: string,
-  branch: string,
+  { branch, commit }: { readonly branch: string; readonly commit: string },
 ): Promise<PullRequest | undefined> {
   const response = await client.rest.repos.listPullRequestsAssociatedWithCommit({ ...repository, commit_sha: commit });
   return response.data.find(
@@ -61,9 +60,7 @@ export interface LabelledPullRequest {
 
 export async function unreleasedPullRequests(
   client: GitHubClient,
-  releaseCommit: string,
-  tip: string,
-  branch: string,
+  { branch, releaseCommit, tip }: { readonly branch: string; readonly releaseCommit: string; readonly tip: string },
 ): Promise<LabelledPullRequest[]> {
   const comparison = await client.rest.repos.compareCommitsWithBasehead({
     ...repository,
@@ -79,7 +76,7 @@ export async function unreleasedPullRequests(
   const pulls: LabelledPullRequest[] = [];
   // GitHub asks API clients to send requests one at a time.
   for (const commit of commits) {
-    const pull = await mergedPullRequest(client, commit.sha, branch);
+    const pull = await mergedPullRequest(client, { branch, commit: commit.sha });
     if (pull !== undefined) {
       pulls.push({
         labels: pull.labels.map((label) => label.name),

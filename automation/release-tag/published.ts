@@ -38,7 +38,7 @@ if (version.patch === 0) {
     await client.rest.git.createRef({ ...repository, ref: `refs/heads/${branch}`, sha: commit });
     console.log(`Created the maintenance branch ${branch} at ${tag}.`);
   }
-  const pull = await mergedPullRequest(client, commit, 'main');
+  const pull = await mergedPullRequest(client, { branch: 'main', commit });
   if (pull !== undefined) {
     await client.rest.issues.addLabels({ ...repository, issue_number: pull.number, labels: ['autorelease: tagged'] });
     if (pull.labels.some((label) => label.name === 'autorelease: pending')) {

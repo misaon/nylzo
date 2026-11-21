@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { z } from 'zod';
 
 import { emptyReview } from './file-review.ts';
-import type { FileReview, FileRule, ValueKind } from './file-review.ts';
+import type { Change, FileReview, FileRule, ValueKind } from './file-review.ts';
 
 type JsonObject = Record<string, unknown>;
 
@@ -39,7 +39,7 @@ function sameKeys(left: Readonly<JsonObject>, right: Readonly<JsonObject>): bool
   return keys.length === Object.keys(right).length && keys.every((key) => Object.hasOwn(right, key));
 }
 
-export function revertOverrideUpdates(path: string, before: unknown, after: unknown, review: FileReview): unknown {
+export function revertOverrideUpdates(path: string, { after, before }: Change<unknown>, review: FileReview): unknown {
   if (!isObject(before) || !isObject(after)) {
     return after;
   }
@@ -60,7 +60,7 @@ export function revertOverrideUpdates(path: string, before: unknown, after: unkn
   return reverted;
 }
 
-export const packageManifest: FileRule = (path, before, after) => {
+export const packageManifest: FileRule = ({ after, before, path }) => {
   const review = emptyReview();
   const old = parseObject(path, before, review);
   const next = parseObject(path, after, review);
@@ -93,7 +93,7 @@ export const packageManifest: FileRule = (path, before, after) => {
     }
   }
   if (Object.hasOwn(next, 'overrides')) {
-    next['overrides'] = revertOverrideUpdates(path, old['overrides'], next['overrides'], review);
+    next['overrides'] = revertOverrideUpdates(path, { after: next['overrides'], before: old['overrides'] }, review);
   }
   if (old['packageManager'] !== next['packageManager']) {
     const previous = packageManagerRelease.exec(String(old['packageManager']))?.groups;
@@ -150,27 +150,38 @@ function compareTree(
   const kind = leaves[location.at(-1) ?? ''];
   if (typeof before !== 'string' || typeof after !== 'string' || kind === undefined || kind === 'fixed') {
     review.findings.push(`${path}: ${where} cannot change automatically`);
-  } else if (kind === 'opaque') {
-    if (!sha256.test(after)) {
-      review.findings.push(`${path}: ${where} is not a SHA-256 checksum`);
+    return;
+  }
+  switch (kind) {
+    case 'opaque': {
+      if (!sha256.test(after)) {
+        review.findings.push(`${path}: ${where} is not a SHA-256 checksum`);
+      }
+      break;
     }
-  } else {
-    const old = versionPrefix.exec(before)?.groups;
-    const next = versionPrefix.exec(after)?.groups;
-    if (old?.['prefix'] === next?.['prefix']) {
-      review.updates.push({
-        after: next?.['version'] ?? after,
-        before: old?.['version'] ?? before,
-        name: `${path} ${where}`,
-      });
-    } else {
-      review.findings.push(`${path}: ${where} changed its version format`);
+    case 'version': {
+      const old = versionPrefix.exec(before)?.groups;
+      const next = versionPrefix.exec(after)?.groups;
+      if (old?.['prefix'] === next?.['prefix']) {
+        review.updates.push({
+          after: next?.['version'] ?? after,
+          before: old?.['version'] ?? before,
+          name: `${path} ${where}`,
+        });
+      } else {
+        review.findings.push(`${path}: ${where} changed its version format`);
+      }
+      break;
+    }
+    default: {
+      const exhaustive: never = kind;
+      void exhaustive;
     }
   }
 }
 
 function manifestRule(leaves: Readonly<Record<string, ValueKind>>): FileRule {
-  return (path, before, after) => {
+  return ({ after, before, path }) => {
     const review = emptyReview();
     const old = parseObject(path, before, review);
     const next = parseObject(path, after, review);
@@ -224,8 +235,9 @@ function releaseAssetName(key: string, asset: BinaryAsset): string | undefined {
 
 const assetManifest = manifestRule({ sha256: 'opaque', version: 'version' });
 
-export const binaryAssetManifest: FileRule = (path, before, after) => {
-  const review = assetManifest(path, before, after);
+export const binaryAssetManifest: FileRule = (file) => {
+  const { after, before, path } = file;
+  const review = assetManifest(file);
   if (review.findings.length > 0) {
     return review;
   }
