@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { isIP } from "node:net";
-import { X509Certificate, createPublicKey } from "node:crypto";
+import { createPublicKey } from "node:crypto";
 
 export type Site = {
   name: string;
@@ -20,7 +20,6 @@ export type Site = {
   dnsZone?: string | undefined;
   cloudflareAccountId?: string | undefined;
   publicAccess?: boolean | undefined;
-  monitorClientCertificate?: string | undefined;
   heartbeatUrl?: string | undefined;
   tang?: { servers: { url: string; thumbprint: string }[]; threshold: number } | undefined;
   acmeAccountUri?: string | undefined;
@@ -47,10 +46,10 @@ export function configuration(input: unknown): Site {
 }
 
 function assertSite(input: unknown): asserts input is Site {
-  const allowed = ["name", "domain", "location", "serverType", "architecture", "administratorNetworks", "administratorPublicKey", "reportPublicKey", "operator", "contact", "hosting", "dailyCreates", "initialRelease", "automaticUpdates", "dnsZone", "cloudflareAccountId", "publicAccess", "monitorClientCertificate", "heartbeatUrl", "tang", "acmeAccountUri", "profile"];
+  const allowed = ["name", "domain", "location", "serverType", "architecture", "administratorNetworks", "administratorPublicKey", "reportPublicKey", "operator", "contact", "hosting", "dailyCreates", "initialRelease", "automaticUpdates", "dnsZone", "cloudflareAccountId", "publicAccess", "heartbeatUrl", "tang", "acmeAccountUri", "profile"];
   assert(isRecord(input));
   assert(Object.keys(input).every(key => allowed.includes(key)), "Unknown deployment option");
-  const { name, domain, location, serverType, architecture, administratorNetworks, administratorPublicKey, reportPublicKey, operator, contact, hosting, dailyCreates, initialRelease, automaticUpdates, dnsZone, cloudflareAccountId, publicAccess, monitorClientCertificate, heartbeatUrl, tang, acmeAccountUri, profile } = input;
+  const { name, domain, location, serverType, architecture, administratorNetworks, administratorPublicKey, reportPublicKey, operator, contact, hosting, dailyCreates, initialRelease, automaticUpdates, dnsZone, cloudflareAccountId, publicAccess, heartbeatUrl, tang, acmeAccountUri, profile } = input;
   assertText(name, /^[a-z][a-z0-9-]{0,30}$/u);
   assertText(domain, /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u);
   assertText(location, /^(nbg1|fsn1|hel1)$/u);
@@ -82,22 +81,6 @@ function assertSite(input: unknown): asserts input is Site {
     assert.equal(Buffer.from(reportPublicKey, "base64url").length, 1216);
   }
   assert(typeof automaticUpdates === "boolean");
-  if (monitorClientCertificate !== undefined) {
-    assert(automaticUpdates, "Host monitoring requires automatic update checks");
-    assert(typeof monitorClientCertificate === "string");
-    assert(monitorClientCertificate.length <= 4096);
-    assert(!monitorClientCertificate.includes("PRIVATE KEY"), "Supply only the public monitor certificate");
-    const certificate = new X509Certificate(monitorClientCertificate);
-    assert(certificate.toString().trim() === monitorClientCertificate.trim(), "Supply one public certificate, never a private key or a certificate bundle");
-    assert(!certificate.ca && certificate.verify(certificate.publicKey), "Use a self-signed monitor leaf identity");
-    assert(certificate.keyUsage?.includes("1.3.6.1.5.5.7.3.2"), "The monitor identity must permit TLS client authentication");
-    const key = certificate.publicKey;
-    assert(key.asymmetricKeyType === "ed25519" ||
-      (key.asymmetricKeyType === "ec" && ["prime256v1", "secp384r1", "secp521r1"].includes(key.asymmetricKeyDetails?.namedCurve ?? "")) ||
-      (["rsa", "rsa-pss"].includes(key.asymmetricKeyType ?? "") && (key.asymmetricKeyDetails?.modulusLength ?? 0) >= 3072), "Use a monitor key with at least 128-bit classical security");
-    assert(certificate.validToDate.getTime() - certificate.validFromDate.getTime() <= 397 * 86400000, "Monitor certificates must expire within 397 days");
-    assert(certificate.validFromDate.getTime() <= Date.now() && certificate.validToDate.getTime() > Date.now() + 30 * 86400000, "Rotate the monitor identity at least 30 days before expiry");
-  }
   if (heartbeatUrl !== undefined) assertText(heartbeatUrl, /^https:\/\/[a-z0-9.-]{1,253}(?::[0-9]{1,5})?(?:\/[A-Za-z0-9._~-]+){1,8}$/u, "The heartbeat address must be one HTTPS URL without a query or fragment");
   if (tang !== undefined) {
     assert(isRecord(tang));

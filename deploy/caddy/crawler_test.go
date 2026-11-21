@@ -53,7 +53,7 @@ func adaptHetzner(t *testing.T) map[string]any {
 	t.Setenv("NYLZO_DOMAIN", "localhost")
 	t.Setenv("NYLZO_CONTACT", operatorContact)
 	var source []byte
-	for _, name := range []string{"Caddyfile", "www.Caddyfile", "monitor.Caddyfile"} {
+	for _, name := range []string{"Caddyfile", "www.Caddyfile"} {
 		part, err := os.ReadFile(filepath.Join("..", "hetzner-flatcar", "host", "proxy", name))
 		if err != nil {
 			t.Fatal(err)

@@ -90,32 +90,6 @@ jobs:
           done
           exit "$failed"
 
-  host:
-    name: Authenticated host readiness
-    if: vars.NYLZO_HOST_MONITOR_ENABLED == 'true' && github.ref == 'refs/heads/main' && github.event_name != 'workflow_run'
-    environment: host-monitoring
-    runs-on: ubuntu-26.04
-    timeout-minutes: 8
-    steps:
-      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
-        with:
-          egress-policy: audit
-      - uses: $/.github/actions/setup
-        with:
-          tools: bun
-      - name: Read coarse host status over mutual TLS
-        env:
-          URL: ${{ secrets.NYLZO_HOST_MONITOR_URL }}
-          MONITOR_ADDRESS: ${{ secrets.NYLZO_HOST_MONITOR_ADDRESS }}
-          MONITOR_CERT: ${{ secrets.NYLZO_MONITOR_CERT }}
-          MONITOR_KEY: ${{ secrets.NYLZO_MONITOR_KEY }}
-        run: |
-          for attempt in 1 2 3; do
-            if bun tools/security/monitor-host.mts; then exit 0; fi
-            if [[ "$attempt" != 3 ]]; then sleep 75; fi
-          done
-          exit 1
-
   domain:
     name: DNS, certificate transparency and registration of the domain
     if: vars.NYLZO_MONITOR_DOMAIN != '' && github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || github.event.schedule == '23 * * * *')

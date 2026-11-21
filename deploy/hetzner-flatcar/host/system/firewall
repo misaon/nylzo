@@ -31,8 +31,6 @@ elements() {
 web4="ip saddr @administrators4"
 web6="ip6 saddr @administrators6"
 if [[ "$public" = true ]]; then web4="meta nfproto ipv4"; web6="meta nfproto ipv6"; fi
-monitor=""
-if [[ -s /etc/nylzo/monitor-client.pem ]]; then monitor="tcp dport 8443 accept"; fi
 ruleset="table inet nylzo
 delete table inet nylzo
 table inet nylzo {
@@ -48,7 +46,6 @@ table inet nylzo {
     tcp dport 80 accept
     $web4 meta l4proto { tcp, udp } th dport 443 accept
     $web6 meta l4proto { tcp, udp } th dport 443 accept
-    $monitor
     ip saddr @administrators4 tcp dport 22 accept
     ip6 saddr @administrators6 tcp dport 22 accept
   }
@@ -58,7 +55,7 @@ nft --file - <<< "$ruleset"
 for family in iptables:32 ip6tables:64; do
   command=${family%%:*}
   "$command" --wait --new-chain nylzo-connections 2>/dev/null || "$command" --wait --flush nylzo-connections
-  "$command" --wait --append nylzo-connections --protocol tcp --syn --match multiport --dports 80,443,8443 \
+  "$command" --wait --append nylzo-connections --protocol tcp --syn --match multiport --dports 80,443 \
     --match connlimit --connlimit-above 64 --connlimit-mask "${family#*:}" --jump REJECT --reject-with tcp-reset
   "$command" --wait --check INPUT --jump nylzo-connections 2>/dev/null || "$command" --wait --insert INPUT 1 --jump nylzo-connections
 done

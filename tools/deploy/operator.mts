@@ -206,7 +206,7 @@ export async function prepare(siteFile: string, kind: Stack, verify = verifyChec
     assert.equal(field(image, "version"), toolchain.flatcar);
     assert.equal(field(image, "architecture"), site.architecture);
     assert(typeof imageId === "number" && Number.isSafeInteger(imageId) && imageId > 0);
-    variables = { ...variables, image_id: imageId, flatcar_version: toolchain.flatcar, architecture: site.architecture, administrator_networks: site.administratorNetworks, public_access: site.publicAccess ?? false, monitoring_enabled: Boolean(site.monitorClientCertificate) };
+    variables = { ...variables, image_id: imageId, flatcar_version: toolchain.flatcar, architecture: site.architecture, administrator_networks: site.administratorNetworks, public_access: site.publicAccess ?? false };
   }
   if (kind === "dns") {
     assert.match(site.cloudflareAccountId ?? "", /^[a-f0-9]{32}$/u, "Set the Cloudflare account ID in site.json");

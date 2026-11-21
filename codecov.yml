@@ -20,7 +20,6 @@ flag_management:
         - internal/
         - tools/tlscheck/
         - tools/codesign/
-        - tools/deploy/monitor-identity/
     - name: typescript
       paths:
         - web/core/src/

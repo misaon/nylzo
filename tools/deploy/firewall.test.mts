@@ -20,7 +20,6 @@ test("the host firewall admits only what the cloud firewall admits and limits ea
 trap 'echo "failed at line $LINENO: $BASH_COMMAND" >&2' ERR
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq >/dev/null && apt-get install -qq -y --no-install-recommends nftables iptables >/dev/null
-mkdir -p /etc/nylzo
 run() { printf '%s\n' "$@" > /tmp/host.env; NYLZO_HOST_SETTINGS=/tmp/host.env bash /firewall; }
 has() { nft --numeric-protocol list chain inet nylzo input > /tmp/rules; grep -Fq -- "$1" /tmp/rules; }
 run PUBLIC_ACCESS=false ADMINISTRATOR_NETWORKS=192.0.2.1/32,2001:db8::/64
@@ -33,13 +32,10 @@ for command in iptables ip6tables; do
   grep -q 'connlimit --connlimit-above 64' /tmp/limit
   "$command" --wait --check INPUT --jump nylzo-connections
 done
-if has 'dport 8443'; then exit 1; fi
 if has 'meta nfproto ipv4 meta l4proto { 6, 17 } th dport 443 accept'; then exit 1; fi
 nft list set inet nylzo administrators4 > /tmp/set
 grep -Fq '192.0.2.1' /tmp/set
-printf 'certificate\n' > /etc/nylzo/monitor-client.pem
 run PUBLIC_ACCESS=true ADMINISTRATOR_NETWORKS=192.0.2.0/24
-has 'tcp dport 8443 accept'
 has 'meta nfproto ipv4 meta l4proto { 6, 17 } th dport 443 accept'
 nft list tables > /tmp/tables
 [[ "$(grep -c 'inet nylzo' /tmp/tables)" = 1 ]]
@@ -47,7 +43,7 @@ for invalid in 'ADMINISTRATOR_NETWORKS=0.0.0.0/0' 'ADMINISTRATOR_NETWORKS=192.0.
   if run PUBLIC_ACCESS=false "$invalid" 2>/dev/null; then echo "accepted $invalid" >&2; exit 1; fi
 done
 if run PUBLIC_ACCESS=yes ADMINISTRATOR_NETWORKS=192.0.2.1/32 2>/dev/null; then exit 1; fi
-has 'tcp dport 8443 accept'
+has 'meta nfproto ipv4 meta l4proto { 6, 17 } th dport 443 accept'
 echo FIREWALL_VERIFIED
 ` });
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);

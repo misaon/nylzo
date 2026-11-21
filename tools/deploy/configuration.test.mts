@@ -5,10 +5,6 @@ import { releaseBundle, render } from "./render.mts";
 import { hostSources } from "./bundle.mts";
 import { gunzipSync } from "node:zlib";
 import { readFile } from "node:fs/promises";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { execFileSync } from "node:child_process";
 import { generateKeyPairSync } from "node:crypto";
 
 const ed25519 = "ssh-ed25519 " + Buffer.concat([Buffer.from("0000000b7373682d6564323535313900000020", "hex"), Buffer.alloc(32, 1)]).toString("base64");
@@ -76,11 +72,10 @@ test("automatic patch selection refuses prereleases, downgrades, breaking upgrad
 });
 
 test("server user data stays small, carries no secret, and installs only the signed host bundle of the initial release", async () => {
-  const certificate = "-----BEGIN CERTIFICATE-----\n" + "A".repeat(1800) + "\n-----END CERTIFICATE-----\n";
   const largest = { ...site, administratorPublicKey: securityKey(), heartbeatUrl: "https://hc-ping.com/0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d",
     tang: { threshold: 2, servers: [{ url: "http://tang.example.org", thumbprint: "A".repeat(43) }, { url: "http://tang.example.net", thumbprint: "B".repeat(43) }] } };
   const { ignition, cloud } = await render(largest, bundle);
-  assert(Buffer.byteLength(JSON.stringify(ignition)) + certificate.length * 1.4 <= 24576, "Server user data must leave room within Hetzner's 32 KiB limit");
+  assert(Buffer.byteLength(JSON.stringify(ignition)) <= 24576, "Server user data must leave room within Hetzner's 32 KiB limit");
   assert(Buffer.byteLength(cloud) <= 32768);
   const factory: unknown = JSON.parse(cloud.slice("#cloud-config\n".length));
   const written: unknown = isRecord(factory) ? factory["write_files"] : undefined;
@@ -210,24 +205,4 @@ test("DNS allows only the instance's Let's Encrypt account by HTTP-01, no wildca
   assert.match(dns, /count {3}= local\.apex \? 1 : 0/u);
   const caddy = entry(await hostSources(), "proxy/Caddyfile");
   assert.match(caddy, /disable_tlsalpn_challenge/u);
-});
-
-test("host monitoring is opt-in and embeds only its pinned public client identity", async () => {
-  const directory = mkdtempSync(join(tmpdir(), "nylzo-monitor-config-"));
-  try {
-    execFileSync("go", ["run", "./tools/deploy/monitor-identity", join(directory, "identity")], { stdio: "pipe" });
-    const certificate = readFileSync(join(directory, "identity/client.pem"), "utf8");
-    const key = readFileSync(join(directory, "identity/client-key.pem"), "utf8");
-    for (const invalid of [key, certificate + key, certificate + certificate]) await assert.rejects(render({ ...site, monitorClientCertificate: invalid }, bundle));
-    assert.throws(() => configuration({ ...site, automaticUpdates: false, monitorClientCertificate: certificate }));
-    const { ignition } = await render({ ...site, monitorClientCertificate: certificate }, bundle);
-    const files = decode(ignition);
-    assert.equal(files.get("/etc/nylzo/monitor-client.pem"), certificate);
-    assert(!JSON.stringify(ignition).includes("PRIVATE KEY"));
-    assert(![...files.values()].some(value => value.includes(key)));
-    assert(!decode((await render(site, bundle)).ignition).has("/etc/nylzo/monitor-client.pem"));
-    const monitor = entry(await hostSources(), "proxy/monitor.Caddyfile");
-    for (const expected of [":8443", "mode require_and_verify", "verifier leaf file", "protocols tls1.3"]) assert(monitor.includes(expected), expected);
-    assert.match(monitor, /^\s*curves x25519mlkem768$/mu);
-  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
