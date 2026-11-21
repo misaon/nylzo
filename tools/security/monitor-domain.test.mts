@@ -33,9 +33,9 @@ test("CAA must name only Let's Encrypt for the instance account by HTTP-01 and f
 
 test("the domain publishes a null MX, a hard-fail SPF and a rejecting DMARC policy", () => {
   const mx = { Status: 0, AD: true, Answer: [{ type: 15, data: "0 ." }] };
-  assert.deepEqual(mailProblems(mx, txt('"v=spf1 -all"', '"google-site-verification=x"'), txt('"v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s"')), []);
-  assert.equal(mailProblems({ Status: 0, AD: true }, { Status: 0, AD: true }, { Status: 3, AD: true }).length, 3);
-  assert.notDeepEqual(mailProblems(mx, txt('"v=spf1 ~all"'), txt('"v=DMARC1; p=none"')), []);
+  assert.deepEqual(mailProblems({ mx, apex: txt('"v=spf1 -all"', '"google-site-verification=x"'), dmarc: txt('"v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s"') }), []);
+  assert.equal(mailProblems({ mx: { Status: 0, AD: true }, apex: { Status: 0, AD: true }, dmarc: { Status: 3, AD: true } }).length, 3);
+  assert.notDeepEqual(mailProblems({ mx, apex: txt('"v=spf1 ~all"'), dmarc: txt('"v=DMARC1; p=none"') }), []);
 });
 
 test("certificate transparency accepts only Let's Encrypt certificates for the instance names", () => {
@@ -75,6 +75,24 @@ test("the domain check reads DNS through a validating resolver, RDAP and every C
     assert.equal(seen.length, Object.keys(answers).length);
     await assert.rejects(domainProblems("nylzo.com/../x", { now }));
   } finally { fetch.mock.restore(); }
+});
+
+test("an answer that lacks a field the checks read fails the domain check", async () => {
+  const issuances = "https://api.certspotter.com/v1/issuances?domain=nylzo.com&include_subdomains=true&expand=dns_names&expand=issuer";
+  const caaQuestion = "https://dns.google/resolve?name=nylzo.com&type=CAA&do=true";
+  const rdap = "https://rdap.verisign.com/com/v1/domain/nylzo.com";
+  for (const [url, answer, reason] of [
+    [caaQuestion, { Status: 0, Answer: [] }, /CAA answer for nylzo\.com is malformed/u],
+    [caaQuestion, { Status: 0, AD: true, Answer: [{ type: 257 }] }, /CAA answer for nylzo\.com is malformed/u],
+    [rdap, { status: "client transfer prohibited" }, /RDAP answer is malformed/u],
+    [issuances, [{ id: "7", issuer: { friendly_name: "Let's Encrypt" }, not_before: "2026-10-31T00:00:00Z" }], /Certificate Transparency answer is malformed/u],
+    [issuances, { error: "rate limited" }, /Certificate Transparency answer is malformed/u],
+  ] as const) {
+    const fetch = mock.method(globalThis, "fetch", async (asked: string) => Response.json(asked === url ? answer : asked in domainAnswers ? domainAnswers[asked] : []));
+    try {
+      await assert.rejects(domainProblems("nylzo.com", { accountUri: account, now }), reason);
+    } finally { fetch.mock.restore(); }
+  }
 });
 
 test("certificate monitoring fails closed unless pagination reaches an empty page", async () => {

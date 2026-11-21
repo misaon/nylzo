@@ -4,12 +4,25 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
+import { isRecord } from "./configuration.mts";
 
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
-const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(path.resolve("tools/deploy/runtime.test.mts"), "utf8"))![1]!;
-const { server } = JSON.parse(readFileSync(path.resolve("spec/vectors.json"), "utf8")) as {
-  server: { pepper_hex: string; pepper_id_hex: string; previous_pepper_hex: string; previous_pepper_id_hex: string };
-};
+function pinnedImage() {
+  const pinned = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(path.resolve("tools/deploy/runtime.test.mts"), "utf8"))?.[1];
+  assert(pinned, "The tests run in the pinned Ubuntu image of the runtime tests");
+  return pinned;
+}
+const image = pinnedImage();
+type ServerVectors = { pepper_hex: string; pepper_id_hex: string; previous_pepper_hex: string; previous_pepper_id_hex: string };
+const isServerVectors = (value: unknown): value is ServerVectors =>
+  isRecord(value) && [value["pepper_hex"], value["pepper_id_hex"], value["previous_pepper_hex"], value["previous_pepper_id_hex"]].every(hex => typeof hex === "string" && /^[0-9a-f]+$/u.test(hex));
+function serverVectors() {
+  const vectors: unknown = JSON.parse(readFileSync(path.resolve("spec/vectors.json"), "utf8"));
+  const server = isRecord(vectors) ? vectors["server"] : undefined;
+  assert(isServerVectors(server), "spec/vectors.json holds no server peppers");
+  return server;
+}
+const server = serverVectors();
 const script = (name: string) => `type=bind,source=${path.resolve(`deploy/hetzner-flatcar/host/application/${name}`)},target=/test/${name},readonly`;
 const pepperId = (hex: string) => createHash("sha256").update("nylzo/v1/pepper-id").update(Buffer.from(hex, "hex")).digest().subarray(0, 8).toString("hex");
 

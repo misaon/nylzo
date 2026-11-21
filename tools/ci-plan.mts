@@ -4,6 +4,12 @@ import { appendFileSync } from "node:fs";
 const releasePullRequestFiles = new Set([".github/CHANGELOG.md", ".release-please-manifest.json"]);
 const commitHash = /^([0-9a-f]{40}|[0-9a-f]{64})$/u;
 
+const groupNames = ["go", "web", "integration", "repository", "deployment", "dependencies", "actions"] as const;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function git(repository: string, ...args: string[]) {
   return spawnSync("git", args, { cwd: repository, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
 }
@@ -24,7 +30,7 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
   if (!["pull_request", "push", "schedule", "workflow_dispatch"].includes(event)) {
     throw new Error(`Unsupported CI event: ${event}`);
   }
-  const groups = { go: false, web: false, integration: false, repository: false, deployment: false, dependencies: false, actions: false };
+  const groups: Record<(typeof groupNames)[number], boolean> = { go: false, web: false, integration: false, repository: false, deployment: false, dependencies: false, actions: false };
   let full = event === "schedule" || event === "workflow_dispatch" || files.length === 0;
   const releasePullRequest = event === "pull_request" && files.every((file) => releasePullRequestFiles.has(file));
   for (const file of releasePullRequest ? [] : files) {
@@ -65,7 +71,7 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
       full = true;
     }
   }
-  if (full) for (const group of Object.keys(groups) as (keyof typeof groups)[]) groups[group] = true;
+  if (full) for (const group of groupNames) groups[group] = true;
   const sca = Object.values(groups).some(Boolean);
   const jobs = {
     sca,
@@ -90,20 +96,24 @@ export function planChecks(files: string[], event: string, trustedCoverage = tru
   return { ...groups, coverage: jobs.coverage, sca, full, jobs };
 }
 
-export function checksPassed(results: Record<string, { result: string; outputs?: Record<string, string> }>) {
+export function checksPassed(results: unknown) {
+  if (!isRecord(results)) return false;
   const changes = results["changes"];
-  if (changes?.result !== "success") return false;
-  let jobs: Record<string, boolean>;
+  if (!isRecord(changes) || changes["result"] !== "success") return false;
+  const outputs = changes["outputs"];
+  const planned = isRecord(outputs) ? outputs["jobs"] : undefined;
+  let jobs: unknown;
   try {
-    jobs = JSON.parse(changes.outputs?.["jobs"] ?? "");
+    jobs = JSON.parse(typeof planned === "string" ? planned : "");
   } catch {
     return false;
   }
-  if (!jobs || Array.isArray(jobs) || typeof jobs !== "object" || Object.keys(jobs).length === 0) return false;
+  if (!isRecord(jobs) || Object.keys(jobs).length === 0) return false;
   if (Object.keys(results).length !== Object.keys(jobs).length + 1) return false;
-  return Object.entries(jobs).every(
-    ([job, required]) => typeof required === "boolean" && results[job]?.result === (required ? "success" : "skipped"),
-  );
+  return Object.entries(jobs).every(([job, required]) => {
+    const outcome = results[job];
+    return typeof required === "boolean" && isRecord(outcome) && outcome["result"] === (required ? "success" : "skipped");
+  });
 }
 
 if (import.meta.main) {
@@ -119,12 +129,15 @@ if (import.meta.main) {
         ? []
         : changedFiles(process.env["BASE_SHA"] ?? "", process.env["HEAD_SHA"] ?? "");
     const plan = planChecks(files, event, process.env["TRUSTED_COVERAGE"] === "true");
+    const outputFile = process.env["GITHUB_OUTPUT"];
+    const summaryFile = process.env["GITHUB_STEP_SUMMARY"];
+    if (!outputFile || !summaryFile) throw new Error("GITHUB_OUTPUT and GITHUB_STEP_SUMMARY must name the files of this step");
     const output = Object.entries({ ...plan, forced })
       .map(([key, value]) => `${key}=${JSON.stringify(value)}\n`)
       .join("");
-    appendFileSync(process.env["GITHUB_OUTPUT"]!, output);
+    appendFileSync(outputFile, output);
     appendFileSync(
-      process.env["GITHUB_STEP_SUMMARY"]!,
+      summaryFile,
       `## Selected checks\n\nFull verification: **${plan.full}**\n\n| Job | Run |\n| --- | --- |\n` +
         Object.entries(plan.jobs)
           .map(([job, required]) => `| ${job} | ${required ? "yes" : "skip"} |\n`)

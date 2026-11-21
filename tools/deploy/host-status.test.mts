@@ -4,6 +4,7 @@ import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync 
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
+import { isRecord } from "./configuration.mts";
 
 test("host reports keep every failure visible without exporting operational details", () => {
   const directory = mkdtempSync(join(tmpdir(), "nylzo-host-status-"));
@@ -11,7 +12,7 @@ test("host reports keep every failure visible without exporting operational deta
     const bin = join(directory, "bin"), output = join(directory, "status");
     mkdirSync(bin); mkdirSync(output);
     const requiredUnits = ["nylzo.service", "caddy.service", "nylzo-ready.service", "nylzo-firewall.service", "update-engine.service", "locksmithd.service", "nylzo-update.timer"];
-    const fixture = { now: 2_000_000, lastCheck: 1_999_900, checked: 1_999_800, operation: "UPDATE_STATUS_IDLE", policy: true, services: Object.fromEntries(requiredUnits.map(unit => [unit, "active"])), active: false, result: "success", available: "16777216", clock: "1999000", certificate: true, lifetime: 160 * 3600 };
+    const fixture = { now: 2_000_000, lastCheck: 1_999_900, checked: 1_999_800, operation: "UPDATE_STATUS_IDLE", policy: true, services: Object.fromEntries(requiredUnits.map((unit): [string, string] => [unit, "active"])), active: false, result: "success", available: "16777216", clock: "1999000", certificate: true, lifetime: 160 * 3600 };
     writeFileSync(join(directory, "caddy.env"), "NYLZO_DOMAIN=nylzo.example.org\n");
     const program = `#!${process.execPath}
 import {basename} from 'node:path';import {spawnSync} from 'node:child_process';import {readFileSync} from 'node:fs';
@@ -38,42 +39,46 @@ else if(name==='openssl'){
     for (const command of ["host-policy", "systemctl", "df", "date", "update_engine_client", "timeout", "openssl"]) {
       writeFileSync(join(bin, command), program); chmodSync(join(bin, command), 0o700);
     }
-    const run = (state: any) => {
+    const run = (state: typeof fixture) => {
       writeFileSync(join(directory, "clock"), state.clock);
       const result = spawnSync("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/host-status")], { encoding: "utf8", timeout: 30000, env: { ...process.env, PATH: `${bin}:${process.env["PATH"]}`, STATUS_FIXTURE: JSON.stringify(state), NYLZO_HOST_STATUS_DIR: output, NYLZO_DEPLOY_STATE: directory, NYLZO_CLOCK_STATE: join(directory, "clock"), NYLZO_CADDY_ENV: join(directory, "caddy.env") } });
       assert.equal(result.status, 0, result.stderr);
-      return JSON.parse(readFileSync(join(output, "status.json"), "utf8"));
+      const text = readFileSync(join(output, "status.json"), "utf8");
+      const report: unknown = JSON.parse(text);
+      const checks = isRecord(report) ? report["checks"] : undefined;
+      assert(isRecord(report) && isRecord(checks), text);
+      return { text, fields: Object.keys(report).toSorted(), checks };
     };
     assert(Object.values(run(fixture).checks).every(value => value === true));
-    for (const [component, mutate] of [
-      ["hostPolicy", (s: any) => s.policy = false], ["services", (s: any) => s.services = {}],
-      ["diskReserve", (s: any) => s.available = "8388607"], ["diskReserve", (s: any) => s.available = "invalid"],
-      ["applicationUpdates", (s: any) => s.result = "exit-code"], ["applicationUpdates", (s: any) => s.lastCheck -= 1801],
-      ["applicationUpdates", (s: any) => s.lastCheck = s.now + 1],
-      ["applicationUpdates", (s: any) => { s.active = true; s.lastCheck = s.now - 901; }],
-      ["osUpdates", (s: any) => s.checked -= 86401], ["osUpdates", (s: any) => s.checked = s.now + 1],
-      ["osUpdates", (s: any) => s.operation = "UPDATE_STATUS_REPORTING_ERROR_EVENT"], ["osUpdates", (s: any) => s.operation = "UNKNOWN"],
-      ["clock", (s: any) => s.clock = String(s.now - 3601)], ["clock", (s: any) => s.clock = String(s.now + 1)], ["clock", (s: any) => s.clock = ""],
-      ["certificate", (s: any) => s.certificate = false], ["certificate", (s: any) => s.lifetime = 90 * 86400],
-      ["certificate", (s: any) => s.lifetime = 7 * 86400 + 1],
-    ] as const) {
+    for (const [component, mutate] of ([
+      ["hostPolicy", status => status.policy = false], ["services", status => status.services = {}],
+      ["diskReserve", status => status.available = "8388607"], ["diskReserve", status => status.available = "invalid"],
+      ["applicationUpdates", status => status.result = "exit-code"], ["applicationUpdates", status => status.lastCheck -= 1801],
+      ["applicationUpdates", status => status.lastCheck = status.now + 1],
+      ["applicationUpdates", status => { status.active = true; status.lastCheck = status.now - 901; }],
+      ["osUpdates", status => status.checked -= 86401], ["osUpdates", status => status.checked = status.now + 1],
+      ["osUpdates", status => status.operation = "UPDATE_STATUS_REPORTING_ERROR_EVENT"], ["osUpdates", status => status.operation = "UNKNOWN"],
+      ["clock", status => status.clock = String(status.now - 3601)], ["clock", status => status.clock = String(status.now + 1)], ["clock", status => status.clock = ""],
+      ["certificate", status => status.certificate = false], ["certificate", status => status.lifetime = 90 * 86400],
+      ["certificate", status => status.lifetime = 7 * 86400 + 1],
+    ] satisfies [string, (status: typeof fixture) => unknown][])) {
       const state = structuredClone(fixture); mutate(state);
       const report = run(state);
       assert.equal(report.checks[component], false, component);
-      assert.deepEqual(Object.keys(report).toSorted(), ["checks", "observedAt", "version"]);
+      assert.deepEqual(report.fields, ["checks", "observedAt", "version"]);
     }
     for (const unit of requiredUnits) {
       for (const unitState of ["inactive", "failed", "activating", "not-found"]) {
         const state = structuredClone(fixture);
         state.services[unit] = unitState;
         const report = run(state);
-        assert.equal(report.checks.services, false, `${unit}: ${unitState} while all other required units are active`);
-        assert.equal(report.checks.applicationUpdates, true, "Service readiness is independent of the last successful application update");
+        assert.equal(report.checks["services"], false, `${unit}: ${unitState} while all other required units are active`);
+        assert.equal(report.checks["applicationUpdates"], true, "Service readiness is independent of the last successful application update");
       }
     }
     writeFileSync(join(directory, "failed.json"), "private deployment diagnostic");
     const report = run(fixture);
-    assert.equal(report.checks.applicationUpdates, false);
-    assert.doesNotMatch(JSON.stringify(report), /private deployment|\/var\/lib|16777216/u);
+    assert.equal(report.checks["applicationUpdates"], false);
+    assert.doesNotMatch(report.text, /private deployment|\/var\/lib|16777216/u);
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });

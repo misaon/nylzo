@@ -5,7 +5,12 @@ import path from "node:path";
 import { test } from "node:test";
 
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
-const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(path.resolve("tools/deploy/runtime.test.mts"), "utf8"))![1]!;
+function pinnedImage() {
+  const pinned = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(path.resolve("tools/deploy/runtime.test.mts"), "utf8"))?.[1];
+  assert(pinned, "The tests run in the pinned Ubuntu image of the runtime tests");
+  return pinned;
+}
+const image = pinnedImage();
 
 test("hosts install only a host bundle listed in signed checksums with release provenance, and restore the previous one on failure", { skip: !available, timeout: 300000 }, () => {
   const scenarios: Record<string, { listed?: boolean; fail?: string; escape?: boolean; expectation: string }> = {

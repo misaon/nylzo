@@ -102,7 +102,7 @@ test("planning stops before any cloud call without a Caddy build, or without a h
 test("the dns plan reads the server outputs with the current server configuration and without API tokens", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "nylzo-dns-"));
   const names = ["PATH", "TF_ENCRYPTION", "TF_LOG", "HCLOUD_TOKEN", "CLOUDFLARE_API_TOKEN", "NYLZO_STATE_BUCKET"];
-  const saved = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  const saved = Object.fromEntries(names.map((name): [string, string | undefined] => [name, process.env[name]]));
   try {
     await chmod(directory, 0o700);
     const bin = path.join(directory, "bin");
@@ -149,17 +149,19 @@ test("initialization refuses to create private keys in a directory that Git can 
 
 test("CI keeps each stack's state in its own object of the configured bucket", async () => {
   const { remoteState } = await import("./operator.mts");
-  assert.equal(remoteState("production", "server", {}), undefined);
-  const backend = remoteState("production", "server", {
+  const stack = { site: "production", kind: "server" } as const;
+  assert.equal(remoteState(stack, {}), undefined);
+  const backend = remoteState(stack, {
     NYLZO_STATE_BUCKET: "nylzo-state", NYLZO_STATE_ENDPOINT: "https://fsn1.your-objectstorage.com", NYLZO_STATE_REGION: "fsn1",
-  })!;
+  });
+  assert(backend !== undefined);
   assert.match(backend, /key += "nylzo\/production\/server\.tfstate"/u);
   assert.match(backend, /use_lockfile += true/u);
   for (const environment of [
     { NYLZO_STATE_BUCKET: "Bad Bucket", NYLZO_STATE_ENDPOINT: "https://fsn1.your-objectstorage.com", NYLZO_STATE_REGION: "fsn1" },
     { NYLZO_STATE_BUCKET: "nylzo-state", NYLZO_STATE_ENDPOINT: "http://fsn1.your-objectstorage.com", NYLZO_STATE_REGION: "fsn1" },
     { NYLZO_STATE_BUCKET: "nylzo-state", NYLZO_STATE_ENDPOINT: "https://fsn1.your-objectstorage.com\"\n}", NYLZO_STATE_REGION: "fsn1" },
-  ]) assert.throws(() => remoteState("production", "server", environment));
+  ]) assert.throws(() => remoteState(stack, environment));
 });
 
 test("the server stack finds the newest verified image without a local image file", async () => {
@@ -171,10 +173,11 @@ test("the server stack finds the newest verified image without a local image fil
       { id: 7, status: "available", created: "2026-10-01T00:00:00Z" },
       { id: 9, status: "available", created: "2026-11-01T00:00:00Z" },
       { id: 11, status: "creating", created: "2026-11-02T00:00:00Z" },
+      { id: 13, status: "available" },
     ] }), { status: 200 });
   });
   try {
-    assert.deepEqual(await verifiedImage("synthetic-test-token-not-a-live-token", "4757.2.3", "amd64"), { id: 9, version: "4757.2.3", architecture: "amd64" });
+    assert.deepEqual(await verifiedImage({ token: "synthetic-test-token-not-a-live-token", version: "4757.2.3", architecture: "amd64" }), { id: 9, version: "4757.2.3", architecture: "amd64" });
     assert.deepEqual(seen, ["https://api.hetzner.cloud/v1/images?type=snapshot&label_selector=nylzo-verified-image%3Dtrue%2Cnylzo-flatcar-version%3D4757.2.3%2Cnylzo-architecture%3Damd64"]);
   } finally { fetch.mock.restore(); }
 });

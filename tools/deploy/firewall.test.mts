@@ -6,7 +6,12 @@ import { join, resolve } from "node:path";
 import test from "node:test";
 
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
-const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(resolve("tools/deploy/runtime.test.mts"), "utf8"))![1]!;
+function pinnedImage() {
+  const pinned = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(resolve("tools/deploy/runtime.test.mts"), "utf8"))?.[1];
+  assert(pinned, "The tests run in the pinned Ubuntu image of the runtime tests");
+  return pinned;
+}
+const image = pinnedImage();
 
 test("the host firewall admits only what the cloud firewall admits and limits each source to 64 web connections", { skip: !available, timeout: 300000 }, () => {
   const result = spawnSync("docker", ["run", "--interactive", "--rm", "--cap-add", "NET_ADMIN",

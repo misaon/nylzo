@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 let directory: string | undefined;
 let phase = "configuration";
 try {
-  const server = new URL(process.env["URL"]!);
+  const server = new URL(process.env["URL"] ?? "");
   assert.equal(server.protocol, "https:");
   assert.equal(server.username + server.password + server.search + server.hash, "");
   assert.equal(server.pathname, "/");

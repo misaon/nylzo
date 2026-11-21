@@ -5,7 +5,12 @@ import path from "node:path";
 import { test } from "node:test";
 
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
-const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(path.resolve("tools/deploy/runtime.test.mts"), "utf8"))![1]!;
+function pinnedImage() {
+  const pinned = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(path.resolve("tools/deploy/runtime.test.mts"), "utf8"))?.[1];
+  assert(pinned, "The tests run in the pinned Ubuntu image of the runtime tests");
+  return pinned;
+}
+const image = pinnedImage();
 
 test("frontend activation waits for the image pull, candidate probe and persistent store check", { skip: !available, timeout: 120000 }, () => {
   for (const failure of ["pull", "start", "probe", "store", "activation"]) {
