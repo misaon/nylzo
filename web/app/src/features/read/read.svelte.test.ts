@@ -105,9 +105,9 @@ describe('read interface', () => {
     { reason: 'long' },
     { reason: 'wrong', attemptsLeft: 2, retryAfter: 0, locked: false },
     { reason: 'wrong', attemptsLeft: 2, retryAfter: 30, locked: false },
-  ] as const)('renders passphrase rejection $reason and removes it when typing again', (rejected) => {
+  ] as const)('renders passphrase rejection $reason and removes it when typing again', (notice) => {
     show();
-    ready({ metadata: { ...metadata, kdfId: KDF_SCRYPT }, rejected });
+    ready({ metadata: { ...metadata, kdfId: KDF_SCRYPT }, notice });
     const input = target.querySelector<HTMLInputElement>('input[type="password"]');
     expect(input?.getAttribute('aria-invalid')).toBe('true');
     if (!input) {
@@ -121,7 +121,7 @@ describe('read interface', () => {
 
   it('tells the reader of a message without a passphrase how long its opening is paused', () => {
     show();
-    ready({ metadata, rejected: { reason: 'wrong', attemptsLeft: 0, retryAfter: 120, locked: false } });
+    ready({ metadata, notice: { reason: 'wrong', attemptsLeft: 0, retryAfter: 120, locked: false } });
     const [before = ''] = translator.translate('read.wait', { time: '|' }).split('|');
     expect(target.querySelector('input[type="password"]')).toBeNull();
     expect(before).not.toBe('');
@@ -151,7 +151,7 @@ describe('read interface', () => {
 
   it.each([
     { deviceFailed: true, key: 'read.device' },
-    { leaseEnded: true, key: 'read.lease_ended' },
+    { notice: { reason: 'lease_ended' }, key: 'read.lease_ended' },
     { resumable: true, key: 'read.resumable' },
   ] as const)('explains $key before opening', (state) => {
     show();

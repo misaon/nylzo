@@ -13,8 +13,10 @@ const MAX_ANSWER_BYTES = 512 * 1024;
 
 export type Fetch = typeof fetch;
 
+type Method = 'DELETE' | 'GET' | 'POST';
+
 export interface Transport {
-  readonly send: (method: string, path: string, options?: SendOptions) => Promise<Json>;
+  readonly send: (method: Method, path: string, options?: SendOptions) => Promise<Json>;
 }
 
 interface SendOptions {

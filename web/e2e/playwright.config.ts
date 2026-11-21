@@ -5,7 +5,7 @@ import { ADMIN_BASE_URL, BASE_URL, OFFICIAL_BASE_URL, POW_BASE_URL } from './tes
 const ci = Boolean(process.env['CI']);
 const crossBrowser = /@cross-browser/u;
 
-function server(baseUrl: string, profile: string) {
+function server({ baseUrl, profile }: { readonly baseUrl: string; readonly profile: string }) {
   return {
     command: `bun serve.ts ${new URL(baseUrl).port} ${profile}`,
     url: `http://127.0.0.1:${new URL(baseUrl).port}/healthz`,
@@ -30,9 +30,9 @@ export default defineConfig({
     { name: 'webkit', use: devices['Desktop Safari'], grep: crossBrowser },
   ],
   webServer: [
-    server(BASE_URL, 'default'),
-    server(POW_BASE_URL, 'pow'),
-    server(OFFICIAL_BASE_URL, 'official'),
-    server(ADMIN_BASE_URL, 'admin'),
+    server({ baseUrl: BASE_URL, profile: 'default' }),
+    server({ baseUrl: POW_BASE_URL, profile: 'pow' }),
+    server({ baseUrl: OFFICIAL_BASE_URL, profile: 'official' }),
+    server({ baseUrl: ADMIN_BASE_URL, profile: 'admin' }),
   ],
 });

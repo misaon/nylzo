@@ -147,14 +147,23 @@ function encodedComponent(value = ''): Uint8Array<ArrayBuffer> {
   return concatenate(size, bytes);
 }
 
-export async function requestMessage(
-  purpose: Purpose,
-  method: string,
-  path: string,
-  challenge: Uint8Array,
-  body: Uint8Array,
-  components: RequestComponents = {},
-): Promise<Uint8Array<ArrayBuffer>> {
+interface SignableRequest {
+  readonly purpose: Purpose;
+  readonly method: string;
+  readonly path: string;
+  readonly challenge: Uint8Array;
+  readonly body?: Uint8Array | undefined;
+  readonly components?: RequestComponents | undefined;
+}
+
+export async function requestMessage({
+  purpose,
+  method,
+  path,
+  challenge,
+  body = new Uint8Array(0),
+  components = {},
+}: SignableRequest): Promise<Uint8Array<ArrayBuffer>> {
   assertLength(challenge, CHALLENGE_LENGTH, 'challenge');
   const fields = [REQUEST_LABEL, purpose, method, path].flatMap((field) => [utf8(field), FIELD_SEPARATOR]);
   return concatenate(
@@ -168,21 +177,13 @@ export async function requestMessage(
   );
 }
 
-export async function signRequest(
-  key: RequestKey,
-  purpose: Purpose,
-  method: string,
-  path: string,
-  challenge: Uint8Array,
-  body: Uint8Array = new Uint8Array(0),
-  components: RequestComponents = {},
-): Promise<RequestSignature> {
+export async function signRequest(key: RequestKey, request: SignableRequest): Promise<RequestSignature> {
   if (revokedKeys.has(key.privateKey)) {
     throw new Error('the request key was released');
   }
-  const message = await requestMessage(purpose, method, path, challenge, body, components);
+  const message = await requestMessage(request);
   const signature = new Uint8Array(await crypto.subtle.sign('Ed25519', key.privateKey, message));
-  return { publicKey: key.publicKey, challenge: arrayBufferBacked(challenge), signature };
+  return { publicKey: key.publicKey, challenge: arrayBufferBacked(request.challenge), signature };
 }
 
 export function authorizationHeader({ publicKey, challenge, signature }: RequestSignature): string {

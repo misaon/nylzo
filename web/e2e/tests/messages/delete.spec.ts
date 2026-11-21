@@ -113,7 +113,7 @@ test('the recipient needs the passphrase to delete a message that has one, befor
   await expect(field).toBeFocused();
   expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 0, failedPassphraseAttempts: 1 });
 
-  await showMessage(page, message.link, passphrase);
+  await showMessage(page, message.link, { passphrase });
   await expectMessageShown(page);
   await page.getByRole('button', { name: 'Delete message' }).click();
   await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();

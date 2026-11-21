@@ -3,16 +3,17 @@
   import type { UsagePoint } from '../../api/types.ts';
   import TimeChart from '../../charts/TimeChart.svelte';
   import type { Tone } from '../../charts/tones.ts';
+  import type { AdminMessageKey } from '../../messages/catalog.ts';
   import { getDashboardTools } from '../context.ts';
   import { CARD } from '../surfaces.ts';
   import { minuteTicks } from './usage.ts';
+  import type { UsageSeries } from './usage.ts';
 
   interface Props {
     readonly title: string;
     readonly label: string;
     readonly usage: readonly UsagePoint[];
-    readonly values: readonly number[] | undefined;
-    readonly waiting: boolean;
+    readonly series: UsageSeries;
     readonly tone: Tone;
     readonly current: string;
     readonly detail: string;
@@ -20,8 +21,12 @@
 
   const TICK_GAP = 56;
   const PERCENT_TICKS = { max: 1, values: [0, 0.5, 1] } as const;
+  const MISSING = {
+    waiting: 'dashboard.now.waiting',
+    unavailable: 'dashboard.server.unavailable',
+  } as const satisfies Record<Exclude<UsageSeries['kind'], 'measured'>, AdminMessageKey>;
 
-  const { title, label, usage, values, waiting, tone, current, detail }: Props = $props();
+  const { title, label, usage, series, tone, current, detail }: Props = $props();
   const { translate, format } = getDashboardTools();
   const times = $derived(usage.map((point) => point.at));
 </script>
@@ -32,25 +37,25 @@
     <p class="text-title font-medium text-ink tabular-nums">{current}</p>
   </div>
   <p class="mt-0.5 min-h-5 text-caption text-ink-mute">{detail}</p>
-  {#if values === undefined}
+  {#if series.kind !== 'measured'}
     <div class="mt-4 grid h-44 place-items-center rounded-pane bg-white/3 ring-1 ring-white/6">
       <p class="flex items-center gap-2 px-6 text-center text-caption text-ink-mute">
         <Icon name="info" class="size-4 shrink-0" />
-        {translate(waiting ? 'dashboard.now.waiting' : 'dashboard.server.unavailable')}
+        {translate(MISSING[series.kind])}
       </p>
     </div>
   {:else}
     <TimeChart
       class="mt-4 h-44"
       {label}
-      area={{ label: title, values, tone }}
+      area={{ label: title, values: series.values, tone }}
       keys={times}
       ticks={PERCENT_TICKS}
       formatValue={format.percent}
       formatTick={format.percent}
       periodLabel={(index) => format.time(usage[index]?.at ?? 0)}
       tickLabel={(index) => format.clock(usage[index]?.at ?? 0)}
-      tickIndexes={(width) => minuteTicks(usage, width, TICK_GAP)}
+      tickIndexes={(width) => minuteTicks(usage, { width, gap: TICK_GAP })}
     />
   {/if}
 </div>

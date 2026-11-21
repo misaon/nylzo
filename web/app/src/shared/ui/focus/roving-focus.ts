@@ -3,7 +3,12 @@ const ARROW_STEPS: ReadonlyMap<string, number> = new Map([
   ['ArrowRight', 1],
 ]);
 
-export function arrowTarget(key: string, index: number, count: number): number | undefined {
+interface Position {
+  readonly index: number;
+  readonly count: number;
+}
+
+export function arrowTarget(key: string, { index, count }: Position): number | undefined {
   const step = ARROW_STEPS.get(key);
   return step === undefined ? undefined : (index + step + count) % count;
 }

@@ -18,7 +18,10 @@ function sheetElement(): HTMLElement {
   return element;
 }
 
-function pointer(type: string, clientY: number, timeStamp: number): PointerEvent {
+function pointer(
+  type: string,
+  { clientY, timeStamp }: { readonly clientY: number; readonly timeStamp: number },
+): PointerEvent {
   const event = new PointerEvent(type, {
     pointerId: 1,
     isPrimary: true,
@@ -48,9 +51,9 @@ describe('bottom sheet', () => {
     sheet.setOpen(true);
     vi.advanceTimersByTime(2000);
 
-    element.dispatchEvent(pointer('pointerdown', 600, 1000));
-    element.dispatchEvent(pointer('pointermove', 670, 1060));
-    element.dispatchEvent(pointer('pointerup', 670, 1060));
+    element.dispatchEvent(pointer('pointerdown', { clientY: 600, timeStamp: 1000 }));
+    element.dispatchEvent(pointer('pointermove', { clientY: 670, timeStamp: 1060 }));
+    element.dispatchEvent(pointer('pointerup', { clientY: 670, timeStamp: 1060 }));
 
     expect(ondismiss).toHaveBeenCalledOnce();
     sheet.destroy();
@@ -63,11 +66,11 @@ describe('bottom sheet', () => {
     sheet.setOpen(true);
     vi.advanceTimersByTime(2000);
 
-    element.dispatchEvent(pointer('pointerdown', 600, 1000));
+    element.dispatchEvent(pointer('pointerdown', { clientY: 600, timeStamp: 1000 }));
     for (let step = 1; step <= 6; step++) {
-      element.dispatchEvent(pointer('pointermove', 600 + step * 10, 1000 + step * 200));
+      element.dispatchEvent(pointer('pointermove', { clientY: 600 + step * 10, timeStamp: 1000 + step * 200 }));
     }
-    element.dispatchEvent(pointer('pointerup', 660, 2200));
+    element.dispatchEvent(pointer('pointerup', { clientY: 660, timeStamp: 2200 }));
     vi.advanceTimersByTime(2000);
 
     expect(ondismiss).not.toHaveBeenCalled();

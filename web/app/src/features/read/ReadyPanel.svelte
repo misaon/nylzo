@@ -33,32 +33,36 @@
     if (page.emptyPassphrase) {
       return translate(page.deleteIntent ? 'read.delete.passphrase' : 'open.passphrase.empty');
     }
-    const rejected = page.typedAgain ? undefined : ready?.rejected;
-    if (rejected === undefined) {
+    const notice = page.typedAgain ? undefined : ready?.notice;
+    if (notice === undefined) {
       return '';
     }
-    if (rejected.reason === 'malformed') {
-      return translate('read.rejected.malformed');
+    switch (notice.reason) {
+      case 'lease_ended': {
+        return '';
+      }
+      case 'malformed': {
+        return translate('read.rejected.malformed');
+      }
+      case 'long': {
+        return translate('read.rejected.long');
+      }
+      case 'wrong': {
+        return notice.retryAfter > 0
+          ? translate('read.rejected.wait', { time: formatWait(notice.retryAfter, translator.plural) })
+          : translate('read.rejected.wrong', { attempts: translator.plural('count.attempt', notice.attemptsLeft) });
+      }
     }
-    if (rejected.reason === 'long') {
-      return translate('read.rejected.long');
-    }
-    if (rejected.retryAfter > 0) {
-      return translate('read.rejected.wait', { time: formatWait(rejected.retryAfter, translator.plural) });
-    }
-    return translate('read.rejected.wrong', {
-      attempts: translator.plural('count.attempt', rejected.attemptsLeft),
-    });
   });
   const alert = $derived.by(() => {
     if (ready?.deviceFailed) {
       return translate('read.device');
     }
-    const rejected = ready?.rejected;
-    if (!page.passphraseRequired && rejected?.reason === 'wrong' && rejected.retryAfter > 0) {
-      return translate('read.wait', { time: formatWait(rejected.retryAfter, translator.plural) });
+    const notice = ready?.notice;
+    if (!page.passphraseRequired && notice?.reason === 'wrong' && notice.retryAfter > 0) {
+      return translate('read.wait', { time: formatWait(notice.retryAfter, translator.plural) });
     }
-    return ready?.leaseEnded ? translate('read.lease_ended') : '';
+    return notice?.reason === 'lease_ended' ? translate('read.lease_ended') : '';
   });
   const passphraseAlert = $derived(passphraseError || alert);
   const keepAlert = lingering();

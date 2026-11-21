@@ -1,11 +1,8 @@
 import type { Attachment } from 'svelte/attachments';
 
-interface TextPiece {
-  readonly key: number;
-  readonly text: string;
-  readonly hidden: boolean;
-  readonly original?: string;
-}
+type TextPiece =
+  | { readonly key: number; readonly text: string; readonly hidden: false }
+  | { readonly key: number; readonly text: string; readonly hidden: true; readonly original: string };
 
 export interface MarkedText {
   readonly pieces: readonly TextPiece[];

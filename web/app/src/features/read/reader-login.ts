@@ -15,6 +15,7 @@ import type { KdfId, RequestKey, Stretch } from '@nylzo/core';
 import { isApiError } from '../../shared/api/api-errors.ts';
 import type { Api, Login, Unlock } from '../../shared/api/api.ts';
 import type { Progress } from '../../shared/kdf/kdf.ts';
+import type { ReaderDependencies, SessionStore } from './reader.ts';
 
 export interface Attempts {
   readonly attemptsLeft: number;
@@ -24,7 +25,7 @@ export interface Attempts {
 export type PassphraseRejection =
   | { readonly reason: 'long' }
   | { readonly reason: 'malformed' }
-  | { readonly reason: 'wrong'; readonly attemptsLeft: number; readonly retryAfter: number; readonly locked: boolean };
+  | ({ readonly reason: 'wrong'; readonly locked: boolean } & Attempts);
 export type WrongPassphrase = Extract<PassphraseRejection, { readonly reason: 'wrong' }>;
 
 // A passphrase the core refuses before any derivation, so no attempt is counted.
@@ -151,10 +152,7 @@ function sameBytes(first: Uint8Array, second: Uint8Array): boolean {
 export const KDF_MARK = 'nylzo:kdf';
 
 interface KdfMark {
-  readonly session: {
-    readonly setItem: (key: string, value: string) => void;
-    readonly removeItem: (key: string) => void;
-  };
+  readonly session: Pick<SessionStore, 'removeItem' | 'setItem'>;
   readonly owner: string;
 }
 
@@ -162,7 +160,7 @@ interface KdfMark {
 export function stretchFor(
   kdfId: KdfId,
   mark: KdfMark,
-  stretch: (message: Uint8Array<ArrayBuffer>, onProgress: Progress) => Promise<Uint8Array<ArrayBuffer>>,
+  stretch: ReaderDependencies['stretch'],
   onProgress?: Progress,
 ): Stretch {
   if (kdfId === KDF_NONE) {

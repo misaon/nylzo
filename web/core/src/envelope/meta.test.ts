@@ -11,8 +11,8 @@ function decodeText(json: string): Meta {
   return decodeMeta(utf8(json));
 }
 
-function fileMeta(name: string, mime = '', size = 1): Meta {
-  return { file: { name, mime, size } };
+function fileMeta(changed: Partial<NonNullable<Meta['file']>>): Meta {
+  return { file: { name: 'a', mime: '', size: 1, ...changed } };
 }
 
 function padded(length: number): string {
@@ -43,24 +43,27 @@ describe('meta vectors', () => {
 describe('meta encoding (spec 3.1)', () => {
   it('counts the limits in UTF-8 bytes', () => {
     expect(() => encodeMeta({ text: 'é'.repeat(MAX_TEXT_BYTES / 2) })).not.toThrow();
-    expect(() => encodeMeta(fileMeta('é'.repeat(127)))).not.toThrow();
-    expect(() => encodeMeta(fileMeta('a b.čé (1).txt', '', MAX_FILE_BYTES))).not.toThrow();
+    expect(() => encodeMeta(fileMeta({ name: 'é'.repeat(127) }))).not.toThrow();
+    expect(() => encodeMeta(fileMeta({ name: 'a b.čé (1).txt', size: MAX_FILE_BYTES }))).not.toThrow();
     expect(encodeMeta({ text: 'x'.repeat(MAX_TEXT_BYTES) })).toHaveLength(MAX_TEXT_BYTES + 17);
   });
 
   it.each<[string, Meta]>([
-    ['neither text nor file', {}],
     ['text over the limit in UTF-8 bytes', { text: 'é'.repeat(MAX_TEXT_BYTES / 2 + 1) }],
     ['text whose escaping overflows the meta limit', { text: '"'.repeat(60_000) }],
-    ['a file name over the limit in UTF-8 bytes', fileMeta('é'.repeat(128))],
-    ['a mime type over the limit in UTF-8 bytes', fileMeta('a', 'é'.repeat(128))],
+    ['a file name over the limit in UTF-8 bytes', fileMeta({ name: 'é'.repeat(128) })],
+    ['a mime type over the limit in UTF-8 bytes', fileMeta({ mime: 'é'.repeat(128) })],
     ['a lone surrogate in the text', { text: 'a\u{D800}' }],
-    ['a lone surrogate in the file name', fileMeta('\u{DC00}')],
-    ['a lone surrogate in the mime type', fileMeta('a', '\u{D800}')],
-    ['a fractional size', fileMeta('a', '', 1.5)],
-    ['a size that is not a number', fileMeta('a', '', Number.NaN)],
+    ['a lone surrogate in the file name', fileMeta({ name: '\u{DC00}' })],
+    ['a lone surrogate in the mime type', fileMeta({ mime: '\u{D800}' })],
+    ['a fractional size', fileMeta({ size: 1.5 })],
+    ['a size that is not a number', fileMeta({ size: Number.NaN })],
   ])('rejects %s', (_, meta) => {
     expect(() => encodeMeta(meta)).toThrow(MetaError);
+  });
+
+  it('rejects neither text nor file', () => {
+    expect(() => encodeMeta({} as Meta)).toThrow(MetaError);
   });
 });
 

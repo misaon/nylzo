@@ -54,6 +54,7 @@ describe('requests the key derivation worker accepts', () => {
     'stretch',
     { kind: 'stretch', message: 'phrase' },
     { kind: 'stretch', message: new Uint8Array(32) },
+    { kind: 'stretch', message: new Uint8Array(new SharedArrayBuffer(64)) },
     { kind: 'scrypt', passphrase: 'phrase', passphraseSalt: new Uint8Array(32) },
     { kind: 'pow', challenge: 'c', id: new Uint8Array(15), difficulty: 4, budgetMs: 1000 },
     { kind: 'pow', challenge: 'c', id, difficulty: 0.5, budgetMs: 1000 },

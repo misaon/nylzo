@@ -43,7 +43,7 @@
       <Stat
         label={translate(`dashboard.messages.${event.key}`)}
         value={overview.totals[event.metric]}
-        change={trend(overview.totals[event.metric], overview.previous?.[event.metric])}
+        change={trend({ current: overview.totals[event.metric], previous: overview.previous?.[event.metric] })}
         tone={event.tone}
         growthIsGood={event.key !== 'expired'}
         {range}
@@ -80,7 +80,7 @@
       formatTick={format.compact}
       periodLabel={(first, last) => format.period(timeline, first, last)}
       tickLabel={(index) => format.tick(timeline, index)}
-      tickIndexes={(width) => timeTicks(timeline, width, TICK_GAP)}
+      tickIndexes={(width) => timeTicks(timeline, { width, gap: TICK_GAP })}
     />
     <p class={[NOTE, 'mt-4']}>{translate('dashboard.messages.note')}</p>
   </div>

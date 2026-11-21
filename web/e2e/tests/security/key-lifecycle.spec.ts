@@ -26,7 +26,7 @@ async function auditKeys(page: Page, refusePkcs8: boolean): Promise<void> {
     Object.defineProperties(prototype, {
       importKey: {
         value(this: SubtleCrypto, ...parameters: Parameters<typeof importKey>) {
-          const format = parameters[0] as KeyFormat;
+          const format: string = parameters[0];
           if (format === 'pkcs8' && refuse) {
             return Promise.reject(new DOMException('simulated PKCS#8 rejection', 'DataError'));
           }

@@ -25,7 +25,7 @@
   const domain = $derived(translate('host.domain'));
 
   function onkeydown(event: KeyboardEvent) {
-    const next = arrowTarget(event.key, index, tabs.length);
+    const next = arrowTarget(event.key, { index, count: tabs.length });
     const target = next === undefined ? undefined : tabs[next];
     if (target === undefined) {
       return;

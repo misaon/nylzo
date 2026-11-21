@@ -36,14 +36,25 @@ export interface MessageFile {
   readonly buffer: Buffer;
 }
 
-export interface MessageOptions {
+interface MessageSettings {
   readonly base?: string;
-  readonly text?: string;
-  readonly file?: MessageFile;
   readonly passphrase?: string;
   readonly opensMax?: number;
-  readonly plaintext?: Uint8Array<ArrayBuffer>;
 }
+
+interface ComposedContent {
+  readonly text?: string;
+  readonly file?: MessageFile;
+  readonly plaintext?: never;
+}
+
+interface SealedPlaintext {
+  readonly plaintext: Uint8Array<ArrayBuffer>;
+  readonly text?: never;
+  readonly file?: never;
+}
+
+export type MessageOptions = MessageSettings & (ComposedContent | SealedPlaintext);
 
 export interface CreatedMessage {
   readonly link: string;
@@ -63,15 +74,12 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
   const password = opaquePassword(await derivePassphraseSalt(secret), kdfId, passphrase);
   const { request, state } = createRegistrationRequest(password);
   const { create } = await api.instance({ ttlSeconds, shareKey: shareKey.publicKey, registrationRequest: request });
-  if (create === undefined) {
-    throw new Error('the instance issued no id');
-  }
   const policy = { opensMax: options.opensMax ?? 1, ttlSeconds, deadline: create.deadline };
   const stretch =
     kdfId === KDF_NONE ? identityStretch : (message: Uint8Array) => Promise.resolve(stretchScrypt(message));
   const registration = await finalizeRegistrationRequest(state, create.registration, stretch);
   const share = await unwrapShare(shareKey, create.share);
-  const content = await deriveContent(create.id, secret, registration.exportKey, share);
+  const content = await deriveContent({ id: create.id, secret, exportKey: registration.exportKey, share });
   const link = await deriveLink(create.id, secret);
   const header = newHeader(kdfId);
   const object =
@@ -92,7 +100,7 @@ export async function createMessageThroughApi(options: MessageOptions = {}): Pro
     object,
   });
   return {
-    link: formatLink(base, create.id, kdfId, secret, await objectHash(object)),
+    link: formatLink(base, { kdfId, id: create.id, secret, objectHash: await objectHash(object) }),
     id: idToString(create.id),
     secret: encodeBase64url(secret),
     status: () => api.status(create.id, manageKey),
@@ -115,7 +123,7 @@ async function sealPlaintext(
   return concatenate(headerBytes(header), committed, new Uint8Array(ciphertext));
 }
 
-function metaOf({ text, file }: MessageOptions): Meta {
+function metaOf({ text, file }: ComposedContent): Meta {
   if (file === undefined) {
     return { text: text ?? 'from the api' };
   }

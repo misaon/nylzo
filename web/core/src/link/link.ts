@@ -21,13 +21,7 @@ export interface Link {
   readonly objectHash: Uint8Array<ArrayBuffer>;
 }
 
-export function formatLink(
-  base: string,
-  id: Uint8Array,
-  kdfId: KdfId,
-  secret: Uint8Array,
-  objectHash: Uint8Array,
-): string {
+export function formatLink(base: string, { kdfId, id, secret, objectHash }: Link): string {
   assertLength(secret, SECRET_LENGTH, 'secret');
   assertLength(objectHash, OBJECT_HASH_LENGTH, 'object hash');
   const origin = base.endsWith('/') ? base.slice(0, -1) : base;

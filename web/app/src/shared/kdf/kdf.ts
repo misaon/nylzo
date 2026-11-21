@@ -55,13 +55,27 @@ async function runWorker(requestOnStart: () => KdfRequest, onProgress: Progress)
       }
       if (!isKdfResponse(data)) {
         fail(new KdfWorkerError('the key derivation worker sent a malformed message'));
-      } else if (data.kind === 'progress') {
-        restartSilenceTimer();
-        onProgress(data.fraction);
-      } else if (data.kind === 'error') {
-        fail(data.timeout ? new PowTimeoutError() : new KdfWorkerError());
-      } else {
-        finish(() => resolve(data));
+        return;
+      }
+      switch (data.kind) {
+        case 'progress': {
+          restartSilenceTimer();
+          onProgress(data.fraction);
+          break;
+        }
+        case 'error': {
+          fail(data.timeout ? new PowTimeoutError() : new KdfWorkerError());
+          break;
+        }
+        case 'key':
+        case 'token': {
+          finish(() => resolve(data));
+          break;
+        }
+        default: {
+          const exhaustive: never = data;
+          void exhaustive;
+        }
       }
     });
     worker.addEventListener('error', () => fail(new KdfWorkerError()));
@@ -83,11 +97,15 @@ export async function stretchInWorker(
   return response.key;
 }
 
+export interface ProofOfWorkRequest {
+  readonly challenge: string;
+  readonly id: Uint8Array<ArrayBuffer>;
+  readonly difficulty: number;
+  readonly budgetMs: number;
+}
+
 export async function solvePowInWorker(
-  challenge: string,
-  id: Uint8Array<ArrayBuffer>,
-  difficulty: number,
-  budgetMs: number,
+  { challenge, id, difficulty, budgetMs }: ProofOfWorkRequest,
   onProgress: Progress,
 ): Promise<string> {
   // The challenge expires on the server's clock, so starting the worker spends the same budget.

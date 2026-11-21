@@ -27,7 +27,7 @@ export function liveQuery(held: HeldLive | undefined): string {
 
 // The server sends every sample again after a gap or a clock step, so the held samples from its first one on go, and
 // the chart keeps only the five minutes before the newest sample.
-function mergedUsage(held: readonly UsagePoint[], fresh: readonly UsagePoint[]): UsagePoint[] {
+function mergedUsage({ held, fresh }: Record<'fresh' | 'held', readonly UsagePoint[]>): UsagePoint[] {
   const first = fresh[0]?.at ?? Number.POSITIVE_INFINITY;
   const merged = [...held.filter((sample) => sample.at < first), ...fresh];
   const newest = merged.at(-1)?.at ?? 0;
@@ -44,7 +44,7 @@ export function mergeLive(held: HeldLive | undefined, update: LiveUpdate): HeldL
       robots: update.robots,
       sessionExpiresAt: update.sessionExpiresAt,
       usageSupported: update.usageSupported,
-      usage: mergedUsage(held?.live.usage ?? [], update.usage),
+      usage: mergedUsage({ held: held?.live.usage ?? [], fresh: update.usage }),
       refused: update.refused ?? held?.live.refused ?? [],
     },
     refusedVersion: update.refusedVersion,

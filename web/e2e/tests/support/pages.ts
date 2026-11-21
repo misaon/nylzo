@@ -51,7 +51,12 @@ async function openSecurityMenu(page: Page): Promise<void> {
 
 const TAB_REMEMBERS = 'This tab remembers the message, at most until you close or reload it.';
 
-export async function trackInSent(page: Page, label = '', where: 'browser' | 'tab' = 'browser'): Promise<void> {
+interface Tracking {
+  readonly label?: string;
+  readonly where?: 'browser' | 'tab';
+}
+
+export async function trackInSent(page: Page, { label = '', where = 'browser' }: Tracking = {}): Promise<void> {
   await page.getByRole('button', { name: 'Track in Sent' }).click();
   const labelField = page.getByLabel('Label, only you see it');
   await labelField.fill(label);
@@ -85,13 +90,15 @@ async function trackInTabAfterRefusedSave(page: Page): Promise<void> {
   await expect(page.getByLabel('Label, only you see it')).toBeHidden();
 }
 
-export async function chooseLanguage(page: Page, name: 'Čeština' | 'English'): Promise<void> {
+const LANGUAGE_CODES = { Čeština: 'cs', English: 'en' } as const;
+
+export async function chooseLanguage(page: Page, name: keyof typeof LANGUAGE_CODES): Promise<void> {
   await page
     .getByRole('button', { name: /(?:Language|Jazyk): /u })
     .first()
     .click();
   const option = page.getByRole('option', { name });
-  await expect(option).toHaveAttribute('lang', name === 'English' ? 'en' : 'cs');
+  await expect(option).toHaveAttribute('lang', LANGUAGE_CODES[name]);
   await option.click();
 }
 
@@ -104,7 +111,11 @@ export async function choosePassphrase(page: Page, passphrase: string): Promise<
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
 }
 
-export async function showMessage(page: Page, link: string, passphrase?: string): Promise<void> {
+interface Unlocking {
+  readonly passphrase?: string;
+}
+
+export async function showMessage(page: Page, link: string, { passphrase }: Unlocking = {}): Promise<void> {
   await page.goto(link);
   if (passphrase !== undefined) {
     await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);

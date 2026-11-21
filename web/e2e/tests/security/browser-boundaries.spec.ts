@@ -3,6 +3,16 @@ import { createMessageThroughApi } from '../support/messages.ts';
 import { expectMessageShown, openApp, showMessage } from '../support/pages.ts';
 import { BASE_URL, POW_BASE_URL } from '../support/servers.ts';
 
+interface TrustedTypePolicyFactory {
+  readonly defaultPolicy: unknown;
+  readonly createPolicy: (name: string, rules: { readonly createHTML?: (input: string) => string }) => unknown;
+}
+
+declare global {
+  var nylzoXss: unknown;
+  var trustedTypes: TrustedTypePolicyFactory;
+}
+
 test(
   'the browser is cross-origin isolated and receives the required security policies',
   { tag: '@cross-browser' },
@@ -73,10 +83,14 @@ test('every page links only where its connection allowlist admits, and code in a
     expect(widened, path).toEqual([]);
     const outside = await page.evaluate(
       (admitted) =>
-        Array.from(document.querySelectorAll('a[href]'), (anchor) => (anchor as HTMLAnchorElement).href).filter(
-          (href) =>
-            new URL(href).origin !== location.origin && !admitted.some((pattern) => new URLPattern(pattern).test(href)),
-        ),
+        [...document.querySelectorAll('a[href]')]
+          .filter((anchor) => anchor instanceof HTMLAnchorElement)
+          .map((anchor) => anchor.href)
+          .filter(
+            (href) =>
+              new URL(href).origin !== location.origin &&
+              !admitted.some((pattern) => new URLPattern(pattern).test(href)),
+          ),
       patterns,
     );
     expect(outside, path).toEqual([]);
@@ -191,7 +205,7 @@ test(
     await expectMessageShown(page);
     await expect(page.locator('pre')).toHaveText(text);
     await expect(page.locator('pre').locator('svg, img, script, b')).toHaveCount(0);
-    expect(await page.evaluate(() => Reflect.get(globalThis, 'nylzoXss') as unknown)).toBeUndefined();
+    expect(await page.evaluate(() => globalThis.nylzoXss)).toBeUndefined();
   },
 );
 
@@ -202,10 +216,7 @@ test("native Trusted Types reject string sinks, unapproved policies and the app'
   const outcome = await page.evaluate(() => {
     const element = document.createElement('div');
     document.body.append(element);
-    const policy = Reflect.get(globalThis, 'trustedTypes') as {
-      defaultPolicy: unknown;
-      createPolicy: (name: string, rules: { createHTML: (input: string) => string }) => unknown;
-    };
+    const policy = globalThis.trustedTypes;
     // eslint-disable-next-line unicorn/consistent-function-scoping -- Playwright serializes this callback, so its helper must stay inside it.
     function blocked(action: () => unknown): string {
       try {
@@ -232,8 +243,10 @@ test("native Trusted Types reject string sinks, unapproved policies and the app'
     const button = document.createElement('button');
     button.textContent = 'Probe eval';
     button.addEventListener('click', () => {
-      const evaluate = Reflect.get(globalThis, 'eval') as (source: string) => unknown;
-      button.dataset['result'] = blocked(() => evaluate('globalThis.nylzoXss=true'));
+      const evaluate: unknown = Reflect.get(globalThis, 'eval');
+      button.dataset['result'] = blocked(
+        () => typeof evaluate === 'function' && Reflect.apply(evaluate, globalThis, ['globalThis.nylzoXss=true']),
+      );
     });
     document.body.append(button);
     return result;
@@ -250,7 +263,7 @@ test("native Trusted Types reject string sinks, unapproved policies and the app'
   const probe = page.getByRole('button', { name: 'Probe eval' });
   await probe.click();
   await expect(probe).toHaveAttribute('data-result', /^(?:TypeError|EvalError)$/u);
-  expect(await page.evaluate(() => Reflect.get(globalThis, 'nylzoXss') as unknown)).toBeUndefined();
+  expect(await page.evaluate(() => globalThis.nylzoXss)).toBeUndefined();
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 });
 
@@ -266,9 +279,7 @@ test(
     await page.goto(message.link, { waitUntil: 'commit' });
     await expect.poll(() => held.length).toBe(1);
     const claimed = await page.evaluate(() => {
-      const factory = Reflect.get(globalThis, 'trustedTypes') as {
-        createPolicy: (name: string, rules: Record<string, never>) => unknown;
-      };
+      const factory = globalThis.trustedTypes;
       return ['nylzo-kdf'].map((name) => {
         try {
           factory.createPolicy(name, {});

@@ -12,9 +12,42 @@ interface FileNameVector {
   readonly sanitized: readonly Part[];
 }
 
-const { cases } = JSON.parse(
-  readFileSync(new URL('../../../../../spec/file-name-vectors.json', import.meta.url), 'utf8'),
-) as { readonly cases: readonly FileNameVector[] };
+function isPart(value: unknown): value is Part {
+  return Array.isArray(value) && value.length === 2 && typeof value[0] === 'string' && typeof value[1] === 'number';
+}
+
+function isParts(value: unknown): value is readonly Part[] {
+  return Array.isArray(value) && value.every((part: unknown) => isPart(part));
+}
+
+function isFileNameVector(value: unknown): value is FileNameVector {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'name' in value &&
+    typeof value.name === 'string' &&
+    'input' in value &&
+    isParts(value.input) &&
+    'sanitized' in value &&
+    isParts(value.sanitized)
+  );
+}
+
+function vectorsFrom(json: string): readonly FileNameVector[] {
+  const vectors: unknown = JSON.parse(json);
+  if (
+    typeof vectors !== 'object' ||
+    vectors === null ||
+    !('cases' in vectors) ||
+    !Array.isArray(vectors.cases) ||
+    !vectors.cases.every((vector: unknown) => isFileNameVector(vector))
+  ) {
+    throw new Error('spec/file-name-vectors.json has malformed cases');
+  }
+  return vectors.cases;
+}
+
+const cases = vectorsFrom(readFileSync(new URL('../../../../../spec/file-name-vectors.json', import.meta.url), 'utf8'));
 
 function joinParts(parts: readonly Part[]): string {
   return parts.map(([text, count]) => text.repeat(count)).join('');

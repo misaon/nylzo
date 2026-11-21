@@ -24,12 +24,10 @@ describe('create form', () => {
   });
 
   it('reports a file it cannot read, such as a dropped folder, instead of failing the submit', async () => {
-    const folder = {
-      name: 'folder',
-      size: 0,
+    const folder = Object.assign(new File([], 'folder'), {
       arrayBuffer: () => Promise.reject(new DOMException('', 'NotFoundError')),
-    };
-    expect(await readAttachment(folder as unknown as File, limits)).toEqual({
+    });
+    expect(await readAttachment(folder, limits)).toEqual({
       problem: { field: 'file', code: 'unreadable' },
     });
   });

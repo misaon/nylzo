@@ -49,13 +49,15 @@ export async function derivePassphraseSalt(secret: Uint8Array): Promise<Uint8Arr
   return deriveBytes(keyMaterial, NO_SALT, LABEL_PASSPHRASE_SALT, PASSPHRASE_SALT_LENGTH);
 }
 
+interface ContentInput {
+  readonly id: Uint8Array;
+  readonly secret: Uint8Array;
+  readonly exportKey: Uint8Array;
+  readonly share: Uint8Array | undefined;
+}
+
 // P is the export_key of OPAQUE (spec section 2.1), for a message with or without a passphrase.
-export async function deriveContent(
-  id: Uint8Array,
-  secret: Uint8Array,
-  exportKey: Uint8Array,
-  share: Uint8Array | undefined,
-): Promise<ContentKeys> {
+export async function deriveContent({ id, secret, exportKey, share }: ContentInput): Promise<ContentKeys> {
   assertLength(secret, SECRET_LENGTH, 'secret');
   assertLength(exportKey, EXPORT_KEY_LENGTH, 'export key');
   if (share === undefined) {

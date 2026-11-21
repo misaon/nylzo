@@ -47,7 +47,8 @@ async function watchLayout(page: Page): Promise<void> {
     const rectangle = (box: DOMRectReadOnly) =>
       `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)}`;
     const recordShifts = (entries: PerformanceEntry[]) => {
-      for (const entry of entries as LayoutShift[]) {
+      const shifted = entries.filter((entry): entry is LayoutShift => entry.entryType === 'layout-shift');
+      for (const entry of shifted) {
         // A shift within half a second of a click or key press does not count towards CLS.
         if (entry.hadRecentInput) {
           continue;

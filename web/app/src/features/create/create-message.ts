@@ -37,7 +37,7 @@ import type { Api, Issued } from '../../shared/api/api.ts';
 import type { InstanceLimits } from '../../shared/api/responses.ts';
 import { sanitizeFileName } from '../../shared/files/file-name.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
-import type { Progress } from '../../shared/kdf/kdf.ts';
+import type { Progress, ProofOfWorkRequest } from '../../shared/kdf/kdf.ts';
 
 export interface FileInput {
   readonly name: string;
@@ -106,13 +106,7 @@ export interface CreateDependencies {
   readonly api: Api;
   readonly origin: string;
   readonly stretch: (message: Uint8Array<ArrayBuffer>, onProgress: Progress) => Promise<Uint8Array<ArrayBuffer>>;
-  readonly solvePow: (
-    challenge: string,
-    id: Uint8Array<ArrayBuffer>,
-    difficulty: number,
-    budgetMs: number,
-    onProgress: Progress,
-  ) => Promise<string>;
+  readonly solvePow: (request: ProofOfWorkRequest, onProgress: Progress) => Promise<string>;
 }
 
 type ReportProgress = (progress: CreateProgress) => void;
@@ -172,13 +166,20 @@ export function validateCreate(input: CreateInput, limits: InstanceLimits): Crea
 
 // A lone surrogate (pasted text, a Windows file name) becomes U+FFFD, as UTF-8 encoding and the length check already count it.
 function metaOf(input: CreateInput): Meta {
-  const mime = input.file?.mime.toWellFormed() ?? '';
-  const file = input.file && {
-    name: sanitizeFileName(input.file.name.toWellFormed()),
-    mime: utf8(mime).length <= MAX_MIME_BYTES ? mime : '',
-    size: input.file.bytes.length,
-  };
-  return { ...(input.text !== '' && { text: input.text.toWellFormed() }), ...(file && { file }) };
+  const text = input.text === '' ? undefined : input.text.toWellFormed();
+  if (input.file !== undefined) {
+    const mime = input.file.mime.toWellFormed();
+    const file = {
+      name: sanitizeFileName(input.file.name.toWellFormed()),
+      mime: utf8(mime).length <= MAX_MIME_BYTES ? mime : '',
+      size: input.file.bytes.length,
+    };
+    return { ...(text !== undefined && { text }), file };
+  }
+  if (text !== undefined) {
+    return { text };
+  }
+  throw new CreateError({ kind: 'invalid', problems: [{ field: 'content', code: 'missing' }] });
 }
 
 // Profile 3 stretches the OPRF output in a worker (spec 2.1).
@@ -230,8 +231,9 @@ async function prove(
     }
     onProgress({ step: 'proving', fraction: 0 });
     try {
-      return await dependencies.solvePow(pow.challenge ?? '', id, pow.difficulty, POW_BUDGET_MS, (fraction) =>
-        onProgress({ step: 'proving', fraction }),
+      return await dependencies.solvePow(
+        { challenge: pow.challenge, id, difficulty: pow.difficulty, budgetMs: POW_BUDGET_MS },
+        (fraction) => onProgress({ step: 'proving', fraction }),
       );
     } catch (error) {
       if (!(error instanceof PowTimeoutError) || round >= POW_ROUNDS) {
@@ -270,7 +272,7 @@ async function sealMessage(sealing: SealInput, onProgress: ReportProgress): Prom
   let linkKeys: LinkKeys | undefined;
   try {
     linkKeys = await deriveLink(id, secret);
-    const contentKeys = await deriveContent(id, secret, sealing.exportKey, share);
+    const contentKeys = await deriveContent({ id, secret, exportKey: sealing.exportKey, share });
     const policy = { opensMax: input.opensMax, ttlSeconds: input.ttlSeconds, deadline: sealing.issued.deadline };
     onProgress({ step: 'encrypting' });
     const object = await seal(contentKeys, newHeader(kdfId), id, policy, {
@@ -303,9 +305,6 @@ async function issue(input: CreateInput, dependencies: CreateDependencies, regis
       throw new CreateError({ kind: 'invalid', problems });
     }
     const issued = instance.create;
-    if (issued === undefined) {
-      throw new CreateError({ kind: 'failed' });
-    }
     return { instance, issued, share: await unwrapShare(shareKey, issued.share) };
   } finally {
     shareKey.seed.fill(0);
@@ -361,7 +360,7 @@ async function createOnce(
       object: sealed.object,
       ...(powToken !== undefined && { powToken }),
     });
-    const link = formatLink(dependencies.origin, id, kdfId, secret, hash);
+    const link = formatLink(dependencies.origin, { kdfId, id, secret, objectHash: hash });
     return { link, expiresAt, id: idToString(id), manageKey: sealed.manageKey };
   } finally {
     secret.fill(0);

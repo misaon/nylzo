@@ -85,7 +85,7 @@ export function noticeOf(view: ReadView, burned: Burned | undefined): Notice {
       return burnedBeforeReveal && view.state === 'deleted' ? 'burned' : view.state;
     }
     case 'ready': {
-      return view.rejected?.reason === 'wrong' && view.rejected.locked ? 'locked' : 'loading';
+      return view.notice?.reason === 'wrong' && view.notice.locked ? 'locked' : 'loading';
     }
     case 'retry_later': {
       return 'busy';

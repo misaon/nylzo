@@ -9,13 +9,17 @@ const repository = path.resolve(import.meta.dirname, '../..');
 const binaryDirectory = path.join(import.meta.dirname, '.bin', port);
 const binary = path.join(binaryDirectory, 'nylzo');
 
-const profiles: Record<string, Record<string, string>> = {
-  default: {},
-  pow: { NYLZO_GLOBAL_DAILY_CREATES: '8', NYLZO_POW_DIFFICULTY: '4' },
-  official: { NYLZO_PUBLIC_URL: 'https://nylzo.com' },
+const profiles: ReadonlyMap<string, Readonly<Record<string, string>>> = new Map([
+  ['default', {}],
+  ['pow', { NYLZO_GLOBAL_DAILY_CREATES: '8', NYLZO_POW_DIFFICULTY: '4' }],
+  ['official', { NYLZO_PUBLIC_URL: 'https://nylzo.com' }],
   // WebAuthn refuses an IP address as the relying party, so the admin area runs on localhost without a public URL.
-  admin: { NYLZO_PUBLIC_URL: '' },
-};
+  ['admin', { NYLZO_PUBLIC_URL: '' }],
+]);
+const profileSettings = profiles.get(profile);
+if (profileSettings === undefined) {
+  throw new RangeError(`unknown profile "${profile}", expected one of: ${[...profiles.keys()].join(', ')}`);
+}
 
 mkdirSync(binaryDirectory, { recursive: true });
 execFileSync(process.execPath, [path.join(repository, 'tools/build.mts'), binary], {
@@ -51,7 +55,7 @@ const settings = {
   NYLZO_OPERATOR: 'Nylzo e2e',
   NYLZO_CONTACT: 'abuse@nylzo.test',
   NYLZO_HOSTING: 'localhost',
-  ...profiles[profile],
+  ...profileSettings,
 };
 // A test runs the server's own commands, such as admin-enroll, with the settings of the server it talks to.
 writeFileSync(path.join(binaryDirectory, 'settings.json'), JSON.stringify(settings));

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
+  import type { Component } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
   import { prefersReducedMotion } from 'svelte/motion';
 
@@ -35,6 +36,15 @@
     terms: 'page',
     transparency: 'page',
   } as const satisfies Record<Screen, 'home' | 'page' | 'read'>;
+  const CARD_SCREENS = {
+    agents: undefined,
+    create: undefined,
+    notFound: undefined,
+    read: undefined,
+    sent: Sent,
+    terms: Terms,
+    transparency: Transparency,
+  } as const satisfies Record<Screen, Component | undefined>;
   // Screens that hold no message secret, so the page can switch between them without loading a new document.
   const SWITCHABLE: ReadonlySet<Screen> = new Set(['agents', 'create', 'sent', 'terms', 'transparency']);
 
@@ -49,6 +59,7 @@
   const work = setScreenWork(new ScreenWork());
   const { translate } = translator;
   const variant = $derived(HEADER_VARIANTS[screen]);
+  const CardScreen = $derived(CARD_SCREENS[screen]);
   let requestedLanguage = startLanguage;
   const onlanguage = (language: Language) => void switchLanguage(language);
 
@@ -182,18 +193,12 @@
             <Agents />
           {:else if screen === 'notFound'}
             <NotFound />
-          {:else}
+          {:else if CardScreen}
             <div
               class={['mx-auto px-4 pt-16 pb-24 sm:px-6 md:pt-24', screen === 'sent' ? 'max-w-wide' : 'max-w-column']}
             >
               <div class="glass animate-rise-visible rounded-card p-6 [animation-delay:80ms] md:p-10">
-                {#if screen === 'sent'}
-                  <Sent />
-                {:else if screen === 'terms'}
-                  <Terms />
-                {:else}
-                  <Transparency />
-                {/if}
+                <CardScreen />
               </div>
             </div>
           {/if}

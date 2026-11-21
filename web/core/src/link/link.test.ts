@@ -25,7 +25,7 @@ describe('link vectors', () => {
 
   it.each(canonical)('$name formats back to its input', (vector) => {
     const link = parseLink(vector.input);
-    expect(formatLink(base, link.id, link.kdfId, link.secret, link.objectHash)).toBe(vector.input);
+    expect(formatLink(base, link)).toBe(vector.input);
   });
 
   it.each(invalid)('$name is rejected', (vector) => {
@@ -60,7 +60,7 @@ describe('the kdf profile comes from the fragment only', () => {
     const id = randomId();
     const secret = newSecret();
     const objectHash = newSecret();
-    expect(parseLink(formatLink(base, id, KDF_SCRYPT, secret, objectHash))).toStrictEqual({
+    expect(parseLink(formatLink(base, { kdfId: KDF_SCRYPT, id, secret, objectHash }))).toStrictEqual({
       kdfId: KDF_SCRYPT,
       id,
       secret,
@@ -77,8 +77,8 @@ describe('links and fragments (spec 4, 15)', () => {
 
   it('formats a link under one trailing slash of the base, with no id in the path', () => {
     const expected = `${base}/r#3.0.${fields}`;
-    expect(formatLink(base, id, KDF_NONE, secret, secret)).toBe(expected);
-    expect(formatLink(`${base}/`, id, KDF_NONE, secret, secret)).toBe(expected);
+    expect(formatLink(base, { kdfId: KDF_NONE, id, secret, objectHash: secret })).toBe(expected);
+    expect(formatLink(`${base}/`, { kdfId: KDF_NONE, id, secret, objectHash: secret })).toBe(expected);
   });
 
   it.each([`3.3.${fields}`, `#3.3.${fields}`])('parses the fragment %s', (text) => {

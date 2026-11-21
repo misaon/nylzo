@@ -6,16 +6,21 @@
   import type { BarItem, Tone } from './tones.ts';
   import Track from './Track.svelte';
 
-  interface Props {
+  interface Rows {
     readonly label: string;
     readonly items: readonly BarItem[];
     readonly tone: Tone;
     readonly formatValue: (value: number) => string;
     readonly formatShare: (share: number) => string;
-    readonly highlighted?: string | undefined;
-    readonly onhighlight?: ((key: string | undefined) => void) | undefined;
     readonly compact?: boolean;
   }
+
+  interface Highlighting {
+    readonly highlighted: string | undefined;
+    readonly onhighlight: (key: string | undefined) => void;
+  }
+
+  type Props = Rows & (Highlighting | { readonly [Key in keyof Highlighting]?: undefined });
 
   const REORDER_MS = 400;
 

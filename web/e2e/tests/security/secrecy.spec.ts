@@ -31,7 +31,7 @@ test(
     expect(link.startsWith(`${BASE_URL}/r#`)).toBe(true);
     expect(new URL(link).hash).toMatch(/^#3\.3\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/u);
 
-    await showMessage(recipient, link, WRONG_PASSPHRASE);
+    await showMessage(recipient, link, { passphrase: WRONG_PASSPHRASE });
     await expect(recipient.getByText(/Wrong passphrase/u)).toBeVisible({ timeout: 30_000 });
     await recipient.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
     await recipient.getByRole('button', { name: 'Show message' }).click();

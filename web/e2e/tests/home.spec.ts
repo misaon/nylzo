@@ -7,6 +7,20 @@ import { holdRoute } from './support/routes.ts';
 import { BASE_URL, OFFICIAL_BASE_URL } from './support/servers.ts';
 import { watchViolations } from './support/watchers.ts';
 
+function field(value: unknown, name: string): unknown {
+  return typeof value === 'object' && value !== null ? Reflect.get(value, name) : undefined;
+}
+
+function textField(value: unknown, name: string): string | undefined {
+  const text = field(value, name);
+  return typeof text === 'string' ? text : undefined;
+}
+
+function structuredGraph(json: string): unknown[] {
+  const graph = field(JSON.parse(json), '@graph');
+  return Array.isArray(graph) ? graph : [];
+}
+
 const HOMES = [
   { path: '/', language: 'en', heading: 'A secret that opens once', title: /^Share passwords and files securely/u },
   { path: '/cs/', language: 'cs', heading: 'Tajemství na jedno otevření', title: /^Jak bezpečně poslat heslo/u },
@@ -37,16 +51,14 @@ for (const home of HOMES) {
     const preview = await request.get(image);
     expect(preview.headers()['content-type']).toBe('image/jpeg');
     const structured = /<script type="application\/ld\+json">([^<]+)<\/script>/u.exec(html)?.[1] ?? '';
-    const graph = (JSON.parse(structured) as { '@graph': { '@type': string; url?: string; logo?: string }[] })[
-      '@graph'
-    ];
-    const node = (type: string) => graph.find((entry) => entry['@type'] === type);
-    expect([node('Organization')?.url, node('WebSite')?.url, node('WebApplication')?.url]).toEqual([
+    const graph = structuredGraph(structured);
+    const node = (type: string) => graph.find((entry) => textField(entry, '@type') === type);
+    expect(['Organization', 'WebSite', 'WebApplication'].map((type) => textField(node(type), 'url'))).toEqual([
       `${BASE_URL}/`,
       `${BASE_URL}/`,
       `${BASE_URL}${home.path}`,
     ]);
-    const logoPath = new URL(node('Organization')?.logo ?? '').pathname;
+    const logoPath = new URL(textField(node('Organization'), 'logo') ?? '').pathname;
     const logo = await request.get(`${OFFICIAL_BASE_URL}${logoPath}`);
     expect(logo.headers()['content-type']).toBe('image/png');
     expect(logo.headers()['x-robots-tag']).toBeUndefined();

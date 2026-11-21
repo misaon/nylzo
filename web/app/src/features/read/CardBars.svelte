@@ -22,7 +22,9 @@
   const retryable = $derived(page.shown.view === 'failed' || page.shown.view === 'retry_later');
   const restShown = $derived(page.revealed !== undefined && (page.revealed.burnable || page.restDeleted));
   const reservedFacts = $derived(
-    page.reservedOpens === undefined ? [] : openedFacts(translator, page.reservedOpens, SHOWN_SECONDS),
+    page.reservedOpens === undefined
+      ? []
+      : openedFacts(translator, { opensRemaining: page.reservedOpens, secondsLeft: SHOWN_SECONDS }),
   );
   const deleteState = $derived(page.ready === undefined && page.actions !== 'dim' ? 'off' : page.actions);
   const DELETE_STATES = {
@@ -50,7 +52,7 @@
   </ul>
 {/snippet}
 
-{#snippet actions(deletable: boolean, sizing: boolean)}
+{#snippet actions({ deletable, sizing }: { readonly deletable: boolean; readonly sizing: boolean })}
   <div class="flex items-center gap-2 max-sm:w-full">
     {#if deletable}
       <Button
@@ -117,13 +119,13 @@
       {#if page.afterFacts.length > 0}
         {@render facts(page.afterFacts, AFTER_FACTS)}
       {/if}
-      {@render actions(restShown, false)}
+      {@render actions({ deletable: restShown, sizing: false })}
     </div>
 
     {#if page.reservedOpens !== undefined}
       <div class={['invisible sm:justify-between', AFTER_BAR]} aria-hidden="true" inert>
         {@render facts(reservedFacts, AFTER_FACTS)}
-        {@render actions(page.reservedOpens > 0, true)}
+        {@render actions({ deletable: page.reservedOpens > 0, sizing: true })}
       </div>
     {/if}
 

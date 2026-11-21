@@ -2,7 +2,10 @@ import { formatClock } from '../../shared/language/format.ts';
 import type { Translator } from '../../shared/language/translator.svelte.ts';
 import type { Fact } from './read-page.svelte.ts';
 
-export function openedFacts(translator: Translator, opensRemaining: number, secondsLeft?: number): Fact[] {
+export function openedFacts(
+  translator: Translator,
+  { opensRemaining, secondsLeft }: { readonly opensRemaining: number; readonly secondsLeft?: number | undefined },
+): Fact[] {
   const { translate } = translator;
   const facts: Fact[] = [
     { icon: 'check', text: translate('open.chip.now') },

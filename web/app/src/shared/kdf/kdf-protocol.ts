@@ -23,7 +23,7 @@ function field(value: object, name: string): unknown {
 }
 
 function isBytes(value: unknown, length: number): value is Uint8Array<ArrayBuffer> {
-  return value instanceof Uint8Array && value.length === length;
+  return value instanceof Uint8Array && value.buffer instanceof ArrayBuffer && value.length === length;
 }
 
 function isFraction(value: unknown): value is number {

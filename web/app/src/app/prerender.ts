@@ -90,7 +90,7 @@ function jsonScript(value: unknown): string {
     .replaceAll('&', String.raw`\u0026`);
 }
 
-function meta(property: string, content: string): string {
+function meta({ property, content }: { readonly property: string; readonly content: string }): string {
   return `<meta property="${property}" content="${escapeAttribute(content)}">`;
 }
 
@@ -167,13 +167,13 @@ function seoHead(language: Language, image: OgImage, logo: string): string {
   const translator = new Translator(language);
   const { translate } = translator;
   const shared = [
-    meta('og:type', 'website'),
-    meta('og:site_name', 'Nylzo'),
-    meta('og:title', translate('seo.title')),
-    meta('og:description', translate('seo.description')),
-    meta('og:locale', languageDetails(language).openGraphLocale),
+    meta({ property: 'og:type', content: 'website' }),
+    meta({ property: 'og:site_name', content: 'Nylzo' }),
+    meta({ property: 'og:title', content: translate('seo.title') }),
+    meta({ property: 'og:description', content: translate('seo.description') }),
+    meta({ property: 'og:locale', content: languageDetails(language).openGraphLocale }),
     ...LANGUAGES.filter((other) => other !== language).map((other) =>
-      meta('og:locale:alternate', languageDetails(other).openGraphLocale),
+      meta({ property: 'og:locale:alternate', content: languageDetails(other).openGraphLocale }),
     ),
     '<meta name="twitter:card" content="summary_large_image">',
   ];
@@ -183,12 +183,12 @@ function seoHead(language: Language, image: OgImage, logo: string): string {
       (alternate) => `<link rel="alternate" hreflang="${alternate}" href="${absolute(homePath(alternate))}">`,
     ),
     `<link rel="alternate" hreflang="x-default" href="${absolute(homePath(DEFAULT_LANGUAGE))}">`,
-    meta('og:url', absolute(homePath(language))),
-    meta('og:image', absolute(image.path)),
-    meta('og:image:type', 'image/jpeg'),
-    meta('og:image:width', String(image.width)),
-    meta('og:image:height', String(image.height)),
-    meta('og:image:alt', translate('seo.image')),
+    meta({ property: 'og:url', content: absolute(homePath(language)) }),
+    meta({ property: 'og:image', content: absolute(image.path) }),
+    meta({ property: 'og:image:type', content: 'image/jpeg' }),
+    meta({ property: 'og:image:width', content: String(image.width) }),
+    meta({ property: 'og:image:height', content: String(image.height) }),
+    meta({ property: 'og:image:alt', content: translate('seo.image') }),
     `<script type="application/ld+json">${jsonScript(structuredData(language, translator, logo))}</script>`,
   ];
   return [...shared, PUBLIC_START, ...located, PUBLIC_END].join('\n');

@@ -11,7 +11,12 @@ const DRAG_STEP_MS = 12;
 // Past half its height the sheet leaves at any speed, so the runner's pace decides nothing.
 const DRAG_FRACTION = 0.75;
 
-async function dragDown(page: Page, fromY: number, distance: number): Promise<void> {
+interface Drag {
+  readonly fromY: number;
+  readonly distance: number;
+}
+
+async function dragDown(page: Page, { fromY, distance }: Drag): Promise<void> {
   const session = await page.context().newCDPSession(page);
   const x = PHONE.viewport.width / 2;
   await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: fromY }] });
@@ -39,7 +44,7 @@ test('on a phone a composer menu opens as a sheet inside the viewport, and a dra
 
   const box = await sheet.boundingBox();
   expect(box).not.toBeNull();
-  await dragDown(page, (box?.y ?? 0) + 20, (box?.height ?? 0) * DRAG_FRACTION);
+  await dragDown(page, { fromY: (box?.y ?? 0) + 20, distance: (box?.height ?? 0) * DRAG_FRACTION });
   await expect(sheet).toHaveCount(0);
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
 

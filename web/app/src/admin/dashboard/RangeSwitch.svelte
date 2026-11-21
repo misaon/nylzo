@@ -9,17 +9,17 @@
     readonly onrange: (range: Range) => void;
   }
 
-  const POSITIONS = [
-    'translate-x-0',
-    'translate-x-full',
-    'translate-x-[200%]',
-    'translate-x-[300%]',
-    'translate-x-[400%]',
-  ] as const;
+  const POSITIONS: Readonly<Record<Range, string>> = {
+    '24h': 'translate-x-0',
+    '7d': 'translate-x-full',
+    '30d': 'translate-x-[200%]',
+    '90d': 'translate-x-[300%]',
+    '12m': 'translate-x-[400%]',
+  };
 
   const { range, onrange }: Props = $props();
   const { translate } = getDashboardTools();
-  const position = $derived(POSITIONS[RANGES.indexOf(range)]);
+  const position = $derived(POSITIONS[range]);
 </script>
 
 <div

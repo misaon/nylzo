@@ -46,12 +46,12 @@
     const option = event.currentTarget;
     const options = [...(option.parentElement?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
     const index = options.indexOf(option);
-    const target = {
-      ArrowDown: options.at((index + 1) % options.length),
-      ArrowUp: options.at(index - 1),
-      Home: options.at(0),
-      End: options.at(-1),
-    }[event.key];
+    const target = new Map([
+      ['ArrowDown', options.at((index + 1) % options.length)],
+      ['ArrowUp', options.at(index - 1)],
+      ['Home', options.at(0)],
+      ['End', options.at(-1)],
+    ]).get(event.key);
     if (target) {
       event.preventDefault();
       target.focus();

@@ -5,7 +5,7 @@ import type { MessageKey, PluralKey } from './catalog.ts';
 import { DEFAULT_LANGUAGE } from './language.ts';
 import type { Language } from './language.ts';
 
-const PLACEHOLDER = /\{(\w+)\}/gu;
+const PLACEHOLDER = /\{\w+\}/gu;
 
 type Values = Readonly<Record<string, number | string>>;
 
@@ -26,9 +26,10 @@ function cached<Format>(formats: Map<Language, Format>, language: Language, crea
 }
 
 function fill(text: string, values: Values): string {
-  return text.replaceAll(PLACEHOLDER, (placeholder, name: string) =>
-    Object.hasOwn(values, name) ? String(values[name]) : placeholder,
-  );
+  return text.replaceAll(PLACEHOLDER, (placeholder) => {
+    const name = placeholder.slice(1, -1);
+    return Object.hasOwn(values, name) ? String(values[name]) : placeholder;
+  });
 }
 
 export class Translator {

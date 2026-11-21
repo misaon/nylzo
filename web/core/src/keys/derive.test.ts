@@ -28,7 +28,12 @@ describe('derive vectors', () => {
     expect(await publicKeyOf(link.readSeed)).toBe(vector.read_key);
     expect(await publicKeyOf(hexToBytes(vector.m_hex))).toBe(vector.manage_key);
 
-    const content = await deriveContent(id, secret, hexToBytes(vector.p_hex), hexToBytes(vector.e_hex));
+    const content = await deriveContent({
+      id,
+      secret,
+      exportKey: hexToBytes(vector.p_hex),
+      share: hexToBytes(vector.e_hex),
+    });
     expect(content.contentKey.extractable).toBe(false);
     expect(content.commitmentKey.extractable).toBe(false);
   });
@@ -38,7 +43,12 @@ const exportKey = new Uint8Array(64).fill(7);
 
 describe('key derivation (spec 2)', () => {
   it('derives K and K_c as non-extractable keys for their one use each', async () => {
-    const { contentKey, commitmentKey } = await deriveContent(randomId(), newSecret(), exportKey, newSecret());
+    const { contentKey, commitmentKey } = await deriveContent({
+      id: randomId(),
+      secret: newSecret(),
+      exportKey,
+      share: newSecret(),
+    });
     expect(contentKey.extractable).toBe(false);
     expect(contentKey.algorithm).toEqual({ name: 'AES-GCM', length: KEY_LENGTH * 8 });
     expect(contentKey.usages.toSorted((left, right) => left.localeCompare(right))).toEqual(['decrypt', 'encrypt']);
@@ -52,31 +62,41 @@ describe('key derivation (spec 2)', () => {
   });
 
   it('needs the share', async () => {
-    await expect(deriveContent(randomId(), newSecret(), exportKey, undefined)).rejects.toBeInstanceOf(ShareError);
+    await expect(
+      deriveContent({ id: randomId(), secret: newSecret(), exportKey, share: undefined }),
+    ).rejects.toBeInstanceOf(ShareError);
   });
 
   it('rejects an id or a secret of the wrong length', async () => {
     await expect(hsalt(new Uint8Array(15))).rejects.toBeInstanceOf(Error);
     await expect(deriveLink(randomId(), new Uint8Array(31))).rejects.toBeInstanceOf(Error);
-    await expect(deriveContent(new Uint8Array(17), newSecret(), exportKey, newSecret())).rejects.toBeInstanceOf(Error);
-    await expect(deriveContent(randomId(), newSecret(), new Uint8Array(32), newSecret())).rejects.toBeInstanceOf(Error);
+    await expect(
+      deriveContent({ id: new Uint8Array(17), secret: newSecret(), exportKey, share: newSecret() }),
+    ).rejects.toBeInstanceOf(Error);
+    await expect(
+      deriveContent({ id: randomId(), secret: newSecret(), exportKey: new Uint8Array(32), share: newSecret() }),
+    ).rejects.toBeInstanceOf(Error);
   });
 
   it('wipes the copy of S, P and E it feeds into HKDF', async () => {
     const imported: Uint8Array[] = [];
     const importKey = crypto.subtle.importKey.bind(crypto.subtle);
-    const spy = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((
-      format: KeyFormat,
-      data: BufferSource,
-      ...rest: [AlgorithmIdentifier, boolean, KeyUsage[]]
-    ) => {
-      if (data instanceof Uint8Array && data.length === 128) {
-        imported.push(data);
-      }
-      return importKey(format as 'raw', data, ...rest);
-    }) as typeof crypto.subtle.importKey);
+    const spy = vi
+      .spyOn(crypto.subtle, 'importKey')
+      .mockImplementation((...parameters: Parameters<typeof importKey>) => {
+        const [, data] = parameters;
+        if (data instanceof Uint8Array && data.length === 128) {
+          imported.push(data);
+        }
+        return importKey(...parameters);
+      });
     try {
-      await deriveContent(randomId(), newSecret(), new Uint8Array(64).fill(9), newSecret());
+      await deriveContent({
+        id: randomId(),
+        secret: newSecret(),
+        exportKey: new Uint8Array(64).fill(9),
+        share: newSecret(),
+      });
     } finally {
       spy.mockRestore();
     }
@@ -85,16 +105,20 @@ describe('key derivation (spec 2)', () => {
 
   it('wipes S and P even when their native import rejects', async () => {
     let imported: Uint8Array | undefined;
-    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((
-      _format: KeyFormat,
-      data: BufferSource,
-    ) => {
-      imported = data as Uint8Array;
+    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation((_format, data) => {
+      if (data instanceof Uint8Array) {
+        imported = data;
+      }
       return Promise.reject(new DOMException('refused', 'OperationError'));
-    }) as typeof crypto.subtle.importKey);
+    });
     try {
       await expect(
-        deriveContent(randomId(), newSecret(), new Uint8Array(64).fill(9), newSecret()),
+        deriveContent({
+          id: randomId(),
+          secret: newSecret(),
+          exportKey: new Uint8Array(64).fill(9),
+          share: newSecret(),
+        }),
       ).rejects.toMatchObject({
         name: 'OperationError',
       });

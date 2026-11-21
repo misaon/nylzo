@@ -26,7 +26,7 @@ async function envelope(
   file: Uint8Array,
 ): Promise<{ id: Uint8Array<ArrayBuffer>; keys: ContentKeys; object: Uint8Array<ArrayBuffer> }> {
   const id = randomId();
-  const keys = await deriveContent(id, newSecret(), new Uint8Array(64), newSecret());
+  const keys = await deriveContent({ id, secret: newSecret(), exportKey: new Uint8Array(64), share: newSecret() });
   const header = newHeader(KDF_NONE);
   const metadata = utf8(JSON.stringify(meta));
   const length = Math.ceil((prefix + TAG_LENGTH + 4 + metadata.length + file.length) / PAD) * PAD;

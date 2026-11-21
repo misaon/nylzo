@@ -10,6 +10,15 @@ import type { SentStore } from './sent-store.ts';
 
 const NOW = Date.parse('2026-11-01T12:00:00Z');
 
+function withListing(factory: IDBFactory, databases: () => Promise<IDBDatabaseInfo[]>) {
+  return {
+    cmp: factory.cmp.bind(factory),
+    databases,
+    deleteDatabase: factory.deleteDatabase.bind(factory),
+    open: factory.open.bind(factory),
+  };
+}
+
 describe('persistent sent records', () => {
   let factory: IDBFactory;
   let store: SentStore;
@@ -38,9 +47,7 @@ describe('persistent sent records', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       const hanging = browserSentStore(
-        Object.assign(Object.create(factory) as IDBFactory, {
-          databases: async () => Promise.withResolvers<IDBDatabaseInfo[]>().promise,
-        }),
+        withListing(factory, async () => Promise.withResolvers<IDBDatabaseInfo[]>().promise),
       );
       const listed = hanging.list();
       await vi.advanceTimersByTimeAsync(2000);
@@ -49,9 +56,7 @@ describe('persistent sent records', () => {
     } finally {
       vi.useRealTimers();
     }
-    const failing = browserSentStore(
-      Object.assign(Object.create(factory) as IDBFactory, { databases: () => Promise.reject(new Error('refused')) }),
-    );
+    const failing = browserSentStore(withListing(factory, () => Promise.reject(new Error('refused'))));
     expect(await failing.list()).toEqual([]);
     const created = await factory.databases();
     expect(created.map((database) => database.name)).toEqual(['nylzo']);
@@ -140,9 +145,7 @@ describe('persistent sent records', () => {
   it('keeps checking every hour when the browser never answers the database listing', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
-      const hanging = Object.assign(Object.create(factory) as IDBFactory, {
-        databases: async () => Promise.withResolvers<IDBDatabaseInfo[]>().promise,
-      });
+      const hanging = withListing(factory, async () => Promise.withResolvers<IDBDatabaseInfo[]>().promise);
       const purging = keepPurgingSentRecords(hanging, () => NOW);
       await vi.advanceTimersByTimeAsync(2000);
       await purging;

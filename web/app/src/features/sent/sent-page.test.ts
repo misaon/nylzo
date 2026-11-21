@@ -27,9 +27,6 @@ async function remembered(api: FakeApi, createdAt: number, opensMax = 1): Promis
     shareKey: newShareKey().publicKey,
     registrationRequest: createRegistrationRequest(utf8('sent page')).request,
   });
-  if (create === undefined) {
-    throw new Error('the fake server issued no id');
-  }
   const manageKey = await newRequestKey();
   await api.create({
     id: create.id,
@@ -267,8 +264,13 @@ describe('the sent page', () => {
     const withoutExpiry = { state: 'available' as const, opensUsed: 0, opensMax: 1, failedPassphraseAttempts: 0 };
     const status = { ...withoutExpiry, expiresAt: '2026-10-23T13:00:00Z' };
     const later = NOW + 3_600_000;
-    expect(assess({ kind: 'loaded', status }, later, NOW)).toEqual({ ended: false, cancellable: true });
-    expect(assess({ kind: 'loaded', status: { ...status, state: 'opened' } }, later, NOW)).toEqual({
+    expect(assess({ state: { kind: 'loaded', status }, expiresAt: later, now: NOW })).toEqual({
+      ended: false,
+      cancellable: true,
+    });
+    expect(
+      assess({ state: { kind: 'loaded', status: { ...status, state: 'opened' } }, expiresAt: later, now: NOW }),
+    ).toEqual({
       ended: false,
       cancellable: true,
     });
@@ -279,17 +281,35 @@ describe('the sent page', () => {
       { ...status, state: 'deleted' as const },
       { ...status, state: 'lost' as const },
     ];
-    expect(endedStatuses.map((ended) => assess({ kind: 'loaded', status: ended }, later, NOW))).toEqual(
-      endedStatuses.map(() => ({ ended: true, cancellable: false })),
-    );
-    expect(assess({ kind: 'loaded', status: { ...status, expiresAt: '2026-10-23T11:00:00Z' } }, NOW, NOW)).toEqual({
+    expect(
+      endedStatuses.map((ended) => assess({ state: { kind: 'loaded', status: ended }, expiresAt: later, now: NOW })),
+    ).toEqual(endedStatuses.map(() => ({ ended: true, cancellable: false })));
+    expect(
+      assess({
+        state: { kind: 'loaded', status: { ...status, expiresAt: '2026-10-23T11:00:00Z' } },
+        expiresAt: NOW,
+        now: NOW,
+      }),
+    ).toEqual({
       ended: false,
       cancellable: true,
     });
-    expect(assess({ kind: 'unknown' }, later, NOW)).toEqual({ ended: false, cancellable: false });
-    expect(assess({ kind: 'failed' }, later, NOW)).toEqual({ ended: false, cancellable: true });
-    expect(assess({ kind: 'retry_later', retryAfter: 30 }, later, NOW)).toEqual({ ended: false, cancellable: true });
-    expect(assess({ kind: 'failed' }, NOW, NOW)).toEqual({ ended: false, cancellable: false });
+    expect(assess({ state: { kind: 'unknown' }, expiresAt: later, now: NOW })).toEqual({
+      ended: false,
+      cancellable: false,
+    });
+    expect(assess({ state: { kind: 'failed' }, expiresAt: later, now: NOW })).toEqual({
+      ended: false,
+      cancellable: true,
+    });
+    expect(assess({ state: { kind: 'retry_later', retryAfter: 30 }, expiresAt: later, now: NOW })).toEqual({
+      ended: false,
+      cancellable: true,
+    });
+    expect(assess({ state: { kind: 'failed' }, expiresAt: NOW, now: NOW })).toEqual({
+      ended: false,
+      cancellable: false,
+    });
   });
 
   it('never signs with a key that another tab forgot', async () => {

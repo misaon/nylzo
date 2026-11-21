@@ -24,7 +24,16 @@ export function periodNumbers(timeline: Timeline): number[] {
   return Array.from({ length: timeline.count }, (_, i) => first + i);
 }
 
-function fitting(steps: readonly number[], spacing: number, gap: number): number {
+export interface TickSpace {
+  readonly width: number;
+  readonly gap: number;
+}
+
+interface LabelSpace extends Pick<TickSpace, 'gap'> {
+  readonly spacing: number;
+}
+
+function fitting(steps: readonly number[], { spacing, gap }: LabelSpace): number {
   return steps.find((step) => step * spacing >= gap) ?? steps.at(-1) ?? 1;
 }
 
@@ -34,8 +43,7 @@ function indexes(count: number, keep: (index: number) => boolean): number[] {
 
 export function timeTicks(
   timeline: Timeline,
-  width: number,
-  gap: number,
+  { width, gap }: TickSpace,
   localHour: (seconds: number) => number = (seconds) => new Date(seconds * 1000).getHours(),
 ): number[] {
   const { count } = timeline;
@@ -44,21 +52,21 @@ export function timeTicks(
   }
   const spacing = width / count;
   if (timeline.resolutionSeconds < SECONDS_PER_DAY && count > LONG_HOURLY) {
-    const step = fitting(DAY_STEPS, spacing * HOURS_PER_DAY, gap);
+    const step = fitting(DAY_STEPS, { spacing: spacing * HOURS_PER_DAY, gap });
     const midnights = indexes(count, (i) => localHour(periodStart(timeline, i)) === 0);
     return midnights.filter((_, i) => (midnights.length - 1 - i) % step === 0);
   }
   if (timeline.resolutionSeconds < SECONDS_PER_DAY) {
-    const step = fitting(HOUR_STEPS, spacing, gap);
+    const step = fitting(HOUR_STEPS, { spacing, gap });
     return indexes(count, (i) => localHour(periodStart(timeline, i)) % step === 0);
   }
   if (count > 120) {
-    const step = fitting(MONTH_STEPS, spacing * AVERAGE_DAYS_PER_MONTH, gap);
+    const step = fitting(MONTH_STEPS, { spacing: spacing * AVERAGE_DAYS_PER_MONTH, gap });
     return indexes(count, (i) => {
       const day = new Date(periodStart(timeline, i) * 1000);
       return day.getUTCDate() === 1 && day.getUTCMonth() % step === 0;
     });
   }
-  const step = fitting(DAY_STEPS, spacing, gap);
+  const step = fitting(DAY_STEPS, { spacing, gap });
   return indexes(count, (i) => (count - 1 - i) % step === 0);
 }
