@@ -16,6 +16,7 @@ interface Press {
   readonly pointerId: number;
   readonly x: number;
   readonly y: number;
+  readonly time: number;
   grabOffset: number | undefined;
 }
 
@@ -147,7 +148,13 @@ export class BottomSheet {
     if (insideScrolledList(event.target, this.#element)) {
       return;
     }
-    this.#press = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, grabOffset: undefined };
+    this.#press = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      time: event.timeStamp,
+      grabOffset: undefined,
+    };
     this.#samples = [];
     this.#dragged = false;
   };
@@ -167,7 +174,10 @@ export class BottomSheet {
       // The sheet is taken where it is now, mid-flight included, so it never jumps under the finger.
       this.#spring.stop();
       this.#height = this.#element.offsetHeight;
-      press.grabOffset = event.clientY - this.#spring.value;
+      // A busy page can deliver a whole throw as one move, so the travel and the time since the press both count.
+      const travelled = down - Math.sign(down) * DIRECTION_THRESHOLD;
+      press.grabOffset = event.clientY - this.#spring.value - travelled;
+      this.#samples = [{ time: press.time, position: this.#spring.value }];
       this.#element.setPointerCapture(event.pointerId);
       this.#dragged = true;
     }

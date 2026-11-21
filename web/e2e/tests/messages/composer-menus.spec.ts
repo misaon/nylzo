@@ -6,24 +6,26 @@ import { expect, test } from '../support/fixtures.ts';
 import { openApp } from '../support/pages.ts';
 
 const PHONE = { viewport: { width: 430, height: 932 }, hasTouch: true, reducedMotion: 'no-preference' } as const;
-const FLICK_STEPS = 4;
-const FLICK_STEP_MS = 12;
+const DRAG_STEPS = 6;
+const DRAG_STEP_MS = 12;
+// Past half its height the sheet leaves at any speed, so the runner's pace decides nothing.
+const DRAG_FRACTION = 0.75;
 
-async function flickDown(page: Page, fromY: number, distance: number): Promise<void> {
+async function dragDown(page: Page, fromY: number, distance: number): Promise<void> {
   const session = await page.context().newCDPSession(page);
   const x = PHONE.viewport.width / 2;
   await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y: fromY }] });
-  for (let step = 1; step <= FLICK_STEPS; step++) {
+  for (let step = 1; step <= DRAG_STEPS; step++) {
     await session.send('Input.dispatchTouchEvent', {
       type: 'touchMove',
-      touchPoints: [{ x, y: fromY + (distance * step) / FLICK_STEPS }],
+      touchPoints: [{ x, y: fromY + (distance * step) / DRAG_STEPS }],
     });
-    await delay(FLICK_STEP_MS);
+    await delay(DRAG_STEP_MS);
   }
   await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
 }
 
-test('on a phone a composer menu opens as a sheet inside the viewport, and a flick down or a tap outside closes it', async ({
+test('on a phone a composer menu opens as a sheet inside the viewport, and a drag down or a tap outside closes it', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -37,7 +39,7 @@ test('on a phone a composer menu opens as a sheet inside the viewport, and a fli
 
   const box = await sheet.boundingBox();
   expect(box).not.toBeNull();
-  await flickDown(page, (box?.y ?? 0) + 20, 70);
+  await dragDown(page, (box?.y ?? 0) + 20, (box?.height ?? 0) * DRAG_FRACTION);
   await expect(sheet).toHaveCount(0);
   await expect(trigger).toHaveAttribute('aria-expanded', 'false');
 
