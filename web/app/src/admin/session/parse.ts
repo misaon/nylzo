@@ -1,7 +1,7 @@
 import { ResponseError } from '../../shared/api/api-errors.ts';
 import { integer, isObject, text } from '../../shared/api/responses.ts';
 import type { Json } from '../../shared/api/responses.ts';
-import { RANGES, TIMELINE_METRICS } from '../api/types.ts';
+import { byTimelineMetric, RANGES, TIMELINE_METRICS } from '../api/types.ts';
 import type { LiveUpdate, Overview, Range, RefusedClient, Share, TimelineMetric, UsagePoint } from '../api/types.ts';
 
 function objectAt(json: Json, key: string): Json {
@@ -50,13 +50,8 @@ function rangeOf(json: Json): Range {
   return found;
 }
 
-function byMetric<Value>(read: (metric: TimelineMetric) => Value): Record<TimelineMetric, Value> {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.fromEntries loses the key type; every metric is a key of the entries.
-  return Object.fromEntries(TIMELINE_METRICS.map((metric) => [metric, read(metric)])) as Record<TimelineMetric, Value>;
-}
-
 function metrics(json: Json): Record<TimelineMetric, number> {
-  return byMetric((metric) => integer(json, metric));
+  return byTimelineMetric((metric) => integer(json, metric));
 }
 
 function shares(json: Json, key: string): Share[] {
@@ -70,7 +65,7 @@ function shares(json: Json, key: string): Share[] {
 
 export function parseOverview(json: Json): Overview {
   const seriesJson = objectAt(json, 'series');
-  const series = byMetric((metric) => counts(seriesJson, metric));
+  const series = byTimelineMetric((metric) => counts(seriesJson, metric));
   const periods = series['views.people'].length;
   if (TIMELINE_METRICS.some((metric) => series[metric].length !== periods)) {
     throw new ResponseError('the series differ in length');

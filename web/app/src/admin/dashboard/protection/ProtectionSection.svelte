@@ -33,7 +33,7 @@
         label={translate('dashboard.protection.refusals')}
         note={translate('dashboard.protection.refusals.note')}
         value={refusals}
-        change={trend(refusals, overview.previous?.refusals)}
+        change={trend({ current: refusals, previous: overview.previous?.refusals })}
         tone="danger"
         growthIsGood={false}
         {range}
@@ -48,7 +48,7 @@
       formatTick={format.compact}
       periodLabel={(first, last) => format.period(timeline, first, last)}
       tickLabel={(index) => format.tick(timeline, index)}
-      tickIndexes={(width) => timeTicks(timeline, width, TICK_GAP)}
+      tickIndexes={(width) => timeTicks(timeline, { width, gap: TICK_GAP })}
     />
   </div>
   <RefusedClients clients={live.refused} {waiting} {now} />

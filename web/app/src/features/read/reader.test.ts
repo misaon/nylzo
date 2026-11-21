@@ -24,6 +24,7 @@ import {
   unwrapShare,
   utf8,
 } from '@nylzo/core';
+import type { Meta } from '@nylzo/core';
 import { stretchScrypt } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -49,10 +50,9 @@ function refuseSigningKeyImport() {
   const importKey = crypto.subtle.importKey.bind(crypto.subtle);
   return vi
     .spyOn(crypto.subtle, 'importKey')
-    .mockImplementation(((...parameters: Parameters<typeof importKey>) =>
-      parameters[0] === 'pkcs8'
-        ? Promise.reject(new DOMException('refused', 'DataError'))
-        : importKey(...parameters)) as typeof crypto.subtle.importKey);
+    .mockImplementation((...parameters) =>
+      parameters[0] === 'pkcs8' ? Promise.reject(new DOMException('refused', 'DataError')) : importKey(...parameters),
+    );
 }
 
 function workerStretch(calls: string[] = []): Stretch {
@@ -179,11 +179,7 @@ async function leaseValue(link: string, lease: string): Promise<string> {
   return `${encodeBase64url(digest.subarray(0, 16))} ${lease}`;
 }
 
-async function storeRaw(
-  api: FakeApi,
-  meta: { text?: string; file?: { name: string; mime: string; size: number } },
-  file?: Uint8Array,
-): Promise<string> {
+async function storeRaw(api: FakeApi, meta: Meta, file?: Uint8Array): Promise<string> {
   const issuing = newShareKey();
   const secret = newSecret();
   const password = opaquePassword(await derivePassphraseSalt(secret), KDF_NONE, '');
@@ -193,13 +189,10 @@ async function storeRaw(
     shareKey: issuing.publicKey,
     registrationRequest: request,
   });
-  if (create === undefined) {
-    throw new Error('the fake server issued no id');
-  }
   const registration = await finalizeRegistrationRequest(state, create.registration, identityStretch);
   const keys = await deriveLink(create.id, secret);
   const share = await unwrapShare(issuing, create.share);
-  const content = await deriveContent(create.id, secret, registration.exportKey, share);
+  const content = await deriveContent({ id: create.id, secret, exportKey: registration.exportKey, share });
   const policy = { opensMax: 1, ttlSeconds: 3600, deadline: create.deadline };
   const object = await seal(content, newHeader(KDF_NONE), create.id, policy, { meta, file });
   const readKey = await requestKey(keys.readSeed);
@@ -217,7 +210,12 @@ async function storeRaw(
     ttlSeconds: 3600,
     object,
   });
-  return formatLink('https://nylzo.test', create.id, KDF_NONE, secret, await objectHash(object));
+  return formatLink('https://nylzo.test', {
+    kdfId: KDF_NONE,
+    id: create.id,
+    secret,
+    objectHash: await objectHash(object),
+  });
 }
 
 describe('reading a message', () => {
@@ -379,7 +377,7 @@ describe('reading a message', () => {
     await reader.reveal('špatná passphrase tady');
     expect(reader.last()).toMatchObject({
       view: 'ready',
-      rejected: { reason: 'wrong', attemptsLeft: 4, locked: false },
+      notice: { reason: 'wrong', attemptsLeft: 4, locked: false },
     });
     expect(reader.views.find((readView) => readView.view === 'busy' && readView.step === 'deriving')).toEqual({
       view: 'busy',
@@ -532,7 +530,7 @@ describe('reading a message', () => {
     const again = openReader(api, created.link, { session });
     await again.load();
     await again.reveal('mistyped passphrase here');
-    expect(again.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong', attemptsLeft: 4 } });
+    expect(again.last()).toMatchObject({ view: 'ready', notice: { reason: 'wrong', attemptsLeft: 4 } });
     expect(api.calls.filter((call) => call === 'blob')).toEqual([]);
     await again.reveal(passphrase);
     expect(again.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
@@ -548,7 +546,7 @@ describe('reading a message', () => {
     await reader.reveal('nesprávná passphrase');
     expect(reader.last()).toMatchObject({
       view: 'ready',
-      rejected: { reason: 'wrong', attemptsLeft: 0, retryAfter: 3600, locked: true },
+      notice: { reason: 'wrong', attemptsLeft: 0, retryAfter: 3600, locked: true },
     });
   });
 
@@ -634,7 +632,7 @@ describe('reading through the lease and claim edge cases', () => {
     const reads = () =>
       api.calls.filter((call) => call === 'blob' || call.startsWith('claim') || call === 'handshake+lease');
     expect(reads()).toEqual(['handshake+lease']);
-    expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, leaseEnded: true });
+    expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, notice: { reason: 'lease_ended' } });
     expect(session.map.has(LEASE_KEY)).toBe(false);
     expect(storedOf(api, created.link)).toMatchObject({ opensRemaining: 3, failures: 0 });
     await reader.reveal();
@@ -785,7 +783,7 @@ describe('passphrase handling on the read page', () => {
     const reader = openReader(api, created.link, { stretch: workerStretch(derivations) });
     await reader.load();
     await reader.reveal(passphrase);
-    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: false, rejected: { reason } });
+    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: false, notice: { reason } });
     expect(reader.views.some((readView) => readView.view === 'busy')).toBe(false);
     expect(derivations).toEqual([]);
     expect(api.calls.some((call) => call === 'handshake' || call.startsWith('claim'))).toBe(false);
@@ -800,7 +798,7 @@ describe('passphrase handling on the read page', () => {
     });
     await reader.load();
     await reader.reveal('correct horse battery staple');
-    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: true, rejected: undefined });
+    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: true, notice: undefined });
     const other = openReader(api, created.link, {
       stretch: () => Promise.reject(new ImpostorError('not the worker')),
     });
@@ -1005,7 +1003,7 @@ describe('deleting from the read page', () => {
     const reader = openReader(api, created.link);
     await reader.load();
     expect(await reader.burn('špatná passphrase tady')).toEqual({ outcome: 'rejected' });
-    expect(reader.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong', attemptsLeft: 4 } });
+    expect(reader.last()).toMatchObject({ view: 'ready', notice: { reason: 'wrong', attemptsLeft: 4 } });
     expect(storedOf(api, created.link)).toMatchObject({ state: 'available', failures: 1 });
     expect(await reader.burn(passphrase)).toEqual({ outcome: 'deleted' });
     expect(reader.last()).toMatchObject({ view: 'ended', state: 'deleted' });

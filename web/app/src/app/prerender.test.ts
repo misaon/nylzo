@@ -70,25 +70,22 @@ describe('homeTemplate', () => {
   it('writes structured data that parses and matches the visible description and FAQ (TX12)', () => {
     const page = homeTemplate(INDEX, 'cs', ASSETS);
     const [, json = ''] = /<script type="application\/ld\+json">([^<]*)<\/script>/u.exec(page) ?? [];
-    const data = JSON.parse(json) as {
-      '@graph': {
-        '@type': string;
-        url?: string;
-        description?: string;
-        logo?: string;
-        mainEntity?: { name: string; acceptedAnswer: { text: string } }[];
-      }[];
-    };
-    const types = data['@graph'].map((node) => node['@type']);
-    expect(types).toEqual(['Organization', 'WebSite', 'WebApplication', 'FAQPage']);
-    expect(data['@graph'][0]?.logo).toBe('__NYLZO_PUBLIC_URL__/assets/apple-touch-icon-a7.png');
+    const data: unknown = JSON.parse(json);
     const description = /<meta name="description" content="([^"]*)"/u.exec(page)?.[1];
-    expect(data['@graph'][2]?.description).toBe(description);
-    expect(data['@graph'][2]?.url).toBe('__NYLZO_PUBLIC_URL__/cs/');
-    const questions = data['@graph'][3]?.mainEntity ?? [];
-    expect(questions).toHaveLength(9);
-    const visible = (text: string) => page.includes(text.replaceAll('\u{A0}', '&nbsp;')) || page.includes(text);
-    expect(questions.filter(({ name, acceptedAnswer }) => !visible(name) || !visible(acceptedAnswer.text))).toEqual([]);
+    const visible = (text: unknown) =>
+      typeof text === 'string' && (page.includes(text.replaceAll('\u{A0}', '&nbsp;')) || page.includes(text));
+    const visibleText: unknown = expect.toSatisfy(visible);
+    expect(data).toMatchObject({
+      '@graph': [
+        { '@type': 'Organization', logo: '__NYLZO_PUBLIC_URL__/assets/apple-touch-icon-a7.png' },
+        { '@type': 'WebSite' },
+        { '@type': 'WebApplication', description, url: '__NYLZO_PUBLIC_URL__/cs/' },
+        {
+          '@type': 'FAQPage',
+          mainEntity: Array.from({ length: 9 }, () => ({ name: visibleText, acceptedAnswer: { text: visibleText } })),
+        },
+      ],
+    });
   });
 
   it('refuses an index it cannot place the page in', () => {

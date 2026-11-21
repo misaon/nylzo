@@ -58,7 +58,11 @@ function smallTargets(page: Page, still: string): Promise<string[]> {
   }, still);
 }
 
-async function expectAccessible(page: Page, screen: string, scope?: string): Promise<void> {
+interface Audited {
+  readonly scope?: string;
+}
+
+async function expectAccessible(page: Page, screen: string, { scope }: Audited = {}): Promise<void> {
   await animationsFinished(page);
   const axe = new AxeBuilder({ page }).withTags(WCAG);
   const results = await (scope === undefined ? axe : axe.include(scope)).analyze();
@@ -90,7 +94,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
     await expect(tab).toHaveAttribute('aria-selected', 'true');
     const section = await tab.evaluate((element) => element.closest('section')?.id ?? '');
     expect(section).not.toBe('');
-    await expectAccessible(page, `tab ${index}`, `#${section}`);
+    await expectAccessible(page, `tab ${index}`, { scope: `#${section}` });
   }
 
   const popoverTriggers = page.locator('#create button[aria-haspopup="dialog"]');
@@ -99,7 +103,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
     const trigger = popoverTriggers.nth(index);
     await trigger.click();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    await expectAccessible(page, `popover ${index}`, '#create');
+    await expectAccessible(page, `popover ${index}`, { scope: '#create' });
     await page.keyboard.press('Escape');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   }
@@ -108,13 +112,13 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
     .getByLabel(/File up to/u)
     .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
   await expect(page.getByText('notes.txt')).toBeVisible();
-  await expectAccessible(page, 'attachment', '#create');
+  await expectAccessible(page, 'attachment', { scope: '#create' });
 
   await page.getByLabel('Message text').fill('axe');
   await choosePassphrase(page, 'short');
   await page.getByRole('button', { name: 'Create link' }).click();
   await expect(page.getByLabel('Passphrase', { exact: true })).toBeFocused();
-  await expectAccessible(page, 'refused passphrase', '#create');
+  await expectAccessible(page, 'refused passphrase', { scope: '#create' });
 });
 
 test('the read page in every state, with its delete and download confirmations, passes axe with 44 px targets on a phone', async ({
@@ -151,7 +155,7 @@ test('the read page in every state, with its delete and download confirmations, 
   await expectAccessible(page, 'opened');
 
   const guarded = await createMessageThroughApi({ passphrase: 'four random words here' });
-  await showMessage(page, guarded.link, 'definitely the wrong one');
+  await showMessage(page, guarded.link, { passphrase: 'definitely the wrong one' });
   await expect(page.getByText(/Wrong passphrase/u)).toBeVisible({ timeout: 30_000 });
   await expectAccessible(page, 'rejected');
 

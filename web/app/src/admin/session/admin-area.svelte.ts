@@ -187,7 +187,7 @@ export class AdminArea {
     const overviewDue =
       now >= this.#overviewRetryAt &&
       (this.overview?.range !== range || now - this.#overviewAt >= OVERVIEW_INTERVAL_MS);
-    let loaded: readonly boolean[] = [];
+    let loaded: readonly [overview: boolean, live: boolean] = [false, false];
     try {
       loaded = await Promise.all([
         overviewDue
@@ -221,7 +221,7 @@ export class AdminArea {
     }
     const current = this.#session === session;
     if (current) {
-      const [overviewLoaded = false, liveLoaded = false] = loaded;
+      const [overviewLoaded, liveLoaded] = loaded;
       // A range chosen during the refresh asks for its own overview; the old range's answer sets no backoff.
       if (overviewDue && range === this.range) {
         this.#overviewFailures = overviewLoaded ? 0 : this.#overviewFailures + 1;

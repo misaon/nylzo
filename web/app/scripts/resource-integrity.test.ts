@@ -89,7 +89,7 @@ describe('final frontend resource policy', () => {
       'import("./start.js")',
       'import(`./start.js`)',
     ]) {
-      expect(() => checkScript(code, '/assets/app.js', assets)).not.toThrow();
+      expect(() => checkScript({ code, from: '/assets/app.js', assets })).not.toThrow();
     }
     for (const code of [
       'import("https://evil.invalid/a.js")',
@@ -98,20 +98,24 @@ describe('final frontend resource policy', () => {
       'export * from "missing-package"',
       'import("./missing.js")',
     ]) {
-      expect(() => checkScript(code, '/assets/app.js', assets)).toThrow(/resource integrity/u);
+      expect(() => checkScript({ code, from: '/assets/app.js', assets })).toThrow(/resource integrity/u);
     }
-    expect(() => checkScript('const example = "import(location.hash)"', '/assets/app.js', assets)).not.toThrow();
+    expect(() =>
+      checkScript({ code: 'const example = "import(location.hash)"', from: '/assets/app.js', assets }),
+    ).not.toThrow();
   });
 
   it('parses CSS URLs and forbids remote URLs and all remaining imports', () => {
-    expect(() => checkStyles('@font-face{src:url(./font.woff2)}', '/assets/style.css', assets)).not.toThrow();
+    expect(() =>
+      checkStyles({ code: '@font-face{src:url(./font.woff2)}', from: '/assets/style.css', assets }),
+    ).not.toThrow();
     for (const css of [
       '@import "./style.css";',
       '@font-face{src:url(https://evil.invalid/font.woff2)}',
       'body{background:url(//evil.invalid/x)}',
       String.raw`body{background:url(h\74tps://evil.invalid/x)}`,
     ]) {
-      expect(() => checkStyles(css, '/assets/style.css', assets)).toThrow(/resource integrity/u);
+      expect(() => checkStyles({ code: css, from: '/assets/style.css', assets })).toThrow(/resource integrity/u);
       expect(() =>
         secureHtml(
           html.replace('</head>', () => `<style>${css}</style></head>`),
@@ -128,7 +132,7 @@ function runGuard(href: string) {
   const replaced: string[] = [];
   const listeners = new Map<string, () => void>();
   const location = { hostname: url.hostname, pathname: url.pathname, search: url.search, hash: url.hash };
-  const context = {
+  const page = {
     location,
     history: {
       replaceState: (_state: unknown, _title: string, address: string) => {
@@ -138,9 +142,10 @@ function runGuard(href: string) {
     sessionStorage: { setItem: (key: string, value: string) => session.set(key, value) },
     addEventListener: (type: string, listener: () => void) => listeners.set(type, listener),
   };
+  const context: typeof page & { nylzoFragment?: () => string } = page;
   Object.assign(context, { globalThis: context });
   runInNewContext(FRAGMENT_GUARD, context);
-  const take = Reflect.get(context, 'nylzoFragment') as (() => string) | undefined;
+  const take = context.nylzoFragment;
   const changeHash = (next: string) => {
     const changed = new URL(next, url);
     Object.assign(location, { pathname: changed.pathname, search: changed.search, hash: changed.hash });
@@ -160,7 +165,7 @@ describe('the fragment guard at the start of every page', () => {
       expect(replaced).toEqual([page]);
       expect(session).toEqual(new Map([[`nylzo:dropped:${key}`, '1']]));
       expect(take?.()).toBe(fragment);
-      expect(Reflect.get(context, 'nylzoFragment')).toBeUndefined();
+      expect(context.nylzoFragment).toBeUndefined();
       expect(take?.()).toBe('');
     },
   );

@@ -13,10 +13,22 @@ import type { DefaultTreeAdapterMap } from 'parse5';
 type Assets = ReadonlyMap<string, Uint8Array>;
 type HtmlNode = DefaultTreeAdapterMap['node'];
 
+interface Source {
+  readonly code: string;
+  readonly from: string;
+  readonly assets: Assets;
+}
+
+interface Reference {
+  readonly url: string;
+  readonly from: string;
+  readonly assets: Assets;
+}
+
 // Runs before any other resource loads, so a link secret leaves the address bar at once, also on a mangled path (Protocol §4).
 export const FRAGMENT_GUARD = String.raw`(()=>{const k=h=>/^#\d/.test(h)||h.length>41,a=p=>p==='/r'||/^\/m\/[\w-]{22}$/.test(p)||p==='/open',{pathname:p,search:s,hash:h}=location,r=a(p);addEventListener('hashchange',()=>{const{pathname:q,search:t,hash:g}=location;if(g!==''&&!a(q)&&k(g))history.replaceState(null,'',q+t)});if(h===''||!(r||k(h)))return;history.replaceState(null,'',p+s);if(!r)return;if(!location.hostname.endsWith('.localhost')&&p!=='/open')try{sessionStorage.setItem('nylzo:dropped:'+(p==='/r'?'r':p.slice(3)),'1')}catch{}let f=h;Object.defineProperty(globalThis,'nylzoFragment',{configurable:true,value:()=>{const t=f;f='';delete globalThis.nylzoFragment;return t}})})()`;
 
-function assetAt(url: string, from: string, assets: Assets): Uint8Array {
+function assetAt({ url, from, assets }: Reference): Uint8Array {
   if (!/^(?:\/assets\/|\.\.?\/)/u.test(url) || /[?#%\\]/u.test(url)) {
     throw new Error(`resource integrity: nonlocal resource ${url} in ${from}`);
   }
@@ -54,7 +66,7 @@ function visitScript(value: unknown, visit: (node: Readonly<Record<string, unkno
   }
 }
 
-export function checkScript(code: string, from: string, assets: Assets): void {
+export function checkScript({ code, from, assets }: Source): void {
   visitScript(parseScript(code, { ecmaVersion: 'latest', sourceType: 'module' }), (node) => {
     if (
       !['ImportDeclaration', 'ImportExpression', 'ExportAllDeclaration', 'ExportNamedDeclaration'].includes(
@@ -83,19 +95,30 @@ export function checkScript(code: string, from: string, assets: Assets): void {
     if (typeof url !== 'string') {
       throw new TypeError(`resource integrity: computed module import in ${from}`);
     }
-    assetAt(url, from, assets);
+    assetAt({ url, from, assets });
   });
 }
 
-export function checkStyles(code: string, from: string, assets: Assets): void {
+export function checkStyles({ code, from, assets }: Source): void {
   const result = transform({ filename: from, code: Buffer.from(code), analyzeDependencies: true });
   const dependencies = result.dependencies ?? [];
   for (const dependency of dependencies) {
-    if (dependency.type === 'import') {
-      throw new Error(`resource integrity: unbundled CSS import in ${from}`);
-    }
-    if (dependency.type === 'url') {
-      assetAt(dependency.url, from, assets);
+    switch (dependency.type) {
+      case 'import': {
+        throw new Error(`resource integrity: unbundled CSS import in ${from}`);
+      }
+      case 'url': {
+        assetAt({ url: dependency.url, from, assets });
+        break;
+      }
+      case 'file':
+      case 'glob': {
+        break;
+      }
+      default: {
+        const exhaustive: never = dependency;
+        void exhaustive;
+      }
     }
   }
 }
@@ -134,7 +157,7 @@ export function secureHtml(html: string, assets: Assets): string {
     if (script || executableLink) {
       if (resource) {
         loadsScripts ||= script;
-        const data = assetAt(resource, '/index.html', assets);
+        const data = assetAt({ url: resource, from: '/index.html', assets });
         element.attrs = element.attrs.filter(({ name }) => name !== 'integrity' && name !== 'crossorigin');
         element.attrs.push({ name: 'integrity', value: integrity(data) }, { name: 'crossorigin', value: 'anonymous' });
       } else if (executableLink) {
@@ -145,7 +168,7 @@ export function secureHtml(html: string, assets: Assets): string {
         .filter((child): child is DefaultTreeAdapterMap['textNode'] => child.nodeName === '#text')
         .map((child) => child.value)
         .join('');
-      checkStyles(css, '/index.html', assets);
+      checkStyles({ code: css, from: '/index.html', assets });
     }
   });
   const root = document.childNodes.find((node) => node.nodeName === 'html');

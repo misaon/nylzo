@@ -2,11 +2,9 @@ import type { MessageKey } from '../../../../shared/language/catalog.ts';
 
 export type MarkKind = 'yes' | 'strong' | 'no' | 'partial';
 
-interface CompareCell {
-  readonly kind: MarkKind | 'text';
-  readonly note?: MessageKey;
-  readonly tone?: string;
-}
+type CompareCell =
+  | { readonly kind: MarkKind; readonly note?: MessageKey }
+  | { readonly kind: 'text'; readonly note: MessageKey; readonly tone: string };
 
 export interface CompareRow {
   readonly label: MessageKey;

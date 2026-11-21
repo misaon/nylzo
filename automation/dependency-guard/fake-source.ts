@@ -63,10 +63,10 @@ export function fakeSource(repository: FakeRepository): GuardSource {
     },
     commits: () => Promise.resolve(repository.commits),
     pullRequest: () => Promise.resolve(repository.pull),
-    releaseAssetDigest: (fullName, tag, asset) =>
+    releaseAssetDigest: ({ asset, repository: fullName, tag }) =>
       Promise.resolve(repository.releaseAssets[`${fullName}@${tag}/${asset}`]),
     reviews: () => Promise.resolve(repository.reviews),
-    tagCommit: (fullName, tag) => Promise.resolve(repository.tags[`${fullName}@${tag}`]),
+    tagCommit: ({ repository: fullName, tag }) => Promise.resolve(repository.tags[`${fullName}@${tag}`]),
     tree(commit) {
       const files = repository.snapshots[commit];
       if (files === undefined) {

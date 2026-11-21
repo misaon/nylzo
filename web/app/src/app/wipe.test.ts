@@ -11,12 +11,14 @@ import { fakeApi } from '../shared/api/fake-api.ts';
 import type { FakeApi, FakeOptions } from '../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../shared/kdf/kdf-protocol.ts';
 
-const { captured, stretched, shareSeeds, failing } = vi.hoisted(() => ({
-  captured: [] as Uint8Array[],
-  stretched: [] as Uint8Array[],
-  shareSeeds: [] as Uint8Array[],
-  failing: { requestKey: 0 },
-}));
+const { captured, stretched, shareSeeds, failing } = vi.hoisted(
+  (): {
+    captured: Uint8Array[];
+    stretched: Uint8Array[];
+    shareSeeds: Uint8Array[];
+    failing: { requestKey: number };
+  } => ({ captured: [], stretched: [], shareSeeds: [], failing: { requestKey: 0 } }),
+);
 
 vi.mock('@nylzo/core', async (importOriginal) => {
   const core = await importOriginal<typeof Core>();
@@ -283,7 +285,7 @@ describe('secrets are wiped after use (SEC-8)', () => {
     const reader = readerFor(api, await created(api, 1, KDF_SCRYPT));
     await reader.load();
     await reader.reveal('a wrong passphrase here');
-    expect(reader.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong' } });
+    expect(reader.last()).toMatchObject({ view: 'ready', notice: { reason: 'wrong' } });
     const [secret, readSeed, passphraseSalt, password, loginPassword] = captured;
     expect(captured).toHaveLength(5);
     expect([secret, passphraseSalt].map((bytes) => bytes && wiped(bytes))).toEqual([false, false]);

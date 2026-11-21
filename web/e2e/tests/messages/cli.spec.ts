@@ -29,7 +29,7 @@ test('messages from the CLI, with and without a passphrase, open in the browser'
 
   const guarded = runCli(['create', '--server', BASE_URL, '--passphrase-file', passphraseFile()], 'chráněno').trim();
   expect(guarded).toContain('#3.3.');
-  await showMessage(page, guarded, PASSPHRASE);
+  await showMessage(page, guarded, { passphrase: PASSPHRASE });
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('chráněno');
 });

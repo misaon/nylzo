@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { arrayAt, objectAt, textAt } from './json-values.ts';
+import { arrayAt, isObject, objectAt, textAt } from './json-values.ts';
 import type { JsonObject } from './json-values.ts';
 
 export interface NpmRuntimeEvidence {
@@ -35,20 +35,17 @@ export function npmRuntimeEvidence(lockText: string): NpmRuntimeEvidence {
     workspaceDependencies(workspace, directory),
   );
   const reached = new Set<string>();
-  while (pending.length > 0) {
-    const dependency = pending.pop();
-    assert.ok(dependency !== undefined);
-    const key = resolve(packages, dependency.parentKey, dependency.name);
-    if (key === undefined) {
+  for (let dependency = pending.pop(); dependency !== undefined; dependency = pending.pop()) {
+    const resolved = resolve(packages, dependency.parentKey, dependency.name);
+    if (resolved === undefined) {
       assert.ok(!dependency.required, `Unresolved runtime dependency ${dependency.name} of "${dependency.parentKey}"`);
       continue;
     }
+    const { key, locked } = resolved;
     if (reached.has(key)) {
       continue;
     }
     reached.add(key);
-    const locked = packages.get(key);
-    assert.ok(locked !== undefined);
     const directory = workspaceVersion.exec(locked.id)?.groups?.['directory'];
     if (directory !== undefined) {
       pending.push(...workspaceDependencies(workspaces[directory], directory, key));
@@ -76,9 +73,7 @@ function workspaceDependencies(value: unknown, directory: string, packageKey?: s
 
 function lockedPackage(value: unknown, location: string): LockedPackage {
   const entry = arrayAt(value, location);
-  const metadata = entry.find(
-    (item): item is JsonObject => typeof item === 'object' && item !== null && !Array.isArray(item),
-  );
+  const metadata = entry.find((item) => isObject(item));
   return {
     id: textAt(entry[0], `${location}[0]`),
     optional:
@@ -94,12 +89,17 @@ function namesAt(object: JsonObject, field: string): string[] {
   return value === undefined ? [] : Object.keys(objectAt(value, field));
 }
 
-function resolve(packages: ReadonlyMap<string, LockedPackage>, parentKey: string, name: string): string | undefined {
+function resolve(
+  packages: ReadonlyMap<string, LockedPackage>,
+  parentKey: string,
+  name: string,
+): { readonly key: string; readonly locked: LockedPackage } | undefined {
   const scope = packagePath(parentKey);
   for (let length = scope.length; length >= 0; length -= 1) {
     const key = [...scope.slice(0, length), name].join('/');
-    if (packages.has(key)) {
-      return key;
+    const locked = packages.get(key);
+    if (locked !== undefined) {
+      return { key, locked };
     }
   }
   return undefined;
@@ -108,9 +108,7 @@ function resolve(packages: ReadonlyMap<string, LockedPackage>, parentKey: string
 function packagePath(key: string): string[] {
   const segments = key === '' ? [] : key.split('/');
   const names: string[] = [];
-  while (segments.length > 0) {
-    const segment = segments.shift();
-    assert.ok(segment !== undefined);
+  for (let segment = segments.shift(); segment !== undefined; segment = segments.shift()) {
     names.push(segment.startsWith('@') ? `${segment}/${segments.shift() ?? ''}` : segment);
   }
   return names;

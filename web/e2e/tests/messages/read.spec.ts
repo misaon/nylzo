@@ -107,12 +107,13 @@ test(
             height: box.height,
           });
         }
+        const [navigation] = performance.getEntriesByType('navigation');
         return {
           fontGateReleased: document.documentElement.dataset['fonts'] !== undefined,
           ready: document.documentElement.dataset['ready'] !== undefined,
           visibility: document.visibilityState,
           fontStatus: document.fonts.status,
-          navigation: (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type,
+          navigation: navigation instanceof PerformanceNavigationTiming ? navigation.type : undefined,
           ancestors,
         };
       });
@@ -255,7 +256,7 @@ for (const [state, hide] of Object.entries(HIDDEN_STATES)) {
     const field = page.getByLabel('Passphrase', { exact: true });
     const show = page.getByRole('button', { name: 'Show message' });
     await page.addInitScript(hide);
-    await showMessage(page, message.link, PASSPHRASE);
+    await showMessage(page, message.link, { passphrase: PASSPHRASE });
     await nextFrames(page);
     await expect(show).toBeEnabled();
     await expect(notInert(page, field)).toBeEditable();
@@ -280,8 +281,9 @@ test('the reader stops before the handshake when the server reports another pass
   });
   await page.route(`${BASE_URL}/api/v1/messages/${message.id}`, async (route) => {
     const response = await route.fetch();
-    const json = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: { ...json, kdf_id: KDF_NONE } });
+    const metadata: unknown = await response.json();
+    const fields = typeof metadata === 'object' ? metadata : null;
+    await route.fulfill({ response, json: { ...fields, kdf_id: KDF_NONE } });
   });
   await page.goto(message.link);
   await expect(page.getByText(/cannot be opened safely/u)).toBeVisible();

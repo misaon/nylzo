@@ -66,7 +66,8 @@ function ipv6(text: string): bigint | undefined {
   if ((halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) {
     return undefined;
   }
-  const all = halves.length === 1 ? groups[0]! : [...groups[0]!, ...Array<string>(missing).fill("0"), ...groups[1]!];
+  const [head = [], tail] = groups;
+  const all = tail === undefined ? head : [...head, ...Array<string>(missing).fill("0"), ...tail];
   if (!all.every((group) => /^[\da-f]{1,4}$/u.test(group))) {
     return undefined;
   }
@@ -98,7 +99,7 @@ function contains(outer: Network, inner: Network): boolean {
 
 function checkGlobal(network: Network): void {
   if (network.family === "ipv4Prefix") {
-    if (nonGlobalIPv4.some((reserved) => contains(parseReserved("ipv4Prefix", reserved), network))) {
+    if (nonGlobalIPv4.some((reserved) => contains(parseNetwork("ipv4Prefix", reserved, 0), network))) {
       throw new Error(`${network.text} is not a public address range`);
     }
     return;
@@ -115,9 +116,16 @@ function checkGlobal(network: Network): void {
   }
 }
 
-function parseReserved(family: Family, text: string): Network {
-  const [address, length] = text.split("/");
-  return { family, address: ipv4(address!)!, length: Number(length), text };
+function prefixOf(entry: unknown): { family: Family; text: string } | undefined {
+  if (typeof entry !== "object" || entry === null) {
+    return undefined;
+  }
+  const [family, ...others] = Object.keys(entry);
+  if (others.length > 0 || (family !== "ipv4Prefix" && family !== "ipv6Prefix")) {
+    return undefined;
+  }
+  const text: unknown = Reflect.get(entry, family);
+  return typeof text === "string" ? { family, text } : undefined;
 }
 
 export function rangesOf(document: unknown, families: readonly Family[], dropped: string[] = []): Network[] {
@@ -127,16 +135,13 @@ export function rangesOf(document: unknown, families: readonly Family[], dropped
   }
   const excluded = leftOut.map((text) => parseNetwork(text.includes(":") ? "ipv6Prefix" : "ipv4Prefix", text, 0));
   const networks: Network[] = [];
-  for (const entry of prefixes) {
-    const keys = typeof entry === "object" && entry !== null ? Object.keys(entry) : [];
-    const family = keys[0];
-    if (keys.length !== 1 || (family !== "ipv4Prefix" && family !== "ipv6Prefix")) {
+  const entries: readonly unknown[] = prefixes;
+  for (const entry of entries) {
+    const prefix = prefixOf(entry);
+    if (prefix === undefined) {
       throw new Error(`unexpected entry ${JSON.stringify(entry)}`);
     }
-    const text: unknown = Reflect.get(entry as object, family);
-    if (typeof text !== "string") {
-      throw new Error(`unexpected entry ${JSON.stringify(entry)}`);
-    }
+    const { family, text } = prefix;
     if (!families.includes(family)) {
       continue;
     }
@@ -190,22 +195,25 @@ export function crawlerList(
 ): { list: CrawlerList; kept: Kept[] } {
   const kept: Kept[] = [];
   const perSource = sources.map((source, index) => {
-    const attempt = downloads[index]!;
+    const attempt = downloads[index];
     try {
+      if (attempt === undefined) {
+        throw new Error("no download was attempted");
+      }
       if ("document" in attempt) {
-        return ordered(rangesOf(attempt.document, source.families, dropped));
+        return { url: source.url, networks: ordered(rangesOf(attempt.document, source.families, dropped)) };
       }
       const previous = committedRanges(committed, source.url);
       if (previous === undefined) {
         throw new Error(`${attempt.failure}, and the committed list holds no ranges of it to keep`);
       }
       kept.push({ url: source.url, failure: attempt.failure });
-      return ordered(rangesOf(asDocument(previous), source.families, dropped));
+      return { url: source.url, networks: ordered(rangesOf(asDocument(previous), source.families, dropped)) };
     } catch (error) {
       throw new Error(`${source.url}: ${message(error)}`, { cause: error });
     }
   });
-  const union = ordered(perSource.flat());
+  const union = ordered(perSource.flatMap(({ networks }) => networks));
   const ipv4Addresses = union
     .filter((network) => network.family === "ipv4Prefix")
     .reduce((sum, network) => sum + (1n << BigInt(32 - network.length)), 0n);
@@ -213,24 +221,26 @@ export function crawlerList(
     throw new Error(`the sources list ${union.length} prefixes and ${ipv4Addresses} IPv4 addresses, more than the ceiling`);
   }
   const list = {
-    sources: Object.fromEntries(sources.map((source, index) => [source.url, perSource[index]!.map((network) => network.text)])),
+    sources: Object.fromEntries(perSource.map(({ url, networks }) => [url, networks.map((network) => network.text)])),
     prefixes: union.map((network) => network.text),
   };
   return { list, kept };
 }
 
-const strings = (entry: unknown): entry is string[] => Array.isArray(entry) && entry.every((item) => typeof item === "string");
+const isStringList = (entry: unknown): entry is string[] => Array.isArray(entry) && entry.every((item) => typeof item === "string");
+
+const isRangesBySource = (value: unknown): value is Record<string, string[]> =>
+  typeof value === "object" && value !== null && !Array.isArray(value) && Object.values(value).every(isStringList);
 
 export function readCrawlerList(text: string): CrawlerList {
   const value: unknown = JSON.parse(text);
   const listed = typeof value === "object" && value !== null ? value : {};
   const ranges: unknown = Reflect.get(listed, "sources");
   const prefixes: unknown = Reflect.get(listed, "prefixes");
-  const bySource = typeof ranges === "object" && ranges !== null && !Array.isArray(ranges) && Object.values(ranges).every(strings);
-  if (!bySource || !strings(prefixes)) {
+  if (!isRangesBySource(ranges) || !isStringList(prefixes)) {
     throw new Error(`${listPath} does not hold the ranges of each source and their union`);
   }
-  return { sources: ranges as Record<string, string[]>, prefixes };
+  return { sources: ranges, prefixes };
 }
 
 function coverage(prefixes: readonly string[]): { prefixes: bigint; ipv4Addresses: bigint } {
@@ -240,12 +250,12 @@ function coverage(prefixes: readonly string[]): { prefixes: bigint; ipv4Addresse
   return { prefixes: BigInt(prefixes.length), ipv4Addresses };
 }
 
-const keepsEnough = (share: bigint, whole: bigint) => share * 10n >= whole * fewestShareInTenths;
+const keepsEnough = ({ share, whole }: { share: bigint; whole: bigint }) => share * 10n >= whole * fewestShareInTenths;
 
-function shrunk(subject: string, committed: readonly string[], refreshed: readonly string[]): string[] {
+function shrunk(subject: string, { committed, refreshed }: { committed: readonly string[]; refreshed: readonly string[] }): string[] {
   const before = coverage(committed);
   const after = coverage(refreshed);
-  if (keepsEnough(after.prefixes, before.prefixes) && keepsEnough(after.ipv4Addresses, before.ipv4Addresses)) {
+  if (keepsEnough({ share: after.prefixes, whole: before.prefixes }) && keepsEnough({ share: after.ipv4Addresses, whole: before.ipv4Addresses })) {
     return [];
   }
   return [
@@ -255,14 +265,14 @@ function shrunk(subject: string, committed: readonly string[], refreshed: readon
 }
 
 // Checked per source too, because a truncated small list hardly moves the total.
-export function shrinkage(committed: CrawlerList, refreshed: CrawlerList): string[] {
+export function shrinkage({ committed, refreshed }: { committed: CrawlerList; refreshed: CrawlerList }): string[] {
   return [
     ...sources.flatMap(({ url }) => {
       const before = committedRanges(committed, url);
       const after = committedRanges(refreshed, url);
-      return before === undefined || after === undefined ? [] : shrunk(`${url} lists`, before, after);
+      return before === undefined || after === undefined ? [] : shrunk(`${url} lists`, { committed: before, refreshed: after });
     }),
-    ...shrunk("the sources list", committed.prefixes, refreshed.prefixes),
+    ...shrunk("the sources list", { committed: committed.prefixes, refreshed: refreshed.prefixes }),
   ];
 }
 
@@ -291,7 +301,7 @@ if (import.meta.main) {
   for (const prefix of dropped) {
     console.warn(`left out ${prefix}, which lies inside a block left out on purpose`);
   }
-  const shrinks = shrinkage(committed, list);
+  const shrinks = shrinkage({ committed, refreshed: list });
   if (shrinks.length > 0 && !values["accept-shrink"]) {
     throw new Error(`${shrinks.join("; ")}. Compare them with the published lists; --accept-shrink proposes them anyway`);
   }

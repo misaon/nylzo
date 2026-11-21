@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
+import { z } from 'zod';
+
 import { globalSettings } from './global-settings.ts';
+
+const packageRule = z.looseObject({ enabled: z.boolean(), matchBaseBranches: z.array(z.string()).optional() });
+const packageRules = z.array(packageRule);
 
 test('the maintenance branch joins main and the fast path follows its limits, so a needed major still opens', () => {
   const settings = globalSettings({
@@ -12,7 +17,7 @@ test('the maintenance branch joins main and the fast path follows its limits, so
   });
   assert.deepEqual(settings['force'], { baseBranchPatterns: ['main', 'release/v0.2'] });
   assert.equal(settings['exitCodeForErrors'], true);
-  const rules = settings['packageRules'] as { enabled: boolean; matchBaseBranches?: string[] }[];
+  const rules = packageRules.parse(settings['packageRules']);
   assert.deepEqual(
     rules.map((rule) => rule.enabled),
     [false, true],
@@ -36,5 +41,5 @@ test('without a maintenance branch Renovate processes only main', () => {
     miseVersion: '2026.10.19',
   });
   assert.deepEqual(settings['force'], { baseBranchPatterns: ['main'] });
-  assert.equal((settings['packageRules'] as unknown[]).length, 1);
+  assert.equal(packageRules.parse(settings['packageRules']).length, 1);
 });

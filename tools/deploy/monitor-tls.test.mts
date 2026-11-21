@@ -3,6 +3,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request } from "node:https";
+import type { LookupFunction } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
@@ -10,7 +11,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { readHostStatus, requireClientAuthentication, validateHostStatus } from "../security/monitor-host.mts";
 
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
-const lookup = (_: string, options: any, callback: any) => options.all ? callback(null, [{ address: "127.0.0.1", family: 4 }]) : callback(null, "127.0.0.1", 4);
+const lookup: LookupFunction = (_hostname, options, callback) => options.all ? callback(null, [{ address: "127.0.0.1", family: 4 }]) : callback(null, "127.0.0.1", 4);
+const within = (value: unknown, ...keys: (string | number)[]) => keys.reduce<unknown>((current, key) => typeof current === "object" && current !== null ? Reflect.get(current, key) : undefined, value);
 const docker = (...args: string[]) => execFileSync("docker", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000 });
 
 test("Caddy serves host status only to the pinned mTLS identity, isolated from the public listener", { skip: !available, timeout: 600000 }, async () => {
@@ -63,12 +65,17 @@ test("Caddy serves host status only to the pinned mTLS identity, isolated from t
     }
     const diagnostic = ca ? "" : spawnSync("docker", ["logs", name], { encoding: "utf8", timeout: 10000 });
     assert(ca, typeof diagnostic === "string" ? diagnostic : diagnostic.stdout + diagnostic.stderr);
-    const ports = JSON.parse(docker("inspect", name))[0].NetworkSettings.Ports;
-    const publicPort = ports["14443/tcp"][0].HostPort;
-    const monitorPort = ports["8443/tcp"][0].HostPort;
+    const inspected: unknown = JSON.parse(docker("inspect", name));
+    const hostPort = (containerPort: string) => {
+      const port = within(inspected, 0, "NetworkSettings", "Ports", containerPort, 0, "HostPort");
+      assert(typeof port === "string", `Docker publishes no ${containerPort}`);
+      return port;
+    };
+    const publicPort = hostPort("14443/tcp");
+    const monitorPort = hostPort("8443/tcp");
     const raw = (port: string, identity = {}, path = "/healthz", host = "nylzo.test") => new Promise<{ status: number; text: string }>((fulfill, reject) => {
       const outgoing = request({ hostname: "127.0.0.1", port, servername: "nylzo.test", path, headers: { host }, ca, ...identity, agent: false }, response => {
-        let text = ""; response.on("data", chunk => text += chunk); response.on("error", reject); response.on("end", () => fulfill({ status: response.statusCode!, text }));
+        let text = ""; response.on("data", chunk => text += chunk); response.on("error", reject); response.on("end", () => fulfill({ status: response.statusCode ?? 0, text }));
       });
       outgoing.setTimeout(10000, () => outgoing.destroy(new Error("TLS fixture timed out")));
       outgoing.on("error", reject); outgoing.end();
@@ -97,7 +104,7 @@ test("Caddy serves host status only to the pinned mTLS identity, isolated from t
     const unhealthyResponse = await raw(monitorPort, { cert: publicClient, key });
     assert.equal(unhealthyResponse.status, 200, JSON.stringify(unhealthyResponse));
     assert.match(unhealthyResponse.text, /"diskReserve":false/u, JSON.stringify(unhealthyResponse));
-    const unhealthy = JSON.parse(unhealthyResponse.text);
+    const unhealthy: unknown = JSON.parse(unhealthyResponse.text);
     assert.throws(() => validateHostStatus(unhealthy));
     status("PRIVATE_RESPONSE_MARKER");
     const refused = cli();

@@ -3,10 +3,18 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-type Step = { env?: Record<string, string>; run?: string };
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-const steps = (Bun.YAML.parse(readFileSync(".github/actions/setup/action.yml", "utf8")) as { runs: { steps: Step[] } }).runs.steps;
-const guard = steps.find((step) => step.env?.["DEFAULT_BRANCH"] !== undefined)?.run ?? "";
+function guardScript() {
+  const action: unknown = Bun.YAML.parse(readFileSync(".github/actions/setup/action.yml", "utf8"));
+  const runs = isRecord(action) ? action["runs"] : undefined;
+  const steps = isRecord(runs) ? runs["steps"] : undefined;
+  assert(Array.isArray(steps), "The setup action lists no steps");
+  const step: unknown = steps.find((candidate: unknown) => isRecord(candidate) && isRecord(candidate["env"]) && candidate["env"]["DEFAULT_BRANCH"] !== undefined);
+  return isRecord(step) && typeof step["run"] === "string" ? step["run"] : "";
+}
+
+const guard = guardScript();
 
 function checkout(event: string, ref: string) {
   return spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", guard], {

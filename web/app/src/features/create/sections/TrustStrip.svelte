@@ -27,7 +27,7 @@
   const GLOW = 'drop-shadow-[0_0_10px_rgb(127_180_255/0.42)]';
 </script>
 
-{#snippet glyph(item: { readonly icon: IconName; readonly name: string })}
+{#snippet glyph(item: (typeof standards)[number])}
   <li class={LABEL}>
     <Icon name={item.icon} class={['size-8 shrink-0', GLOW]} stroke={1.7} paint="url(#trust-tone)" />
     {item.name}

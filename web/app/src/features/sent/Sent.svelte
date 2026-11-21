@@ -59,41 +59,57 @@
     },
   );
 
+  function cancelText(outcome: CancelOutcome): string {
+    switch (outcome.outcome) {
+      case 'cancelled': {
+        return translate('sent.cancelled');
+      }
+      case 'retry_later': {
+        return translate('read.retry_later', { time: formatWait(outcome.retryAfter, translator.plural) });
+      }
+      case 'failed': {
+        return translate('sent.failed');
+      }
+      case 'ended':
+      case 'unknown':
+      case 'ignored': {
+        return '';
+      }
+    }
+  }
+
   const status = $derived.by(() => {
     if (storageFailed || (view.view === 'list' && view.storageFailed)) {
       return translate('sent.unavailable');
     }
-    if (cancelled?.outcome === 'cancelled') {
-      return translate('sent.cancelled');
-    }
-    if (cancelled?.outcome === 'retry_later') {
-      return translate('read.retry_later', { time: formatWait(cancelled.retryAfter, translator.plural) });
-    }
-    return cancelled?.outcome === 'failed' ? translate('sent.failed') : '';
+    return cancelled ? cancelText(cancelled) : '';
   });
 
-  const dialog = $derived.by(() => {
-    if (confirming?.kind === 'cancel') {
-      const { label } = confirming.item;
-      return {
-        title: label ? translate('sent.cancel.title', { label }) : translate('sent.cancel.title.untitled'),
-        message: translate('sent.cancel.confirm'),
-        confirmLabel: translate('sent.cancel.yes'),
-        dismissLabel: translate('sent.cancel.no'),
-        icon: 'trash',
-      } as const;
+  function dialogOf(asked: Confirming) {
+    switch (asked.kind) {
+      case 'cancel': {
+        const { label } = asked.item;
+        return {
+          title: label ? translate('sent.cancel.title', { label }) : translate('sent.cancel.title.untitled'),
+          message: translate('sent.cancel.confirm'),
+          confirmLabel: translate('sent.cancel.yes'),
+          dismissLabel: translate('sent.cancel.no'),
+          icon: 'trash',
+        } as const;
+      }
+      case 'forget_all': {
+        return {
+          title: translate('sent.forget_all.title'),
+          message: translate('sent.forget_all.confirm'),
+          confirmLabel: translate('sent.forget_all.yes'),
+          dismissLabel: translate('sent.keep'),
+          icon: 'close',
+        } as const;
+      }
     }
-    if (!confirming) {
-      return;
-    }
-    return {
-      title: translate('sent.forget_all.title'),
-      message: translate('sent.forget_all.confirm'),
-      confirmLabel: translate('sent.forget_all.yes'),
-      dismissLabel: translate('sent.keep'),
-      icon: 'close',
-    } as const;
-  });
+  }
+
+  const dialog = $derived(confirming && dialogOf(confirming));
 
   void sent.load();
   onDestroy(() => {
@@ -143,18 +159,23 @@
 
   function badgeOf(item: SentItem): { readonly key: MessageKey; readonly tone: 'live' | 'quiet' | 'problem' } {
     const { state } = item;
-    if (state.kind === 'loaded' && !item.ended) {
-      return { key: 'sent.state.available', tone: 'live' };
+    switch (state.kind) {
+      case 'loaded': {
+        return item.ended
+          ? { key: `sent.state.${endedState(state.status.state)}`, tone: 'quiet' }
+          : { key: 'sent.state.available', tone: 'live' };
+      }
+      case 'unknown': {
+        return { key: 'sent.state.unknown', tone: 'quiet' };
+      }
+      case 'loading': {
+        return { key: 'sent.state.loading', tone: 'quiet' };
+      }
+      case 'retry_later':
+      case 'failed': {
+        return { key: 'sent.state.failed', tone: 'problem' };
+      }
     }
-    if (state.kind === 'loaded') {
-      return { key: `sent.state.${endedState(state.status.state)}`, tone: 'quiet' };
-    }
-    if (state.kind === 'unknown') {
-      return { key: 'sent.state.unknown', tone: 'quiet' };
-    }
-    return state.kind === 'loading'
-      ? { key: 'sent.state.loading', tone: 'quiet' }
-      : { key: 'sent.state.failed', tone: 'problem' };
   }
 
   function summaryOf(item: SentItem): string {
@@ -208,11 +229,22 @@
     if (!current) {
       return;
     }
-    await (current.kind === 'cancel'
-      ? run(async () => {
+    switch (current.kind) {
+      case 'cancel': {
+        await run(async () => {
           cancelled = await sent.cancel(current.item.id);
-        }, current.item.id)
-      : run(() => sent.forgetAll()));
+        }, current.item.id);
+        break;
+      }
+      case 'forget_all': {
+        await run(() => sent.forgetAll());
+        break;
+      }
+      default: {
+        const exhaustive: never = current;
+        void exhaustive;
+      }
+    }
   }
 </script>
 
@@ -222,7 +254,17 @@
   <title>{translate('title.sent')}</title>
 </svelte:head>
 
-{#snippet emptyCard(icon: 'inbox' | 'alert', title: string, text: string, tone: string)}
+{#snippet emptyCard({
+  icon,
+  title,
+  text,
+  tone,
+}: {
+  readonly icon: 'alert' | 'inbox';
+  readonly title: string;
+  readonly text: string;
+  readonly tone: string;
+})}
   <span class={['grid size-14 place-items-center rounded-full', tone]} aria-hidden="true">
     <Icon name={icon} class="size-6" stroke={1.6} />
   </span>
@@ -387,19 +429,19 @@
   {:else}
     <StateCard class="mt-8">
       {#if view.view === 'unavailable'}
-        {@render emptyCard(
-          'alert',
-          translate('sent.unavailable.title'),
-          translate('sent.unavailable'),
-          'tile-warning text-white',
-        )}
+        {@render emptyCard({
+          icon: 'alert',
+          title: translate('sent.unavailable.title'),
+          text: translate('sent.unavailable'),
+          tone: 'tile-warning text-white',
+        })}
       {:else}
-        {@render emptyCard(
-          'inbox',
-          translate('sent.empty.title'),
-          translate('sent.empty'),
-          'tile-neutral text-ink-soft',
-        )}
+        {@render emptyCard({
+          icon: 'inbox',
+          title: translate('sent.empty.title'),
+          text: translate('sent.empty'),
+          tone: 'tile-neutral text-ink-soft',
+        })}
       {/if}
     </StateCard>
   {/if}

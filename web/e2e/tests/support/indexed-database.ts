@@ -17,6 +17,13 @@ export interface SentRecord {
   };
 }
 
+interface StoredRecord {
+  readonly id: string;
+  readonly endedAt?: number | undefined;
+  readonly privateKey: CryptoKey;
+  readonly publicKey: Uint8Array;
+}
+
 export const EXPIRED_RECORD_ID = 'AAAAAAAAAAAAAAAAAAAAAA';
 
 export async function databaseNames(page: Page): Promise<string[]> {
@@ -39,10 +46,13 @@ export async function countCompletedWrites(page: Page): Promise<() => Promise<nu
     let completed = 0;
     Object.defineProperty(globalThis, 'nylzoCompletedWrites', { get: () => completed });
     const transaction: unknown = Object.getOwnPropertyDescriptor(IDBDatabase.prototype, 'transaction')?.value;
+    if (typeof transaction !== 'function') {
+      return;
+    }
     Object.defineProperty(IDBDatabase.prototype, 'transaction', {
-      value(this: IDBDatabase, ...parameters: Parameters<IDBDatabase['transaction']>): IDBTransaction {
-        const opened = Reflect.apply(transaction as IDBDatabase['transaction'], this, parameters);
-        if (opened.mode === 'readwrite') {
+      value(this: IDBDatabase, ...parameters: Parameters<IDBDatabase['transaction']>): unknown {
+        const opened: unknown = Reflect.apply(transaction, this, parameters);
+        if (opened instanceof IDBTransaction && opened.mode === 'readwrite') {
           opened.addEventListener('complete', () => {
             completed += 1;
           });
@@ -78,7 +88,17 @@ async function readSentRecords(): Promise<SentRecord[]> {
         reject(new Error('the sent store does not read'));
       });
     });
-    const records = stored as { id: string; endedAt?: number; privateKey: CryptoKey; publicKey: Uint8Array }[];
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- Playwright serializes this closure into the browser; module-scope helpers are unavailable there.
+    const isStoredRecord = (value: unknown): value is StoredRecord =>
+      typeof value === 'object' &&
+      value !== null &&
+      'id' in value &&
+      typeof value.id === 'string' &&
+      (!('endedAt' in value) || value.endedAt === undefined || typeof value.endedAt === 'number') &&
+      'privateKey' in value &&
+      value.privateKey instanceof CryptoKey &&
+      'publicKey' in value &&
+      value.publicKey instanceof Uint8Array;
     // oxlint-disable-next-line unicorn/consistent-function-scoping -- Playwright serializes this closure into the browser; module-scope helpers are unavailable there.
     const exportable = async (key: CryptoKey) => {
       try {
@@ -89,18 +109,23 @@ async function readSentRecords(): Promise<SentRecord[]> {
       }
     };
     return await Promise.all(
-      records.map(async (record) => ({
-        id: record.id,
-        endedAt: record.endedAt,
-        fields: Object.keys(record).toSorted((left, right) => left.localeCompare(right)),
-        publicKeyLength: record.publicKey.length,
-        privateKey: {
-          algorithm: record.privateKey.algorithm.name,
-          extractable: record.privateKey.extractable,
-          usages: record.privateKey.usages,
-          exportable: await exportable(record.privateKey),
-        },
-      })),
+      stored.map(async (record) => {
+        if (!isStoredRecord(record)) {
+          throw new TypeError('the sent store holds a record of an unknown shape');
+        }
+        return {
+          id: record.id,
+          endedAt: record.endedAt,
+          fields: Object.keys(record).toSorted((left, right) => left.localeCompare(right)),
+          publicKeyLength: record.publicKey.length,
+          privateKey: {
+            algorithm: record.privateKey.algorithm.name,
+            extractable: record.privateKey.extractable,
+            usages: record.privateKey.usages,
+            exportable: await exportable(record.privateKey),
+          },
+        };
+      }),
     );
   } finally {
     database.close();

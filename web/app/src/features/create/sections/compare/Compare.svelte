@@ -98,8 +98,7 @@
                 {#each row.cells as cell, column (column)}
                   <td class={['px-4 py-3 text-center align-middle', column === 0 && NYLZO_COLUMN]}>
                     {#if cell.kind === 'text'}
-                      <span class={['text-micro tabular-nums', cell.tone]}>{cell.note ? translate(cell.note) : ''}</span
-                      >
+                      <span class={['text-micro tabular-nums', cell.tone]}>{translate(cell.note)}</span>
                     {:else}
                       {const mark = $derived(MARKS[cell.kind])}
                       <span class={['flex flex-col items-center gap-1 text-micro', mark.tone]}>

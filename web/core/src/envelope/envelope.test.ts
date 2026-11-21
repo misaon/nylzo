@@ -49,7 +49,7 @@ const exportKey = new Uint8Array(64).fill(1);
 const prefix = PREFIX_LENGTH;
 
 async function keysOf(id: Uint8Array, secret: Uint8Array, key: Uint8Array, share: Uint8Array): Promise<ContentKeys> {
-  return deriveContent(id, secret, key, share);
+  return deriveContent({ id, secret, exportKey: key, share });
 }
 
 async function sealed(kdfId: KdfId, payload = textPayload): Promise<Sealed> {
@@ -86,6 +86,16 @@ function policyOfVector(vector: EnvelopeVector): Policy {
   return { opensMax: vector.opens_max, ttlSeconds: vector.ttl_s, deadline: vector.deadline };
 }
 
+function metaOfVector({ text, file }: EnvelopeVector): Meta {
+  if (file !== undefined) {
+    return { text, file: { name: file.name, mime: file.mime, size: file.size } };
+  }
+  if (text !== undefined) {
+    return { text };
+  }
+  throw new Error('the vector has neither text nor file');
+}
+
 async function sealVector(vector: EnvelopeVector): Promise<{
   readonly object: Uint8Array<ArrayBuffer>;
   readonly keys: ContentKeys;
@@ -96,11 +106,10 @@ async function sealVector(vector: EnvelopeVector): Promise<{
   const id = parseId(vector.id);
   const kdfId = kdfIdOf(vector.kdf_id);
   const share = hexToBytes(vector.e_hex);
-  const content = await deriveContent(id, hexToBytes(vector.s), hexToBytes(vector.p_hex), share);
+  const content = await deriveContent({ id, secret: hexToBytes(vector.s), exportKey: hexToBytes(vector.p_hex), share });
   const header: Header = { version: 3, kdfId, flags: vector.flags, iv: hexToBytes(vector.iv_hex) };
   const file = vector.file && fileBytes(vector.file);
-  const fileMeta = vector.file && { name: vector.file.name, mime: vector.file.mime, size: vector.file.size };
-  const meta: Meta = { text: vector.text, file: fileMeta };
+  const meta = metaOfVector(vector);
   const object = await seal(content, header, id, policyOfVector(vector), { meta, file });
   return { object, keys: content, header, meta, file };
 }
@@ -171,12 +180,12 @@ describe('a reader refuses every object its link does not open', () => {
     }
     const id = parseId(vector.reader_id ?? base.id);
     const kdfId = kdfIdOf(vector.kdf_id);
-    const content = await deriveContent(
+    const content = await deriveContent({
       id,
-      hexToBytes(base.s),
-      hexToBytes(vector.p_hex ?? base.p_hex),
-      hexToBytes(vector.e_hex),
-    );
+      secret: hexToBytes(base.s),
+      exportKey: hexToBytes(vector.p_hex ?? base.p_hex),
+      share: hexToBytes(vector.e_hex),
+    });
     const expected: Expected = {
       id,
       policy: {

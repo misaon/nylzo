@@ -16,10 +16,7 @@ export interface SentRecord {
   readonly manageKey: RequestKey;
 }
 
-export interface StoredRecord {
-  readonly id: string;
-  readonly createdAt: number;
-  readonly expiresAt: number;
+export interface StoredRecord extends Pick<SentRecord, 'id' | 'createdAt' | 'expiresAt'> {
   readonly label?: string;
   readonly privateKey: CryptoKey;
   readonly publicKey: Uint8Array<ArrayBuffer>;
@@ -57,7 +54,7 @@ function isTime(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= MAX_TIME_MS;
 }
 
-function areTimes(createdAt: unknown, expiresAt: unknown): boolean {
+function areTimes({ createdAt, expiresAt }: { readonly createdAt: unknown; readonly expiresAt: unknown }): boolean {
   return isTime(createdAt) && isTime(expiresAt) && createdAt <= expiresAt && expiresAt - createdAt <= MAX_LIFETIME_MS;
 }
 
@@ -87,7 +84,7 @@ export function storedForm(record: SentRecord): StoredRecord {
   }
   if (
     !isMessageId(record.id) ||
-    !areTimes(record.createdAt, record.expiresAt) ||
+    !areTimes(record) ||
     (record.label !== undefined && record.label !== '' && !isLabel(record.label)) ||
     !isSigningKey(record.manageKey.privateKey) ||
     !(record.manageKey.publicKey instanceof Uint8Array) ||
@@ -105,20 +102,27 @@ export function storedForm(record: SentRecord): StoredRecord {
   };
 }
 
+function storedField(value: object, name: keyof StoredRecord): unknown {
+  return Reflect.get(value, name);
+}
+
 export function recordFrom(value: unknown): SentRecord | undefined {
   if (typeof value !== 'object' || value === null) {
     return undefined;
   }
-  const { id, createdAt, expiresAt, label, privateKey, publicKey } = value as Partial<
-    Record<keyof StoredRecord, unknown>
-  >;
+  const id = storedField(value, 'id');
+  const createdAt = storedField(value, 'createdAt');
+  const expiresAt = storedField(value, 'expiresAt');
+  const label = storedField(value, 'label');
+  const privateKey = storedField(value, 'privateKey');
+  const publicKey = storedField(value, 'publicKey');
   // Older clients added endedAt once the message ended, so such a record has nothing left to manage.
   if (
     'endedAt' in value ||
     !isMessageId(id) ||
     !isTime(createdAt) ||
     !isTime(expiresAt) ||
-    !areTimes(createdAt, expiresAt) ||
+    !areTimes({ createdAt, expiresAt }) ||
     !isSigningKey(privateKey) ||
     privateKey.extractable ||
     !(publicKey instanceof Uint8Array) ||

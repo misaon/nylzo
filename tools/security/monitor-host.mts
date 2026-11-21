@@ -5,6 +5,7 @@ import { isIP, type LookupFunction } from "node:net";
 import { privateFile } from "./private-file.mts";
 
 const components = ["hostPolicy", "services", "diskReserve", "applicationUpdates", "osUpdates", "clock", "certificate"];
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
 export function hostConnection(address?: string): Pick<RequestOptions, "lookup"> {
   if (!address) return {};
@@ -16,12 +17,13 @@ export function hostConnection(address?: string): Pick<RequestOptions, "lookup">
   return { lookup };
 }
 
-export function validateHostStatus(input: any, now = Date.now()) {
-  assert.equal(input?.version, 1, "Unknown host-status format");
-  assert(Number.isSafeInteger(input.observedAt), "Missing observation time");
-  const age = now / 1000 - input.observedAt;
+export function validateHostStatus(input: unknown, now = Date.now()) {
+  assert(isRecord(input) && input["version"] === 1, "Unknown host-status format");
+  const { observedAt, checks } = input;
+  assert(typeof observedAt === "number" && Number.isSafeInteger(observedAt), "Missing observation time");
+  const age = now / 1000 - observedAt;
   assert(age >= -60 && age <= 360, "Host-status observation is stale or from the future");
-  for (const component of components) assert.equal(input.checks?.[component], true, `Host readiness failed: ${component}`);
+  for (const component of components) assert.equal(isRecord(checks) ? checks[component] : undefined, true, `Host readiness failed: ${component}`);
 }
 
 export async function readHostStatus(url: URL, identity: { cert: string; key: string; ca?: string }, connection: Pick<RequestOptions, "lookup"> = {}) {
@@ -67,23 +69,30 @@ export async function requireClientAuthentication(url: URL, connection: Pick<Req
       reject(new Error("The host-status listener accepted an unauthenticated TLS client"));
     });
     const deadline = setTimeout(() => outgoing.destroy(new Error("TLS denial probe timed out")), 20_000);
-    outgoing.on("error", (error: NodeJS.ErrnoException) => {
+    outgoing.on("error", error => {
       clearTimeout(deadline);
+      const code: unknown = "code" in error ? error.code : undefined;
       // Both TLS backends report the certificate_required alert (116), under different symbolic names.
-      if (error.code === "ERR_SSL_TLSV13_ALERT_CERTIFICATE_REQUIRED" || error.code === "ERR_SSL_TLSV1_ALERT_CERTIFICATE_REQUIRED") resolve();
+      if (code === "ERR_SSL_TLSV13_ALERT_CERTIFICATE_REQUIRED" || code === "ERR_SSL_TLSV1_ALERT_CERTIFICATE_REQUIRED") resolve();
       else reject(new Error("The expected TLS client-certificate denial was not observed", { cause: error }));
     });
     outgoing.end();
   });
 }
 
+function requiredEnvironment(name: string) {
+  const value = process.env[name];
+  assert(value, `Set ${name}`);
+  return value;
+}
+
 if (import.meta.main) {
   try {
-    const cert = process.env["MONITOR_CERT"] ?? await privateFile(process.env["MONITOR_CERT_FILE"]!);
-    const key = process.env["MONITOR_KEY"] ?? await privateFile(process.env["MONITOR_KEY_FILE"]!);
-    const result = await readHostStatus(new URL(process.env["URL"]!), { cert, key }, hostConnection(process.env["MONITOR_ADDRESS"]));
+    const cert = process.env["MONITOR_CERT"] ?? await privateFile(requiredEnvironment("MONITOR_CERT_FILE"));
+    const key = process.env["MONITOR_KEY"] ?? await privateFile(requiredEnvironment("MONITOR_KEY_FILE"));
+    const result = await readHostStatus(new URL(requiredEnvironment("URL")), { cert, key }, hostConnection(process.env["MONITOR_ADDRESS"]));
     validateHostStatus(result);
-    await requireClientAuthentication(new URL(process.env["URL"]!), hostConnection(process.env["MONITOR_ADDRESS"]));
+    await requireClientAuthentication(new URL(requiredEnvironment("URL")), hostConnection(process.env["MONITOR_ADDRESS"]));
     console.log("Authenticated host policy, services, disk reserve, and update checks are healthy.");
   } catch {
     // TLS and HTTP errors may include endpoint details. Never print credentials or response bodies.

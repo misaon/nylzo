@@ -660,7 +660,6 @@
     {
       "files": ["e2e/tests/support/indexed-database.ts"],
       "rules": {
-        "typescript/no-unsafe-type-assertion": "off",
         "typescript/prefer-readonly-parameter-types": "off"
       }
     },

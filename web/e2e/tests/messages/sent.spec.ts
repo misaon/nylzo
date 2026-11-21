@@ -158,7 +158,7 @@ test('this device remembers a new message only when the sender saves it in the c
   await createdLink(page);
   expect(await completedWrites()).toBe(0);
   expect(await databaseNames(page)).toEqual([]);
-  await trackInSent(page, 'Password for Peter');
+  await trackInSent(page, { label: 'Password for Peter' });
   await expect(page.getByText(REMEMBERED)).toBeVisible();
   await expect.poll(completedWrites).toBeGreaterThan(0);
   await page.goto('/sent');

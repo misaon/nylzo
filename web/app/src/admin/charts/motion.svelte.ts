@@ -23,14 +23,19 @@ function fromTheRight(from: Values, to: Values): number[] {
   return to.map((_, i) => from[i + shift] ?? 0);
 }
 
-function byKey(fromKeys: Values, from: Values, toKeys: Values, to: Values): number[] | undefined {
-  const known = new Map(fromKeys.map((key, i) => [key, from[i] ?? 0]));
-  if (!toKeys.some((key) => known.has(key))) {
+interface Keyed {
+  readonly keys: Values;
+  readonly values: Values;
+}
+
+function byKey(from: Keyed, to: Keyed): number[] | undefined {
+  const known = new Map(from.keys.map((key, i) => [key, from.values[i] ?? 0]));
+  if (!to.keys.some((key) => known.has(key))) {
     return undefined;
   }
   const starts: number[] = [];
-  for (const i of to.keys()) {
-    const key = toKeys[i];
+  for (const i of to.values.keys()) {
+    const key = to.keys[i];
     starts.push((key === undefined ? undefined : known.get(key)) ?? starts[i - 1] ?? 0);
   }
   return starts;
@@ -56,7 +61,9 @@ function startsOf(from: Layers, to: Layers, onlyLatestChanges: boolean): number[
   return to.layers.map((values, layer) => {
     const before = from.layers[layer] ?? [];
     const keyed =
-      from.keys === undefined || to.keys === undefined ? undefined : byKey(from.keys, before, to.keys, values);
+      from.keys === undefined || to.keys === undefined
+        ? undefined
+        : byKey({ keys: from.keys, values: before }, { keys: to.keys, values });
     return keyed ?? (onlyLatestChanges ? bySlide(before, values) : undefined) ?? fromTheRight(before, values);
   });
 }

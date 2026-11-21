@@ -21,9 +21,32 @@ test("release builds source without promoting cached CI artifacts", () => {
   assert(!release.includes("pnpm/action-setup@"));
 });
 
-type Step = { name?: string; uses?: string; run?: string; with?: Record<string, string> };
-type Job = { permissions: Record<string, string>; needs: string[]; environment?: string; steps: Step[] };
+type Step = { name?: string; uses?: string; run?: string; with?: Record<string, unknown> };
+type Job = { permissions?: unknown; needs?: unknown; environment?: unknown; steps: Step[] };
 type GoReleaserConfig = { release: { disable?: boolean; header: string; footer: string }; kos: { id: string; repositories: string[] }[] };
+
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+const isAbsentOrString = (value: unknown) => value === undefined || typeof value === "string";
+const isStep = (value: unknown): value is Step =>
+  isRecord(value) && isAbsentOrString(value["name"]) && isAbsentOrString(value["uses"]) && isAbsentOrString(value["run"]) && (value["with"] === undefined || isRecord(value["with"]));
+const isJob = (value: unknown): value is Job => isRecord(value) && Array.isArray(value["steps"]) && value["steps"].every(isStep);
+const isImage = (value: unknown): value is GoReleaserConfig["kos"][number] =>
+  isRecord(value) && typeof value["id"] === "string" && Array.isArray(value["repositories"]) && value["repositories"].every(repository => typeof repository === "string");
+const isGoReleaserConfig = (value: unknown): value is GoReleaserConfig => {
+  if (!isRecord(value)) return false;
+  const { release, kos } = value;
+  return isRecord(release) && typeof release["header"] === "string" && typeof release["footer"] === "string" &&
+    (release["disable"] === undefined || typeof release["disable"] === "boolean") && Array.isArray(kos) && kos.every(isImage);
+};
+
+function releaseWorkflow() {
+  const document: unknown = YAML.parse(readFileSync(".github/workflows/release.yml", "utf8"));
+  const jobs = isRecord(document) ? document["jobs"] : undefined;
+  assert(isRecord(document) && isRecord(jobs));
+  const { build, release } = jobs;
+  assert(isJob(build) && isJob(release));
+  return { permissions: document["permissions"], jobs: { build, release } };
+}
 test("the generated build config disables SCM publishing and keeps each image in its own loopback repository", () => {
   const directory = mkdtempSync(join(tmpdir(), "nylzo-release-config-"));
   try {
@@ -33,8 +56,9 @@ test("the generated build config disables SCM publishing and keeps each image in
       env: { ...process.env, RUNNER_TEMP: directory }, encoding: "utf8",
     });
     assert.equal(generated.status, 0, generated.stderr);
-    const original = YAML.parse(readFileSync(".goreleaser.yaml", "utf8")) as GoReleaserConfig;
-    const config = YAML.parse(readFileSync(join(directory, "goreleaser-build.yaml"), "utf8"));
+    const original: unknown = YAML.parse(readFileSync(".goreleaser.yaml", "utf8"));
+    assert(isGoReleaserConfig(original));
+    const config: unknown = YAML.parse(readFileSync(join(directory, "goreleaser-build.yaml"), "utf8"));
     const expected = structuredClone(original);
     expected.release.disable = true;
     for (const image of expected.kos) image.repositories = [`127.0.0.1:5000/${image.id}`];
@@ -46,10 +70,7 @@ test("the generated build config disables SCM publishing and keeps each image in
   }
 });
 
-const workflow = YAML.parse(readFileSync(".github/workflows/release.yml", "utf8")) as {
-  permissions: Record<string, string>;
-  jobs: { build: Job; release: Job };
-};
+const workflow = releaseWorkflow();
 
 test("native compilation and image builds have no publishing or OIDC permissions", () => {
   assert.deepEqual(workflow.permissions, {});
@@ -70,8 +91,8 @@ test("the protected publisher verifies readonly artifacts and never rebuilds the
   const publisher = workflow.jobs.release;
   assert.deepEqual(publisher.needs, ["guard", "web", "build"]);
   assert.equal(publisher.environment, "${{ needs.guard.outputs.environment }}");
-  const setup = publisher.steps.find(step => step.uses === "$/.github/actions/setup")!;
-  assert.equal(setup.with?.["tools"], "regctl grype");
+  const setup = publisher.steps.find(step => step.uses === "$/.github/actions/setup");
+  assert.equal(setup?.with?.["tools"], "regctl grype");
   const code = publisher.steps.map(step => step.run ?? step.uses ?? "").join("\n");
   assert(!/goreleaser|go build|bun |mise-tasks\/release\/build/u.test(code));
   const verify = code.indexOf('cmp - release-build.sha256');
@@ -96,9 +117,10 @@ test("the publisher rejects altered, missing, added or misidentified build artif
     assert.equal(generated.status, 0, generated.stderr);
     writeFileSync(join(artifact, "release-build.sha256"), generated.stdout);
     const hash = createHash("sha256").update(generated.stdout).digest("hex");
-    const step = workflow.jobs.release.steps.find(candidate => candidate.name === "Verify the complete readonly build before using any artifact")!;
+    const step = workflow.jobs.release.steps.find(candidate => candidate.name === "Verify the complete readonly build before using any artifact");
     // macOS has shasum; hosted Linux uses sha256sum. The manifest format and verifier are identical.
-    const code = step.run!.replaceAll("sha256sum", "shasum -a 256");
+    const code = step?.run?.replaceAll("sha256sum", "shasum -a 256");
+    assert(code !== undefined, "The release job no longer verifies the readonly build under this name");
     const verify = (extra: Record<string, string> = {}) => spawnSync("bash", ["-c", `set -euo pipefail\n${code}`], {
       env: { ...process.env, RUNNER_TEMP: directory, GITHUB_WORKSPACE: workspace, EXPECTED_MANIFEST_SHA256: hash, GITHUB_REF_NAME: "v1.2.3", GITHUB_SHA: "a".repeat(40), ...extra },
       encoding: "utf8",
@@ -132,6 +154,13 @@ test("the in-toto provenance Scorecard reads is verified and attached before the
   assert.match(readFileSync(".goreleaser.yaml", "utf8"), /^ {2}draft: true$/mu);
 });
 
+const successfulCheck = (name: string) => ({
+  name,
+  app: { slug: "github-actions" },
+  conclusion: "success",
+  check_suite: { id: 1 },
+});
+
 test("a release requires full verification and successful security checks from the same run", () => {
   const directory = mkdtempSync(join(tmpdir(), "nylzo-release-checks-"));
   try {
@@ -153,12 +182,7 @@ exit "\${GH_EXIT_STATUS:-0}"
       "Analyze (javascript-typescript)",
       "Analyze (actions)",
     ];
-    const checks = names.map((name) => ({
-      name,
-      app: { slug: "github-actions" },
-      conclusion: "success",
-      check_suite: { id: 1 },
-    }));
+    const checks = names.map(successfulCheck);
     const verify = (checkRuns: typeof checks, laterPages: (typeof checks)[] = [], exitStatus = 0) =>
       spawnSync("bash", ["mise-tasks/release/checks", "a".repeat(40)], {
         env: {
@@ -171,10 +195,7 @@ exit "\${GH_EXIT_STATUS:-0}"
         encoding: "utf8",
       });
     assert.equal(verify(checks).status, 0);
-    const unrelated = Array.from({ length: 100 }, (_, index) => ({
-      ...checks[0]!,
-      name: `Unrelated check ${index}`,
-    }));
+    const unrelated = Array.from({ length: 100 }, (_, index) => successfulCheck(`Unrelated check ${index}`));
     assert.notEqual(verify(unrelated).status, 0);
     assert.equal(verify(unrelated, [checks.slice(0, 2), checks.slice(2)]).status, 0);
     assert.notEqual(verify(unrelated, [checks.slice(0, -1)]).status, 0);

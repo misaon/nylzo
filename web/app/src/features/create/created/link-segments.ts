@@ -4,7 +4,12 @@ export interface LinkSegment {
   readonly short: string;
 }
 
-function middle(text: string, head: number, tail: number): string {
+interface KeptCharacters {
+  readonly head: number;
+  readonly tail: number;
+}
+
+function middle(text: string, { head, tail }: KeptCharacters): string {
   return text.length > head + tail + 1 ? `${text.slice(0, head)}…${text.slice(-tail)}` : text;
 }
 
@@ -21,7 +26,7 @@ export function linkSegments(link: string): LinkSegment[] {
   return [
     { id: 'host', text: host, short: host },
     { id: 'meta', text: meta, short: meta },
-    { id: 'id', text: middle(id, 4, 3), short: middle(id, 2, 2) },
-    { id: 'key', text: middle(key, 14, 6), short: middle(key, 5, 3) },
+    { id: 'id', text: middle(id, { head: 4, tail: 3 }), short: middle(id, { head: 2, tail: 2 }) },
+    { id: 'key', text: middle(key, { head: 14, tail: 6 }), short: middle(key, { head: 5, tail: 3 }) },
   ];
 }

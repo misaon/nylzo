@@ -55,8 +55,6 @@ type ChosenAttachment = Awaited<ReturnType<typeof readAttachment>>;
 
 export type ComposerTarget = 'file' | 'opens' | 'passphrase' | 'security' | 'submit' | 'text' | 'ttl';
 
-type Phase = 'compose' | 'done' | 'encrypting';
-
 export type Remembered = 'failed' | 'off' | 'remembered' | 'saving';
 
 interface SealedMessage {
@@ -64,6 +62,23 @@ interface SealedMessage {
   readonly opensMax: number;
   readonly passphrase: string;
 }
+
+interface Composing {
+  readonly phase: 'compose';
+}
+
+interface Encrypting {
+  readonly phase: 'encrypting';
+  readonly withPassphrase: boolean;
+  readonly pending?: SealedMessage;
+}
+
+interface Done {
+  readonly phase: 'done';
+  readonly sealed: SealedMessage;
+}
+
+type ComposerState = Composing | Done | Encrypting;
 
 function characterCount(text: string): number {
   return text.normalize('NFC').match(/./gsu)?.length ?? 0;
@@ -95,7 +110,7 @@ function cipherText(plain: string, progress: number): string {
 }
 
 export class Composer {
-  #pending: SealedMessage | undefined;
+  #state = $state.raw<ComposerState>({ phase: 'compose' });
   #run = 0;
   #suggestion = 0;
   #submitting = false;
@@ -119,12 +134,9 @@ export class Composer {
   menu = $state<Menu>();
   problems = $state.raw<readonly CreateProblem[]>([]);
   failure = $state.raw<CreateFailure>();
-  phase = $state<Phase>('compose');
   proving = $state(false);
   cipher = $state('');
-  sealed = $state.raw<SealedMessage>();
   left = $state(false);
-  sealingWithPassphrase = $state(false);
   remembered = $state<Remembered>('off');
   kept = $state(false);
   trackingPanelLeft = $state(false);
@@ -133,27 +145,40 @@ export class Composer {
 
   readonly timeline = new PacedTimeline(timelineSettings);
 
+  readonly phase = $derived(this.#state.phase);
+  readonly sealed = $derived(this.#state.phase === 'done' ? this.#state.sealed : undefined);
+  readonly sealingWithPassphrase = $derived(this.#state.phase === 'encrypting' && this.#state.withPassphrase);
   readonly busy = $derived(this.phase !== 'compose');
 
   // A link of the final length lets the created panel take its size at the click, so nothing moves when it arrives.
   readonly placeholder = $derived(
     this.phase === 'encrypting'
       ? {
-          link: formatLink(
-            instanceOrigin(),
-            new Uint8Array(ID_LENGTH),
-            this.sealingWithPassphrase ? KDF_SCRYPT : KDF_NONE,
-            new Uint8Array(SECRET_LENGTH),
-            new Uint8Array(OBJECT_HASH_LENGTH),
-          ),
+          link: formatLink(instanceOrigin(), {
+            kdfId: this.sealingWithPassphrase ? KDF_SCRYPT : KDF_NONE,
+            id: new Uint8Array(ID_LENGTH),
+            secret: new Uint8Array(SECRET_LENGTH),
+            objectHash: new Uint8Array(OBJECT_HASH_LENGTH),
+          }),
           expiresAt: new SvelteDate(Date.now() + this.ttlSeconds * 1000).toISOString(),
         }
       : undefined,
   );
 
-  readonly usesPassphrase = $derived(
-    this.phase === 'compose' ? this.protect && this.passphrase !== '' : this.sealingWithPassphrase,
-  );
+  readonly usesPassphrase = $derived.by(() => {
+    const state = this.#state;
+    switch (state.phase) {
+      case 'compose': {
+        return this.protect && this.passphrase !== '';
+      }
+      case 'encrypting': {
+        return state.withPassphrase;
+      }
+      case 'done': {
+        return state.sealed.passphrase !== '';
+      }
+    }
+  });
 
   readonly textBytes = $derived(this.#encoder.encode(this.text).length);
   readonly textLimit = $derived(Math.min(this.limits?.maxTextBytes ?? MAX_TEXT_BYTES, MAX_TEXT_BYTES));
@@ -439,9 +464,7 @@ export class Composer {
 
   #finish(result: SealedMessage): void {
     this.timeline.stop();
-    this.#pending = undefined;
-    this.sealed = result;
-    this.phase = 'done';
+    this.#state = { phase: 'done', sealed: result };
     this.#forgetTracking();
   }
 
@@ -468,7 +491,6 @@ export class Composer {
     this.left = true;
     this.#run++;
     this.timeline.stop();
-    this.#pending = undefined;
     this.cipher = '';
     this.menu = undefined;
     this.#reset();
@@ -491,13 +513,12 @@ export class Composer {
   }
 
   #reset(): void {
-    this.sealed = undefined;
     this.#forgetTracking();
     this.text = '';
     this.passphrase = '';
     this.protect = false;
     this.removeFile();
-    this.#enterPhase('compose');
+    this.#enter({ phase: 'compose' });
   }
 
   async #send(limits: InstanceLimits): Promise<void> {
@@ -538,8 +559,8 @@ export class Composer {
       return;
     }
     this.problems = [];
-    this.sealingWithPassphrase = input.passphrase !== '';
-    this.#startTimeline(this.text.trim() === '' ? (this.file?.name ?? '') : this.text);
+    const withPassphrase = input.passphrase !== '';
+    this.#startTimeline(this.text.trim() === '' ? (this.file?.name ?? '') : this.text, withPassphrase);
     try {
       const created = await createMessage(
         input,
@@ -556,14 +577,18 @@ export class Composer {
       this.text = '';
       this.passphrase = '';
       this.removeFile();
-      this.#pending = { created, opensMax: this.opensMax, passphrase: input.passphrase };
+      this.#state = {
+        phase: 'encrypting',
+        withPassphrase,
+        pending: { created, opensMax: this.opensMax, passphrase: input.passphrase },
+      };
       this.timeline.complete();
     } catch (error) {
       if (stale()) {
         return;
       }
       this.timeline.stop();
-      this.#enterPhase('compose');
+      this.#enter({ phase: 'compose' });
       if (error instanceof CreateError && error.failure.kind === 'invalid') {
         await this.#showProblems(error.failure.problems);
         return;
@@ -587,17 +612,17 @@ export class Composer {
   }
 
   // The intro collapses or returns with these phases, so what follows glides into place.
-  #enterPhase(phase: 'compose' | 'encrypting'): void {
+  #enter(state: Composing | Encrypting): void {
     void this.glide.around(() => {
-      this.phase = phase;
+      this.#state = state;
     });
   }
 
-  #startTimeline(source: string): void {
+  #startTimeline(source: string, withPassphrase: boolean): void {
     const plain = source.replaceAll(/\s+/gu, ' ').slice(0, CIPHER_SOURCE_CHARACTERS);
     this.proving = false;
     this.cipher = cipherText(plain, 0);
-    this.#enterPhase('encrypting');
+    this.#enter({ phase: 'encrypting', withPassphrase });
     let cipherStep = -1;
     this.timeline.start(() => {
       const { step, progress, finished } = this.timeline.paced;
@@ -605,8 +630,9 @@ export class Composer {
         cipherStep = step;
         this.cipher = cipherText(plain, progress);
       }
-      if (finished && this.#pending) {
-        this.#finish(this.#pending);
+      const state = this.#state;
+      if (finished && state.phase === 'encrypting' && state.pending) {
+        this.#finish(state.pending);
       }
     });
   }

@@ -1,7 +1,9 @@
 import { newSecret, requestKey } from '@nylzo/core';
 import type { RequestKey } from '@nylzo/core';
+import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, it, vi } from 'vitest';
 
+import { requestResult } from './indexed-database.ts';
 import { memoryStore } from './memory-sent-store.ts';
 import {
   ExtractableKeyError,
@@ -27,10 +29,6 @@ async function manageKeyOf(seed: Uint8Array): Promise<RequestKey> {
 
 async function newRecord(): Promise<SentRecord> {
   return { id: ID, createdAt: NOW, expiresAt: NOW + 3_600_000, manageKey: await manageKeyOf(newSecret()) };
-}
-
-function openNothing(name: string): never {
-  throw new Error(`must not open ${name}`);
 }
 
 async function extractableKey(): Promise<RequestKey> {
@@ -138,11 +136,10 @@ describe('stored records of sent messages', () => {
 
   it('drops records 7 days after their message expired and sorts the rest newest first', async () => {
     const manageKey = await manageKeyOf(newSecret());
-    const make = (id: string, createdAt: number, expiresAt: number) => ({ id, createdAt, expiresAt, manageKey });
     const store = memoryStore([
-      make('AAAAAAAAAAAAAAAAAAAAAA', 1, NOW - RETENTION_MS),
-      make('AAAAAAAAAAAAAAAAAAAAAQ', 2, NOW - RETENTION_MS + 1),
-      make('AAAAAAAAAAAAAAAAAAAAAg', 3, NOW + 1000),
+      { id: 'AAAAAAAAAAAAAAAAAAAAAA', createdAt: 1, expiresAt: NOW - RETENTION_MS, manageKey },
+      { id: 'AAAAAAAAAAAAAAAAAAAAAQ', createdAt: 2, expiresAt: NOW - RETENTION_MS + 1, manageKey },
+      { id: 'AAAAAAAAAAAAAAAAAAAAAg', createdAt: 3, expiresAt: NOW + 1000, manageKey },
     ]);
     const kept = await retainedRecords(store, NOW);
     expect(kept.map((record) => record.createdAt)).toEqual([3, 2]);
@@ -152,11 +149,15 @@ describe('stored records of sent messages', () => {
 
 describe('cleaning up on page load', () => {
   it('neither opens nor creates the database when it does not exist', async () => {
-    const open = vi.fn<typeof openNothing>(openNothing);
-    const factory = { databases: () => Promise.resolve([{ name: 'other', version: 1 }]), open };
-    await purgeSentRecords(factory as unknown as IDBFactory, NOW);
+    const factory = new IDBFactory();
+    const other = await requestResult(factory.open('other'));
+    other.close();
+    const open = vi.spyOn(factory, 'open');
+    await purgeSentRecords(factory, NOW);
     await purgeSentRecords(undefined, NOW);
     expect(open).not.toHaveBeenCalled();
+    const listed = await factory.databases();
+    expect(listed.map((database) => database.name)).toEqual(['other']);
   });
 });
 

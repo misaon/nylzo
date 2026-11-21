@@ -18,7 +18,9 @@ test("an optional connection pin accepts only literal addresses and preserves no
   for (const address of ["192.0.2.1", "2001:db8::1"]) {
     const options = hostConnection(address);
     assert.deepEqual(Object.keys(options), ["lookup"]);
-    options.lookup!("original.example", { all: true }, (error, addresses) => {
+    const { lookup } = options;
+    assert(lookup !== undefined);
+    lookup("original.example", { all: true }, (error, addresses) => {
       assert.equal(error, null); assert.deepEqual(addresses, [{ address, family: address.includes(":") ? 6 : 4 }]);
     });
   }

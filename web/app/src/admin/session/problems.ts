@@ -28,13 +28,13 @@ export class KeyTypeError extends Error {
   }
 }
 
-const PASSKEY_PROBLEMS: Readonly<Record<string, Problem>> = {
-  NotAllowedError: 'cancelled',
-  AbortError: 'cancelled',
-  InvalidStateError: 'already-enrolled',
-  SecurityError: 'not-allowed',
-  NotSupportedError: 'unsupported',
-};
+const PASSKEY_PROBLEMS: ReadonlyMap<string, Problem> = new Map([
+  ['NotAllowedError', 'cancelled'],
+  ['AbortError', 'cancelled'],
+  ['InvalidStateError', 'already-enrolled'],
+  ['SecurityError', 'not-allowed'],
+  ['NotSupportedError', 'unsupported'],
+]);
 
 export class UnreachableError extends Error {
   override readonly name = 'UnreachableError';
@@ -58,7 +58,7 @@ export function problemOf(error: unknown, refusal: Problem): Problem {
     return 'offline';
   }
   if (error instanceof DOMException) {
-    return PASSKEY_PROBLEMS[error.name] ?? 'failed';
+    return PASSKEY_PROBLEMS.get(error.name) ?? 'failed';
   }
   return 'failed';
 }

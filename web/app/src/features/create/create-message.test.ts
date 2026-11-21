@@ -37,7 +37,7 @@ function createDependencies(api: FakeApi, solve?: (call: PowCall, id: Uint8Array
     api,
     origin: 'https://nylzo.test',
     stretch,
-    solvePow: async (challenge, id, difficulty, budgetMs) => {
+    solvePow: async ({ challenge, id, difficulty, budgetMs }) => {
       const call = { challenge, difficulty, budgetMs };
       powCalls.push(call);
       api.calls.push('solve');

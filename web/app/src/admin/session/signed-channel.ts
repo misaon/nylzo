@@ -79,7 +79,7 @@ export class SignedChannel {
   }
 
   async #signed(method: SignedMethod, path: string, challenge: Uint8Array<ArrayBuffer>): Promise<Json> {
-    const signature = await signRequest(this.#key, PURPOSE_ADMIN, method, path, challenge);
+    const signature = await signRequest(this.#key, { purpose: PURPOSE_ADMIN, method, path, challenge });
     const answer = await this.#transport.send(method, path, {
       headers: { Authorization: authorizationHeader(signature) },
     });

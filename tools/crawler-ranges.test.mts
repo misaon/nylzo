@@ -10,6 +10,11 @@ const list = (...prefixes: object[]) => ({ creationTime: "2026-11-08T00:00:00", 
 const both = ["ipv4Prefix", "ipv6Prefix"] as const;
 const googlebot = list({ ipv4Prefix: "66.249.64.0/27" });
 const sourceIndex = (file: string) => sources.findIndex((source) => source.url.endsWith(`/${file}`));
+const urlAt = (index: number) => {
+  const source = sources[index];
+  assert(source !== undefined, `no source ${index}`);
+  return source.url;
+};
 const documents = (replaced: Record<number, object> = {}): Download[] => sources.map((_, index) => ({ document: replaced[index] ?? googlebot }));
 const nothingCommitted: CrawlerList = { sources: {}, prefixes: [] };
 const prefixesOf = (replaced: Record<number, object>) => crawlerList(documents(replaced), nothingCommitted).list.prefixes;
@@ -38,7 +43,7 @@ test("a refresh never widens the list beyond published public crawler ranges", (
   }
   assert.throws(() => rangesOf({ prefixes: [] }, both), /no prefixes/u);
   assert.throws(() => rangesOf(list({ ipv6Prefix: "2001:4860:4801:10::/64" }), ["ipv4Prefix"]), /no usable prefixes/u);
-  assert.throws(() => prefixesOf({ 1: list() }), { message: `${sources[1]!.url}: the list has no prefixes` });
+  assert.throws(() => prefixesOf({ 1: list() }), { message: `${urlAt(1)}: the list has no prefixes` });
 });
 
 test("the shared block named for ChatGPT-User is left out of every source whole or in pieces, any other wide range still stops the refresh", () => {
@@ -62,39 +67,39 @@ test("a refresh stops when the sources together list far more addresses than tod
 });
 
 test("a source that lists far fewer prefixes or addresses than its committed ranges stops the refresh, even when the total barely moves", () => {
-  const bing = sources[sourceIndex("bingbot.json")]!.url;
-  const mistral = sources[sourceIndex("mistralai-index-ips.json")]!.url;
+  const bing = urlAt(sourceIndex("bingbot.json"));
+  const mistral = urlAt(sourceIndex("mistralai-index-ips.json"));
   const google = Array.from({ length: 40 }, (_, index) => `66.249.${index}.0/27`);
   const committed = committedList({
-    [sources[0]!.url]: google,
+    [urlAt(0)]: google,
     [bing]: ["157.55.39.0/24", "207.46.13.0/24"],
     [mistral]: ["2001:4860:4801:10::/64", "2001:4860:4801:11::/64", "2001:4860:4801:12::/64", "2001:4860:4801:13::/64"],
   });
   const refreshed = (ranges: Record<string, string[]>) => committedList({ ...committed.sources, ...ranges });
-  assert.deepEqual(shrinkage(committed, refreshed({ [bing]: ["157.55.39.0/24", "207.46.13.0/24"] })), []);
-  assert.deepEqual(shrinkage(committed, refreshed({ [bing]: ["157.55.39.0/24", "207.46.13.0/26"] })), [
+  assert.deepEqual(shrinkage({ committed, refreshed: refreshed({ [bing]: ["157.55.39.0/24", "207.46.13.0/24"] }) }), []);
+  assert.deepEqual(shrinkage({ committed, refreshed: refreshed({ [bing]: ["157.55.39.0/24", "207.46.13.0/26"] }) }), [
     `${bing} lists 2 prefixes and 320 IPv4 addresses, far fewer than the 2 and 512 of the committed list`,
   ]);
-  assert.deepEqual(shrinkage(committed, refreshed({ [mistral]: ["2001:4860:4801:10::/64", "2001:4860:4801:11::/64"] })), [
+  assert.deepEqual(shrinkage({ committed, refreshed: refreshed({ [mistral]: ["2001:4860:4801:10::/64", "2001:4860:4801:11::/64"] }) }), [
     `${mistral} lists 2 prefixes and 0 IPv4 addresses, far fewer than the 4 and 0 of the committed list`,
   ]);
-  const total = shrinkage(committed, refreshed({ [sources[0]!.url]: google.slice(0, 20) }));
+  const total = shrinkage({ committed, refreshed: refreshed({ [urlAt(0)]: google.slice(0, 20) }) });
   assert.equal(total.length, 2);
-  assert.match(total[1]!, /^the sources list 26 prefixes .* far fewer than the 46 /u);
+  assert.match(total[1] ?? "", /^the sources list 26 prefixes .* far fewer than the 46 /u);
 });
 
 test("a source that does not download keeps its committed ranges and is named, the others still refresh", () => {
   const bing = sourceIndex("bingbot.json");
-  const committed = committedList({ [sources[bing]!.url]: ["157.55.39.0/24"] });
+  const committed = committedList({ [urlAt(bing)]: ["157.55.39.0/24"] });
   const downloads = documents({ 0: list({ ipv4Prefix: "66.249.66.0/27" }) }).with(bing, { failure: "HTTP 403" });
   const { list: refreshed, kept } = crawlerList(downloads, committed);
-  assert.deepEqual(kept, [{ url: sources[bing]!.url, failure: "HTTP 403" }]);
-  assert.deepEqual(refreshed.sources[sources[bing]!.url], ["157.55.39.0/24"]);
+  assert.deepEqual(kept, [{ url: urlAt(bing), failure: "HTTP 403" }]);
+  assert.deepEqual(refreshed.sources[urlAt(bing)], ["157.55.39.0/24"]);
   assert.deepEqual(refreshed.prefixes, ["66.249.64.0/27", "66.249.66.0/27", "157.55.39.0/24"]);
-  assert.deepEqual(shrinkage(committed, refreshed), []);
+  assert.deepEqual(shrinkage({ committed, refreshed }), []);
   const seznam = sourceIndex("seznambot.json");
   assert.throws(() => crawlerList(downloads.with(seznam, { failure: "HTTP 503" }), committed), {
-    message: `${sources[seznam]!.url}: HTTP 503, and the committed list holds no ranges of it to keep`,
+    message: `${urlAt(seznam)}: HTTP 503, and the committed list holds no ranges of it to keep`,
   });
 });
 
@@ -137,15 +142,17 @@ test("Bing contributes only IPv4 and every list is sorted without duplicates", (
     nothingCommitted,
   );
   assert.deepEqual(result.prefixes, ["66.249.64.0/27", "77.75.72.26/32", "157.55.39.0/24", "2001:4860:4801:4::/64", "2001:4860:4801:10::/64"]);
-  assert.deepEqual(result.sources[sources[0]!.url], ["66.249.64.0/27", "2001:4860:4801:10::/64"]);
-  assert.deepEqual(result.sources[sources[sourceIndex("bingbot.json")]!.url], ["157.55.39.0/24"]);
-  assert.deepEqual(result.sources[sources[sourceIndex("seznambot.json")]!.url], ["77.75.72.26/32"]);
+  assert.deepEqual(result.sources[urlAt(0)], ["66.249.64.0/27", "2001:4860:4801:10::/64"]);
+  assert.deepEqual(result.sources[urlAt(sourceIndex("bingbot.json"))], ["157.55.39.0/24"]);
+  assert.deepEqual(result.sources[urlAt(sourceIndex("seznambot.json"))], ["77.75.72.26/32"]);
 });
 
 test("the committed list is what the generator writes, and every source can fall back on it", () => {
   const text = readFileSync(listPath, "utf8");
   const committed = readCrawlerList(text);
-  assert.deepEqual(Object.keys(JSON.parse(text) as object), ["sources", "prefixes"]);
+  const written: unknown = JSON.parse(text);
+  assert(typeof written === "object" && written !== null);
+  assert.deepEqual(Object.keys(written), ["sources", "prefixes"]);
   assert.deepEqual(Object.keys(committed.sources), sources.map((source) => source.url));
   const failed = sources.map(() => ({ failure: "HTTP 503" }));
   const { list: refreshed, kept } = crawlerList(failed, committed);

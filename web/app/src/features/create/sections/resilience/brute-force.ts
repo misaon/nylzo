@@ -3,13 +3,15 @@ import { TTL_CHOICES } from '../../../../shared/ttl/ttl-choices.ts';
 
 export type Attacker = 'laptop' | 'gpu' | 'farm' | 'datacenter' | 'world';
 
-export const ATTACKERS: readonly { readonly id: Attacker; readonly rate: number; readonly hypothetical?: boolean }[] = [
-  { id: 'laptop', rate: 8 },
-  { id: 'gpu', rate: 10 },
-  { id: 'farm', rate: 13 },
-  { id: 'datacenter', rate: 16 },
-  { id: 'world', rate: 21, hypothetical: true },
+export const ATTACKERS: readonly { readonly id: Attacker; readonly hypothetical?: boolean }[] = [
+  { id: 'laptop' },
+  { id: 'gpu' },
+  { id: 'farm' },
+  { id: 'datacenter' },
+  { id: 'world', hypothetical: true },
 ];
+
+const RATES: Readonly<Record<Attacker, number>> = { laptop: 8, gpu: 10, farm: 13, datacenter: 16, world: 21 };
 
 type Verdict = 'week' | 'ttl' | 'life' | 'dinosaurs' | 'earth' | 'universe' | 'beyond';
 
@@ -28,16 +30,12 @@ const MILESTONES: readonly { readonly years: number; readonly verdict: Verdict }
   { years: UNIVERSE_YEARS, verdict: 'universe' },
 ];
 
-function rateOf(attacker: Attacker): number {
-  return ATTACKERS.find((item) => item.id === attacker)?.rate ?? 0;
-}
-
 function averageYearsLog10(attacker: Attacker, quantum: boolean): number {
   const log10OfTwo = Math.log10(2);
   const steps = quantum
     ? Number(QUANTUM_BITS) * log10OfTwo + Math.log10(Math.PI / 4)
     : (Number(KEY_BITS) - 1) * log10OfTwo;
-  return steps - rateOf(attacker) - Math.log10(SECONDS_PER_YEAR);
+  return steps - RATES[attacker] - Math.log10(SECONDS_PER_YEAR);
 }
 
 export interface Judgement {
@@ -81,7 +79,7 @@ export interface Countdown {
   readonly done: string;
 }
 
-function changedDigits(after: string, before: string): number {
+function changedDigits({ after, before }: { readonly after: string; readonly before: string }): number {
   let same = 0;
   while (same < after.length && after[same] === before[same]) {
     same++;
@@ -95,11 +93,11 @@ function grouped(value: bigint): string {
 
 export function countdown(attacker: Attacker, quantum: boolean, elapsedMs: number): Countdown {
   const total = quantum ? (2n ** QUANTUM_BITS * QUANTUM_NUMERATOR) / QUANTUM_DENOMINATOR : 2n ** KEY_BITS;
-  const done = (10n ** BigInt(rateOf(attacker)) * BigInt(Math.max(0, Math.floor(elapsedMs)))) / 1000n;
+  const done = (10n ** BigInt(RATES[attacker]) * BigInt(Math.max(0, Math.floor(elapsedMs)))) / 1000n;
   const left = total - done;
   const text = grouped(left);
   let cut = text.length;
-  for (let digits = changedDigits(left.toString(), total.toString()); digits > 0; cut--) {
+  for (let digits = changedDigits({ after: left.toString(), before: total.toString() }); digits > 0; cut--) {
     if (text[cut - 1] !== ' ') {
       digits--;
     }

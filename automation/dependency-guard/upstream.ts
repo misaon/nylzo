@@ -4,13 +4,13 @@ import type { GuardSource } from './source.ts';
 async function claimProblem(source: GuardSource, claim: UpstreamClaim): Promise<string | undefined> {
   switch (claim.kind) {
     case 'action-tag': {
-      const commit = await source.tagCommit(claim.repository, claim.tag);
+      const commit = await source.tagCommit(claim);
       return commit === claim.commit
         ? undefined
         : `${claim.repository}@${claim.commit} is not the commit of its tag ${claim.tag} (${commit ?? 'tag not found'})`;
     }
     case 'release-asset': {
-      const digest = await source.releaseAssetDigest(claim.repository, claim.tag, claim.asset);
+      const digest = await source.releaseAssetDigest(claim);
       return digest === claim.digest
         ? undefined
         : `${claim.repository} ${claim.tag} ${claim.asset}: ${claim.digest} is not the release asset digest (${digest ?? 'asset not found'})`;

@@ -78,7 +78,7 @@ export async function prepareWorker(priority: RequestPriority = 'auto'): Promise
 }
 
 export interface StartedWorker {
-  readonly worker: Worker;
+  readonly worker: Pick<Worker, 'addEventListener' | 'postMessage'>;
   readonly stop: () => void;
 }
 

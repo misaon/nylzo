@@ -35,7 +35,8 @@ function ipv6(text: string): bigint {
   if (halves.length > 2 || (halves.length === 1 && missing !== 0) || (halves.length === 2 && missing < 1)) {
     throw new Error(`${text} is not an IPv6 address`);
   }
-  const all = halves.length === 1 ? groups[0]! : [...groups[0]!, ...Array<string>(missing).fill("0"), ...groups[1]!];
+  const [head = [], tail] = groups;
+  const all = tail === undefined ? head : [...head, ...Array<string>(missing).fill("0"), ...tail];
   if (!all.every((group) => /^[\da-f]{1,4}$/u.test(group))) {
     throw new Error(`${text} is not an IPv6 address`);
   }
@@ -67,12 +68,12 @@ export function convert(csv: string): { ipv4: Family; ipv6: Family } {
       continue;
     }
     const [firstText, lastText, country, extra] = line.split(",");
-    if (lastText === undefined || country === undefined || extra !== undefined || !/^[A-Z]{2}$/u.test(country)) {
+    if (firstText === undefined || lastText === undefined || country === undefined || extra !== undefined || !/^[A-Z]{2}$/u.test(country)) {
       throw new Error(`unexpected row ${JSON.stringify(line)}`);
     }
-    const isIPv6 = firstText!.includes(":");
+    const isIPv6 = firstText.includes(":");
     const key = isIPv6 ? "ipv6" : "ipv4";
-    const first = isIPv6 ? ipv6(firstText!) : ipv4(firstText!);
+    const first = isIPv6 ? ipv6(firstText) : ipv4(firstText);
     const last = isIPv6 ? ipv6(lastText) : ipv4(lastText);
     if (first < next[key] || last < first) {
       throw new Error(`row ${JSON.stringify(line)} is out of order or overlaps the previous row`);
@@ -140,12 +141,21 @@ async function download(url: string): Promise<Uint8Array> {
   return new Uint8Array(await response.arrayBuffer());
 }
 
+type RecordedSource = { readonly month: string; readonly sha256: string };
+
+function isRecordedSource(value: unknown): value is RecordedSource {
+  return typeof value === "object" && value !== null && "month" in value && typeof value.month === "string" && "sha256" in value && typeof value.sha256 === "string";
+}
+
 function recordedHash(month: string): string | undefined {
   if (!existsSync(sourcePath)) {
     return undefined;
   }
   const recorded: unknown = JSON.parse(readFileSync(sourcePath, "utf8"));
-  return Reflect.get(recorded as object, "month") === month ? String(Reflect.get(recorded as object, "sha256")) : undefined;
+  if (!isRecordedSource(recorded)) {
+    throw new Error(`${sourcePath} does not record a month and its sha256`);
+  }
+  return recorded.month === month ? recorded.sha256 : undefined;
 }
 
 if (import.meta.main) {

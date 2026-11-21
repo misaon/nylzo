@@ -76,13 +76,19 @@ export interface Issued {
   readonly registration: Uint8Array<ArrayBuffer>;
 }
 
+type ProofOfWork =
+  | { readonly required: false; readonly difficulty: number }
+  | { readonly required: true; readonly difficulty: number; readonly challenge: string };
+
 export interface Instance {
   readonly limits: InstanceLimits;
-  readonly pow: { readonly required: boolean; readonly difficulty: number; readonly challenge?: string };
+  readonly pow: ProofOfWork;
   readonly create?: Issued | undefined;
 }
 
-interface Creation {
+export type IssuingInstance = Instance & { readonly create: Issued };
+
+export interface Creation {
   readonly ttlSeconds: number;
   readonly shareKey: Uint8Array;
   readonly registrationRequest: Uint8Array;
@@ -169,7 +175,10 @@ export interface ApiOptions {
 }
 
 export interface Api {
-  instance: (creation?: Creation) => Promise<Instance>;
+  instance: {
+    (creation: Creation): Promise<IssuingInstance>;
+    (): Promise<Instance>;
+  };
   transparency: () => Promise<Transparency>;
   create: (request: CreateRequest) => Promise<{ readonly expiresAt: string }>;
   metadata: (id: Uint8Array, readKey: RequestKey) => Promise<Metadata>;
@@ -295,6 +304,17 @@ function issuedOf(create: Json, ttlSeconds: number): Issued {
   };
 }
 
+function proofOfWorkOf(pow: Json, difficulty: number): ProofOfWork {
+  const challenge = pow['challenge'] === undefined ? undefined : text(pow, 'challenge');
+  if (pow['required'] !== true) {
+    return { required: false, difficulty };
+  }
+  if (challenge === undefined) {
+    throw new ResponseError('the instance requires proof of work without a challenge');
+  }
+  return { required: true, difficulty, challenge };
+}
+
 function leaseOf(response: Response): string {
   const lease = response.headers.get('X-Nylzo-Lease') ?? '';
   let length = 0;
@@ -372,15 +392,13 @@ export function createApi(options: ApiOptions = {}): Api {
       ke1: headers['X-Nylzo-KE1'] ?? '',
       ke3: headers['X-Nylzo-KE3'] ?? '',
     };
-    const signature = await signRequest(
-      request.key,
-      request.purpose,
-      request.method,
-      request.path,
-      fresh,
-      undefined,
+    const signature = await signRequest(request.key, {
+      purpose: request.purpose,
+      method: request.method,
+      path: request.path,
+      challenge: fresh,
       components,
-    );
+    });
     headers['Authorization'] = authorizationHeader(signature);
     if (request.proceed?.() === false) {
       throw new StoppedError();
@@ -401,34 +419,47 @@ export function createApi(options: ApiOptions = {}): Api {
     return readJson(await ensureOk(await call(path, { method: 'GET', ...(headers && { headers }) })));
   }
 
+  async function describedInstance(headers?: Readonly<Record<string, string>>) {
+    const { limits, pow, create } = await fetchJson('/api/v1/instance', headers);
+    if (!isObject(limits) || !isObject(pow) || typeof pow['required'] !== 'boolean') {
+      throw new ResponseError();
+    }
+    const difficulty = integer(pow, 'difficulty');
+    if (difficulty > MAX_POW_DIFFICULTY) {
+      throw new ResponseError('the instance asks for more than the spec allows');
+    }
+    return { limits, pow, difficulty, create };
+  }
+
+  async function issuingInstance(creation: Creation): Promise<IssuingInstance> {
+    const { limits, pow, difficulty, create } = await describedInstance({
+      'X-Nylzo-Ttl': String(creation.ttlSeconds),
+      'X-Nylzo-Share-Key': formatShareKey(creation.shareKey),
+      'X-Nylzo-Registration': encodeBase64url(creation.registrationRequest),
+    });
+    if (!isObject(create)) {
+      throw new ResponseError('the instance asks for more than the spec allows');
+    }
+    return {
+      limits: instanceLimits(limits),
+      pow: proofOfWorkOf(pow, difficulty),
+      create: issuedOf(create, creation.ttlSeconds),
+    };
+  }
+
+  async function plainInstance(): Promise<Instance> {
+    const { limits, pow, difficulty } = await describedInstance();
+    return { limits: instanceLimits(limits), pow: proofOfWorkOf(pow, difficulty) };
+  }
+
+  function instance(creation: Creation): Promise<IssuingInstance>;
+  function instance(): Promise<Instance>;
+  function instance(creation?: Creation): Promise<Instance> {
+    return creation === undefined ? plainInstance() : issuingInstance(creation);
+  }
+
   return {
-    async instance(creation) {
-      const headers =
-        creation === undefined
-          ? undefined
-          : {
-              'X-Nylzo-Ttl': String(creation.ttlSeconds),
-              'X-Nylzo-Share-Key': formatShareKey(creation.shareKey),
-              'X-Nylzo-Registration': encodeBase64url(creation.registrationRequest),
-            };
-      const { limits, pow, create } = await fetchJson('/api/v1/instance', headers);
-      if (!isObject(limits) || !isObject(pow) || typeof pow['required'] !== 'boolean') {
-        throw new ResponseError();
-      }
-      const difficulty = integer(pow, 'difficulty');
-      if (difficulty > MAX_POW_DIFFICULTY || (creation !== undefined && !isObject(create))) {
-        throw new ResponseError('the instance asks for more than the spec allows');
-      }
-      return {
-        limits: instanceLimits(limits),
-        pow: {
-          required: pow['required'],
-          difficulty,
-          ...(pow['challenge'] !== undefined && { challenge: text(pow, 'challenge') }),
-        },
-        ...(isObject(create) && creation !== undefined && { create: issuedOf(create, creation.ttlSeconds) }),
-      };
-    },
+    instance,
 
     async transparency() {
       const [report, manifest] = await Promise.all([

@@ -60,24 +60,38 @@ function decode(encoded: string): Uint8Array<ArrayBuffer> {
   return new Uint8Array(Buffer.from(encoded, 'base64url'));
 }
 
-async function verifies(
-  publicKey: string,
-  challenge: string,
-  signature: string,
-  purpose: Purpose,
-  method: string,
-  path: string,
-  body: Uint8Array = new Uint8Array(0),
-  components: RequestComponents = {},
-): Promise<boolean> {
+interface SignatureParts {
+  readonly publicKey: string;
+  readonly challenge: string;
+  readonly signature: string;
+}
+
+interface SignedCall extends SignatureParts {
+  readonly purpose: Purpose;
+  readonly method: string;
+  readonly path: string;
+  readonly body?: Uint8Array;
+  readonly components?: RequestComponents;
+}
+
+async function verifies({
+  publicKey,
+  challenge,
+  signature,
+  purpose,
+  method,
+  path,
+  body = new Uint8Array(0),
+  components = {},
+}: SignedCall): Promise<boolean> {
   const key = await crypto.subtle.importKey('raw', decode(publicKey), 'Ed25519', false, ['verify']);
-  const message = await requestMessage(purpose, method, path, decode(challenge), body, components);
+  const message = await requestMessage({ purpose, method, path, challenge: decode(challenge), body, components });
   return crypto.subtle.verify('Ed25519', key, decode(signature), message);
 }
 
-function authorizationParts(header: string): [string, string, string] {
+function authorizationParts(header: string): SignatureParts {
   const [publicKey = '', challenge = '', signature = ''] = header.replace(/^Nylzo-Sig /u, '').split('.', 3);
-  return [publicKey, challenge, signature];
+  return { publicKey, challenge, signature };
 }
 
 async function expectSignedRequest(request: Request): Promise<void> {
@@ -95,7 +109,7 @@ async function expectSignedRequest(request: Request): Promise<void> {
     ke3: request.headers.get('X-Nylzo-KE3') ?? '',
   };
   const body = new Uint8Array(await request.clone().arrayBuffer());
-  expect(await verifies(...parts, purpose, request.method, path, body, components)).toBe(true);
+  expect(await verifies({ ...parts, purpose, method: request.method, path, body, components })).toBe(true);
   expect(request.headers.has('X-Nylzo-Verifier')).toBe(false);
 }
 
@@ -171,10 +185,10 @@ describe('api client', () => {
     expect(request.headers.get('X-Nylzo-Ttl')).toBe('3600');
     expect(request.headers.get('X-Nylzo-Share-Key')).toBe(formatShareKey(shareKey));
     expect(request.headers.get('X-Nylzo-Registration')).toBe(encodeBase64url(registrationRequest));
-    expect(instance.create?.epoch).toBe(ISSUED_EPOCH);
-    expect(instance.create?.deadline).toBe(Date.parse('2026-10-23T11:00:00Z') / 1000);
-    expect(instance.create?.share).toEqual(new Uint8Array(WRAPPED_SHARE_LENGTH).fill(6));
-    expect(instance.create?.registration).toEqual(new Uint8Array(64).fill(7));
+    expect(instance.create.epoch).toBe(ISSUED_EPOCH);
+    expect(instance.create.deadline).toBe(Date.parse('2026-10-23T11:00:00Z') / 1000);
+    expect(instance.create.share).toEqual(new Uint8Array(WRAPPED_SHARE_LENGTH).fill(6));
+    expect(instance.create.registration).toEqual(new Uint8Array(64).fill(7));
     const short = fakeServer(() =>
       json(200, {
         ...instanceBody,
@@ -193,6 +207,14 @@ describe('api client', () => {
       json(200, { ...instanceBody, pow: { required: true, difficulty: 8, challenge: 'x' } }),
     );
     await expect(server.api.instance()).rejects.toThrow(ResponseError);
+  });
+
+  it('refuses required proof of work that comes without a challenge', async () => {
+    const required = fakeServer(() => json(200, { ...instanceBody, pow: { required: true, difficulty: 4 } }));
+    await expect(required.api.instance()).rejects.toThrow(ResponseError);
+    const idle = fakeServer(() => json(200, { ...instanceBody, pow: { required: false, difficulty: 4 } }));
+    const { pow } = await idle.api.instance();
+    expect(pow).toEqual({ required: false, difficulty: 4 });
   });
 
   it('reads the instance and takes no passphrase profile from it', async () => {
@@ -252,7 +274,7 @@ describe('api client', () => {
     const path = `/api/v1/messages/${idToString(id)}`;
     expect(new URL(request.url).pathname).toBe(path);
     const parts = authorizationParts(request.headers.get('Authorization') ?? '');
-    expect(await verifies(...parts, 'read', 'GET', path)).toBe(true);
+    expect(await verifies({ ...parts, purpose: 'read', method: 'GET', path })).toBe(true);
     expect(request.headers.get('X-Nylzo-Verifier')).toBeNull();
   });
 
@@ -293,12 +315,12 @@ describe('api client', () => {
       const request = requestAt(signed, index);
       expect([request.method, new URL(request.url).pathname]).toEqual([method, path]);
       const parts = authorizationParts(request.headers.get('Authorization') ?? '');
-      expect(parts[0]).toBe(encodeBase64url(key.publicKey));
-      expect(await verifies(...parts, purpose, method, path, undefined, { ke3: ke3 ?? '' })).toBe(true);
+      expect(parts.publicKey).toBe(encodeBase64url(key.publicKey));
+      expect(await verifies({ ...parts, purpose, method, path, components: { ke3: ke3 ?? '' } })).toBe(true);
       expect(request.headers.get('X-Nylzo-KE3')).toBe(ke3);
       expect(await request.arrayBuffer()).toHaveProperty('byteLength', 0);
     }
-    expect(authorizationParts(requestAt(signed, 0).headers.get('Authorization') ?? '')[1]).toBe(
+    expect(authorizationParts(requestAt(signed, 0).headers.get('Authorization') ?? '').challenge).toBe(
       encodeBase64url(HANDSHAKE_CHALLENGE),
     );
     expect(unlock.count()).toBe(1);
@@ -379,7 +401,7 @@ describe('api client', () => {
     const request = server.last();
     const authorization = request.headers.get('Authorization') ?? '';
     expect(request.method).toBe('POST');
-    const [, challenge] = authorizationParts(authorization);
+    const { challenge } = authorizationParts(authorization);
     expect(challenge).toBe(encodeBase64url(HANDSHAKE_CHALLENGE));
     expect(request.headers.get('X-Nylzo-KE3')).toBe(encodeBase64url(KE3));
     expect(request.headers.get('X-Nylzo-Share-Key')).toBe(formatShareKey(shareKey));
@@ -400,7 +422,7 @@ describe('api client', () => {
     const readKey = await requestKey(new Uint8Array(32).fill(3));
     const used: string[] = [];
     const server = fakeServer((request) => {
-      used.push(authorizationParts(request.headers.get('Authorization') ?? '')[1]);
+      used.push(authorizationParts(request.headers.get('Authorization') ?? '').challenge);
       return used.length === 1 ? json(404, { error: 'not_found' }) : new Response(null, { status: 204 });
     });
     const prepared = await server.api.challenge();
@@ -794,7 +816,7 @@ describe('deadlines', () => {
     const changed = { deadline: '2026-10-23T11:01:00Z', epoch: ISSUED_EPOCH + 1 };
     const server = fakeServer(() => json(200, { ...instanceBody, create: { ...instanceBody.create, ...changed } }));
     const instance = await server.api.instance({ ttlSeconds: 3600, shareKey, registrationRequest });
-    expect(instance.create?.epoch).toBe(ISSUED_EPOCH + 1);
+    expect(instance.create.epoch).toBe(ISSUED_EPOCH + 1);
   });
 
   it('refuses a created message that expires at another time than its sealed deadline', async () => {
@@ -910,7 +932,7 @@ describe('api client handshake and retries (spec 5.5, 6.4)', () => {
     const unlock = unlocker();
     await server.api.blob(id, readKey, LEASE, shareKeys, { unlock });
     const download = server.last();
-    expect(authorizationParts(download.headers.get('Authorization') ?? '')[1]).toBe(
+    expect(authorizationParts(download.headers.get('Authorization') ?? '').challenge).toBe(
       encodeBase64url(HANDSHAKE_CHALLENGE),
     );
     expect(download.headers.get('X-Nylzo-KE3')).toBe(encodeBase64url(KE3));

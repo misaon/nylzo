@@ -129,7 +129,7 @@ export class ReadPage {
   readonly timeline = new PacedTimeline(() => ({ minMs: this.minMs, steps: this.steps.length }));
   readonly ready = $derived(this.shown.view === 'ready' ? this.shown : undefined);
   readonly revealed = $derived(this.shown.view === 'revealed' ? this.shown : undefined);
-  readonly locked = $derived(this.ready?.rejected?.reason === 'wrong' && this.ready.rejected.locked);
+  readonly locked = $derived(this.ready?.notice?.reason === 'wrong' && this.ready.notice.locked);
 
   get showPassphrase(): boolean {
     return this.#passphraseShown ?? INPUT_METHOD_LANGUAGES.has(this.#translator.language);
@@ -198,7 +198,10 @@ export class ReadPage {
     const { translate } = this.#translator;
     if (this.revealed) {
       const more = this.revealed.burnable && !this.restDeleted;
-      return openedFacts(this.#translator, more ? this.revealed.opensRemaining : 0, this.secondsLeft);
+      return openedFacts(this.#translator, {
+        opensRemaining: more ? this.revealed.opensRemaining : 0,
+        secondsLeft: this.secondsLeft,
+      });
     }
     if (this.notice === 'burned') {
       return [{ icon: 'check', text: translate('open.chip.burned') }];
@@ -331,7 +334,7 @@ export class ReadPage {
     void this.#reader.load();
   };
 
-  readonly returned = (event: PageTransitionEvent): void => {
+  readonly returned = (event: Pick<PageTransitionEvent, 'persisted'>): void => {
     if (event.persisted || this.#left) {
       location.reload();
     }

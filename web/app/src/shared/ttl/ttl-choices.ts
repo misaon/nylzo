@@ -12,7 +12,7 @@ export const LONGEST_TTL_DAYS = Math.max(...TTL_CHOICES) / SECONDS_PER_DAY;
 type TtlChoice = (typeof TTL_CHOICES)[number];
 
 function isTtlChoice(seconds: number): seconds is TtlChoice {
-  return (TTL_CHOICES as readonly number[]).includes(seconds);
+  return TTL_CHOICES.some((choice) => choice === seconds);
 }
 
 export function ttlChoices(limits: InstanceLimits): number[] {

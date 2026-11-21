@@ -77,13 +77,12 @@ describe('SignedChannel', () => {
     await channel.request('GET', '/api/v1/admin/overview?range=30d');
 
     const signature = (server.sent[0]?.authorization?.split(' ')[1] ?? '').split('.')[2] ?? '';
-    const message = await requestMessage(
-      PURPOSE_ADMIN,
-      'GET',
-      '/api/v1/admin/overview?range=30d',
-      new Uint8Array(CHALLENGE_LENGTH).fill(7),
-      new Uint8Array(0),
-    );
+    const message = await requestMessage({
+      purpose: PURPOSE_ADMIN,
+      method: 'GET',
+      path: '/api/v1/admin/overview?range=30d',
+      challenge: new Uint8Array(CHALLENGE_LENGTH).fill(7),
+    });
     const verifier = await crypto.subtle.importKey('raw', key.publicKey, { name: 'Ed25519' }, false, ['verify']);
     const valid = await crypto.subtle.verify(
       'Ed25519',

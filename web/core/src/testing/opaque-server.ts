@@ -67,14 +67,19 @@ export function createRegistrationResponse(
   return concatenate(evaluate(keys, credentialIdentifier, request), keys.publicKey);
 }
 
-export function generateKE2(
-  keys: ServerKeys,
-  record: Uint8Array,
-  credentialIdentifier: Uint8Array,
-  ke1: Uint8Array,
-  context: Uint8Array,
-  fixed?: ServerRandomness,
-): { readonly ke2: Uint8Array<ArrayBuffer>; readonly expectedClientMac: Uint8Array } {
+interface Login {
+  readonly keys: ServerKeys;
+  readonly record: Uint8Array;
+  readonly credentialIdentifier: Uint8Array;
+  readonly ke1: Uint8Array;
+  readonly context: Uint8Array;
+  readonly fixed?: ServerRandomness | undefined;
+}
+
+export function generateKE2({ keys, record, credentialIdentifier, ke1, context, fixed }: Login): {
+  readonly ke2: Uint8Array<ArrayBuffer>;
+  readonly expectedClientMac: Uint8Array;
+} {
   const random = fixed ?? {
     maskingNonce: randomBytes(NONCE_LENGTH),
     serverNonce: randomBytes(NONCE_LENGTH),

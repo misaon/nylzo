@@ -4,6 +4,9 @@ import type { KdfId } from '../src/keys/kdf.ts';
 import { ID_LENGTH } from '../src/limits.ts';
 import { hash } from '../src/primitives/identifiers.ts';
 
+const REJECTION_ERRORS = ['flags', 'header', 'integrity', 'kdf', 'kdf_mismatch', 'plaintext', 'version'] as const;
+const REQUEST_PURPOSES = ['manage', 'read'] as const;
+
 interface ScryptVector {
   readonly name: string;
   readonly password: string;
@@ -107,7 +110,7 @@ interface RejectedVector {
   readonly e_hex: string;
   readonly kdf_id: number;
   readonly p_hex?: string;
-  readonly error: 'flags' | 'header' | 'integrity' | 'kdf' | 'kdf_mismatch' | 'plaintext' | 'version';
+  readonly error: (typeof REJECTION_ERRORS)[number];
 }
 
 interface ShareVector {
@@ -181,7 +184,7 @@ interface RequestVector {
   readonly name: string;
   readonly seed_hex: string;
   readonly public_key: string;
-  readonly purpose: 'manage' | 'read';
+  readonly purpose: (typeof REQUEST_PURPOSES)[number];
   readonly method: string;
   readonly path: string;
   readonly challenge: string;
@@ -225,9 +228,24 @@ interface VectorFile {
 
 export const vectors = loadVectors();
 
+function hasKnownError<Vector extends { readonly error: string }>(
+  vector: Vector,
+): vector is Vector & Pick<RejectedVector, 'error'> {
+  return REJECTION_ERRORS.some((error) => error === vector.error);
+}
+
+function hasKnownPurpose<Vector extends { readonly purpose: string }>(
+  vector: Vector,
+): vector is Vector & Pick<RequestVector, 'purpose'> {
+  return REQUEST_PURPOSES.some((purpose) => purpose === vector.purpose);
+}
+
 function loadVectors(): VectorFile {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- The committed fixture is checked below only for its spec label, its section counts and one canonical link vector.
-  const file = protocolFixture as VectorFile;
+  const { envelope_rejected: rejected, request } = protocolFixture;
+  if (!rejected.every((vector) => hasKnownError(vector)) || !request.every((vector) => hasKnownPurpose(vector))) {
+    throw new Error('spec/vectors.json names an error or a purpose these tests do not know');
+  }
+  const file: VectorFile = { ...protocolFixture, envelope_rejected: rejected, request };
   const sections = [
     file.derive,
     file.opaque,

@@ -4,7 +4,7 @@ import type { BotIdentity } from '../github/identity.ts';
 import { compareVersions, stableVersion } from '../versions/semantic-version.ts';
 import { binaryAssetsPath, hostToolchainPath, ruleFor } from './rules/dependency-files.ts';
 import { mergeReviews } from './rules/file-review.ts';
-import type { FileReview, VersionUpdate } from './rules/file-review.ts';
+import type { Change, FileReview, VersionUpdate } from './rules/file-review.ts';
 import { toolchainMismatches } from './rules/manifests.ts';
 import { isRegularFile, readFileAt, webFlow } from './source.ts';
 import type { Commit, GuardSource, PullRequest, Tree } from './source.ts';
@@ -69,7 +69,7 @@ function pullRequestProblems({ baseHead, bot, commits, pull }: AppUpdate): strin
   return problems;
 }
 
-function changedFiles(before: Tree, after: Tree): { paths: string[]; problems: string[] } {
+function changedFiles({ after, before }: Change<Tree>): { paths: string[]; problems: string[] } {
   const paths: string[] = [];
   const problems: string[] = [];
   const allPaths = new Set([...before.keys(), ...after.keys()]);
@@ -98,8 +98,7 @@ function changedFiles(before: Tree, after: Tree): { paths: string[]; problems: s
 async function reviewFiles(
   source: GuardSource,
   paths: readonly string[],
-  before: Tree,
-  after: Tree,
+  { after, before }: Change<Tree>,
 ): Promise<FileReview> {
   const reviews: FileReview[] = [];
   for (const path of paths) {
@@ -111,7 +110,7 @@ async function reviewFiles(
       continue;
     }
     const [oldText, newText] = await Promise.all([source.blob(old.sha), source.blob(next.sha)]);
-    reviews.push(rule(path, oldText, newText));
+    reviews.push(rule({ after: newText, before: oldText, path }));
   }
   return mergeReviews(reviews);
 }
@@ -123,14 +122,14 @@ export async function appUpdateProblems(update: AppUpdate): Promise<string[]> {
   }
   const { baseHead, pull, source } = update;
   const [before, after] = await Promise.all([source.tree(baseHead), source.tree(pull.head)]);
-  const changes = changedFiles(before, after);
+  const changes = changedFiles({ after, before });
   if (changes.paths.length + changes.problems.length === 0) {
     return ['The pull request changes no files.'];
   }
   if (changes.paths.length + changes.problems.length > maximumChangedFiles) {
     return [`The pull request changes more than ${maximumChangedFiles} files.`];
   }
-  const review = await reviewFiles(source, changes.paths, before, after);
+  const review = await reviewFiles(source, changes.paths, { after, before });
   problems.push(...changes.problems, ...review.findings);
   for (const versionUpdate of review.updates) {
     const problem = upgradeProblem(versionUpdate);
