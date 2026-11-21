@@ -54,7 +54,7 @@
           for="{id}-file"
           class={[
             CHIP_LAYOUT,
-            'outline-offset-2 outline-transparent not-forced-colors:outline-2 peer-hover:bg-white/10 peer-hover:text-ink peer-focus-visible:outline-2 peer-focus-visible:outline-aegis-300',
+            'outline-offset-2 outline-transparent not-forced-colors:outline-2 peer-hover:bg-white/10 peer-hover:text-ink peer-focus-visible:outline-2 peer-focus-visible:outline-aegis-300 peer-active:scale-[0.97] peer-active:duration-100',
             attachTone,
           ]}
         >

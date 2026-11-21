@@ -38,7 +38,7 @@
         aria-pressed={selected}
         onclick={() => choose(seconds)}
         class={[
-          'flex h-11 w-full items-center gap-3 rounded-control px-3 text-ui transition md:h-10',
+          'flex h-11 w-full items-center gap-3 rounded-control press-soft px-3 text-ui transition md:h-10',
           selected
             ? 'bg-aegis-500/12 text-ink shadow-rim ring-1 ring-aegis-400/35'
             : 'text-ink-soft hover:bg-white/6 hover:text-ink',

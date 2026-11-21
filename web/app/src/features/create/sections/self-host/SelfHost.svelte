@@ -76,7 +76,7 @@
         >
           <span
             class={[
-              'absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-control bg-white/10 shadow-rim ring-1 ring-white/12 transition-transform duration-500',
+              'absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-control bg-white/10 shadow-rim ring-1 ring-white/12 transition-transform duration-(--duration-spring) ease-spring',
               indicator[index],
             ]}
             aria-hidden="true"

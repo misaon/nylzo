@@ -41,7 +41,7 @@
     aria-labelledby="{id}-protect"
     aria-describedby="{id}-protect-note"
     onclick={() => void composer.toggleProtect()}
-    class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 rounded-control p-2.5 text-left transition hover:bg-white/4"
+    class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 rounded-control press-soft p-2.5 text-left transition hover:bg-white/4"
   >
     <span id="{id}-protect" class="text-ui font-medium text-ink">{translate('compose.passphrase.switch')}</span>
     <span class="shrink-0"><Switch on={composer.protect} /></span>

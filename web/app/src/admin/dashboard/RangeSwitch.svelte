@@ -29,7 +29,7 @@
 >
   <span
     class={[
-      'pointer-events-none absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/5)] transition-transform duration-500',
+      'pointer-events-none absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/5)] transition-transform duration-(--duration-spring) ease-spring',
       position,
     ]}
     aria-hidden="true"

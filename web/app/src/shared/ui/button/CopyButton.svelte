@@ -42,7 +42,7 @@
   <span class="stack justify-items-center">
     <span
       class={[
-        'flex items-center gap-2 fade-swap',
+        'flex items-center gap-2 fade-swap-quick',
         copied.shown || failed.shown ? 'pointer-events-none opacity-0' : 'opacity-100',
       ]}
     >
@@ -51,7 +51,7 @@
     </span>
     <span
       class={[
-        'flex items-center gap-2 text-aegis-200 fade-swap',
+        'flex items-center gap-2 text-aegis-200 fade-swap-quick',
         copied.shown ? 'opacity-100' : 'pointer-events-none opacity-0',
       ]}
     >
@@ -60,7 +60,7 @@
     </span>
     <span
       class={[
-        'flex items-center gap-2 text-rose-300 fade-swap',
+        'flex items-center gap-2 text-rose-300 fade-swap-quick',
         failed.shown ? 'opacity-100' : 'pointer-events-none opacity-0',
       ]}
     >

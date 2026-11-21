@@ -84,6 +84,7 @@
 @utility button-ghost {
   position: relative;
   isolation: isolate;
+  @apply press-release;
   color: var(--color-ink);
   background-color: oklch(1 0 0 / 0.05);
   backdrop-filter: blur(12px) saturate(1.3);
@@ -112,6 +113,10 @@
       opacity: 1;
     }
   }
+  &:active:not(:disabled, [aria-disabled='true'])::after {
+    opacity: 1;
+    transition-duration: var(--duration-press);
+  }
 }
 
 @utility hover-lift {
@@ -125,28 +130,80 @@
   }
   &:active:not(:disabled, [aria-disabled='true']) {
     translate: 0 0;
-    scale: 0.985;
   }
 }
 
+@utility press {
+  &:active:not(:disabled, [aria-disabled='true']) {
+    scale: 0.97;
+    transition-duration: var(--duration-press);
+    transition-timing-function: ease-out;
+  }
+}
+
+@utility press-soft {
+  &:active:not(:disabled, [aria-disabled='true']) {
+    background-color: oklch(1 0 0 / 0.1);
+    transition-duration: var(--duration-press);
+    transition-timing-function: ease-out;
+  }
+}
+
+@utility press-release {
+  transition-property: scale, outline-color, outline-offset;
+  transition-duration: 0.3s;
+  transition-timing-function: var(--ease-silk);
+}
+
 @layer components {
+  .bottom-sheet {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 50;
+    margin: 0;
+    width: auto;
+    max-width: none;
+    max-height: calc(100dvh - 4rem);
+    padding: 0.5rem 0.75rem max(1rem, env(safe-area-inset-bottom));
+    overflow: visible;
+    border-inline-width: 0;
+    border-bottom-width: 0;
+    border-radius: 1.75rem 1.75rem 0 0;
+    color: var(--color-ink);
+    touch-action: none;
+    overscroll-behavior: contain;
+    &::after {
+      content: '';
+      position: absolute;
+      inset: 100% 0 auto;
+      height: 50vh;
+      background: oklch(0.16 0.035 270);
+    }
+    &::backdrop {
+      background: oklch(0.06 0.02 275 / 0.62);
+      opacity: var(--sheet-shown, 0);
+    }
+  }
+  html:has(.bottom-sheet:popover-open) {
+    overflow: hidden;
+  }
   dialog.confirm {
     margin: auto;
     color: var(--color-ink);
     overscroll-behavior: contain;
     transition:
-      opacity 0.3s var(--ease-silk),
-      translate 0.3s var(--ease-silk),
-      display 0.3s allow-discrete,
-      overlay 0.3s allow-discrete;
+      opacity 0.2s ease-out,
+      scale var(--duration-spring-quick) var(--ease-spring),
+      display var(--duration-spring-quick) allow-discrete,
+      overlay var(--duration-spring-quick) allow-discrete;
     &:not([open]) {
       opacity: 0;
-      translate: 0 0.5rem;
+      scale: 0.94;
     }
     @starting-style {
       &[open] {
         opacity: 0;
-        translate: 0 0.5rem;
+        scale: 0.94;
       }
     }
     &::backdrop {
@@ -211,6 +268,7 @@
 @utility button-tint {
   position: relative;
   isolation: isolate;
+  @apply press-release;
   color: var(--color-ink);
   background-color: oklch(0.56 0.19 258 / 0.16);
   backdrop-filter: blur(12px) saturate(1.3);
@@ -241,6 +299,10 @@
       opacity: 1;
     }
   }
+  &:active:not(:disabled, [aria-disabled='true'])::after {
+    opacity: 1;
+    transition-duration: var(--duration-press);
+  }
 }
 
 @utility button-tint-soft {
@@ -268,7 +330,7 @@
     inset 0 1px 0 oklch(1 0 0 / 0.26),
     inset 0 -10px 18px -12px oklch(0.8 0.1 330 / 0.45);
   text-shadow: 0 1px 8px oklch(0.3 0.1 15 / 0.6);
-  transition-property: filter, outline-color, outline-offset;
+  transition-property: scale, filter, outline-color, outline-offset;
   transition-duration: 0.45s;
   transition-timing-function: var(--ease-silk);
   @apply gradient-edge;

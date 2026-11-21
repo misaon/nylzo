@@ -23,6 +23,9 @@
     --text-page-lg--letter-spacing: 0;
     --text-panel--letter-spacing: 0;
     --text-panel-lg--letter-spacing: 0;
+    --text-title--letter-spacing: 0;
+    --text-caption--letter-spacing: 0;
+    --text-micro--letter-spacing: 0;
     --text-eyebrow--letter-spacing: 0.04em;
   }
   :lang(ja) :is(h1, h2, h3) {
@@ -84,6 +87,19 @@
     .animate-scan {
       display: none;
     }
+    .fade-swap,
+    .fade-swap-quick,
+    .cross-fade,
+    dialog.confirm,
+    dialog.confirm::backdrop {
+      transition-property: opacity, visibility, display, overlay !important;
+      transition-duration: 0.15s !important;
+      transition-timing-function: ease !important;
+    }
+    dialog.confirm,
+    dialog.confirm::backdrop {
+      transition-behavior: allow-discrete !important;
+    }
   }
   @media (forced-colors: none) and (prefers-reduced-motion: no-preference) {
     :where(a[href], button, summary, input, textarea, select, [tabindex]) {
@@ -93,5 +109,68 @@
         outline-color 0.25s var(--ease-silk),
         outline-offset 0.25s var(--ease-silk);
     }
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .glass,
+  .glass-soft {
+    background: oklch(0.16 0.035 270);
+    backdrop-filter: none;
+  }
+  .button-primary,
+  .button-danger,
+  .button-ghost,
+  .button-tint,
+  .button-tint-soft {
+    backdrop-filter: none;
+  }
+  .button-ghost {
+    background-color: oklch(0.21 0.03 270);
+  }
+  .button-tint,
+  .button-tint-soft {
+    background-color: oklch(0.25 0.07 262);
+  }
+  .well {
+    background: oklch(0.11 0.03 270);
+  }
+  dialog.confirm::backdrop {
+    background: oklch(0.08 0.02 275 / 0.88);
+    backdrop-filter: none;
+  }
+}
+@media (prefers-contrast: more) {
+  :root {
+    --color-ink-soft: oklch(0.95 0.008 255);
+    --color-ink-mute: oklch(0.9 0.012 258);
+  }
+  .glass,
+  .glass-soft,
+  .glass-pop {
+    background: oklch(0.13 0.03 270);
+    border-color: oklch(1 0 0 / 0.5);
+    backdrop-filter: none;
+  }
+  .well {
+    background: oklch(0.09 0.03 270);
+    border-color: oklch(1 0 0 / 0.42);
+  }
+  .button-ghost,
+  .button-tint,
+  .button-tint-soft {
+    backdrop-filter: none;
+    outline: 1px solid oklch(1 0 0 / 0.55);
+    outline-offset: -1px;
+  }
+  .button-ghost {
+    background-color: oklch(0.2 0.03 270);
+  }
+  .button-tint,
+  .button-tint-soft {
+    background-color: oklch(0.27 0.09 262);
+  }
+  :focus-visible {
+    outline-width: 3px;
   }
 }

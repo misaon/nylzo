@@ -61,7 +61,7 @@
     </div>
 
     <div {@attach page.glide.attach}>
-      <div class="relative z-20 mx-auto mt-10 max-w-column animate-rise [animation-delay:240ms]">
+      <div class="relative z-20 mx-auto mt-10 max-w-column animate-rise [animation-delay:120ms]">
         <div class="glow-under" aria-hidden="true"></div>
         <div
           class="glass rounded-card shadow-[0_30px_80px_-30px_rgb(40_70_200/0.45),inset_0_1px_0_rgb(255_255_255/0.08)]"

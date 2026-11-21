@@ -464,8 +464,6 @@ export const messages = {
   'compose.opens.title': 'Kolikrát jde zprávu otevřít',
   'compose.opens.less': 'Méně otevření',
   'compose.opens.more': 'Více otevření',
-  'compose.opens.history':
-    'Příjemci, který na odkaz klikne, zůstane funkční odkaz v\u{A0}historii prohlížeče, dokud zpráva nevyčerpá všechna povolená otevření. Chraňte ji proto heslem.',
   'compose.security': 'Zabezpečení',
   'compose.passphrase.chip': 'S\u{A0}heslem',
   'compose.passphrase.chip.off': 'Bez hesla',

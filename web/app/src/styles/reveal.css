@@ -14,17 +14,9 @@
 }
 
 @keyframes reveal-pop {
-  0% {
+  from {
     opacity: 0;
     scale: 0.55;
-  }
-  60% {
-    opacity: 1;
-    scale: 1.06;
-  }
-  100% {
-    opacity: 1;
-    scale: 1;
   }
 }
 
@@ -95,7 +87,7 @@
 @theme inline {
   --reveal-animation-focus: reveal-focus var(--reveal-duration, 0.9s) var(--ease-silk) backwards;
   --reveal-animation-rise: reveal-rise var(--reveal-duration, 1s) var(--ease-silk) backwards;
-  --reveal-animation-pop: reveal-pop var(--reveal-duration, 0.7s) var(--ease-silk) backwards;
+  --reveal-animation-pop: reveal-pop var(--reveal-duration, 0.5s) var(--ease-spring) backwards;
   --reveal-animation-draw: reveal-draw var(--reveal-duration, 0.9s) var(--ease-silk) backwards;
   --reveal-animation-type: reveal-type var(--reveal-duration, 0.55s) cubic-bezier(0.45, 0, 0.25, 1) backwards;
   --reveal-animation-part: reveal-part var(--reveal-duration, 1.4s) var(--ease-silk) backwards;
