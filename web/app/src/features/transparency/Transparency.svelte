@@ -275,7 +275,7 @@
     <section aria-labelledby="transparency-operator" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-operator', 'rack', translate('transparency.operator.title'))}
       {#if operator && (operator.name || operator.contact || operator.hosting)}
-        <dl class="mt-5 grid gap-3 sm:grid-cols-2">
+        <dl class="mt-5 grid gap-3 sm:auto-cols-fr sm:grid-flow-col">
           {#if operator.name}
             {@render detail('transparency.operator.name', operator.name)}
           {/if}
@@ -415,7 +415,7 @@
           <CopyButton text={command} class="max-sm:w-11 max-sm:px-0" labelClass="max-sm:sr-only" />
         </div>
       </div>
-      <div class="mt-6 flex gap-3.5 rounded-pane bg-solar-300/[0.08] p-4 ring-1 ring-solar-300/30 sm:p-5">
+      <div class="mt-6 flex items-center gap-3.5 rounded-pane bg-solar-300/[0.08] p-4 ring-1 ring-solar-300/30 sm:p-5">
         <IconTile icon="caution" tone="warning" size="small" />
         <div class="min-w-0">
           <h3 class="text-title-sm text-ink">{translate('transparency.verify.limit.title')}</h3>

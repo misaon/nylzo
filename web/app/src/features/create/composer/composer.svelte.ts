@@ -242,6 +242,13 @@ export class Composer {
 
   readonly notice = $derived(this.failureNotice || this.problemNotice);
 
+  // A browser save that timed out may still land and be removed later, so only the tab can take a second try.
+  readonly #keepsNext = $derived(this.canKeep && this.remembered !== 'failed');
+  readonly trackable = $derived(this.#keepsNext || this.canTrackInTab);
+  readonly keeps = $derived(
+    this.remembered === 'saving' || this.remembered === 'remembered' ? this.kept : this.#keepsNext,
+  );
+
   readonly stepTitle = $derived(this.phase === 'encrypting' ? (this.nodes[this.timeline.paced.step]?.title ?? '') : '');
 
   readonly start: Attachment = () => {
@@ -256,11 +263,10 @@ export class Composer {
     return () => this.#discard();
   };
 
-  readonly remember = async (label: string, keep: boolean): Promise<void> => {
+  readonly remember = async (label: string): Promise<void> => {
     const sealed = this.sealed;
-    // A browser save that timed out may still land and be removed later, so only the tab can take a second try.
-    const refused = keep ? !this.canKeep || this.remembered === 'failed' : !this.canTrackInTab;
-    if (!sealed || refused || this.remembered === 'saving' || this.remembered === 'remembered') {
+    const keep = this.#keepsNext;
+    if (!sealed || !this.trackable || this.remembered === 'saving' || this.remembered === 'remembered') {
       return;
     }
     this.remembered = 'saving';

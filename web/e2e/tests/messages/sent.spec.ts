@@ -63,7 +63,7 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   await expect(cancel).toHaveCount(0);
   await expect(item.getByRole('heading', { level: 2 })).toBeFocused();
   await expect(page.getByRole('status').first()).toHaveText('The message is cancelled.');
-  await expect(item.getByText('the entry goes when you leave this page')).toBeVisible();
+  await expect(item.getByText('It is deleted from the server.')).toBeVisible();
   await expect.poll(() => sentRecords(page), 'an ended message leaves storage once the list shows it').toEqual([]);
 
   const recipient = await newPage();
@@ -171,6 +171,7 @@ test('the link to Sent appears where it stays, after the tracking panel has left
   await page.getByLabel('Message text').fill('settled');
   await page.getByRole('button', { name: 'Create link' }).click();
   await createdLink(page);
+  await page.getByRole('button', { name: 'Track in Sent' }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   const link = notInert(page, page.getByRole('link', { name: 'Open Sent' }));
   await expect(link).toBeVisible();
@@ -210,7 +211,8 @@ test('a status that answers after the sender forgot the message does not store i
   const status = await holdRoute(page, '**/api/v1/messages/*/status');
   await page.goto('/sent');
   await status.requested;
-  await page.getByRole('listitem').getByRole('button', { name: 'Remove from the list' }).click();
+  await page.getByRole('button', { name: 'Clear the list' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Yes, clear', exact: true }).click();
   await expect(page.getByText(NOTHING_REMEMBERED)).toBeVisible();
   expect(await sentRecords(page)).toEqual([]);
   const writesBeforeAnswer = await completedWrites();

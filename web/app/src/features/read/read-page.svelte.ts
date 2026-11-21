@@ -4,7 +4,6 @@ import { prefersReducedMotion } from 'svelte/motion';
 
 import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
-import { clearClipboard } from '../../shared/clipboard/clear-clipboard.ts';
 import { revokeSavedFiles } from '../../shared/files/save-file.ts';
 import { stopRunningWorkers, stretchInWorker } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
@@ -38,7 +37,6 @@ export interface Fact {
 
 export type FocusTarget =
   | 'bar'
-  | 'clipboard'
   | 'deleteMessage'
   | 'deleteRest'
   | 'download'
@@ -105,13 +103,13 @@ export class ReadPage {
   revealRest = $state('');
   marked = $state.raw<MarkedText>();
   confirmingCopy = $state(false);
-  clipboard = $state<'cleared' | 'copied' | 'failed' | 'untouched'>('untouched');
   linkInHistory = $state(false);
   noise = $state('');
   settled = $state(false);
   secondsLeft = $state<number>();
   reservedOpens = $state<number>();
   readonly copied = new Flash(FLASH_MS);
+  readonly copyFailed = new Flash(FLASH_MS);
   readonly downloaded = new Flash(FLASH_MS);
   readonly focus = new FocusTargets<FocusTarget>();
   readonly glide = new Glide();
@@ -279,13 +277,6 @@ export class ReadPage {
     this.confirmingCopy = false;
   };
 
-  readonly clearClipboard = async (): Promise<void> => {
-    await clearClipboard((state) => {
-      this.clipboard = state;
-    });
-    await this.focus.keepFocusAfterUpdate('clipboard');
-  };
-
   readonly copyText = async (): Promise<void> => {
     this.confirmingCopy = false;
     if (!this.revealed?.text) {
@@ -293,11 +284,11 @@ export class ReadPage {
     }
     try {
       await navigator.clipboard.writeText(this.revealed.text);
-      this.clipboard = 'copied';
+      this.copyFailed.hide();
       this.copied.show();
     } catch {
       this.copied.hide();
-      this.clipboard = 'failed';
+      this.copyFailed.show();
     }
   };
 

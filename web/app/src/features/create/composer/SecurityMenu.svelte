@@ -5,6 +5,7 @@
   import Button from '../../../shared/ui/button/Button.svelte';
   import { privatePassphrase, submitOnEnter } from '../../../shared/ui/field/private-fields.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import ErrorNote from '../../../shared/ui/notice/ErrorNote.svelte';
   import Switch from '../../../shared/ui/switch/Switch.svelte';
   import { lingering } from '../../../shared/ui/transition/lingering.ts';
   import { WEAK_BELOW_WORDS } from '../create-message.ts';
@@ -74,7 +75,7 @@
             words: WEAK_BELOW_WORDS,
           })}
           aria-invalid={problem}
-          aria-describedby={problem ? `${id}-passphrase-hint ${id}-passphrase-problem` : `${id}-passphrase-hint`}
+          aria-describedby={problem ? `${id}-passphrase-problem` : undefined}
           class="h-full min-w-0 flex-1 bg-transparent text-ui text-ink outline-none placeholder:text-ink-mute"
         />
       </div>
@@ -83,24 +84,18 @@
         {translate('compose.passphrase.generate')}
       </Button>
     </div>
-    <div class="relative mt-2 grid *:col-start-1 *:row-start-1">
-      <p
-        id="{id}-passphrase-hint"
-        class={['text-micro text-pretty text-ink-mute transition-opacity duration-300', problem && 'opacity-0']}
-        aria-hidden={problem}
-      >
-        {translate('create.passphrase.hint')}
-      </p>
-      <p
+    <div
+      class={[
+        'overflow-y-clip transition-[opacity,height,margin] duration-300 [interpolate-size:allow-keywords]',
+        problem ? 'mt-2 h-auto opacity-100' : 'mt-0 h-0 opacity-0',
+      ]}
+      inert={!problem}
+    >
+      <ErrorNote
         id="{id}-passphrase-problem"
-        class={[
-          'flex items-start gap-1.5 text-caption text-rose-300 transition-opacity duration-300',
-          !problem && 'absolute inset-x-0 top-0 opacity-0',
-        ]}
-        aria-hidden={!problem}
-      >
-        {keepProblem(problem ? composer.passphraseMessage : '')}
-      </p>
+        message={keepProblem(problem ? composer.passphraseMessage : '')}
+        class="py-0.5"
+      />
     </div>
   </div>
 </ComposerMenu>

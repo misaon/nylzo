@@ -233,7 +233,7 @@ test('the client solves the proof of work the instance asks for', async ({ newPa
   await expect(recipient.locator('pre')).toHaveText('pow');
 });
 
-test('the sender can hand the link to the share sheet and clear the clipboard after copying', async ({ page }) => {
+test('the sender can hand the link to the share sheet and copy it', async ({ page }) => {
   await page.addInitScript(() => {
     const calls: string[] = [];
     Object.defineProperty(globalThis, 'nylzoClipboard', { value: calls });
@@ -263,11 +263,9 @@ test('the sender can hand the link to the share sheet and clear the clipboard af
   const link = await createMessageInPage(page, { text: 'share me' });
   await page.getByRole('button', { name: 'Share', exact: true }).click();
   await page.getByRole('button', { name: 'Copy link' }).click();
-  await page.getByRole('button', { name: 'Clear clipboard' }).click();
-  await expect(page.getByText('The clipboard is empty.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: 'Copied' })).toBeAttached();
   expect(await page.evaluate(() => Reflect.get(globalThis, 'nylzoClipboard') as unknown)).toEqual([
     `share ${link}`,
     `copy ${link}`,
-    'copy ',
   ]);
 });

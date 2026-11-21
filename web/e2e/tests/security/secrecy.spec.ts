@@ -113,6 +113,7 @@ test(
     await page.getByLabel('Message text').fill('kept out of session restore');
     await page.getByRole('button', { name: 'Create link' }).click();
     await expect(page.getByLabel('Link to the message')).toHaveAttribute('autocomplete', 'off', { timeout: 45_000 });
+    await page.getByRole('button', { name: 'Track in Sent' }).click();
     await expectAttributes(page.getByPlaceholder(/label/iu), quiet);
 
     await page.goto(message.link);

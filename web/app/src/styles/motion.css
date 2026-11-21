@@ -16,7 +16,6 @@
   --animate-scan: scan 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   --animate-blink: blink 1.1s steps(1, end) infinite;
   --animate-wave: wave 0.7s var(--ease-silk) both;
-  --animate-wheel: wheel 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
   --animate-who-read-message: who-source 10s var(--ease-silk) 0s infinite;
   --animate-who-read-file: who-source 10s var(--ease-silk) 3s infinite;
   --animate-who-read-key: who-source 10s var(--ease-silk) 6s infinite;
@@ -195,24 +194,6 @@
     100% {
       transform: translate3d(330%, 0, 0);
       opacity: 0;
-    }
-  }
-  @keyframes wheel {
-    0% {
-      transform: translate3d(0, 0, 0);
-      opacity: 1;
-    }
-    65% {
-      transform: translate3d(0, 10px, 0);
-      opacity: 0;
-    }
-    66% {
-      transform: translate3d(0, 0, 0);
-      opacity: 0;
-    }
-    100% {
-      transform: translate3d(0, 0, 0);
-      opacity: 1;
     }
   }
   @keyframes who-source {

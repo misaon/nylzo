@@ -251,13 +251,9 @@ describe('message composer interactions', () => {
     expect(focus).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    [true, true],
-    [true, false],
-    [false, true],
-  ])(
-    'saves the manage key only when the sender asks, in the browser only when kept, and shows the result: kept=%s stored=%s',
-    async (keep, stored) => {
+  it.each([true, false])(
+    'saves the manage key in the browser only when the sender asks, and retries a failed save in the tab: stored=%s',
+    async (stored) => {
       const form = composer();
       form.text = 'remember this message';
       const gate = Promise.withResolvers<boolean>();
@@ -265,9 +261,9 @@ describe('message composer interactions', () => {
       await submit(form);
       vi.advanceTimersByTime(5100);
       expect(rememberSent).not.toHaveBeenCalled();
-      const remembering = form.remember('  Heslo pro Petra ', keep);
+      const remembering = form.remember('  Heslo pro Petra ');
       expect(rememberSent).toHaveBeenCalledWith(
-        keep ? browser : session,
+        browser,
         {
           id: created.id,
           createdAt: Date.now(),
@@ -277,16 +273,16 @@ describe('message composer interactions', () => {
         },
         5000,
       );
-      expect(browserSentStore).toHaveBeenCalledTimes(keep ? 1 : 0);
+      expect(browserSentStore).toHaveBeenCalledOnce();
       expect(form.remembered).toBe('saving');
       gate.resolve(stored);
       await remembering;
       expect(form.remembered).toBe(stored ? 'remembered' : 'failed');
-      expect(form.kept).toBe(keep);
-      await form.remember('', true);
-      expect(vi.mocked(rememberSent).mock.calls).toHaveLength(1);
-      await form.remember('', false);
-      expect(vi.mocked(rememberSent).mock.calls).toHaveLength(keep && !stored ? 2 : 1);
+      expect(form.kept).toBe(true);
+      await form.remember('');
+      expect(vi.mocked(rememberSent).mock.calls).toHaveLength(stored ? 1 : 2);
+      expect(vi.mocked(rememberSent).mock.lastCall?.[0]).toBe(stored ? browser : session);
+      expect(form.kept).toBe(stored);
     },
   );
 
@@ -296,10 +292,9 @@ describe('message composer interactions', () => {
     form.text = 'local client';
     await submit(form);
     vi.advanceTimersByTime(5100);
-    await form.remember('', true);
-    expect(rememberSent).not.toHaveBeenCalled();
-    await form.remember('', false);
-    expect(rememberSent).toHaveBeenCalledWith(session, expect.objectContaining({ id: created.id }), 5000);
+    await form.remember('');
+    expect(rememberSent).toHaveBeenCalledExactlyOnceWith(session, expect.objectContaining({ id: created.id }), 5000);
+    expect(browserSentStore).not.toHaveBeenCalled();
   });
 
   it('does not update a reset form when saving a previous record finishes late', async () => {
@@ -309,7 +304,7 @@ describe('message composer interactions', () => {
     vi.mocked(rememberSent).mockReturnValueOnce(gate.promise);
     await submit(form);
     vi.advanceTimersByTime(5100);
-    const remembering = form.remember('', true);
+    const remembering = form.remember('');
     await form.another();
     gate.resolve(true);
     await remembering;
