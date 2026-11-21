@@ -159,7 +159,7 @@ describe('read interface', () => {
     expect(target.textContent).toContain(translator.translate(state.key));
   });
 
-  it('shows progress, reveals hidden characters, confirms copying, and clears the clipboard', async () => {
+  it('shows progress, reveals hidden characters and confirms copying', async () => {
     show();
     ready();
     view({ view: 'busy', step: 'claiming' });
@@ -177,10 +177,6 @@ describe('read interface', () => {
     button(translator.translate('revealed.hidden.copy')).click();
     await tick();
     expect(writeText).toHaveBeenCalledExactlyOnceWith('hello\u{200B}world');
-    button(translator.translate('clipboard.clear')).click();
-    await tick();
-    expect(writeText).toHaveBeenLastCalledWith('');
-    expect(target.textContent).toContain(translator.translate('clipboard.cleared'));
     dispatchEvent(new Event('pagehide'));
     flushSync();
     expect(target.querySelector('pre')).toBeNull();

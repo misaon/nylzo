@@ -6,15 +6,9 @@ export const messages: Catalog = {
   'start.failed': 'Die Seite konnte nicht starten. Prüfen Sie die Verbindung und versuchen Sie es erneut.',
   'start.failed.reopen': 'Die Seite konnte nicht starten. Prüfen Sie die Verbindung und öffnen Sie den Link erneut.',
 
-  'hero.eyebrow': 'Verschlüsselte Einmal-Links',
-  'hero.steps': 'So funktioniert es',
-  'hero.step.write': 'Nachricht schreiben',
-  'hero.step.send': 'Link senden',
-  'hero.step.vanish': 'Verschwindet nach dem Lesen',
   'hero.proof.label': 'Die wichtigsten Vorteile',
-  'hero.proof.encrypted': 'Verschlüsselt in Ihrem Browser',
-  'hero.proof.cipher': 'AES-256-GCM',
-  'hero.proof.tls': 'Post-Quanten-TLS',
+  'hero.proof.encrypted': 'Im Browser verschlüsselt',
+  'hero.proof.free': 'Kostenlos, ohne Registrierung',
   'hero.proof.open': 'Open Source',
   'terms.eyebrow': 'Rechtliches',
   'terms.title': 'Nutzungsbedingungen',
@@ -147,8 +141,6 @@ export const messages: Catalog = {
   'create.text': 'Nachrichtentext',
   'create.file.clear': 'Anhang entfernen',
   'create.passphrase': 'Passwort',
-  'create.passphrase.hint':
-    'Wir erzeugen ein zufälliges Passwort, das sich leicht diktieren lässt. Senden Sie das Passwort auf einem anderen Weg als den Link an den Empfänger.',
   'create.passphrase.weak': 'Wir empfehlen mindestens {words} zufällige Wörter und zugleich {characters} Zeichen.',
 
   'ttl.3600': '1\u{A0}Stunde',
@@ -188,11 +180,6 @@ export const messages: Catalog = {
   'created.link': 'Link zur Nachricht',
   'created.copy': 'Link kopieren',
   'created.share': 'Teilen',
-  'clipboard.copied':
-    'Kopiert. Eine Kopie kann im Verlauf der Zwischenablage und in einer synchronisierten Zwischenablage bleiben.',
-  'clipboard.clear': 'Zwischenablage leeren',
-  'clipboard.cleared':
-    'Die Zwischenablage ist leer. Kopien, die schon im Verlauf der Zwischenablage sind, bleiben dort.',
   'created.another': 'Neue Nachricht',
   'created.remembered': 'Dieses Gerät hat sich die Nachricht gemerkt.',
   'created.remembered.session': 'Dieser Tab merkt sich die Nachricht, höchstens bis Sie ihn schließen oder neu laden.',
@@ -215,24 +202,18 @@ export const messages: Catalog = {
   'sent.state.cancelled': 'Widerrufen',
   'sent.state.deleted': 'Gelöscht',
   'sent.state.lost': 'Verloren',
-  'sent.label.time': 'Gültigkeit',
-  'sent.label.opens': 'Aufrufe',
-  'sent.label.attempts': 'Fehlgeschlagene Versuche',
-  'sent.label.first_opened': 'Erster Aufruf',
-  'sent.not_opened': 'noch nicht',
-  'sent.until': 'bis {time}',
-  'sent.opens': '{used} von {max}',
+  'sent.attempts': 'Fehlgeschlagene Versuche: {count}',
+  'sent.first_opened': 'Erster Aufruf: {time}',
+  'sent.until': 'Gültig bis {time}',
+  'sent.opens': 'Aufrufe: {used} von {max}',
   'sent.unknown':
-    'Der Server hat die Nachricht nicht gefunden. Vielleicht ist sie schon beendet. Wenn Sie sie hier nicht mehr brauchen, entfernen Sie sie.',
+    'Der Server hat die Nachricht nicht gefunden. Vielleicht ist sie schon beendet. Mit „Liste leeren“ entfernen Sie den Eintrag.',
   'sent.failed': 'Der Status konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.',
   'sent.cancel': 'Nachricht widerrufen',
   'sent.cancel.confirm': 'Nach dem Widerruf kann niemand mehr die Nachricht öffnen.',
   'sent.cancel.yes': 'Ja, widerrufen',
   'sent.cancel.no': 'Behalten',
   'sent.cancelled': 'Die Nachricht ist widerrufen.',
-  'sent.forget': 'Entfernen',
-  'sent.forget.confirm': 'Eine entfernte Nachricht können Sie von hier aus nicht mehr widerrufen.',
-  'sent.forget.yes': 'Ja, entfernen',
   'sent.forget_all': 'Liste leeren',
   'sent.forget_all.confirm': 'Die Nachrichten aus der Liste können Sie von hier aus nicht mehr widerrufen.',
   'sent.forget_all.yes': 'Ja, leeren',
@@ -244,20 +225,14 @@ export const messages: Catalog = {
   'sent.state.unknown': 'Nicht gefunden',
   'sent.state.failed': 'Status unbekannt',
   'sent.state.loading': 'Wird geladen',
-  'sent.ended.opened':
-    'Geöffnet am {time}. Vom Server gelöscht, der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
-  'sent.ended.expired':
-    'Abgelaufen am {time}. Vom Server gelöscht, der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
-  'sent.ended.cancelled':
-    'Widerrufen am {time}. Vom Server gelöscht, der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
-  'sent.ended.deleted':
-    'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt. Der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
+  'sent.ended.opened': 'Geöffnet am {time}. Vom Server gelöscht.',
+  'sent.ended.expired': 'Abgelaufen am {time}. Vom Server gelöscht.',
+  'sent.ended.cancelled': 'Widerrufen am {time}. Vom Server gelöscht.',
+  'sent.ended.deleted': 'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt.',
   'sent.ended.lost':
-    'Der Server hat den Schlüssel dazu verloren, meist bei einem Neustart, daher kann sie niemand mehr öffnen. Senden Sie sie erneut, wenn sie noch gebraucht wird. Der Eintrag verschwindet, wenn Sie diese Seite verlassen.',
+    'Der Server hat den Schlüssel dazu verloren, meist bei einem Neustart, daher kann sie niemand mehr öffnen. Senden Sie sie erneut, wenn sie noch gebraucht wird.',
   'sent.cancel.title': 'Nachricht „{label}“ widerrufen?',
   'sent.cancel.title.untitled': 'Nachricht widerrufen?',
-  'sent.forget.label': 'Aus der Liste entfernen',
-  'sent.forget.title': 'Nachricht aus der Liste entfernen?',
   'sent.forget_all.title': 'Ganze Liste leeren?',
 
   'read.title': 'Einmalige Nachricht',
@@ -277,8 +252,7 @@ export const messages: Catalog = {
     'Die Zeit zum erneuten Laden der Nachricht auf dieser Seite ist abgelaufen. Das Anzeigen verbraucht jetzt einen weiteren Aufruf.',
   'read.device':
     'Beim letzten Mal konnte dieses Gerät das Passwort nicht verarbeiten. Falls das wieder passiert, öffnen Sie den Link auf einem anderen Gerät.',
-  'read.rejected.wrong':
-    'Das Passwort stimmt nicht. Sie haben die Nachricht noch nicht geöffnet. Noch {attempts}, danach müssen Sie kurz warten.',
+  'read.rejected.wrong': 'Das Passwort stimmt nicht. Sie haben die Nachricht noch nicht geöffnet. Noch {attempts}.',
   'read.rejected.wait': 'Das Passwort stimmt nicht. Der nächste Versuch ist in {time} möglich.',
   'read.rejected.malformed': 'Das Passwort enthält ungültige Zeichen.',
   'read.rejected.long': 'Das Passwort ist zu lang.',
@@ -287,8 +261,6 @@ export const messages: Catalog = {
   'read.delete.rest.short': 'Löschen',
   'read.delete.rest.confirm': 'Verbleibende Aufrufe löschen?',
   'read.delete.confirm.title': 'Nachricht löschen, ohne sie zu öffnen?',
-  'read.note':
-    'Kostenlos und ohne Registrierung. Die Seite mit der Nachricht verwendet keine Cookies und keine Reichweitenmessung.',
   'read.terms': 'Mit dem Anzeigen der Nachricht stimmen Sie den {link} zu.',
   'read.copy_failed':
     'Kopieren ist fehlgeschlagen. Markieren Sie den Text der Nachricht und kopieren Sie ihn von Hand.',
@@ -426,7 +398,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Wir nutzen keinen externen Dienst zur Besucheranalyse.',
   'transparency.personal.browser.title': 'In Ihrem Browser',
   'transparency.personal.browser':
-    'Die gewählte Sprache, eine vorübergehende Angabe während des Öffnens einer Nachricht und die Liste unter Gesendet, wenn Sie eine verfolgte Nachricht auch nach dem Schließen des Tabs behalten. Das ist für Funktionen erforderlich, die Sie anfordern, und bedarf daher keiner Einwilligung.',
+    'Die gewählte Sprache, eine vorübergehende Angabe während des Öffnens einer Nachricht und die Liste unter Gesendet, wenn Sie eine Nachricht verfolgen. Das ist für Funktionen erforderlich, die Sie anfordern, und bedarf daher keiner Einwilligung.',
   'transparency.limits.title': 'Limits dieser Instanz',
   'transparency.limits.short': 'Limits',
   'transparency.limits.file': 'Größter Anhang',
@@ -523,8 +495,7 @@ export const messages: Catalog = {
   'compose.attach': 'Anhang bis {size}',
   'compose.submit': 'Link erstellen',
   'compose.encrypting': 'Wird verschlüsselt',
-  'compose.note':
-    'Kostenlos, ohne Registrierung und ohne Cookies. Mit dem Erstellen eines Links stimmen Sie den {link} zu.',
+  'compose.note': 'Mit dem Erstellen eines Links stimmen Sie den {link} zu.',
   'terms.agree.link': 'Nutzungsbedingungen',
   'link.new_tab': '(öffnet sich in einem neuen Tab)',
 
@@ -555,8 +526,6 @@ export const messages: Catalog = {
   'created.copy.short': 'Kopieren',
   'created.copy_failed': 'Kopieren hat nicht geklappt. Der Link ist markiert, kopieren Sie ihn von Hand.',
   'created.once': 'Sie sehen den Link nur jetzt. Öffnen Sie ihn nicht selbst, sonst verbrauchen Sie einen Aufruf.',
-  'created.legend.server': 'Der Server erhält die Adresse und die Nachrichten-ID',
-  'created.legend.key': 'Den Schlüssel hinter # sendet der Browser nicht',
   'created.passphrase.show': 'Passwort anzeigen',
   'created.passphrase.hide': 'Passwort ausblenden',
   'created.passphrase.copy': 'Passwort kopieren',
@@ -564,8 +533,7 @@ export const messages: Catalog = {
   'created.track.note':
     'Sie sehen, ob jemand die Nachricht geöffnet hat, und können sie widerrufen. Nur dieser Tab merkt sie sich, höchstens bis Sie ihn schließen oder neu laden.',
   'created.track.note.kept':
-    'Sie sehen, ob jemand die Nachricht geöffnet hat, und können sie widerrufen. Sie wird in diesem Browser gespeichert, also kann sie jeder widerrufen, der Zugriff auf diesen Browser hat.',
-  'created.track.keep': 'Auch nach dem Schließen des Tabs merken',
+    'Sie sehen, ob jemand die Nachricht geöffnet hat, und können sie widerrufen. Sie wird in diesem Browser gespeichert.',
   'created.track.label': 'Bezeichnung, nur für Sie sichtbar',
   'created.track.placeholder': 'Bezeichnung, z.\u{A0}B. „Passwort für Thomas“',
   'created.track.save': 'Speichern',
@@ -578,7 +546,6 @@ export const messages: Catalog = {
     'Sie erscheint erst nach einem Klick, der einen Aufruf verbraucht. Nach dem letzten Aufruf löscht der Server sie.',
   'open.loading.text': 'Der Link wird beim Server geprüft.',
   'open.passphrase.placeholder': 'Passwort vom Absender',
-  'open.passphrase.hint': 'Das Passwort hat Ihnen der Absender separat geschickt, zum Beispiel per SMS oder Telefon.',
   'open.passphrase.show': 'Passwort anzeigen',
   'open.passphrase.hide': 'Passwort ausblenden',
   'open.passphrase.empty': 'Geben Sie das Passwort vom Absender ein.',

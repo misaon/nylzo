@@ -183,7 +183,9 @@
           {:else if screen === 'notFound'}
             <NotFound />
           {:else}
-            <div class="mx-auto max-w-column px-4 pt-16 pb-24 sm:px-6 md:pt-24">
+            <div
+              class={['mx-auto px-4 pt-16 pb-24 sm:px-6 md:pt-24', screen === 'sent' ? 'max-w-wide' : 'max-w-column']}
+            >
               <div class="glass animate-rise-visible rounded-card p-6 [animation-delay:80ms] md:p-10">
                 {#if screen === 'sent'}
                   <Sent />

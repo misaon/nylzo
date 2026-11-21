@@ -117,7 +117,7 @@
               >
             {:else}
               <span class="grid h-7 items-center text-aegis-200">
-                <Icon name="gauge" class="size-7" stroke={1.5} />
+                <Icon name="gauge" viewBox="3.2 4.6 17.6 12.8" class="h-5 w-7" stroke={1.2} />
               </span>
             {/if}
             <span class="text-micro wrap-anywhere text-ink-soft">{test.name}</span>

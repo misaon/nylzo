@@ -24,6 +24,12 @@
   const reservedFacts = $derived(
     page.reservedOpens === undefined ? [] : openedFacts(translator, page.reservedOpens, SHOWN_SECONDS),
   );
+  const deleteState = $derived(page.ready === undefined && page.actions !== 'dim' ? 'off' : page.actions);
+  const DELETE_STATES = {
+    on: 'opacity-100',
+    dim: 'pointer-events-none opacity-40',
+    off: 'pointer-events-none opacity-0',
+  } as const;
   const AFTER_BAR =
     'flex flex-col justify-center p-3 fade-swap max-sm:gap-4 max-sm:px-5 max-sm:pt-4 max-sm:pb-5 sm:flex-row sm:items-center sm:gap-3 sm:pl-4';
   const AFTER_FACTS =
@@ -87,6 +93,17 @@
         'min-h-6 py-0.5 transition-opacity duration-500 max-sm:w-full sm:min-h-5 sm:gap-x-4 sm:px-2 sm:py-0',
         page.phase === 'opening' ? 'pointer-events-none opacity-40' : 'opacity-100',
       ])}
+      <Button
+        {@attach page.focus.attach('deleteMessage')}
+        variant="danger"
+        size="compact"
+        disabled={page.actions !== 'on' || page.ready === undefined || page.deleting}
+        onclick={() => void page.askDelete()}
+        class={['transition-opacity duration-500 max-sm:self-end', DELETE_STATES[deleteState]]}
+      >
+        <Icon name="trash" class="size-4 shrink-0" animated />
+        {translate('read.delete')}
+      </Button>
     </div>
 
     <div

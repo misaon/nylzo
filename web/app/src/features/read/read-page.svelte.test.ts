@@ -306,11 +306,8 @@ describe('read page interactions', () => {
     await page.askCopy();
     await page.copyText();
     expect(writeText).toHaveBeenCalledExactlyOnceWith('hello\u{200B}world');
-    expect(page.clipboard).toBe('copied');
     expect(page.copied.shown).toBe(true);
-    await page.clearClipboard();
-    expect(writeText).toHaveBeenLastCalledWith('');
-    expect(page.clipboard).toBe('cleared');
+    expect(page.copyFailed.shown).toBe(false);
   });
 
   it('handles clipboard refusal without a false success indication', async () => {
@@ -321,15 +318,14 @@ describe('read page interactions', () => {
     vi.mocked(writeText).mockRejectedValueOnce(new Error('clipboard denied'));
     await page.copyText();
     expect(page.copied.shown).toBe(false);
-    expect(page.clipboard).toBe('failed');
+    expect(page.copyFailed.shown).toBe(true);
     await page.askCopy();
     expect(page.copied.shown).toBe(true);
+    expect(page.copyFailed.shown).toBe(false);
     vi.mocked(writeText).mockRejectedValue(new Error('clipboard denied'));
     await page.copyText();
     expect(page.copied.shown).toBe(false);
-    expect(page.clipboard).toBe('failed');
-    await page.clearClipboard();
-    expect(page.clipboard).toBe('copied');
+    expect(page.copyFailed.shown).toBe(true);
   });
 
   it.each<BurnOutcome>([

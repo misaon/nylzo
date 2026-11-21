@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
+  import BurnNote from './BurnNote.svelte';
   import CardBars from './CardBars.svelte';
-  import MessageActions from './MessageActions.svelte';
   import NoticePanel from './NoticePanel.svelte';
   import OpeningPanel from './OpeningPanel.svelte';
   import { isEnded } from './read-notice.ts';
@@ -78,9 +78,8 @@
           </div>
           <CardBars {page} />
         </div>
+        <BurnNote {page} />
       </div>
-
-      <MessageActions {page} />
     </div>
   {/if}
 </section>

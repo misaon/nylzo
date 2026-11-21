@@ -4,6 +4,7 @@
   import Button from '../../../shared/ui/button/Button.svelte';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import { ARROW_LINK, INLINE_TARGET, TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
+  import ErrorNote from '../../../shared/ui/notice/ErrorNote.svelte';
   import ServiceCallout from '../../../shared/ui/notice/ServiceCallout.svelte';
   import { lingering } from '../../../shared/ui/transition/lingering.ts';
   import type { Composer } from './composer.svelte.ts';
@@ -41,11 +42,7 @@
     ]}
     inert={!quiet}
   >
-    <Icon
-      name="shieldCheck"
-      stroke={1.7}
-      class="mr-2 inline-block size-4 shrink-0 align-[-3px] text-aegis-300"
-    /><Interpolated text={translate('compose.note')} placeholder="link"
+    <Interpolated text={translate('compose.note')} placeholder="link"
       ><a href="/terms" target="_blank" rel="noreferrer" class={[TEXT_LINK, INLINE_TARGET]}
         >{translate('terms.agree.link')}<span class="sr-only"> {translate('link.new_tab')}</span></a
       ></Interpolated
@@ -69,11 +66,11 @@
   </div>
   <div
     class={[
-      'absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center text-center fade-swap',
+      'absolute inset-x-0 top-1/2 z-30 flex -translate-y-1/2 items-center justify-center text-left fade-swap',
       composer.problemNotice === '' ? 'pointer-events-none invisible opacity-0' : 'opacity-100',
     ]}
   >
-    <p id={noticeId} role="alert" class="font-medium text-balance text-[#fda4af]">{problemNotice}</p>
+    <ErrorNote id={noticeId} message={problemNotice} />
   </div>
   <div
     class={[

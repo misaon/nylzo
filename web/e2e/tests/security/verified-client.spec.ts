@@ -159,7 +159,6 @@ test(
         local,
       );
       expect(link.startsWith(`${hostile.origin}/r#`), 'links from the verified client name the instance').toBe(true);
-      await expect(sender.getByRole('switch', { name: 'Keep after closing this tab' })).toHaveCount(0);
       await trackInSent(sender, '', 'tab');
       expect(await sender.evaluate(async () => indexedDB.databases())).toEqual([]);
 

@@ -6,15 +6,9 @@ export const messages: Catalog = {
   'start.failed': 'La page n’a pas pu démarrer. Vérifiez votre connexion et réessayez.',
   'start.failed.reopen': 'La page n’a pas pu démarrer. Vérifiez votre connexion et rouvrez le lien.',
 
-  'hero.eyebrow': 'Liens chiffrés à usage unique',
-  'hero.steps': 'Comment ça marche',
-  'hero.step.write': 'Écrivez un message',
-  'hero.step.send': 'Envoyez le lien',
-  'hero.step.vanish': 'Il disparaît une fois lu',
   'hero.proof.label': 'Points forts',
-  'hero.proof.encrypted': 'Chiffré dans votre navigateur',
-  'hero.proof.cipher': 'AES-256-GCM',
-  'hero.proof.tls': 'TLS post-quantique',
+  'hero.proof.encrypted': 'Chiffré dans le navigateur',
+  'hero.proof.free': 'Gratuit, sans inscription',
   'hero.proof.open': 'Open source',
   'terms.eyebrow': 'Informations juridiques',
   'terms.title': 'Conditions d’utilisation',
@@ -148,8 +142,6 @@ export const messages: Catalog = {
   'create.text': 'Texte du message',
   'create.file.clear': 'Retirer la pièce jointe',
   'create.passphrase': 'Mot de passe',
-  'create.passphrase.hint':
-    'Nous générons un mot de passe aléatoire, facile à dicter. Envoyez-le au destinataire par un autre moyen que le lien.',
   'create.passphrase.weak': 'Nous recommandons au moins {words} mots aléatoires et au moins {characters} caractères.',
 
   'ttl.3600': '1\u{A0}heure',
@@ -188,11 +180,6 @@ export const messages: Catalog = {
   'created.link': 'Lien vers le message',
   'created.copy': 'Copier le lien',
   'created.share': 'Partager',
-  'clipboard.copied':
-    'Copié. Une copie peut rester dans l’historique du presse-papiers et dans le presse-papiers synchronisé.',
-  'clipboard.clear': 'Vider le presse-papiers',
-  'clipboard.cleared':
-    'Le presse-papiers est vide. Les copies déjà présentes dans l’historique du presse-papiers y restent.',
   'created.another': 'Nouveau message',
   'created.remembered': 'Cet appareil a mémorisé le message.',
   'created.remembered.session':
@@ -215,24 +202,18 @@ export const messages: Catalog = {
   'sent.state.cancelled': 'Annulé',
   'sent.state.deleted': 'Supprimé',
   'sent.state.lost': 'Perdu',
-  'sent.label.time': 'Validité',
-  'sent.label.opens': 'Ouvertures',
-  'sent.label.attempts': 'Tentatives échouées',
-  'sent.label.first_opened': 'Première ouverture',
-  'sent.not_opened': 'pas encore',
-  'sent.until': 'jusqu’au {time}',
-  'sent.opens': '{used} sur {max}',
+  'sent.attempts': 'Tentatives échouées: {count}',
+  'sent.first_opened': 'Première ouverture: {time}',
+  'sent.until': 'Valable jusqu’au {time}',
+  'sent.opens': 'Ouvertures: {used} sur {max}',
   'sent.unknown':
-    'Le serveur n’a pas trouvé le message. Il est peut-être déjà terminé. Si vous n’en avez plus besoin ici, retirez-le.',
+    'Le serveur n’a pas trouvé le message. Il est peut-être déjà terminé. « Vider la liste » retire l’entrée.',
   'sent.failed': 'Impossible de charger l’état. Vérifiez la connexion et réessayez.',
   'sent.cancel': 'Annuler le message',
   'sent.cancel.confirm': 'Une fois le message annulé, plus personne ne pourra l’ouvrir.',
   'sent.cancel.yes': 'Oui, annuler',
   'sent.cancel.no': 'Conserver',
   'sent.cancelled': 'Le message est annulé.',
-  'sent.forget': 'Retirer',
-  'sent.forget.confirm': 'Un message retiré de la liste ne pourra plus être annulé d’ici.',
-  'sent.forget.yes': 'Oui, retirer',
   'sent.forget_all': 'Vider la liste',
   'sent.forget_all.confirm': 'Les messages de la liste ne pourront plus être annulés d’ici.',
   'sent.forget_all.yes': 'Oui, vider',
@@ -244,20 +225,14 @@ export const messages: Catalog = {
   'sent.state.unknown': 'Introuvable',
   'sent.state.failed': 'État inconnu',
   'sent.state.loading': 'Chargement',
-  'sent.ended.opened':
-    'Ouvert le {time}. Il a été supprimé du serveur, l’entrée disparaîtra quand vous quitterez cette page.',
-  'sent.ended.expired':
-    'Expiré le {time}. Il a été supprimé du serveur, l’entrée disparaîtra quand vous quitterez cette page.',
-  'sent.ended.cancelled':
-    'Annulé le {time}. Il a été supprimé du serveur, l’entrée disparaîtra quand vous quitterez cette page.',
-  'sent.ended.deleted':
-    'Le destinataire l’a supprimé, ou l’exploitant l’a retiré. L’entrée disparaîtra quand vous quitterez cette page.',
+  'sent.ended.opened': 'Ouvert le {time}. Il a été supprimé du serveur.',
+  'sent.ended.expired': 'Expiré le {time}. Il a été supprimé du serveur.',
+  'sent.ended.cancelled': 'Annulé le {time}. Il a été supprimé du serveur.',
+  'sent.ended.deleted': 'Le destinataire l’a supprimé, ou l’exploitant l’a retiré.',
   'sent.ended.lost':
-    'Le serveur a perdu sa clé, le plus souvent lors d’un redémarrage, et plus personne ne peut l’ouvrir. Renvoyez-le s’il est encore utile. L’entrée disparaîtra quand vous quitterez cette page.',
+    'Le serveur a perdu sa clé, le plus souvent lors d’un redémarrage, et plus personne ne peut l’ouvrir. Renvoyez-le s’il est encore utile.',
   'sent.cancel.title': 'Annuler le message «\u{A0}{label}\u{A0}»\u{A0}?',
   'sent.cancel.title.untitled': 'Annuler le message\u{A0}?',
-  'sent.forget.label': 'Retirer de la liste',
-  'sent.forget.title': 'Retirer le message de la liste\u{A0}?',
   'sent.forget_all.title': 'Vider toute la liste\u{A0}?',
 
   'read.title': 'Message à usage unique',
@@ -277,8 +252,7 @@ export const messages: Catalog = {
     'Le délai pour recharger le message sur cette page est écoulé. L’afficher maintenant consommera une nouvelle ouverture.',
   'read.device':
     'La dernière fois, cet appareil n’a pas réussi à traiter le mot de passe. Si cela se reproduit, ouvrez le lien sur un autre appareil.',
-  'read.rejected.wrong':
-    'Mot de passe incorrect. Vous n’avez pas encore ouvert le message. Il vous reste {attempts}, ensuite il faudra patienter un peu.',
+  'read.rejected.wrong': 'Mot de passe incorrect. Vous n’avez pas encore ouvert le message. Il vous reste {attempts}.',
   'read.rejected.wait': 'Mot de passe incorrect. Vous pourrez réessayer dans {time}.',
   'read.rejected.malformed': 'Le mot de passe contient des caractères non valides.',
   'read.rejected.long': 'Le mot de passe est trop long.',
@@ -287,7 +261,6 @@ export const messages: Catalog = {
   'read.delete.rest.short': 'Supprimer',
   'read.delete.rest.confirm': 'Supprimer les ouvertures restantes\u{A0}?',
   'read.delete.confirm.title': 'Supprimer le message sans l’ouvrir\u{A0}?',
-  'read.note': 'Gratuit et sans inscription. La page du message n’utilise ni cookies ni mesure d’audience.',
   'read.terms': 'En affichant le message, vous acceptez les {link}.',
   'read.copy_failed': 'La copie a échoué. Sélectionnez le texte du message et copiez-le à la main.',
   'read.delete.confirm': 'Ensuite, plus personne ne pourra l’ouvrir, pas même vous.',
@@ -426,7 +399,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Nous ne faisons appel à aucun service externe pour analyser les visites.',
   'transparency.personal.browser.title': 'Dans votre navigateur',
   'transparency.personal.browser':
-    'La langue choisie, une donnée temporaire pendant l’ouverture d’un message et la liste Envoyés si vous gardez un message suivi après la fermeture de l’onglet. Ces données sont nécessaires aux fonctions que vous demandez et ne requièrent donc pas de consentement.',
+    'La langue choisie, une donnée temporaire pendant l’ouverture d’un message et la liste Envoyés si vous suivez un message. Ces données sont nécessaires aux fonctions que vous demandez et ne requièrent donc pas de consentement.',
   'transparency.limits.title': 'Limites de cette instance',
   'transparency.limits.short': 'Limites',
   'transparency.limits.file': 'Taille maximale des pièces jointes',
@@ -523,7 +496,7 @@ export const messages: Catalog = {
   'compose.attach': 'Fichier max. {size}',
   'compose.submit': 'Créer le lien',
   'compose.encrypting': 'Chiffrement',
-  'compose.note': 'Gratuit, sans inscription et sans cookies. En créant un lien, vous acceptez les {link}.',
+  'compose.note': 'En créant un lien, vous acceptez les {link}.',
   'terms.agree.link': 'conditions d’utilisation',
   'link.new_tab': '(s’ouvre dans un nouvel onglet)',
 
@@ -553,8 +526,6 @@ export const messages: Catalog = {
   'created.copy.short': 'Copier',
   'created.copy_failed': 'La copie a échoué. Le lien est sélectionné, copiez-le manuellement.',
   'created.once': 'Vous ne voyez le lien que maintenant. Ne l’ouvrez pas vous-même, vous consommeriez une ouverture.',
-  'created.legend.server': 'Le serveur reçoit l’adresse et l’ID du message',
-  'created.legend.key': 'Le navigateur n’envoie pas la clé après #',
   'created.passphrase.show': 'Afficher le mot de passe',
   'created.passphrase.hide': 'Masquer le mot de passe',
   'created.passphrase.copy': 'Copier le mot de passe',
@@ -562,8 +533,7 @@ export const messages: Catalog = {
   'created.track.note':
     'Vous verrez si quelqu’un a ouvert le message, et vous pourrez l’annuler. Seul cet onglet le mémorise, au plus tard jusqu’à sa fermeture ou son rechargement.',
   'created.track.note.kept':
-    'Vous verrez si quelqu’un a ouvert le message, et vous pourrez l’annuler. Il est enregistré dans ce navigateur, donc toute personne qui y a accès pourra aussi l’annuler.',
-  'created.track.keep': 'Garder après la fermeture de l’onglet',
+    'Vous verrez si quelqu’un a ouvert le message, et vous pourrez l’annuler. Il est enregistré dans ce navigateur.',
   'created.track.label': 'Libellé, visible uniquement par vous',
   'created.track.placeholder': 'Libellé, p. ex. «\u{A0}Mot de passe pour Pierre\u{A0}»',
   'created.track.save': 'Enregistrer',
@@ -576,8 +546,6 @@ export const messages: Catalog = {
     'Il ne s’affiche qu’après un clic, qui consomme une ouverture. Après la dernière ouverture, le serveur le supprime.',
   'open.loading.text': 'Vérification du lien auprès du serveur.',
   'open.passphrase.placeholder': 'Mot de passe de l’expéditeur',
-  'open.passphrase.hint':
-    'L’expéditeur vous a envoyé le mot de passe séparément, par exemple par SMS ou par téléphone.',
   'open.passphrase.show': 'Afficher le mot de passe',
   'open.passphrase.hide': 'Masquer le mot de passe',
   'open.passphrase.empty': 'Saisissez le mot de passe de l’expéditeur.',

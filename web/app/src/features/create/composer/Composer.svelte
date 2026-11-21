@@ -19,27 +19,9 @@
   onDestroy(getScreenWork().watch(() => composer.phase === 'encrypting'));
   const id = $props.id();
   const noticeId = `${id}-notice`;
-  const HERO_STEPS = [
-    { key: 'hero.step.write', icon: 'write', badge: 'text-aegis-200 ring-1 ring-aegis-300/30', line: '', before: '' },
-    {
-      key: 'hero.step.send',
-      icon: 'share',
-      badge: 'text-aegis-200 ring-1 ring-aegis-300/30',
-      line: 'bg-aegis-300/40',
-      before: 'before:bg-aegis-300/40',
-    },
-    {
-      key: 'hero.step.vanish',
-      icon: 'burst',
-      badge: 'border border-dashed border-nebula-300/55 text-nebula-300',
-      line: 'bg-linear-to-r from-aegis-300/45 to-nebula-300/10',
-      before: 'before:bg-linear-to-r before:from-aegis-300/45 before:to-nebula-300/10',
-    },
-  ] as const;
   const HERO_PROOFS = [
     { key: 'hero.proof.encrypted', icon: 'lock' },
-    { key: 'hero.proof.cipher', icon: 'key' },
-    { key: 'hero.proof.tls', icon: 'atom' },
+    { key: 'hero.proof.free', icon: 'shieldCheck' },
     { key: 'hero.proof.open', icon: 'code' },
   ] as const;
   const PENDING_PASSPHRASE = 'pending';
@@ -62,7 +44,6 @@
   {@attach pauseOffscreen}
 >
   <div class="relative mx-auto max-w-column text-center">
-    <p class="mb-3 animate-rise text-eyebrow text-aegis-300 uppercase">{translate('hero.eyebrow')}</p>
     <h1 class="animate-rise-visible font-display text-hero font-light text-balance md:text-hero-lg">
       <Interpolated text={translate('hero.title')} placeholder="accent"
         ><span class="text-aegis-300">{translate('hero.title.accent')}</span></Interpolated
@@ -75,32 +56,9 @@
       ]}
       inert={composer.phase !== 'compose'}
     >
-      <p class="mx-auto mb-6 max-w-[36rem] animate-rise text-body text-pretty text-ink-soft [animation-delay:80ms]">
+      <p class="mx-auto max-w-[36rem] animate-rise text-body text-pretty text-ink-soft [animation-delay:80ms]">
         {translate('hero.lead')}
       </p>
-      <ol
-        role="list"
-        class="mx-auto grid w-full max-w-[360px] animate-rise grid-cols-3 [animation-delay:160ms] sm:flex sm:w-fit sm:max-w-none sm:items-center"
-        aria-label={translate('hero.steps')}
-      >
-        {#each HERO_STEPS as step, index (step.key)}
-          {#if index > 0}
-            <li aria-hidden="true" class={['hidden h-px w-10 sm:mx-3 sm:block', step.line]}></li>
-          {/if}
-          <li
-            class={[
-              'relative flex flex-col items-center gap-2 text-center sm:flex-row sm:gap-2.5 sm:text-left',
-              index > 0 && 'before:absolute before:top-4 before:right-1/2 before:h-px before:w-full sm:before:hidden',
-              index > 0 && step.before,
-            ]}
-          >
-            <span class={['glass-soft z-10 grid size-8 shrink-0 place-items-center rounded-full', step.badge]}>
-              <Icon name={step.icon} />
-            </span>
-            <span class="text-caption text-ink-soft sm:text-ui">{translate(step.key)}</span>
-          </li>
-        {/each}
-      </ol>
     </div>
   </div>
 
@@ -133,10 +91,10 @@
                 created={composer.sealed.created}
                 opensMax={composer.sealed.opensMax}
                 passphrase={composer.sealed.passphrase}
-                canKeep={composer.canKeep}
-                canTrackInTab={composer.canTrackInTab}
+                trackable={composer.trackable}
+                keeps={composer.keeps}
                 remembered={composer.remembered}
-                onremember={(label, keep) => void composer.remember(label, keep)}
+                onremember={(label) => void composer.remember(label)}
                 ontrackingleft={() => (composer.trackingPanelLeft = true)}
                 onanother={() => void composer.another()}
               />
@@ -149,10 +107,10 @@
                     created={composer.placeholder}
                     opensMax={composer.opensMax}
                     passphrase={composer.sealingWithPassphrase ? PENDING_PASSPHRASE : ''}
-                    canKeep={composer.canKeep}
-                    canTrackInTab={composer.canTrackInTab}
+                    trackable={composer.trackable}
+                    keeps={composer.keeps}
                     remembered="off"
-                    onremember={(label, keep) => void composer.remember(label, keep)}
+                    onremember={(label) => void composer.remember(label)}
                     ontrackingleft={() => (composer.trackingPanelLeft = true)}
                     onanother={() => void composer.another()}
                   />
@@ -168,11 +126,15 @@
     <ul
       role="list"
       aria-label={translate('hero.proof.label')}
-      class="glass-soft mx-auto mt-6 hidden w-fit animate-rise overflow-hidden rounded-full shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] [animation-delay:280ms] md:flex"
+      class={[
+        'glass-soft mx-auto mt-5 hidden w-fit animate-rise overflow-hidden rounded-full shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] transition-opacity duration-300 [animation-delay:280ms] [animation-fill-mode:backwards] md:flex',
+        composer.phase === 'done' && 'pointer-events-none opacity-0',
+      ]}
+      inert={composer.phase === 'done'}
     >
       {#each HERO_PROOFS as proof (proof.key)}
         <li
-          class="flex items-center gap-2.5 border-white/8 px-4 py-2 text-caption whitespace-nowrap text-ink-soft not-first:border-l"
+          class="flex items-center gap-2.5 border-white/8 px-5 py-2.5 text-caption whitespace-nowrap text-ink-soft not-first:border-l"
         >
           <Icon name={proof.icon} class="size-4 shrink-0 text-aegis-300" />
           <span>{translate(proof.key)}</span>
@@ -180,23 +142,5 @@
       {/each}
     </ul>
     <p class="sr-only" role="status" aria-live="polite">{composer.stepTitle}</p>
-
-    <a
-      href="#how-it-works"
-      aria-label={translate('nav.how')}
-      class="group mx-auto mt-12 flex w-fit animate-rise rounded-control p-3 [animation-delay:320ms]"
-    >
-      <span
-        class="hidden h-10 w-6 justify-center rounded-full border border-ink-mute/60 pt-2 transition-colors group-hover:border-ink-soft md:flex"
-        aria-hidden="true"
-      >
-        <span class="h-2 w-0.5 rounded-full bg-aegis-300 motion-safe:animate-wheel"></span>
-      </span>
-      <Icon
-        name="chevronDown"
-        class="size-5 text-ink-mute transition-colors group-hover:text-ink motion-safe:animate-bounce md:hidden"
-        stroke={1.7}
-      />
-    </a>
   </div>
 </section>

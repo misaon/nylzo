@@ -48,7 +48,6 @@ export interface SentPage {
   load(): Promise<void>;
   refresh(id: string): Promise<void>;
   cancel(id: string): Promise<CancelOutcome>;
-  forget(id: string): Promise<void>;
   forgetAll(): Promise<void>;
   stop(): void;
 }
@@ -279,12 +278,6 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
     return outcome;
   }
 
-  async function forget(id: string): Promise<void> {
-    const home = homes.get(id);
-    await (home ? home.remove(id) : Promise.all([session.remove(id), browser?.remove(id)]));
-    drop(id);
-  }
-
   function stop(): void {
     generation++;
     storageFailed = false;
@@ -307,5 +300,5 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
     show();
   }
 
-  return { load, refresh, cancel, forget, forgetAll, stop };
+  return { load, refresh, cancel, forgetAll, stop };
 }

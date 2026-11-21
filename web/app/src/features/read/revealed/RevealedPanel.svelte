@@ -24,12 +24,6 @@
   const hiddenCount = $derived(page.marked?.hidden ?? 0);
   const lastOpen = $derived(page.revealed !== undefined && !page.revealed.burnable && !page.restDeleted);
   const historyNoted = $derived(page.linkInHistory && ((page.revealed?.burnable ?? false) || page.restDeleted));
-  const CLIPBOARD_TEXT = {
-    untouched: 'clipboard.copied',
-    copied: 'clipboard.copied',
-    cleared: 'clipboard.cleared',
-    failed: 'read.copy_failed',
-  } as const;
 </script>
 
 <div
@@ -70,13 +64,27 @@
               page.copied.shown ? 'opacity-100' : 'opacity-0',
             ]}
           ></span>
-          <SwapIcon class="relative" from="copy" to="check" swapped={page.copied.shown} toTone="text-aegis-200" />
-          <span class="relative hidden sm:inline">{translate('open.copy.text')}</span>
+          <span class="relative stack justify-items-center">
+            <span class={['flex items-center gap-2 fade-swap', page.copyFailed.shown && 'opacity-0']}>
+              <SwapIcon from="copy" to="check" swapped={page.copied.shown} toTone="text-aegis-200" />
+              <span class="hidden sm:inline">{translate('open.copy.text')}</span>
+            </span>
+            <span
+              class={[
+                'flex items-center gap-2 text-rose-200 fade-swap',
+                page.copyFailed.shown ? 'opacity-100' : 'opacity-0',
+              ]}
+              aria-hidden="true"
+            >
+              <Icon name="alert" stroke={2} />
+              <span class="hidden sm:inline">{translate('action.copy_failed')}</span>
+            </span>
+          </span>
         </Button>
         <span class="sr-only" role="status"
           >{page.copied.shown
             ? translate('open.copied.text')
-            : page.clipboard === 'failed'
+            : page.copyFailed.shown
               ? translate('read.copy_failed')
               : ''}</span
         >
@@ -151,30 +159,6 @@
             title={translate('revealed.sender.title')}
             text={translate('revealed.sender.text')}
           />
-        </div>
-        <div
-          class={[
-            'text-caption text-ink-mute transition-[opacity,height,margin] [interpolate-size:allow-keywords]',
-            page.clipboard === 'untouched' ? '-mt-3 h-0 overflow-y-clip opacity-0' : 'mt-0 h-auto opacity-100',
-          ]}
-          inert={page.clipboard === 'untouched'}
-        >
-          <p
-            {@attach page.focus.attach('clipboard')}
-            role="status"
-            tabindex="-1"
-            class={[
-              'flex flex-wrap items-center gap-x-3 gap-y-1 px-1 outline-none',
-              page.clipboard === 'failed' && 'text-rose-300',
-            ]}
-          >
-            {translate(CLIPBOARD_TEXT[page.clipboard])}
-            {#if page.clipboard === 'copied' || page.clipboard === 'failed'}
-              <Button variant="ghost" size="compact" onclick={() => void page.clearClipboard()}>
-                {translate('clipboard.clear')}
-              </Button>
-            {/if}
-          </p>
         </div>
       </div>
       {#if page.revealed.file}

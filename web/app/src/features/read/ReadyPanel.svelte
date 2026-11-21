@@ -7,6 +7,7 @@
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../shared/ui/icon/SwapIcon.svelte';
   import { INLINE_TARGET, TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
+  import ErrorNote from '../../shared/ui/notice/ErrorNote.svelte';
   import { lingering } from '../../shared/ui/transition/lingering.ts';
   import type { ReadPage } from './read-page.svelte.ts';
   import { panelClasses } from './read-page.svelte.ts';
@@ -145,7 +146,7 @@
               {...privatePassphrase(page.showPassphrase)}
               placeholder={translate('open.passphrase.placeholder')}
               aria-invalid={passphraseAlert !== ''}
-              aria-describedby={passphraseAlert === '' ? `${id}-passphrase-hint` : `${id}-passphrase-alert`}
+              aria-describedby={passphraseAlert === '' ? undefined : `${id}-passphrase-alert`}
               oninput={page.typed}
               onkeydown={submitOnEnter}
               class="h-11 min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-mute md:h-10"
@@ -161,37 +162,19 @@
           </div>
           {@render revealButton('w-full sm:w-auto')}
         </div>
-        <div class="mt-3 stack px-2 text-caption">
-          <p
-            id="{id}-passphrase-hint"
-            class={[
-              'flex items-center gap-2 text-ink-mute fade-swap',
-              passphraseAlert ? 'invisible opacity-0' : 'opacity-100',
-            ]}
-          >
-            <Icon name="info" class="size-4 shrink-0" />
-            {translate('open.passphrase.hint')}
-          </p>
-          <p
+        <!-- Holds the alert's height from the start, so a rejected passphrase moves nothing on the page. -->
+        <div class="mt-2 -mb-3 flex min-h-[2lh] items-start justify-center px-2 text-left text-caption sm:min-h-[1lh]">
+          <ErrorNote
             id="{id}-passphrase-alert"
-            role="alert"
-            class={[
-              'flex items-center gap-2 text-rose-300 fade-swap',
-              passphraseAlert ? 'opacity-100' : 'invisible opacity-0',
-            ]}
-          >
-            <Icon name="alert" class="size-4 shrink-0" />
-            {shownAlert}
-          </p>
+            message={shownAlert}
+            class={['fade-swap', passphraseAlert ? 'opacity-100' : 'invisible opacity-0']}
+          />
         </div>
       </div>
     {:else}
       {@render revealButton('-mt-1 w-full max-w-[360px] sm:w-auto sm:min-w-[260px]')}
       {#if alert}
-        <p role="alert" class="flex max-w-[440px] items-center gap-2 text-caption text-rose-300">
-          <Icon name="alert" class="size-4 shrink-0" />
-          {alert}
-        </p>
+        <ErrorNote message={alert} class="max-w-[440px] text-left" />
       {/if}
     {/if}
     <p class="text-caption text-balance text-ink-mute">
