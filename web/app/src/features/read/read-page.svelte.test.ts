@@ -1,4 +1,5 @@
 import { KDF_NONE, KDF_SCRYPT } from '@nylzo/core';
+import { DetachedWindowAPI } from 'happy-dom';
 import { flushSync, onDestroy } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,10 +40,15 @@ const metadata: Metadata = {
   expiresAt: '2026-11-01T13:00:00Z',
 };
 const file = { name: 'message.pdf', mime: 'application/pdf', bytes: new Uint8Array([1, 2, 3]) };
+const pageDocument = document;
+
 function reducedMotion(matches: boolean): void {
-  const query = matchMedia('(prefers-reduced-motion: reduce)') as MediaQueryList & { matches: boolean };
-  query.matches = matches;
-  query.dispatchEvent(new Event('change'));
+  const environment: object = globalThis;
+  if (!('happyDOM' in environment) || !(environment.happyDOM instanceof DetachedWindowAPI)) {
+    throw new TypeError('these tests need the happy-dom environment');
+  }
+  environment.happyDOM.settings.device.prefersReducedMotion = matches ? 'reduce' : 'no-preference';
+  dispatchEvent(new Event('resize'));
   flushSync();
 }
 
@@ -144,7 +150,7 @@ describe('read page interactions', () => {
     const page = new ReadPage(new Translator('en'));
     ready({ kdfId: KDF_SCRYPT });
     const focus = focusTarget(page, 'passphrase');
-    const event = new Event('submit', { cancelable: true }) as SubmitEvent;
+    const event = new SubmitEvent('submit', { cancelable: true });
     page.reveal(event);
     expect(event.defaultPrevented).toBe(true);
     expect(page.emptyPassphrase).toBe(true);
@@ -170,7 +176,7 @@ describe('read page interactions', () => {
     const page = new ReadPage(new Translator('en'));
     notify({ view: 'loading', kdfId: KDF_SCRYPT });
     page.passphrase = 'correct horse battery staple';
-    const event = new Event('submit', { cancelable: true }) as SubmitEvent;
+    const event = new SubmitEvent('submit', { cancelable: true });
     page.reveal(event);
     page.reveal(event);
     expect(reader.reveal).not.toHaveBeenCalled();
@@ -194,7 +200,7 @@ describe('read page interactions', () => {
       await dependencies.shown?.();
       displayed();
     })();
-    vi.advanceTimersByTime(2500);
+    vi.advanceTimersByTime(800);
     expect(page.revealed).toBeUndefined();
     expect(displayed).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(2000);
@@ -231,22 +237,22 @@ describe('read page interactions', () => {
       metadata: { ...metadata, kdfId: KDF_SCRYPT },
       resumable: false,
       deviceFailed: false,
-      rejected: { reason: 'wrong', attemptsLeft: 0, retryAfter: 30, locked: true },
+      notice: { reason: 'wrong', attemptsLeft: 0, retryAfter: 30, locked: true },
     });
     await Promise.resolve();
     expect(focus).toHaveBeenCalledOnce();
     expect(page.phase).toBe('notice');
     expect(page.notice).toBe('locked');
     expect(page.actions).toBe('off');
-    page.reveal(new Event('submit') as SubmitEvent);
+    page.reveal(new SubmitEvent('submit'));
     expect(reader.reveal).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('asks before every download, a file named like a PDF included (F09)', async () => {
+  it('asks before every download, a file named like a PDF included', async () => {
     const page = new ReadPage(new Translator('en'));
-    const click = { detail: 1 } as MouseEvent;
-    const doubleClick = { detail: 2 } as MouseEvent;
+    const click = new MouseEvent('click', { detail: 1 });
+    const doubleClick = new MouseEvent('click', { detail: 2 });
     const keep = focusTarget(page, 'keepFile');
     await page.download.ask(doubleClick);
     expect(page.download.shown).toBe(false);
@@ -281,11 +287,12 @@ describe('read page interactions', () => {
     await page.download.cancel(click);
     expect(page.download.shown).toBe(false);
     await page.download.ask(click);
-    page.download.onKeydown({ key: 'Enter', detail: 0 } as KeyboardEvent);
+    page.download.onKeydown(new KeyboardEvent('keydown', { key: 'Enter' }));
     expect(page.download.shown).toBe(true);
-    const escape = { key: 'Escape', detail: 0, stopPropagation: vi.fn<(...arguments_: unknown[]) => void>() };
-    page.download.onKeydown(escape as unknown as KeyboardEvent);
-    expect(escape.stopPropagation).toHaveBeenCalledOnce();
+    const escape = new KeyboardEvent('keydown', { key: 'Escape' });
+    const stopPropagation = vi.spyOn(escape, 'stopPropagation');
+    page.download.onKeydown(escape);
+    expect(stopPropagation).toHaveBeenCalledOnce();
     expect(page.download.shown).toBe(false);
     vi.advanceTimersByTime(2400);
     expect(page.download.ready).toBe(false);
@@ -304,11 +311,8 @@ describe('read page interactions', () => {
     await page.askCopy();
     await page.copyText();
     expect(writeText).toHaveBeenCalledExactlyOnceWith('hello\u{200B}world');
-    expect(page.clipboard).toBe('copied');
     expect(page.copied.shown).toBe(true);
-    await page.clearClipboard();
-    expect(writeText).toHaveBeenLastCalledWith('');
-    expect(page.clipboard).toBe('cleared');
+    expect(page.copyFailed.shown).toBe(false);
   });
 
   it('handles clipboard refusal without a false success indication', async () => {
@@ -316,13 +320,17 @@ describe('read page interactions', () => {
     await page.copyText();
     expect(writeText).not.toHaveBeenCalled();
     notify({ view: 'revealed', text: 'hello', burnable: false, opensRemaining: 0 });
+    vi.mocked(writeText).mockRejectedValueOnce(new Error('clipboard denied'));
+    await page.copyText();
+    expect(page.copied.shown).toBe(false);
+    expect(page.copyFailed.shown).toBe(true);
     await page.askCopy();
     expect(page.copied.shown).toBe(true);
+    expect(page.copyFailed.shown).toBe(false);
     vi.mocked(writeText).mockRejectedValue(new Error('clipboard denied'));
     await page.copyText();
     expect(page.copied.shown).toBe(false);
-    await page.clearClipboard();
-    expect(page.clipboard).toBe('copied');
+    expect(page.copyFailed.shown).toBe(true);
   });
 
   it.each<BurnOutcome>([
@@ -351,7 +359,7 @@ describe('read page interactions', () => {
     expect(page.burned).toEqual({ outcome, afterReveal: true });
   });
 
-  it('asks for the passphrase before deleting a message that has one and hands it to the reader (F05)', async () => {
+  it('asks for the passphrase before deleting a message that has one and hands it to the reader', async () => {
     const page = new ReadPage(new Translator('en'));
     ready({ kdfId: KDF_SCRYPT });
     const focus = focusTarget(page, 'passphrase');
@@ -361,10 +369,9 @@ describe('read page interactions', () => {
     expect(focus).toHaveBeenCalledOnce();
     page.passphrase = 'correct horse battery staple';
     page.typed();
-    page.reveal(new Event('submit', { cancelable: true }) as SubmitEvent);
+    page.reveal(new SubmitEvent('submit', { cancelable: true }));
     expect(page.askingDelete).toBe(true);
-    const button = new Event('submit', { cancelable: true });
-    page.reveal(Object.assign(button, { submitter: {} as HTMLButtonElement }));
+    page.reveal(new SubmitEvent('submit', { cancelable: true, submitter: pageDocument.createElement('button') }));
     expect(reader.reveal).not.toHaveBeenCalled();
     expect(page.deleteIntent).toBe(true);
     page.passphrase = '';
@@ -396,19 +403,19 @@ describe('read page interactions', () => {
     await page.askDelete();
     expect(page.actions).toBe('off');
     expect(keep).toHaveBeenCalledOnce();
-    const other = new Event('keydown');
-    page.onConfirmKeydown(other as KeyboardEvent);
+    page.onConfirmKeydown(new KeyboardEvent('keydown'));
     expect(page.askingDelete).toBe(true);
-    const escape = { key: 'Escape', stopPropagation: vi.fn<(...arguments_: unknown[]) => void>() };
-    page.onConfirmKeydown(escape as unknown as KeyboardEvent);
+    const escape = new KeyboardEvent('keydown', { key: 'Escape' });
+    const stopPropagation = vi.spyOn(escape, 'stopPropagation');
+    page.onConfirmKeydown(escape);
     await Promise.resolve();
-    expect(escape.stopPropagation).toHaveBeenCalledOnce();
+    expect(stopPropagation).toHaveBeenCalledOnce();
     expect(page.askingDelete).toBe(false);
     expect(page.actions).toBe('on');
     expect(remove).toHaveBeenCalledOnce();
   });
 
-  it('forgets an opened message once it was on screen for the shown time (D124)', () => {
+  it('forgets an opened message once it was on screen for the shown time', () => {
     const page = new ReadPage(new Translator('en'));
     notify({ view: 'revealed', text: 'secret', file, burnable: false, opensRemaining: 0 });
     expect(page.afterFacts[0]).toEqual({ icon: 'timer', text: 'Deleted in 15:00' });
@@ -424,7 +431,7 @@ describe('read page interactions', () => {
     expect(revokeSavedFiles).toHaveBeenCalledOnce();
   });
 
-  it('forgets an opened message when the device slept past the shown time (D124)', () => {
+  it('forgets an opened message when the device slept past the shown time', () => {
     const page = new ReadPage(new Translator('en'));
     notify({ view: 'revealed', text: 'secret', file, burnable: false, opensRemaining: 0 });
     const shown = Date.now();
@@ -456,7 +463,7 @@ describe('read page interactions', () => {
   it('wipes page state on leave, stops key derivation, releases downloads, and stops all animation', async () => {
     const stop = vi.fn<() => void>();
     const worker = Object.assign(new EventTarget(), { postMessage: vi.fn<(...arguments_: unknown[]) => void>() });
-    vi.mocked(startWorker).mockResolvedValue({ worker: worker as unknown as Worker, stop });
+    vi.mocked(startWorker).mockResolvedValue({ worker, stop });
     const page = new ReadPage(new Translator('en'));
     const derivation = dependencies.stretch(new Uint8Array(64), vi.fn<(fraction: number) => void>());
     await vi.waitFor(() => expect(worker.postMessage).toHaveBeenCalledOnce());
@@ -488,6 +495,27 @@ describe('read page interactions', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it('starts the passphrase shown where it needs an input method and returns to that after forgetting it', () => {
+    const page = new ReadPage(new Translator('ja'));
+    expect(page.showPassphrase).toBe(true);
+    page.showPassphrase = false;
+    expect(page.showPassphrase).toBe(false);
+    page.passphrase = 'さくら';
+    page.forgetPassphrase();
+    expect(page.showPassphrase).toBe(true);
+  });
+
+  it('keeps what the reader typed shown or masked when the page language changes', () => {
+    const translator = new Translator('zh-Hans');
+    const page = new ReadPage(translator);
+    page.passphrase = '月亮';
+    page.typed();
+    translator.language = 'en';
+    expect(page.showPassphrase).toBe(true);
+    page.forgetPassphrase();
+    expect(page.showPassphrase).toBe(false);
+  });
+
   it('forgets a visible passphrase and reloads restored documents or newly pasted fragments', () => {
     const page = new ReadPage(new Translator('en'));
     page.passphrase = 'secret';
@@ -495,20 +523,20 @@ describe('read page interactions', () => {
     page.forgetPassphrase();
     expect(page.passphrase).toBe('');
     expect(page.showPassphrase).toBe(false);
-    page.returned({ persisted: false } as PageTransitionEvent);
+    page.returned({ persisted: false });
     page.fragmentArrived();
     expect(reload).not.toHaveBeenCalled();
-    page.returned({ persisted: true } as PageTransitionEvent);
+    page.returned({ persisted: true });
     location.hash = '#another-secret';
     page.fragmentArrived();
     page.leave();
-    page.returned({ persisted: false } as PageTransitionEvent);
+    page.returned({ persisted: false });
     expect(reload).toHaveBeenCalledTimes(3);
   });
 });
 
 function focusTarget(page: ReadPage, target: Parameters<typeof page.focus.attach>[0]): ReturnType<typeof vi.fn> {
   const focus = vi.fn<(...arguments_: unknown[]) => void>();
-  page.focus.attach(target)({ focus, scrollIntoView: vi.fn<() => void>() } as unknown as HTMLElement);
+  page.focus.attach(target)(Object.assign(pageDocument.createElement('div'), { focus }));
   return focus;
 }

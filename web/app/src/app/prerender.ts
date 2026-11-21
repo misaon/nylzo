@@ -6,9 +6,10 @@ import { STATUS_PAGES } from '../features/errors/status-page.ts';
 import type { StatusPage } from '../features/errors/status-page.ts';
 import StatusDocument from '../features/errors/StatusDocument.svelte';
 import { loadCatalog } from '../shared/language/catalog.ts';
-import { DEFAULT_LANGUAGE, homePath, LANGUAGE_DETAILS, LANGUAGES } from '../shared/language/language.ts';
+import { DEFAULT_LANGUAGE, homePath, languageDetails, LANGUAGES } from '../shared/language/language.ts';
 import type { Language } from '../shared/language/language.ts';
 import { Translator } from '../shared/language/translator.svelte.ts';
+import PageSkeleton from '../shared/shell/PageSkeleton.svelte';
 import { REPOSITORY_URL } from '../shared/shell/repository.ts';
 import { LONGEST_TTL_DAYS } from '../shared/ttl/ttl-choices.ts';
 import App from './App.svelte';
@@ -89,7 +90,7 @@ function jsonScript(value: unknown): string {
     .replaceAll('&', String.raw`\u0026`);
 }
 
-function meta(property: string, content: string): string {
+function meta({ property, content }: { readonly property: string; readonly content: string }): string {
   return `<meta property="${property}" content="${escapeAttribute(content)}">`;
 }
 
@@ -166,13 +167,13 @@ function seoHead(language: Language, image: OgImage, logo: string): string {
   const translator = new Translator(language);
   const { translate } = translator;
   const shared = [
-    meta('og:type', 'website'),
-    meta('og:site_name', 'Nylzo'),
-    meta('og:title', translate('seo.title')),
-    meta('og:description', translate('seo.description')),
-    meta('og:locale', LANGUAGE_DETAILS[language].openGraphLocale),
+    meta({ property: 'og:type', content: 'website' }),
+    meta({ property: 'og:site_name', content: 'Nylzo' }),
+    meta({ property: 'og:title', content: translate('seo.title') }),
+    meta({ property: 'og:description', content: translate('seo.description') }),
+    meta({ property: 'og:locale', content: languageDetails(language).openGraphLocale }),
     ...LANGUAGES.filter((other) => other !== language).map((other) =>
-      meta('og:locale:alternate', LANGUAGE_DETAILS[other].openGraphLocale),
+      meta({ property: 'og:locale:alternate', content: languageDetails(other).openGraphLocale }),
     ),
     '<meta name="twitter:card" content="summary_large_image">',
   ];
@@ -182,12 +183,12 @@ function seoHead(language: Language, image: OgImage, logo: string): string {
       (alternate) => `<link rel="alternate" hreflang="${alternate}" href="${absolute(homePath(alternate))}">`,
     ),
     `<link rel="alternate" hreflang="x-default" href="${absolute(homePath(DEFAULT_LANGUAGE))}">`,
-    meta('og:url', absolute(homePath(language))),
-    meta('og:image', absolute(image.path)),
-    meta('og:image:type', 'image/png'),
-    meta('og:image:width', String(image.width)),
-    meta('og:image:height', String(image.height)),
-    meta('og:image:alt', translate('seo.image')),
+    meta({ property: 'og:url', content: absolute(homePath(language)) }),
+    meta({ property: 'og:image', content: absolute(image.path) }),
+    meta({ property: 'og:image:type', content: 'image/jpeg' }),
+    meta({ property: 'og:image:width', content: String(image.width) }),
+    meta({ property: 'og:image:height', content: String(image.height) }),
+    meta({ property: 'og:image:alt', content: translate('seo.image') }),
     `<script type="application/ld+json">${jsonScript(structuredData(language, translator, logo))}</script>`,
   ];
   return [...shared, PUBLIC_START, ...located, PUBLIC_END].join('\n');
@@ -197,7 +198,7 @@ function fontPreloads(page: string, language: Language): string {
   if (matchCount(page, CZECH_FONT_PRELOAD) === 0 || matchCount(page, EXTENDED_FONT_PRELOAD) === 0) {
     throw new Error('prerender: the index preloads no Czech or extended Latin fonts');
   }
-  const { fontSample } = LANGUAGE_DETAILS[language];
+  const { fontSample } = languageDetails(language);
   const home = OTHER_EXTENDED_LETTERS.test(fontSample) ? page : page.replaceAll(EXTENDED_FONT_PRELOAD, '');
   return CZECH_LETTERS.test(fontSample) ? home : home.replaceAll(CZECH_FONT_PRELOAD, '');
 }
@@ -237,4 +238,14 @@ export function statusTemplates(index: string): ReadonlyMap<string, string> {
       LANGUAGES.map((language) => [`${page}.${language}.html`, statusTemplate(index, page, language)] as const),
     ),
   );
+}
+
+const HIDE_SPINNER_WITHOUT_SCRIPT = `<noscript><style>[data-skeleton] [aria-hidden="true"]{display:none}</style></noscript>`;
+
+// Every page but a home page starts from this index, so its skeleton has no text and needs no fonts.
+export function skeletonIndex(index: string): string {
+  const { body } = render(PageSkeleton);
+  let page = replaceOnce(index, '<html lang=', '<html data-fonts lang=');
+  page = replaceOnce(page, '</head>', `${HIDE_SPINNER_WITHOUT_SCRIPT}\n</head>`);
+  return replaceOnce(page, '<body></body>', `<body>${body}</body>`);
 }

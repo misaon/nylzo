@@ -25,7 +25,16 @@ export interface FileReview {
   readonly claims: UpstreamClaim[];
 }
 
-export type FileRule = (path: string, before: string, after: string) => FileReview;
+export interface Change<Value> {
+  readonly before: Value;
+  readonly after: Value;
+}
+
+export interface ChangedFile extends Change<string> {
+  readonly path: string;
+}
+
+export type FileRule = (file: ChangedFile) => FileReview;
 
 export type ValueKind = 'fixed' | 'opaque' | 'version';
 
@@ -82,7 +91,7 @@ export function snapshot(text: string, extractions: readonly Extraction[]): Snap
   return { template, values };
 }
 
-export function compareSnapshots(path: string, before: Snapshot, after: Snapshot): FileReview {
+export function compareSnapshots(path: string, { after, before }: Change<Snapshot>): FileReview {
   const review = emptyReview();
   if (before.template !== after.template) {
     review.findings.push(`${path}: ${describeDifference(before.template, after.template)}`);
@@ -97,10 +106,22 @@ export function compareSnapshots(path: string, before: Snapshot, after: Snapshot
     if (next === undefined || next.value === old.value) {
       continue;
     }
-    if (old.kind === 'version') {
-      review.updates.push({ after: next.value, before: old.value, name: `${path} ${old.name}` });
-    } else if (old.kind === 'fixed') {
-      review.findings.push(`${path}: ${old.name} must stay ${old.value}, not ${next.value}`);
+    switch (old.kind) {
+      case 'fixed': {
+        review.findings.push(`${path}: ${old.name} must stay ${old.value}, not ${next.value}`);
+        break;
+      }
+      case 'opaque': {
+        break;
+      }
+      case 'version': {
+        review.updates.push({ after: next.value, before: old.value, name: `${path} ${old.name}` });
+        break;
+      }
+      default: {
+        const exhaustive: never = old.kind;
+        void exhaustive;
+      }
     }
   }
   return review;

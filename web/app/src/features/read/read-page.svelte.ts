@@ -1,14 +1,13 @@
-import { KDF_NONE } from '@nylzo/core';
+import { INPUT_METHOD_LANGUAGES, KDF_NONE } from '@nylzo/core';
 import { flushSync, onDestroy } from 'svelte';
 import { prefersReducedMotion } from 'svelte/motion';
 
 import type { Metadata } from '../../shared/api/api.ts';
 import { createApi } from '../../shared/api/api.ts';
-import { clearClipboard } from '../../shared/clipboard/clear-clipboard.ts';
 import { revokeSavedFiles } from '../../shared/files/save-file.ts';
 import { stopRunningWorkers, stretchInWorker } from '../../shared/kdf/kdf.ts';
 import { prepareWorker } from '../../shared/kdf/worker-source.ts';
-import { formatClock, formatMoment } from '../../shared/language/format.ts';
+import { formatMoment } from '../../shared/language/format.ts';
 import type { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
 import { PacedTimeline } from '../../shared/pipeline/paced-timeline.svelte.ts';
@@ -16,6 +15,8 @@ import { randomText } from '../../shared/pipeline/random-text.ts';
 import { FocusTargets } from '../../shared/ui/focus/focus.ts';
 import type { IconName } from '../../shared/ui/icon/icons.ts';
 import { Flash } from '../../shared/ui/transition/flash.svelte.ts';
+import { Glide } from '../../shared/ui/transition/glide.ts';
+import { openedFacts } from './read-facts.ts';
 import { burnText, noticeOf } from './read-notice.ts';
 import type { Burned, Notice } from './read-notice.ts';
 import { readerSession } from './reader-session.ts';
@@ -24,6 +25,7 @@ import type { BurnOutcome, BusyStep, ClosedView, Reader, ReadView } from './read
 import { DownloadConfirmation } from './revealed/download-confirmation.svelte.ts';
 import { markHiddenCharacters } from './revealed/hidden-characters.ts';
 import type { MarkedText } from './revealed/hidden-characters.ts';
+import { charactersOf, scramble } from './scramble.ts';
 
 export type Phase = 'notice' | 'opening' | 'ready' | 'revealed';
 
@@ -35,7 +37,6 @@ export interface Fact {
 
 export type FocusTarget =
   | 'bar'
-  | 'clipboard'
   | 'deleteMessage'
   | 'deleteRest'
   | 'download'
@@ -46,13 +47,9 @@ export type FocusTarget =
   | 'readyArea'
   | 'revealedTitle';
 
-export function panelClasses(shown: boolean, phase: Phase): string {
-  if (shown) {
-    return 'relative translate-y-0 opacity-100';
-  }
-  return phase === 'revealed'
-    ? 'pointer-events-none absolute inset-x-0 top-0 translate-y-3 opacity-0'
-    : 'pointer-events-none relative translate-y-3 opacity-0';
+// Hidden panels keep their place, so the card never shrinks under a short message.
+export function panelClasses(shown: boolean): string {
+  return shown ? 'relative translate-y-0 opacity-100' : 'pointer-events-none relative translate-y-3 opacity-0';
 }
 
 const STEPS = [
@@ -62,11 +59,10 @@ const STEPS = [
   { id: 'decrypt', busy: 'decrypting', icon: 'unlock' },
 ] as const satisfies readonly { readonly id: string; readonly busy: BusyStep; readonly icon: IconName }[];
 
-const MIN_MS = { passphrase: 3800, plain: 2600, reduced: 1000 } as const;
-const REVEAL_MS = 900;
+const MIN_MS = { passphrase: 1400, plain: 900, reduced: 500 } as const;
+const REVEAL_MS = 500;
 const REVEAL_TICK_MS = 40;
 const SCRAMBLED_CHARACTERS = 2000;
-const SCRAMBLE_LEAD = 1.15;
 const FLASH_MS = 2400;
 const NOISE_CHARACTERS = 260;
 const NOISE_GROWTH = 900;
@@ -75,19 +71,6 @@ const COUNTDOWN_TICK_MS = 1000;
 export const SHOWN_SECONDS = 15 * 60;
 const FAILED_BURNS: ReadonlySet<BurnOutcome['outcome']> = new Set(['failed', 'retry_later', 'unknown', 'waiting']);
 const UNSENT_BURNS: ReadonlySet<BurnOutcome['outcome']> = new Set(['failed', 'ignored', 'retry_later']);
-const WHITESPACE: ReadonlySet<string> = new Set([' ', '\n', '\t']);
-
-function scramble(characters: readonly string[], progress: number): string {
-  const cut = Math.floor(characters.length * Math.min(1, progress * SCRAMBLE_LEAD));
-  const noise = randomText(characters.length);
-  return characters
-    .map((character, index) => (index < cut || WHITESPACE.has(character) ? character : noise.charAt(index)))
-    .join('');
-}
-
-function charactersOf(text: string): readonly string[] {
-  return text.match(/./gsu) ?? [];
-}
 
 export class ReadPage {
   #left = false;
@@ -105,7 +88,7 @@ export class ReadPage {
   view = $state.raw<ReadView>({ view: 'loading' });
   shown = $state.raw<ReadView>({ view: 'loading' });
   passphrase = $state('');
-  showPassphrase = $state(false);
+  #passphraseShown = $state<boolean>();
   emptyPassphrase = $state(false);
   typedAgain = $state(false);
   passphraseRequired = $state(false);
@@ -120,14 +103,16 @@ export class ReadPage {
   revealRest = $state('');
   marked = $state.raw<MarkedText>();
   confirmingCopy = $state(false);
-  clipboard = $state<'cleared' | 'copied' | 'untouched'>('untouched');
   linkInHistory = $state(false);
   noise = $state('');
   settled = $state(false);
   secondsLeft = $state<number>();
+  reservedOpens = $state<number>();
   readonly copied = new Flash(FLASH_MS);
+  readonly copyFailed = new Flash(FLASH_MS);
   readonly downloaded = new Flash(FLASH_MS);
   readonly focus = new FocusTargets<FocusTarget>();
+  readonly glide = new Glide();
   readonly download = new DownloadConfirmation(
     async (target) => this.focus.focusAfterUpdate(target),
     () => this.downloaded.show(),
@@ -144,7 +129,15 @@ export class ReadPage {
   readonly timeline = new PacedTimeline(() => ({ minMs: this.minMs, steps: this.steps.length }));
   readonly ready = $derived(this.shown.view === 'ready' ? this.shown : undefined);
   readonly revealed = $derived(this.shown.view === 'revealed' ? this.shown : undefined);
-  readonly locked = $derived(this.ready?.rejected?.reason === 'wrong' && this.ready.rejected.locked);
+  readonly locked = $derived(this.ready?.notice?.reason === 'wrong' && this.ready.notice.locked);
+
+  get showPassphrase(): boolean {
+    return this.#passphraseShown ?? INPUT_METHOD_LANGUAGES.has(this.#translator.language);
+  }
+
+  set showPassphrase(shown: boolean) {
+    this.#passphraseShown = shown;
+  }
 
   readonly phase: Phase = $derived.by(() => {
     if (this.opening) {
@@ -205,14 +198,10 @@ export class ReadPage {
     const { translate } = this.#translator;
     if (this.revealed) {
       const more = this.revealed.burnable && !this.restDeleted;
-      const facts: Fact[] = [
-        { icon: 'check', text: translate('open.chip.now') },
-        { icon: 'eye', text: more ? this.opensLeft(this.revealed.opensRemaining) : translate('open.chip.last') },
-      ];
-      if (this.secondsLeft !== undefined) {
-        facts.unshift({ icon: 'timer', text: translate('open.chip.clears', { time: formatClock(this.secondsLeft) }) });
-      }
-      return facts;
+      return openedFacts(this.#translator, {
+        opensRemaining: more ? this.revealed.opensRemaining : 0,
+        secondsLeft: this.secondsLeft,
+      });
     }
     if (this.notice === 'burned') {
       return [{ icon: 'check', text: translate('open.chip.burned') }];
@@ -237,9 +226,17 @@ export class ReadPage {
     if (this.#missingPassphrase()) {
       return;
     }
+    this.#reserveBar();
     this.askingDelete = true;
     await this.focus.focusAfterUpdate('keepMessage');
   };
+
+  // The first reveal or delete click gives the bar its final height while the click still excuses the change.
+  #reserveBar(): void {
+    if (this.ready) {
+      this.reservedOpens ??= this.ready.metadata.opensRemaining - (this.ready.resumable ? 0 : 1);
+    }
+  }
 
   readonly burn = async (): Promise<void> => {
     this.askingDelete = false;
@@ -253,7 +250,7 @@ export class ReadPage {
     this.deleting = false;
     if (!afterReveal && !UNSENT_BURNS.has(outcome.outcome)) {
       this.passphrase = '';
-      this.showPassphrase = false;
+      this.#passphraseShown &&= undefined;
     }
     this.deleteIntent &&= outcome.outcome === 'rejected' || UNSENT_BURNS.has(outcome.outcome);
     this.restDeleted ||= afterReveal && (outcome.outcome === 'deleted' || outcome.outcome === 'ended');
@@ -283,13 +280,6 @@ export class ReadPage {
     this.confirmingCopy = false;
   };
 
-  readonly clearClipboard = async (): Promise<void> => {
-    await clearClipboard((state) => {
-      this.clipboard = state;
-    });
-    await this.focus.keepFocusAfterUpdate('clipboard');
-  };
-
   readonly copyText = async (): Promise<void> => {
     this.confirmingCopy = false;
     if (!this.revealed?.text) {
@@ -297,16 +287,17 @@ export class ReadPage {
     }
     try {
       await navigator.clipboard.writeText(this.revealed.text);
-      this.clipboard = 'copied';
+      this.copyFailed.hide();
       this.copied.show();
     } catch {
       this.copied.hide();
+      this.copyFailed.show();
     }
   };
 
   readonly forgetPassphrase = (): void => {
     this.passphrase = '';
-    this.showPassphrase = false;
+    this.#passphraseShown = undefined;
     flushSync();
   };
 
@@ -343,7 +334,7 @@ export class ReadPage {
     void this.#reader.load();
   };
 
-  readonly returned = (event: PageTransitionEvent): void => {
+  readonly returned = (event: Pick<PageTransitionEvent, 'persisted'>): void => {
     if (event.persisted || this.#left) {
       location.reload();
     }
@@ -365,6 +356,8 @@ export class ReadPage {
     }
     if (this.shown.view === 'loading') {
       this.#revealWhenReady = true;
+      // Before the metadata arrives, room for a second open and its delete button is the safe reservation.
+      this.reservedOpens ??= 2;
       return;
     }
     this.#submit();
@@ -386,10 +379,11 @@ export class ReadPage {
       return;
     }
     this.emptyPassphrase = false;
-    this.showPassphrase = false;
+    this.#passphraseShown &&= undefined;
     this.askingDelete = false;
     this.deleteIntent = false;
     this.burned = undefined;
+    this.#reserveBar();
     const entered = this.passphrase;
     this.passphrase = '';
     this.#revealing = true;
@@ -399,6 +393,8 @@ export class ReadPage {
   readonly typed = (): void => {
     this.emptyPassphrase = false;
     this.typedAgain = true;
+    // A language switch must not reveal or mask what the reader has typed.
+    this.#passphraseShown ??= this.showPassphrase;
   };
 
   constructor(translator: Translator) {
@@ -523,7 +519,7 @@ export class ReadPage {
     this.burned = undefined;
     this.download.close();
     this.askingDelete = false;
-    this.showPassphrase = false;
+    this.#passphraseShown = undefined;
     this.passphrase = '';
     this.#pending = undefined;
     this.#clearReveal();
@@ -538,7 +534,10 @@ export class ReadPage {
 
   #show(next: ReadView): void {
     const wasRevealed = this.shown.view === 'revealed';
-    this.shown = next;
+    // An ended message drops the intro, so what follows the title glides up.
+    void this.glide.around(() => {
+      this.shown = next;
+    });
     if (next.view !== 'loading') {
       clearTimeout(this.#settleTimer);
       this.settled = true;

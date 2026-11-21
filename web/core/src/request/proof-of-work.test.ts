@@ -18,7 +18,7 @@ import {
 const challenge = encodeBase64url(new Uint8Array(POW_CHALLENGE_LENGTH));
 const id = new Uint8Array(ID_LENGTH);
 
-describe('AK9: proof-of-work vectors', () => {
+describe('proof-of-work vectors', () => {
   const solvable = vectors.pow.filter((vector) => vector.difficulty !== undefined);
 
   it.each(vectors.pow)('$name', (vector) => {

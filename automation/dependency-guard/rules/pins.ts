@@ -2,7 +2,8 @@ import { compareSnapshots, placeholder, snapshot } from './file-review.ts';
 import type { DependencyValue, Extraction, FileRule, Snapshot } from './file-review.ts';
 
 function pinRule(extractions: readonly Extraction[]): FileRule {
-  return (path, before, after) => compareSnapshots(path, snapshot(before, extractions), snapshot(after, extractions));
+  return ({ after, before, path }) =>
+    compareSnapshots(path, { after: snapshot(after, extractions), before: snapshot(before, extractions) });
 }
 
 export const miseToolVersions = pinRule([
@@ -129,5 +130,5 @@ function goModuleSnapshot(text: string): Snapshot {
   return { template: template.join('\n'), values };
 }
 
-export const goModule: FileRule = (path, before, after) =>
-  compareSnapshots(path, goModuleSnapshot(before), goModuleSnapshot(after));
+export const goModule: FileRule = ({ after, before, path }) =>
+  compareSnapshots(path, { after: goModuleSnapshot(after), before: goModuleSnapshot(before) });

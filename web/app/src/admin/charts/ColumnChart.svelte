@@ -124,7 +124,7 @@
 
   function follow(event: PointerEvent & { readonly currentTarget: HTMLDivElement }): void {
     const bounds = event.currentTarget.getBoundingClientRect();
-    active = bandIndex(event.clientX - bounds.left, left, right - left, groups);
+    active = bandIndex({ position: event.clientX - bounds.left, start: left, width: right - left, count: groups });
   }
 
   function step(event: KeyboardEvent): void {
@@ -132,7 +132,7 @@
       active = undefined;
       return;
     }
-    const next = steppedIndex(event.key, active ?? groups - 1, groups);
+    const next = steppedIndex({ key: event.key, index: active ?? groups - 1, count: groups });
     if (next !== undefined) {
       event.preventDefault();
       active = next;

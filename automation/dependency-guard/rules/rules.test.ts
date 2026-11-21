@@ -17,7 +17,7 @@ interface Case {
 function outcome(path: string, before: string, after: string): Outcome {
   const rule = ruleFor(path);
   assert.ok(rule, `${path} has a rule`);
-  const review = rule(path, before, after);
+  const review = rule({ after, before, path });
   if (review.findings.length > 0) {
     return 'rejected';
   }

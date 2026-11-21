@@ -59,6 +59,7 @@
       class="glass mt-4 reveal-rise overflow-hidden rounded-card outline-offset-3 outline-transparent transition-[outline-color] not-forced-colors:outline-2 has-focus-visible:outline-2 has-focus-visible:outline-aegis-300 md:mt-12"
       {@attach reveal}
     >
+      <!-- The table scrolls sideways on a phone, so keyboard users must be able to focus it. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div class="overflow-x-auto outline-none" role="region" aria-labelledby="compare-title" tabindex="0">
         <table
@@ -97,8 +98,7 @@
                 {#each row.cells as cell, column (column)}
                   <td class={['px-4 py-3 text-center align-middle', column === 0 && NYLZO_COLUMN]}>
                     {#if cell.kind === 'text'}
-                      <span class={['text-micro tabular-nums', cell.tone]}>{cell.note ? translate(cell.note) : ''}</span
-                      >
+                      <span class={['text-micro tabular-nums', cell.tone]}>{translate(cell.note)}</span>
                     {:else}
                       {const mark = $derived(MARKS[cell.kind])}
                       <span class={['flex flex-col items-center gap-1 text-micro', mark.tone]}>

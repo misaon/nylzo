@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import { objectAt } from '../../source-dependency-gate/json-values.ts';
+import type { JsonObject } from '../../source-dependency-gate/json-values.ts';
 import { compareSnapshots, emptyReview, placeholder, quote, snapshot } from './file-review.ts';
 import type { DependencyValue, FileReview, FileRule, Snapshot } from './file-review.ts';
 import { packageManifest, revertOverrideUpdates } from './manifests.ts';
@@ -36,7 +37,7 @@ function lockfileLineProblem(line: string, allowedLinks: readonly string[]): str
 }
 
 export function pnpmLock(allowedLinks: readonly string[]): FileRule {
-  return (path, before, after) => {
+  return ({ after, before, path }) => {
     const review = emptyReview();
     if (documentHeaders(before).join('\n---\n') !== documentHeaders(after).join('\n---\n')) {
       review.findings.push(`${path}: lockfile settings, overrides or patches changed`);
@@ -60,14 +61,14 @@ export function pnpmLock(allowedLinks: readonly string[]): FileRule {
 
 // Bun's text lockfile is JSON with trailing commas. Never evaluate it as JavaScript.
 export function bunLock(allowedWorkspaces: readonly string[]): FileRule {
-  return (path, before, after) => {
+  return ({ after, before, path }) => {
     const review = emptyReview();
     try {
       const previous = lockObject(Bun.JSON5.parse(before));
       const next = lockObject(Bun.JSON5.parse(after));
       const { overrides: oldOverrides, packages: oldPackages, workspaces: oldWorkspaces, ...oldPolicy } = previous;
       const { overrides, packages, workspaces, ...policy } = next;
-      const unchangedOverrides = revertOverrideUpdates(path, oldOverrides, overrides, review);
+      const unchangedOverrides = revertOverrideUpdates(path, { after: overrides, before: oldOverrides }, review);
       if (!isDeepStrictEqual(oldPolicy, policy) || !isDeepStrictEqual(oldOverrides, unchangedOverrides)) {
         review.findings.push(`${path}: lockfile settings, overrides, trust or patches changed`);
       }
@@ -80,11 +81,11 @@ export function bunLock(allowedWorkspaces: readonly string[]): FileRule {
         review.findings.push(`${path}: workspace list changed`);
       }
       for (const [name, manifest] of Object.entries(roots)) {
-        const result = packageManifest(
-          `${path} workspace ${name}`,
-          JSON.stringify(oldRoots[name]),
-          JSON.stringify(manifest),
-        );
+        const result = packageManifest({
+          after: JSON.stringify(manifest),
+          before: JSON.stringify(oldRoots[name]),
+          path: `${path} workspace ${name}`,
+        });
         review.findings.push(...result.findings);
         review.updates.push(...result.updates);
       }
@@ -125,13 +126,13 @@ export function bunLock(allowedWorkspaces: readonly string[]): FileRule {
   };
 }
 
-function lockObject(value: unknown): Readonly<Record<string, unknown>> {
+function lockObject(value: unknown): JsonObject {
   return objectAt(value, 'Bun lockfile');
 }
 
 const goChecksumLine = /^[\w.~+!/-]+ v\S+ h1:[\d+/A-Za-z]{43}=$/u;
 
-export const goChecksums: FileRule = (path, _before, after) => {
+export const goChecksums: FileRule = ({ after, path }) => {
   const review = emptyReview();
   for (const [index, line] of after.split('\n').entries()) {
     if (line !== '' && !goChecksumLine.test(line)) {
@@ -285,10 +286,10 @@ function miseLockSnapshot(text: string, findings: string[]): Snapshot {
   return { template: lines.join('\n'), values };
 }
 
-export const miseLock: FileRule = (path, before, after) => {
+export const miseLock: FileRule = ({ after, before, path }) => {
   const findings: string[] = [];
   const next = miseLockSnapshot(after, findings);
-  const review = compareSnapshots(path, miseLockSnapshot(before, []), next);
+  const review = compareSnapshots(path, { after: next, before: miseLockSnapshot(before, []) });
   review.findings.push(...findings.map((finding) => `${path}: ${finding}`));
   return review;
 };
@@ -313,5 +314,5 @@ function openTofuLockSnapshot(text: string): Snapshot {
   );
 }
 
-export const openTofuLock: FileRule = (path, before, after): FileReview =>
-  compareSnapshots(path, openTofuLockSnapshot(before), openTofuLockSnapshot(after));
+export const openTofuLock: FileRule = ({ after, before, path }): FileReview =>
+  compareSnapshots(path, { after: openTofuLockSnapshot(after), before: openTofuLockSnapshot(before) });

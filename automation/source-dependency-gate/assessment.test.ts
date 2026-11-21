@@ -56,10 +56,11 @@ function fixture() {
     reviewUntil: '2027-01-25T00:00:00Z',
     version: '0.58.0',
   };
+  const toolingAllowedLicenses: string[] = [];
   const policy = {
     allowedLicenses: ['BSD-3-Clause', 'MIT', 'Apache-2.0'],
     notAffected: [cryptoAssessment],
-    toolingAllowedLicenses: [] as string[],
+    toolingAllowedLicenses,
   };
   const imports: Record<string, Record<string, { modules: string[]; packages: string[] }>> = Object.fromEntries(
     Object.entries(goBuilds).map(([lockfile, build]) => [

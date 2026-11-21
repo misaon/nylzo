@@ -37,18 +37,8 @@
         ]}
         inert={page.download.shown}
       >
-        <span
-          class="relative grid size-12 shrink-0 place-items-center rounded-pane text-white tile-current"
-          aria-hidden="true"
-        >
-          <Icon name="file" class="size-5" />
-          {#if kind}
-            <span
-              translate="no"
-              class="absolute -bottom-1.5 left-1/2 inline-flex h-5 -translate-x-1/2 items-center rounded-xs bg-void-900 px-1.5 text-micro font-medium tracking-[0.06em] text-nebula-300 uppercase ring-1 ring-nebula-300/35"
-              >{kind}</span
-            >
-          {/if}
+        <span class="grid size-12 shrink-0 place-items-center rounded-pane text-white tile-current" aria-hidden="true">
+          <Icon name="file" class="size-5.5" />
         </span>
         <span class="min-w-0 flex-1">
           <bdi translate="no" class="flex min-w-0 text-title-sm text-ink"
@@ -122,7 +112,7 @@
     <p
       class="flex items-center gap-2 border-t border-white/8 bg-white/3 px-3.5 py-2.5 text-caption text-pretty text-ink-mute"
     >
-      <Icon name="shield" class="size-3.5 shrink-0" stroke={2} />
+      <Icon name="shield" class="size-3.5 shrink-0 text-[oklch(0.82_0.12_80)]" stroke={2} />
       <span>{translate('revealed.file.unchecked')}</span>
     </p>
   </div>

@@ -211,7 +211,17 @@
   </div>
 {/snippet}
 
-{#snippet fact(term: string, value: string, testId: string, wide = false)}
+{#snippet fact({
+  term,
+  value,
+  testId,
+  wide = false,
+}: {
+  readonly term: string;
+  readonly value: string;
+  readonly testId: string;
+  readonly wide?: boolean;
+})}
   <div class={[CARD, 'px-4 py-3', wide && 'sm:col-span-2']}>
     <dt class="text-micro text-ink-mute">{term}</dt>
     <dd data-testid={testId} class="mt-1 text-body wrap-anywhere text-aegis-200 tabular-nums">{value}</dd>
@@ -275,7 +285,7 @@
     <section aria-labelledby="transparency-operator" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-operator', 'rack', translate('transparency.operator.title'))}
       {#if operator && (operator.name || operator.contact || operator.hosting)}
-        <dl class="mt-5 grid gap-3 sm:grid-cols-2">
+        <dl class="mt-5 grid gap-3 sm:auto-cols-fr sm:grid-flow-col">
           {#if operator.name}
             {@render detail('transparency.operator.name', operator.name)}
           {/if}
@@ -369,9 +379,18 @@
     <section aria-labelledby="transparency-verify" class="animate-appear border-t border-white/8 pt-8">
       {@render heading('transparency-verify', 'shieldCheck', translate('transparency.verify.title'))}
       <dl class="mt-6 grid gap-3 sm:grid-cols-2">
-        {@render fact(translate('transparency.client.version'), BUILD_INFO.version, 'client-version')}
-        {@render fact(translate('transparency.server.version'), data.server, 'server-version')}
-        {@render fact(translate('transparency.client.commit'), BUILD_INFO.commit, 'client-commit', true)}
+        {@render fact({
+          term: translate('transparency.client.version'),
+          value: BUILD_INFO.version,
+          testId: 'client-version',
+        })}
+        {@render fact({ term: translate('transparency.server.version'), value: data.server, testId: 'server-version' })}
+        {@render fact({
+          term: translate('transparency.client.commit'),
+          value: BUILD_INFO.commit,
+          testId: 'client-commit',
+          wide: true,
+        })}
       </dl>
       <div class="mt-6">
         <div class="flex items-baseline justify-between gap-4">
@@ -384,6 +403,7 @@
         </div>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{translate('transparency.files')}</p>
         <div class="relative mt-3 rounded-pane well">
+          <!-- The file list scrolls, so keyboard users must be able to focus it. -->
           <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
           <div
             class="max-h-72 overflow-auto px-4 py-1.5"
@@ -414,7 +434,7 @@
           <CopyButton text={command} class="max-sm:w-11 max-sm:px-0" labelClass="max-sm:sr-only" />
         </div>
       </div>
-      <div class="mt-6 flex gap-3.5 rounded-pane bg-solar-300/[0.08] p-4 ring-1 ring-solar-300/30 sm:p-5">
+      <div class="mt-6 flex items-center gap-3.5 rounded-pane bg-solar-300/[0.08] p-4 ring-1 ring-solar-300/30 sm:p-5">
         <IconTile icon="caution" tone="warning" size="small" />
         <div class="min-w-0">
           <h3 class="text-title-sm text-ink">{translate('transparency.verify.limit.title')}</h3>

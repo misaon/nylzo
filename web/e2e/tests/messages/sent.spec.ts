@@ -27,7 +27,7 @@ function idOf(link: string): string {
   return new URL(link).hash.slice(1).split('.', 3)[2] ?? '';
 }
 
-test('the sender cancels a remembered message from the sent list, then forgets every message (D39)', async ({
+test('the sender cancels a remembered message from the sent list, then forgets every message', async ({
   page,
   newPage,
 }) => {
@@ -63,10 +63,8 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   await expect(cancel).toHaveCount(0);
   await expect(item.getByRole('heading', { level: 2 })).toBeFocused();
   await expect(page.getByRole('status').first()).toHaveText('The message is cancelled.');
-  await expect(item.getByText('the entry goes when you leave this page')).toBeVisible();
-  await expect
-    .poll(() => sentRecords(page), 'an ended message leaves storage once the list shows it (F16)')
-    .toEqual([]);
+  await expect(item.getByText('It is deleted from the server.')).toBeVisible();
+  await expect.poll(() => sentRecords(page), 'an ended message leaves storage once the list shows it').toEqual([]);
 
   const recipient = await newPage();
   await recipient.goto(link);
@@ -82,7 +80,7 @@ test('the sender cancels a remembered message from the sent list, then forgets e
 });
 
 test(
-  'a message tracked only in this tab stays out of browser storage and moves with the tab between pages (F16)',
+  'a message tracked only in this tab stays out of browser storage and moves with the tab between pages',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const completedWrites = await countCompletedWrites(page);
@@ -127,7 +125,7 @@ test(
   },
 );
 
-test('switching the language with motion while the tab tracks a message moves the address to the new home (F16)', async ({
+test('switching the language with motion while the tab tracks a message moves the address to the new home', async ({
   page,
 }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
@@ -160,7 +158,7 @@ test('this device remembers a new message only when the sender saves it in the c
   await createdLink(page);
   expect(await completedWrites()).toBe(0);
   expect(await databaseNames(page)).toEqual([]);
-  await trackInSent(page, 'Password for Peter');
+  await trackInSent(page, { label: 'Password for Peter' });
   await expect(page.getByText(REMEMBERED)).toBeVisible();
   await expect.poll(completedWrites).toBeGreaterThan(0);
   await page.goto('/sent');
@@ -168,8 +166,22 @@ test('this device remembers a new message only when the sender saves it in the c
   await expect(page.getByText('Waiting to be opened')).toBeVisible();
 });
 
+test('the link to Sent appears where it stays, after the tracking panel has left', async ({ page }) => {
+  await openApp(page, '/');
+  await page.getByLabel('Message text').fill('settled');
+  await page.getByRole('button', { name: 'Create link' }).click();
+  await createdLink(page);
+  await page.getByRole('button', { name: 'Track in Sent' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const link = notInert(page, page.getByRole('link', { name: 'Open Sent' }));
+  await expect(link).toBeVisible();
+  const shownAt = await link.boundingBox();
+  await expect(page.getByLabel('Label, only you see it')).toBeHidden();
+  expect(await link.boundingBox()).toEqual(shownAt);
+});
+
 test(
-  'the manage key lies in IndexedDB only as a non-extractable Ed25519 signing key (D39)',
+  'the manage key lies in IndexedDB only as a non-extractable Ed25519 signing key',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const link = await createMessageInPage(page, { text: 'key', remember: 'browser' });
@@ -185,10 +197,7 @@ test(
   },
 );
 
-test('a status that answers after the sender forgot the message does not store it again (D39)', async ({
-  page,
-  newPage,
-}) => {
+test('a status that answers after the sender forgot the message does not store it again', async ({ page, newPage }) => {
   const completedWrites = await countCompletedWrites(page);
   const link = await createMessageInPage(page, { text: 'forget me', remember: 'browser' });
   await expect(page.getByText(REMEMBERED)).toBeVisible();
@@ -202,7 +211,8 @@ test('a status that answers after the sender forgot the message does not store i
   const status = await holdRoute(page, '**/api/v1/messages/*/status');
   await page.goto('/sent');
   await status.requested;
-  await page.getByRole('listitem').getByRole('button', { name: 'Remove from the list' }).click();
+  await page.getByRole('button', { name: 'Clear the list' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Yes, clear', exact: true }).click();
   await expect(page.getByText(NOTHING_REMEMBERED)).toBeVisible();
   expect(await sentRecords(page)).toEqual([]);
   const writesBeforeAnswer = await completedWrites();
@@ -218,7 +228,7 @@ test('a status that answers after the sender forgot the message does not store i
   expect(await sentRecords(page)).toEqual([]);
 });
 
-test('a visitor, a sender who keeps the default and a look at the sent list leave no database, and every page load drops records 7 days after expiry (D39)', async ({
+test('a visitor, a sender who keeps the default and a look at the sent list leave no database, and every page load drops records 7 days after expiry', async ({
   page,
   newPage,
 }) => {
@@ -248,7 +258,7 @@ test('a visitor, a sender who keeps the default and a look at the sent list leav
   await expect.poll(storedIds).toEqual(new Set([kept]));
 });
 
-test('a browser without IndexedDB still creates the link and says it cannot remember it (D39)', async ({ page }) => {
+test('a browser without IndexedDB still creates the link and says it cannot remember it', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(globalThis, 'indexedDB', { value: undefined });
   });

@@ -17,17 +17,19 @@
     { icon: 'pen', name: 'Ed25519' },
   ];
   const TONE_STOPS = [
-    ['#98D5FF', '#7AA7F4', '#B4A0F2'],
-    ['#77A7CA', '#6083C1', '#8D7EC0'],
-    ['#597D99', '#486393', '#695E92'],
-    ['#3E586E', '#324569', '#494269'],
+    ['#BDE9FF', '#7FB4FF', '#C6AEFF'],
+    ['#93C6EC', '#769CE6', '#A996E4'],
+    ['#749EC4', '#6083C6', '#8A7BC2'],
+    ['#58799C', '#4B66A0', '#6D619E'],
   ] as const;
   const STOP_OFFSETS = [0, 0.52, 1] as const;
+  const LABEL = 'flex items-center gap-3 text-title font-medium whitespace-nowrap text-ink';
+  const GLOW = 'drop-shadow-[0_0_10px_rgb(127_180_255/0.42)]';
 </script>
 
-{#snippet glyph(item: { readonly icon: IconName; readonly name: string })}
-  <li class="flex items-center gap-3 text-title whitespace-nowrap text-ink-soft">
-    <Icon name={item.icon} class="size-8 shrink-0" stroke={1.7} paint="url(#trust-tone)" />
+{#snippet glyph(item: (typeof standards)[number])}
+  <li class={LABEL}>
+    <Icon name={item.icon} class={['size-8 shrink-0', GLOW]} stroke={1.7} paint="url(#trust-tone)" />
     {item.name}
   </li>
 {/snippet}
@@ -69,7 +71,7 @@
       {/each}
     </defs>
   </svg>
-  <p class="reveal-focus text-center text-caption text-balance text-ink-mute">{translate('trust.title')}</p>
+  <p class="reveal-focus text-center text-caption text-balance text-ink-soft">{translate('trust.title')}</p>
   <div
     class="relative mx-auto mt-8 max-w-page reveal-part overflow-hidden [mask-image:linear-gradient(90deg,transparent,black_12%,black_88%,transparent)] [--reveal-delay:200ms] md:mt-10"
   >
@@ -84,9 +86,9 @@
             {@render glyph(item)}
           {/each}
           {#each TRUST_LOGOS as logo (logo.name)}
-            <li class="flex items-center gap-3 text-title whitespace-nowrap text-ink-soft">
+            <li class={LABEL}>
               <svg
-                class={[logo.size, 'shrink-0']}
+                class={[logo.size, 'shrink-0', GLOW]}
                 viewBox={`0 0 ${TRUST_LOGO_GRID} ${TRUST_LOGO_GRID}`}
                 role={logo.labelOnly ? 'img' : undefined}
                 aria-label={logo.labelOnly ? logo.name : undefined}

@@ -11,7 +11,7 @@ const salt = new Uint8Array(32).fill(5);
 const loneSurrogate = 'caf\u{D800}';
 const heavyTestsEnabled = process.env['NYLZO_HEAVY_TESTS'] === '1';
 
-describe('AK9: scrypt vectors of RFC 7914 for the pinned @noble/hashes', () => {
+describe('scrypt vectors of RFC 7914 for the pinned @noble/hashes', () => {
   const light = vectors.scrypt_rfc7914.filter((vector) => !vector.heavy);
   const heavy = vectors.scrypt_rfc7914.filter((vector) => vector.heavy);
   const derivedHex = async (vector: (typeof light)[number]): Promise<string> => {
@@ -43,5 +43,11 @@ describe('OPAQUE password (spec 2.1)', () => {
   it('is salt_pw alone for profile 0 whatever the passphrase', () => {
     expect(opaquePassword(salt, KDF_NONE, loneSurrogate)).toEqual(salt);
     expect(opaquePassword(salt, KDF_NONE, 'other')).toEqual(salt);
+  });
+});
+
+describe('pw turns every space separator into U+0020 before NFC, as the Go core does', () => {
+  it.each(vectors.passphrase_normalization)('$name', (vector) => {
+    expect(opaquePassword(salt, KDF_SCRYPT, vector.passphrase).subarray(salt.length).toHex()).toBe(vector.pw_hex);
   });
 });

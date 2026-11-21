@@ -1,8 +1,25 @@
+import type { Page } from '@playwright/test';
+
 import { expect, test } from './support/fixtures.ts';
-import { chooseLanguage, openApp } from './support/pages.ts';
+import { createMessageThroughApi } from './support/messages.ts';
+import { chooseLanguage, createMessageInPage, openApp } from './support/pages.ts';
 import { holdRoute } from './support/routes.ts';
 import { BASE_URL, OFFICIAL_BASE_URL } from './support/servers.ts';
 import { watchViolations } from './support/watchers.ts';
+
+function field(value: unknown, name: string): unknown {
+  return typeof value === 'object' && value !== null ? Reflect.get(value, name) : undefined;
+}
+
+function textField(value: unknown, name: string): string | undefined {
+  const text = field(value, name);
+  return typeof text === 'string' ? text : undefined;
+}
+
+function structuredGraph(json: string): unknown[] {
+  const graph = field(JSON.parse(json), '@graph');
+  return Array.isArray(graph) ? graph : [];
+}
 
 const HOMES = [
   { path: '/', language: 'en', heading: 'A secret that opens once', title: /^Share passwords and files securely/u },
@@ -11,7 +28,7 @@ const HOMES = [
 ];
 
 for (const home of HOMES) {
-  test(`${home.path} comes prerendered in ${home.language} with its search and preview tags, may be indexed only on the official instance and shows its content without JavaScript (D82 to D84, D134)`, async ({
+  test(`${home.path} comes prerendered in ${home.language} with its search and preview tags, may be indexed only on the official instance and shows its content without JavaScript`, async ({
     request,
     newPage,
   }) => {
@@ -32,18 +49,16 @@ for (const home of HOMES) {
     const image = /<meta property="og:image" content="([^"]+)">/u.exec(html)?.[1] ?? '';
     expect(image.startsWith(`${BASE_URL}/assets/`)).toBe(true);
     const preview = await request.get(image);
-    expect(preview.headers()['content-type']).toBe('image/png');
+    expect(preview.headers()['content-type']).toBe('image/jpeg');
     const structured = /<script type="application\/ld\+json">([^<]+)<\/script>/u.exec(html)?.[1] ?? '';
-    const graph = (JSON.parse(structured) as { '@graph': { '@type': string; url?: string; logo?: string }[] })[
-      '@graph'
-    ];
-    const node = (type: string) => graph.find((entry) => entry['@type'] === type);
-    expect([node('Organization')?.url, node('WebSite')?.url, node('WebApplication')?.url]).toEqual([
+    const graph = structuredGraph(structured);
+    const node = (type: string) => graph.find((entry) => textField(entry, '@type') === type);
+    expect(['Organization', 'WebSite', 'WebApplication'].map((type) => textField(node(type), 'url'))).toEqual([
       `${BASE_URL}/`,
       `${BASE_URL}/`,
       `${BASE_URL}${home.path}`,
     ]);
-    const logoPath = new URL(node('Organization')?.logo ?? '').pathname;
+    const logoPath = new URL(textField(node('Organization'), 'logo') ?? '').pathname;
     const logo = await request.get(`${OFFICIAL_BASE_URL}${logoPath}`);
     expect(logo.headers()['content-type']).toBe('image/png');
     expect(logo.headers()['x-robots-tag']).toBeUndefined();
@@ -55,7 +70,7 @@ for (const home of HOMES) {
 }
 
 test(
-  'the home page shows before the app starts, keeps text typed in the meantime and takes over without an error or a second copy (D83, D86)',
+  'the home page shows before the app starts, keeps text typed in the meantime and takes over without an error or a second copy',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const violations = await watchViolations(page);
@@ -84,7 +99,7 @@ test(
   },
 );
 
-test('the language switch moves between / and /cs/ in place, a saved choice wins and the browser language does not (D82)', async ({
+test('the language switch moves between / and /cs/ in place, a saved choice wins and the browser language does not', async ({
   newPage,
 }) => {
   const page = await newPage({ locale: 'cs-CZ' });
@@ -104,6 +119,62 @@ test('the language switch moves between / and /cs/ in place, a saved choice wins
   await expect(page).toHaveURL(`${BASE_URL}/#create`);
   await openApp(page, '/cs/');
   await expect(page).toHaveURL(`${BASE_URL}/`);
+});
+
+async function switchLanguageWithDraftAndGoBack(page: Page): Promise<void> {
+  await page.getByLabel('Message text').fill('draft that must survive');
+  await page.evaluate(() => {
+    location.hash = 'faq';
+    Object.assign(globalThis, { nylzoSamePage: true });
+  });
+  await chooseLanguage(page, 'Čeština');
+  await expect(page).toHaveURL(`${BASE_URL}/cs/#faq`);
+  await page.goBack();
+}
+
+test('back after a language switch keeps the chosen language and the draft without loading again', async ({
+  newPage,
+}) => {
+  const page = await newPage({ locale: 'en-US' });
+  await openApp(page, '/');
+  await switchLanguageWithDraftAndGoBack(page);
+  await expect(page).toHaveURL(`${BASE_URL}/cs/`);
+  await expect(page.getByLabel('Text zprávy')).toHaveValue('draft that must survive');
+  expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(true);
+});
+
+test('back after a language switch keeps the language and the draft while the tab tracks a message', async ({
+  newPage,
+}) => {
+  const page = await newPage({ locale: 'en-US' });
+  await createMessageInPage(page, { text: 'tracked', remember: 'tab' });
+  await page.getByRole('button', { name: 'New message' }).click();
+  await switchLanguageWithDraftAndGoBack(page);
+  await expect(page).toHaveURL(`${BASE_URL}/cs/`);
+  await expect(page.getByLabel('Text zprávy')).toHaveValue('draft that must survive');
+  expect(await page.evaluate(() => 'nylzoSamePage' in globalThis)).toBe(true);
+});
+
+test('a page whose code fails to load says so and offers to try again', async ({ newPage }) => {
+  const page = await newPage({ locale: 'en-US' });
+  await page.route('**/assets/start-*.js', async (route) => route.fulfill({ status: 503 }), { times: 1 });
+  await page.goto('/terms');
+  await expect(page.getByRole('alert')).toHaveText('The page could not start. Check your connection and try again.');
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Terms of use' })).toBeVisible();
+});
+
+test('a read page whose code fails to load asks to open the link again instead of reloading without its key', async ({
+  newPage,
+}) => {
+  const page = await newPage({ locale: 'en-US' });
+  const message = await createMessageThroughApi();
+  await page.route('**/assets/start-*.js', async (route) => route.fulfill({ status: 503 }), { times: 1 });
+  await page.goto(message.link);
+  await expect(page.getByRole('alert')).toHaveText(
+    'The page could not start. Check your connection and open the link again.',
+  );
+  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
 });
 
 test('a page without a message switches language after a release removed its catalogs by loading again', async ({

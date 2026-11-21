@@ -49,7 +49,7 @@ const exportKey = new Uint8Array(64).fill(1);
 const prefix = PREFIX_LENGTH;
 
 async function keysOf(id: Uint8Array, secret: Uint8Array, key: Uint8Array, share: Uint8Array): Promise<ContentKeys> {
-  return deriveContent(id, secret, key, share);
+  return deriveContent({ id, secret, exportKey: key, share });
 }
 
 async function sealed(kdfId: KdfId, payload = textPayload): Promise<Sealed> {
@@ -86,6 +86,16 @@ function policyOfVector(vector: EnvelopeVector): Policy {
   return { opensMax: vector.opens_max, ttlSeconds: vector.ttl_s, deadline: vector.deadline };
 }
 
+function metaOfVector({ text, file }: EnvelopeVector): Meta {
+  if (file !== undefined) {
+    return { text, file: { name: file.name, mime: file.mime, size: file.size } };
+  }
+  if (text !== undefined) {
+    return { text };
+  }
+  throw new Error('the vector has neither text nor file');
+}
+
 async function sealVector(vector: EnvelopeVector): Promise<{
   readonly object: Uint8Array<ArrayBuffer>;
   readonly keys: ContentKeys;
@@ -96,16 +106,15 @@ async function sealVector(vector: EnvelopeVector): Promise<{
   const id = parseId(vector.id);
   const kdfId = kdfIdOf(vector.kdf_id);
   const share = hexToBytes(vector.e_hex);
-  const content = await deriveContent(id, hexToBytes(vector.s), hexToBytes(vector.p_hex), share);
+  const content = await deriveContent({ id, secret: hexToBytes(vector.s), exportKey: hexToBytes(vector.p_hex), share });
   const header: Header = { version: 3, kdfId, flags: vector.flags, iv: hexToBytes(vector.iv_hex) };
   const file = vector.file && fileBytes(vector.file);
-  const fileMeta = vector.file && { name: vector.file.name, mime: vector.file.mime, size: vector.file.size };
-  const meta: Meta = { text: vector.text, file: fileMeta };
+  const meta = metaOfVector(vector);
   const object = await seal(content, header, id, policyOfVector(vector), { meta, file });
   return { object, keys: content, header, meta, file };
 }
 
-describe('AK9: envelope vectors', () => {
+describe('envelope vectors', () => {
   it.each(vectors.envelope)('$name', { timeout: 120_000 }, async (vector) => {
     const id = parseId(vector.id);
     const vectorPolicy = policyOfVector(vector);
@@ -140,7 +149,7 @@ const rejections = {
   version: VersionError,
 } as const;
 
-describe('AK9, F1, F3, F4: a reader refuses every object its link does not open', () => {
+describe('a reader refuses every object its link does not open', () => {
   const byName = new Map(vectors.envelope.map((vector) => [vector.name, vector]));
 
   it.each(vectors.envelope_rejected)('$name fails with $error', { timeout: 120_000 }, async (vector) => {
@@ -171,12 +180,12 @@ describe('AK9, F1, F3, F4: a reader refuses every object its link does not open'
     }
     const id = parseId(vector.reader_id ?? base.id);
     const kdfId = kdfIdOf(vector.kdf_id);
-    const content = await deriveContent(
+    const content = await deriveContent({
       id,
-      hexToBytes(base.s),
-      hexToBytes(vector.p_hex ?? base.p_hex),
-      hexToBytes(vector.e_hex),
-    );
+      secret: hexToBytes(base.s),
+      exportKey: hexToBytes(vector.p_hex ?? base.p_hex),
+      share: hexToBytes(vector.e_hex),
+    });
     const expected: Expected = {
       id,
       policy: {
@@ -191,7 +200,7 @@ describe('AK9, F1, F3, F4: a reader refuses every object its link does not open'
   });
 });
 
-describe('AK8: a changed envelope, policy or key fails integrity', () => {
+describe('a changed envelope, policy or key fails integrity', () => {
   let message: Sealed;
   beforeAll(async () => {
     message = await sealed(KDF_SCRYPT);
@@ -212,8 +221,8 @@ describe('AK8: a changed envelope, policy or key fails integrity', () => {
     ['a flipped commitment bit', () => reopen(flipped(message.object, HEADER_LENGTH))],
     ['a raised opens_max', () => reopen(message.object, { policy: { ...policy, opensMax: 2 } })],
     ['a longer TTL', () => reopen(message.object, { policy: { ...policy, ttlSeconds: policy.ttlSeconds + 1 } })],
-    ['F13: a later deadline', () => reopen(message.object, { policy: { ...policy, deadline: 1_797_000_060 } })],
-    ['F13: no deadline', () => reopen(message.object, { policy: { ...policy, deadline: 0 } })],
+    ['a later deadline', () => reopen(message.object, { policy: { ...policy, deadline: 1_797_000_060 } })],
+    ['no deadline', () => reopen(message.object, { policy: { ...policy, deadline: 0 } })],
     ['another id', () => reopen(message.object, { id: randomId() })],
     [
       'another secret',
@@ -225,11 +234,11 @@ describe('AK8: a changed envelope, policy or key fails integrity', () => {
         reopen(message.object, {}, await keysOf(message.id, message.secret, new Uint8Array(64), message.share)),
     ],
     [
-      'F3: another share',
+      'another share',
       async () => reopen(message.object, {}, await keysOf(message.id, message.secret, exportKey, newSecret())),
     ],
     [
-      'F1: an object other than the link pins',
+      'an object other than the link pins',
       async () =>
         open(
           message.keys,
@@ -238,7 +247,7 @@ describe('AK8: a changed envelope, policy or key fails integrity', () => {
         ),
     ],
     [
-      'F1: an empty object hash',
+      'an empty object hash',
       async () =>
         open(
           message.keys,
@@ -261,7 +270,7 @@ describe('open rejects a malformed header before decrypting (spec 3)', () => {
     ['version 2', (object) => flipped(object, 0, 1), KDF_NONE, VersionError],
     ['version 0', (object) => flipped(object, 0, 3), KDF_NONE, VersionError],
     ['flags 3', (object) => flipped(object, 2), KDF_NONE, FlagsError],
-    ['F13: a cleared deadline flag', (object) => flipped(object, 2, 2), KDF_NONE, FlagsError],
+    ['a cleared deadline flag', (object) => flipped(object, 2, 2), KDF_NONE, FlagsError],
     ['the retired profile 2', (object) => flipped(object, 1, KDF_RETIRED), KDF_RETIRED as KdfId, KdfError],
     ['a profile other than the fragment', (object) => object, KDF_SCRYPT, KdfMismatchError],
     ['an object without a whole tag', (object) => object.subarray(0, prefix + 3), KDF_NONE, IntegrityError],
@@ -305,16 +314,16 @@ describe('seal rejects what the spec forbids (spec 3 and 3.1)', () => {
     ['opens_max over 16 bits', header, { ...policy, opensMax: 65_536 }, textPayload, PolicyError],
     ['a fractional opens_max', header, { ...policy, opensMax: 1.5 }, textPayload, PolicyError],
     ['flags 1', { ...header, flags: 1 }, policy, textPayload, FlagsError],
-    ['F13: a header without the deadline flag', { ...header, flags: 0 }, policy, textPayload, FlagsError],
-    ['F13: no deadline', header, { ...policy, deadline: 0 }, textPayload, PolicyError],
-    ['F13: a deadline over 32 bits', header, { ...policy, deadline: 2 ** 32 }, textPayload, PolicyError],
+    ['a header without the deadline flag', { ...header, flags: 0 }, policy, textPayload, FlagsError],
+    ['no deadline', header, { ...policy, deadline: 0 }, textPayload, PolicyError],
+    ['a deadline over 32 bits', header, { ...policy, deadline: 2 ** 32 }, textPayload, PolicyError],
     ['the retired profile 2', { ...header, kdfId: KDF_RETIRED as KdfId }, policy, textPayload, KdfError],
     ['an 11-byte iv', { ...header, iv: new Uint8Array(11) }, policy, textPayload, HeaderError],
   ])('%s', async (_, invalidHeader, invalidPolicy, payload, expected) => {
     await expect(seal(keys, invalidHeader, randomId(), invalidPolicy, payload)).rejects.toBeInstanceOf(expected);
   });
 
-  it('F7: pads a text and a file to the same length', async () => {
+  it('pads a text and a file to the same length', async () => {
     const text = await sealed(KDF_NONE, { meta: { text: 't'.repeat(3000) } });
     const file = new Uint8Array(3000).fill(7);
     const attachment = await sealed(KDF_NONE, { meta: { file: { name: 'f', mime: '', size: file.length } }, file });

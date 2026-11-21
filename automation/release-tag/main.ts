@@ -35,12 +35,19 @@ const completedRun = z.object({
 
 const manifest = z.object({ '.': z.string() }).strict();
 
+interface MaintenanceCandidate {
+  readonly branch: string;
+  readonly commit: string;
+  readonly latest: PublishedRelease;
+  readonly trigger: MaintenanceTrigger;
+}
+
 async function plannedReleaseFromMain(
   client: GitHubClient,
   commit: string,
   latest: PublishedRelease,
 ): Promise<ReleasePlan | null> {
-  const pull = await mergedPullRequest(client, commit, 'main');
+  const pull = await mergedPullRequest(client, { branch: 'main', commit });
   if (pull?.head.ref !== releasePullRequestBranch) {
     return null;
   }
@@ -66,21 +73,20 @@ async function plannedReleaseFromMain(
 
 async function maintenanceReleaseFromBranch(
   client: GitHubClient,
-  branch: string,
-  commit: string,
-  latest: PublishedRelease,
-  trigger: MaintenanceTrigger,
+  { branch, commit, latest, trigger }: MaintenanceCandidate,
 ): Promise<ReleasePlan | null> {
   if ((await branchTip(client, branch)) !== commit) {
     console.log(`${branch} moved past ${commit}; the newer commit releases after its own CI or in the next window.`);
     return null;
   }
-  if ((await mergedPullRequest(client, commit, branch)) === undefined) {
+  if ((await mergedPullRequest(client, { branch, commit })) === undefined) {
     console.log(`${commit} on ${branch} is not a merged pull request.`);
     return null;
   }
   const unreleased =
-    commit === latest.commit ? [] : await unreleasedPullRequests(client, latest.commit, commit, branch);
+    commit === latest.commit
+      ? []
+      : await unreleasedPullRequests(client, { branch, releaseCommit: latest.commit, tip: commit });
   const plan = maintenanceRelease({
     branch,
     commit,
@@ -102,7 +108,12 @@ const client = createGitHubClient(z.string().min(1).parse(process.env['GITHUB_TO
 const latest = await latestPublishedRelease(client);
 async function releasePlan(): Promise<ReleasePlan | null> {
   if (branch !== 'main') {
-    return maintenanceReleaseFromBranch(client, branch, commit, latest, trigger === 'push' ? 'merge' : 'window');
+    return maintenanceReleaseFromBranch(client, {
+      branch,
+      commit,
+      latest,
+      trigger: trigger === 'push' ? 'merge' : 'window',
+    });
   }
   return trigger === 'push' ? plannedReleaseFromMain(client, commit, latest) : null;
 }

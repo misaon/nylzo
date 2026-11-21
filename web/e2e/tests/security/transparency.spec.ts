@@ -1,22 +1,64 @@
 import { execFileSync } from 'node:child_process';
 
+import type { BuildInfo } from '../../../../tools/build-info.mts';
 import { expect, test } from '../support/fixtures.ts';
 import { BASE_URL, NYLZO_BINARY } from '../support/servers.ts';
 
 interface ClientManifest {
   readonly server: string;
-  readonly build: ClientBuild;
-  readonly files: readonly { readonly path: string; readonly sha256: string }[];
+  readonly build: BuildInfo;
+  readonly files: readonly ClientFile[];
 }
 
-interface ClientBuild {
-  readonly version: string;
-  readonly commit: string;
-  readonly date: string;
-  readonly dirty: boolean;
+interface ClientFile {
+  readonly path: string;
+  readonly sha256: string;
 }
 
-test('nylzo verify-client finds the embedded web client unchanged on the server (D61)', () => {
+function field(value: unknown, name: string): unknown {
+  return typeof value === 'object' && value !== null ? Reflect.get(value, name) : undefined;
+}
+
+const BUILD_FIELDS = {
+  version: 'string',
+  commit: 'string',
+  date: 'string',
+  dirty: 'boolean',
+} as const satisfies Record<keyof BuildInfo, 'string' | 'boolean'>;
+
+function isBuildInfo(value: unknown): value is BuildInfo {
+  return Object.entries(BUILD_FIELDS).every(([name, type]) => typeof field(value, name) === type);
+}
+
+function isClientFile(value: unknown): value is ClientFile {
+  return typeof field(value, 'path') === 'string' && typeof field(value, 'sha256') === 'string';
+}
+
+function isClientManifest(value: unknown): value is ClientManifest {
+  const files = field(value, 'files');
+  return (
+    typeof field(value, 'server') === 'string' &&
+    isBuildInfo(field(value, 'build')) &&
+    Array.isArray(files) &&
+    files.every((file: unknown) => isClientFile(file))
+  );
+}
+
+function buildInfoOf(value: unknown): BuildInfo {
+  if (!isBuildInfo(value)) {
+    throw new TypeError('the build information lacks a version, a commit, a date or the dirty flag');
+  }
+  return value;
+}
+
+function clientManifestOf(value: unknown): ClientManifest {
+  if (!isClientManifest(value)) {
+    throw new TypeError('the client manifest lacks the server version, the build or the file hashes');
+  }
+  return value;
+}
+
+test('nylzo verify-client finds the embedded web client unchanged on the server', () => {
   const output = execFileSync(NYLZO_BINARY, ['verify-client', '--server', BASE_URL], {
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -24,24 +66,22 @@ test('nylzo verify-client finds the embedded web client unchanged on the server 
   expect(output).toMatch(/^the server sends the web client of nylzo \S+ unchanged: 18 pages and \d+ files checked\n$/u);
 });
 
-test('the transparency page shows its embedded client build, reported server version and file hashes (D61)', async ({
+test('the transparency page shows its embedded client build, reported server version and file hashes', async ({
   page,
   request,
 }) => {
   const response = await request.get('/.well-known/nylzo/client.json');
-  const manifest = (await response.json()) as ClientManifest;
+  const manifest = clientManifestOf(await response.json());
   const buildResponse = await request.get('/assets/build-info.json');
-  const build = (await buildResponse.json()) as ClientBuild;
+  const build = buildInfoOf(await buildResponse.json());
   expect(manifest.files.length).toBeGreaterThan(1);
-  const binary = JSON.parse(execFileSync(NYLZO_BINARY, ['version', '--json'], { encoding: 'utf8' })) as ClientBuild;
+  const binary: unknown = JSON.parse(execFileSync(NYLZO_BINARY, ['version', '--json'], { encoding: 'utf8' }));
   const instanceResponse = await request.get('/api/v1/instance');
-  const instance = (await instanceResponse.json()) as { build: ClientBuild };
   const transparencyResponse = await request.get('/.well-known/nylzo/transparency.json');
-  const transparency = (await transparencyResponse.json()) as { build: ClientBuild };
   expect(binary).toEqual(build);
   expect(manifest.build).toEqual(build);
-  expect(instance.build).toEqual(build);
-  expect(transparency.build).toEqual(build);
+  expect(field(await instanceResponse.json(), 'build')).toEqual(build);
+  expect(field(await transparencyResponse.json(), 'build')).toEqual(build);
   await page.goto('/transparency');
   await expect(page.getByTestId('client-version')).toHaveText(build.version);
   await expect(page.getByTestId('client-commit')).toHaveText(build.commit);
@@ -55,12 +95,13 @@ test('the transparency page shows its embedded client build, reported server ver
 
 test('the client version stays independent of server reports', async ({ page, request }) => {
   const response = await request.get('/assets/build-info.json');
-  const build = (await response.json()) as ClientBuild;
+  const build = buildInfoOf(await response.json());
   const reportedVersion = '99.98.97-server';
   await page.route('**/.well-known/nylzo/*.json', async (route) => {
     const upstream = await route.fetch();
-    const report = (await upstream.json()) as Record<string, unknown>;
-    await route.fulfill({ response: upstream, json: { ...report, server: reportedVersion } });
+    const report: unknown = await upstream.json();
+    const fields = typeof report === 'object' ? report : null;
+    await route.fulfill({ response: upstream, json: { ...fields, server: reportedVersion } });
   });
   await page.goto('/transparency');
   await expect(page.getByTestId('client-version')).toHaveText(build.version);

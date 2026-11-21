@@ -4,6 +4,11 @@ import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
 import { showMessage } from '../support/pages.ts';
 
+declare global {
+  var nylzoTampered: unknown;
+  var nylzoForeign: unknown;
+}
+
 function digest(body: string): string {
   return `sha384-${createHash('sha384').update(body).digest('base64')}`;
 }
@@ -37,7 +42,7 @@ for (const mutation of mutations) {
     await page.goto('/sent');
     await expect.poll(() => errors.join('\n')).toMatch(/integrity|digest|hash/iu);
     const state = await page.evaluate(() => ({
-      script: Reflect.get(globalThis, 'nylzoTampered') as unknown,
+      script: globalThis.nylzoTampered,
       style: getComputedStyle(document.body).getPropertyValue('--nylzo-tampered'),
     }));
     expect(state.script).toBeUndefined();
@@ -56,15 +61,12 @@ test(
     const outbound: string[] = [];
     await page.route(`${foreign}/**`, async (route) => {
       outbound.push(route.request().url());
-      const responses = {
-        '/probe.js': { body: script, contentType: 'text/javascript' },
-        '/dynamic.js': { body: script, contentType: 'text/javascript' },
-        '/probe.css': { body: css, contentType: 'text/css' },
-      };
-      const payload = Reflect.get(responses, new URL(route.request().url()).pathname) as {
-        body: string;
-        contentType: string;
-      };
+      const responses = new Map([
+        ['/probe.js', { body: script, contentType: 'text/javascript' }],
+        ['/dynamic.js', { body: script, contentType: 'text/javascript' }],
+        ['/probe.css', { body: css, contentType: 'text/css' }],
+      ]);
+      const payload = responses.get(new URL(route.request().url()).pathname);
       await route.fulfill({
         ...payload,
         headers: { 'Access-Control-Allow-Origin': '*' },
@@ -94,7 +96,7 @@ test(
       }, `${foreign}/dynamic.js`),
     ).toBe('blocked');
     expect(outbound).toEqual([]);
-    expect(await page.evaluate(() => Reflect.get(globalThis, 'nylzoForeign') as unknown)).toBeUndefined();
+    expect(await page.evaluate(() => globalThis.nylzoForeign)).toBeUndefined();
     expect(await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--nylzo-foreign'))).toBe('');
   },
 );
@@ -122,7 +124,7 @@ test('requires SRI metadata before a same-origin script request can leave the br
 });
 
 test(
-  'runs only a key derivation worker whose bytes match the import map, fetched before any request names the message (A3-03)',
+  'runs only a key derivation worker whose bytes match the import map, fetched before any request names the message',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const passphrase = 'four random words here';
@@ -138,7 +140,7 @@ test(
       const response = await route.fetch({ headers: { ...route.request().headers(), 'accept-encoding': 'identity' } });
       await route.fulfill({ response, body: `fetch('/worker-ran');\n${await response.text()}` });
     });
-    await showMessage(page, message.link, passphrase);
+    await showMessage(page, message.link, { passphrase });
     await expect(page.getByText('Something went wrong')).toBeVisible();
     const worker = order.findIndex((path) => path.startsWith('/assets/kdf-worker-'));
     const firstNamingRequest = order.findIndex((path) => path.startsWith('/api/v1/messages/'));

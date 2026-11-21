@@ -28,8 +28,10 @@ export async function createMessageInPage(page: Page, message: ComposedMessage, 
   }
   await page.getByRole('button', { name: 'Create link' }).click();
   const link = await createdLink(page);
-  if (message.remember) {
-    await trackInSent(page, '', message.remember);
+  if (message.remember === 'browser') {
+    await trackInSent(page);
+  } else if (message.remember === 'tab') {
+    await trackInTabAfterRefusedSave(page);
   }
   return link;
 }
@@ -47,28 +49,56 @@ async function openSecurityMenu(page: Page): Promise<void> {
   }
 }
 
-export async function trackInSent(page: Page, label = '', where: 'browser' | 'tab' = 'browser'): Promise<void> {
-  await page.getByLabel('Label, only you see it').fill(label);
-  if (where === 'browser') {
-    await page.getByRole('switch', { name: 'Keep after closing this tab' }).click();
-  }
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(
-    page.getByText(
-      where === 'browser'
-        ? /This device (?:remembered|could not remember) the message/u
-        : 'This tab remembers the message, at most until you close or reload it.',
-    ),
-  ).toBeVisible();
+const TAB_REMEMBERS = 'This tab remembers the message, at most until you close or reload it.';
+
+interface Tracking {
+  readonly label?: string;
+  readonly where?: 'browser' | 'tab';
 }
 
-export async function chooseLanguage(page: Page, name: 'Čeština' | 'English'): Promise<void> {
+export async function trackInSent(page: Page, { label = '', where = 'browser' }: Tracking = {}): Promise<void> {
+  await page.getByRole('button', { name: 'Track in Sent' }).click();
+  const labelField = page.getByLabel('Label, only you see it');
+  await labelField.fill(label);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(
+    page.getByText(where === 'browser' ? /This device (?:remembered|could not remember) the message/u : TAB_REMEMBERS),
+  ).toBeVisible();
+  // The panel leaves 900 ms after a save and lifts the page under it; a press that straddles the lift clicks nothing.
+  if (await page.getByText('This device could not remember the message').isHidden()) {
+    await expect(labelField).toBeHidden();
+  }
+}
+
+// The web app keeps a record in the tab only after the browser refused to store it.
+async function trackInTabAfterRefusedSave(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    Object.defineProperty(indexedDB, 'open', {
+      configurable: true,
+      value: () => {
+        throw new DOMException('refused', 'SecurityError');
+      },
+    });
+  });
+  await page.getByRole('button', { name: 'Track in Sent' }).click();
+  const save = page.getByRole('button', { name: 'Save', exact: true });
+  await save.click();
+  await expect(page.getByText('This device could not remember the message')).toBeVisible();
+  await page.evaluate(() => Reflect.deleteProperty(indexedDB, 'open'));
+  await save.click();
+  await expect(page.getByText(TAB_REMEMBERS)).toBeVisible();
+  await expect(page.getByLabel('Label, only you see it')).toBeHidden();
+}
+
+const LANGUAGE_CODES = { Čeština: 'cs', English: 'en' } as const;
+
+export async function chooseLanguage(page: Page, name: keyof typeof LANGUAGE_CODES): Promise<void> {
   await page
     .getByRole('button', { name: /(?:Language|Jazyk): /u })
     .first()
     .click();
   const option = page.getByRole('option', { name });
-  await expect(option).toHaveAttribute('lang', name === 'English' ? 'en' : 'cs');
+  await expect(option).toHaveAttribute('lang', LANGUAGE_CODES[name]);
   await option.click();
 }
 
@@ -81,7 +111,11 @@ export async function choosePassphrase(page: Page, passphrase: string): Promise<
   await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);
 }
 
-export async function showMessage(page: Page, link: string, passphrase?: string): Promise<void> {
+interface Unlocking {
+  readonly passphrase?: string;
+}
+
+export async function showMessage(page: Page, link: string, { passphrase }: Unlocking = {}): Promise<void> {
   await page.goto(link);
   if (passphrase !== undefined) {
     await page.getByLabel('Passphrase', { exact: true }).fill(passphrase);

@@ -10,7 +10,7 @@ import { assertProfile, formatLink, isReadPath, parseFragment, parseLink } from 
 
 const base = 'https://nylzo.example';
 
-describe('AK9: link vectors', () => {
+describe('link vectors', () => {
   const valid = vectors.link.filter((vector) => vector.valid);
   const canonical = valid.filter((vector) => vector.canonical === true);
   const invalid = vectors.link.filter((vector) => !vector.valid);
@@ -25,7 +25,7 @@ describe('AK9: link vectors', () => {
 
   it.each(canonical)('$name formats back to its input', (vector) => {
     const link = parseLink(vector.input);
-    expect(formatLink(base, link.id, link.kdfId, link.secret, link.objectHash)).toBe(vector.input);
+    expect(formatLink(base, link)).toBe(vector.input);
   });
 
   it.each(invalid)('$name is rejected', (vector) => {
@@ -37,7 +37,7 @@ describe('AK9: link vectors', () => {
   });
 });
 
-describe('AK24: the kdf profile comes from the fragment only', () => {
+describe('the kdf profile comes from the fragment only', () => {
   it.each<[KdfId, number]>([
     [KDF_SCRYPT, KDF_NONE],
     [KDF_NONE, KDF_SCRYPT],
@@ -60,7 +60,7 @@ describe('AK24: the kdf profile comes from the fragment only', () => {
     const id = randomId();
     const secret = newSecret();
     const objectHash = newSecret();
-    expect(parseLink(formatLink(base, id, KDF_SCRYPT, secret, objectHash))).toStrictEqual({
+    expect(parseLink(formatLink(base, { kdfId: KDF_SCRYPT, id, secret, objectHash }))).toStrictEqual({
       kdfId: KDF_SCRYPT,
       id,
       secret,
@@ -77,8 +77,8 @@ describe('links and fragments (spec 4, 15)', () => {
 
   it('formats a link under one trailing slash of the base, with no id in the path', () => {
     const expected = `${base}/r#3.0.${fields}`;
-    expect(formatLink(base, id, KDF_NONE, secret, secret)).toBe(expected);
-    expect(formatLink(`${base}/`, id, KDF_NONE, secret, secret)).toBe(expected);
+    expect(formatLink(base, { kdfId: KDF_NONE, id, secret, objectHash: secret })).toBe(expected);
+    expect(formatLink(`${base}/`, { kdfId: KDF_NONE, id, secret, objectHash: secret })).toBe(expected);
   });
 
   it.each([`3.3.${fields}`, `#3.3.${fields}`])('parses the fragment %s', (text) => {

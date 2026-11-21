@@ -17,8 +17,14 @@ export async function hostSources() {
   return sources;
 }
 
+export function hostSource(sources: ReadonlyMap<string, string>, name: string) {
+  const contents = sources.get(name);
+  assert(contents !== undefined, `The host bundle has no ${name}`);
+  return contents;
+}
+
 export function manifestEntries(sources: Map<string, string>) {
-  const [format, ...lines] = sources.get("manifest")!.trimEnd().split("\n");
+  const [format, ...lines] = hostSource(sources, "manifest").trimEnd().split("\n");
   assert.equal(format, "format 1");
   return lines.map(line => {
     const [target, source, extra] = line.split(" ");
@@ -54,14 +60,15 @@ function header(name: string, size: number, directory: boolean) {
 export function archive(sources: Map<string, string>) {
   const names = [...sources.keys()].toSorted();
   for (const name of names) assert.match(name, /^(manifest|units|[a-z]+\/[A-Za-z0-9.-]+)$/u, `Unexpected bundle path ${name}`);
-  const directories = [...new Set(names.filter(name => name.includes("/")).map(name => name.split("/")[0]!))].toSorted();
+  const directories = [...new Set(names.filter(name => name.includes("/")).map(name => name.slice(0, name.indexOf("/"))))].toSorted();
   const parts: Buffer[] = [];
   for (const name of [...directories.map(directory => `${directory}/`), ...names].toSorted()) {
-    if (name.endsWith("/")) {
+    const source = sources.get(name);
+    if (source === undefined) {
       parts.push(header(name, 0, true));
       continue;
     }
-    const contents = Buffer.from(sources.get(name)!, "utf8");
+    const contents = Buffer.from(source, "utf8");
     parts.push(header(name, contents.length, false), contents, Buffer.alloc((blockSize - (contents.length % blockSize)) % blockSize));
   }
   parts.push(Buffer.alloc(blockSize * 2));

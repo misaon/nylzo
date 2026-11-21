@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { administratorKeyIsHardware, configuration, patchCandidate } from "./configuration.mts";
+import { administratorKeyIsHardware, configuration, isRecord, patchCandidate } from "./configuration.mts";
 import { releaseBundle, render } from "./render.mts";
 import { hostSources } from "./bundle.mts";
 import { gunzipSync } from "node:zlib";
@@ -10,7 +10,7 @@ import { generateKeyPairSync } from "node:crypto";
 const ed25519 = "ssh-ed25519 " + Buffer.concat([Buffer.from("0000000b7373682d6564323535313900000020", "hex"), Buffer.alloc(32, 1)]).toString("base64");
 const field = (value: Buffer | string) => { const bytes = Buffer.from(value); const length = Buffer.alloc(4); length.writeUInt32BE(bytes.length); return Buffer.concat([length, bytes]); };
 const securityKey = (application = "ssh:", key = Buffer.alloc(32, 2), type = "sk-ssh-ed25519@openssh.com") => `${type} ${Buffer.concat([field(type), field(key), field(application)]).toString("base64")} operator@laptop`;
-const p256Point = () => { const { x, y } = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }); return Buffer.concat([Buffer.from([4]), Buffer.from(x!, "base64url"), Buffer.from(y!, "base64url")]); };
+const p256Point = () => { const { x, y } = generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" }); assert(x !== undefined && y !== undefined); return Buffer.concat([Buffer.from([4]), Buffer.from(x, "base64url"), Buffer.from(y, "base64url")]); };
 const enclaveKey = (point = p256Point(), curve = "nistp256", type = "sk-ecdsa-sha2-nistp256@openssh.com") => `${type} ${Buffer.concat([field(type), field(curve), field(point), field("ssh:")]).toString("base64")} ssh:`;
 const site = {
   name: "nylzo-test", domain: "nylzo.example.org", location: "nbg1", serverType: "cx23", architecture: "amd64",
@@ -20,7 +20,9 @@ const site = {
   operator: "Test operator", contact: "security@example.org", hosting: "Test provider", dailyCreates: 250, initialRelease: "v0.1.2", automaticUpdates: true,
 };
 const bundle = releaseBundle("v0.1.2", "c".repeat(64));
-const decode = (ignition: { storage: { files: any[] } }) => new Map(ignition.storage.files.filter(file => file.contents.source.startsWith("data:")).map(file => [file.path, gunzipSync(Buffer.from(file.contents.source.split(",")[1]!, "base64")).toString()]));
+const decode = (ignition: Awaited<ReturnType<typeof render>>["ignition"]) => new Map(ignition.storage.files.filter(file => file.contents.source.startsWith("data:")).map(file => [file.path, gunzipSync(Buffer.from(file.contents.source.slice(file.contents.source.indexOf(",") + 1), "base64")).toString()]));
+const isCloudFile = (value: unknown): value is { path: string; content: string } => isRecord(value) && typeof value["path"] === "string" && typeof value["content"] === "string";
+const entry = (files: ReadonlyMap<string, string>, name: string) => { const contents = files.get(name); assert(contents !== undefined, `${name} is missing`); return contents; };
 
 test("deployment input cannot inject services, expose SSH globally, or select a mismatched architecture", () => {
   for (const changed of [
@@ -29,6 +31,7 @@ test("deployment input cannot inject services, expose SSH globally, or select a 
     { administratorNetworks: ["192.0.2.1/32/anything"] }, { architecture: "arm64" },
     { dailyCreates: 2000 }, { initialRelease: "v0.1.2;false" }, { reportPublicKey: "invalid" }, { reportPublicKey: undefined }, { publicAccess: "true" },
     { operator: "name\nNYLZO_TRUSTED_PROXIES=0.0.0.0/0" }, { unexpectedRootCommand: "/bin/false" },
+    { dnsZone: ["org"] }, { cloudflareAccountId: 0 },
     { administratorPublicKey: "ssh-ed25519 " + Buffer.alloc(51).toString("base64") },
     { administratorPublicKey: securityKey("web:") }, { administratorPublicKey: securityKey("ssh:", Buffer.alloc(31, 2)) },
     { administratorPublicKey: securityKey("ssh:", Buffer.alloc(32, 2), "sk-ecdsa-sha2-nistp256@openssh.com") },
@@ -54,13 +57,18 @@ test("deployment input cannot inject services, expose SSH globally, or select a 
 test("a site that boots v0.14.0 or later needs no report key and renders none", async () => {
   const { reportPublicKey: _, ...current } = { ...site, initialRelease: "v0.14.0" };
   const { ignition } = await render(configuration(current), releaseBundle("v0.14.0", "c".repeat(64)));
-  assert.doesNotMatch(decode(ignition).get("/etc/nylzo/service.env")!, /NYLZO_REPORT_KEY/u);
-  assert.match(decode((await render(site, bundle)).ignition).get("/etc/nylzo/service.env")!, /^NYLZO_REPORT_KEY=/mu);
+  assert.doesNotMatch(entry(decode(ignition), "/etc/nylzo/service.env"), /NYLZO_REPORT_KEY/u);
+  assert.match(entry(decode((await render(site, bundle)).ignition), "/etc/nylzo/service.env"), /^NYLZO_REPORT_KEY=/mu);
+});
+
+test("a host manifest line that is not one target and one source stops the render", async () => {
+  const sources = await hostSources();
+  await assert.rejects(render(site, new Map([...sources, ["manifest", entry(sources, "manifest") + "/etc/nylzo/extra system/sshd.conf system/daemon.json\n"]])), /Invalid manifest line/u);
 });
 
 test("automatic patch selection refuses prereleases, downgrades, breaking upgrades and overflowing versions", () => {
-  assert(patchCandidate("v0.1.2", "v0.1.3"));
-  for (const version of ["v0.1.1", "v0.1.2", "v0.2.0", "v1.1.3", "v0.1.3-beta", "v0.1.03", "v0.1.9999999999999999999999999", "v0.1.3\nanything"]) assert(!patchCandidate("v0.1.2", version));
+  assert(patchCandidate({ current: "v0.1.2", candidate: "v0.1.3" }));
+  for (const version of ["v0.1.1", "v0.1.2", "v0.2.0", "v1.1.3", "v0.1.3-beta", "v0.1.03", "v0.1.9999999999999999999999999", "v0.1.3\nanything"]) assert(!patchCandidate({ current: "v0.1.2", candidate: version }));
 });
 
 test("server user data stays small, carries no secret, and installs only the signed host bundle of the initial release", async () => {
@@ -69,20 +77,27 @@ test("server user data stays small, carries no secret, and installs only the sig
   const { ignition, cloud } = await render(largest, bundle);
   assert(Buffer.byteLength(JSON.stringify(ignition)) <= 24576, "Server user data must leave room within Hetzner's 32 KiB limit");
   assert(Buffer.byteLength(cloud) <= 32768);
-  const factory = JSON.parse(cloud.slice("#cloud-config\n".length));
-  assert(factory.write_files.every((file: { path: string }) => file.path.startsWith("/var/tmp/nylzo-image/")), "Large boot artifacts must not fill Ubuntu's small /run tmpfs");
-  const bootstrap = factory.write_files.find((file: { path: string }) => file.path.endsWith("/boot"));
-  assert.match(gunzipSync(Buffer.from(bootstrap.content, "base64")).toString(), /cd \/var\/tmp\/nylzo-image/u);
-  const remote = ignition.storage.files.find(file => file.path === "/opt/nylzo/host/initial.tar")!;
-  assert.deepEqual(remote.contents, { source: "https://github.com/misaon/nylzo/releases/download/v0.1.2/nylzo-host_0.1.2.tar", verification: { hash: `sha256-${"c".repeat(64)}` } });
+  const factory: unknown = JSON.parse(cloud.slice("#cloud-config\n".length));
+  const written: unknown = isRecord(factory) ? factory["write_files"] : undefined;
+  assert(Array.isArray(written) && written.every(isCloudFile));
+  assert(written.every(file => file.path.startsWith("/var/tmp/nylzo-image/")), "Large boot artifacts must not fill Ubuntu's small /run tmpfs");
+  const bootstrap = written.find(file => file.path.endsWith("/boot"));
+  assert.match(gunzipSync(Buffer.from(bootstrap?.content ?? "", "base64")).toString(), /cd \/var\/tmp\/nylzo-image/u);
+  const remote = ignition.storage.files.find(file => file.path === "/opt/nylzo/host/initial.tar");
+  assert.deepEqual(remote?.contents, { source: "https://github.com/misaon/nylzo/releases/download/v0.1.2/nylzo-host_0.1.2.tar", verification: { hash: `sha256-${"c".repeat(64)}` } });
   for (const architecture of ["amd64", "arm64"]) {
     const rendered = (await render({ ...site, architecture, serverType: architecture === "amd64" ? "cx23" : "cax11" }, bundle)).ignition;
-    const runtime = JSON.parse((await hostSources()).get("system/runtime.json")!);
+    const runtime: unknown = JSON.parse(entry(await hostSources(), "system/runtime.json"));
+    assert(isRecord(runtime));
+    const docker = runtime["docker"];
+    const digest = runtime[architecture];
+    assert(typeof docker === "string" && typeof digest === "string");
     const asset = architecture === "amd64" ? "x86-64" : "arm64";
-    const image = rendered.storage.files.find(file => file.path.endsWith(`docker-${runtime.docker}-${asset}.raw`))!;
+    const image = rendered.storage.files.find(file => file.path.endsWith(`docker-${docker}-${asset}.raw`));
+    assert(image);
     assert.deepEqual(image.contents, {
-      source: `https://github.com/flatcar/sysext-bakery/releases/download/docker-${runtime.docker}/docker-${runtime.docker}-${asset}.raw`,
-      verification: { hash: `sha256-${runtime[architecture]}` },
+      source: `https://github.com/flatcar/sysext-bakery/releases/download/docker-${docker}/docker-${docker}-${asset}.raw`,
+      verification: { hash: `sha256-${digest}` },
     });
     assert.deepEqual(rendered.storage.links, [
       { path: "/etc/extensions/docker-flatcar.raw", target: "/dev/null", overwrite: true },
@@ -93,79 +108,83 @@ test("server user data stays small, carries no secret, and installs only the sig
   const files = decode(ignition);
   assert(!JSON.stringify(ignition).includes("HCLOUD_TOKEN"));
   assert(![...files.keys()].some(name => /pepper$|report-key|state-encryption/u.test(name)));
-  assert.match(files.get("/etc/ssh/sshd_config.d/20-nylzo.conf")!, /^KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh\.com$/mu);
-  assert.match(files.get("/etc/sysctl.d/90-nylzo.conf")!, /^kernel.kexec_load_disabled=1$/mu);
-  assert.match(files.get("/etc/systemd/coredump.conf.d/20-nylzo.conf")!, /^Storage=none$/mu);
-  assert.match(files.get("/etc/selinux/config")!, /^SELINUX=enforcing$/mu);
-  assert.match(files.get("/etc/nylzo/service.env")!, /NYLZO_TRUSTED_PROXIES=172\.30\.81\.1\/32/u);
+  assert.match(entry(files, "/etc/ssh/sshd_config.d/20-nylzo.conf"), /^KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh\.com$/mu);
+  assert.match(entry(files, "/etc/sysctl.d/90-nylzo.conf"), /^kernel.kexec_load_disabled=1$/mu);
+  assert.match(entry(files, "/etc/systemd/coredump.conf.d/20-nylzo.conf"), /^Storage=none$/mu);
+  assert.match(entry(files, "/etc/selinux/config"), /^SELINUX=enforcing$/mu);
+  assert.match(entry(files, "/etc/nylzo/service.env"), /NYLZO_TRUSTED_PROXIES=172\.30\.81\.1\/32/u);
   assert.equal(files.get("/etc/nylzo/caddy.env"), `NYLZO_DOMAIN=${site.domain}\nNYLZO_CONTACT=security@example.org\n`);
   assert.equal(files.get("/etc/nylzo/host.env"), "AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=false\nADMINISTRATOR_NETWORKS=192.0.2.1/32,2001:db8::1/128\nHARDWARE_KEYS_ONLY=true\nENCRYPTED_STORAGE_REQUIRED=true\n");
-  assert.equal(JSON.parse(files.get("/etc/nylzo/tang.json")!).t, 2);
-  assert.equal(ignition.storage.files.find(file => file.path === "/etc/nylzo/heartbeat.url")!.mode, 0o600);
+  const tang: unknown = JSON.parse(entry(files, "/etc/nylzo/tang.json"));
+  assert(isRecord(tang));
+  assert.equal(tang["t"], 2);
+  assert.equal(ignition.storage.files.find(file => file.path === "/etc/nylzo/heartbeat.url")?.mode, 0o600);
   assert(!ignition.passwd.users.some(user => "sshAuthorizedKeys" in user && user.name !== "core"));
   assert.deepEqual(ignition.systemd.units.filter(unit => !("mask" in unit)).map(unit => unit.name), ["nylzo-host.service"]);
-  const first = ignition.systemd.units.find(unit => unit.name === "nylzo-host.service")!;
-  assert("contents" in first);
+  const first = ignition.systemd.units.find(unit => unit.name === "nylzo-host.service");
+  assert(first !== undefined && "contents" in first);
   assert.match(first.contents, /^Before=sysinit\.target network-pre\.target shutdown\.target$/mu);
   assert.match(first.contents, /activate --first-boot \/opt\/nylzo\/host\/initial$/mu);
   const apex = decode((await render({ ...site, dnsZone: site.domain }, bundle)).ignition);
-  assert.match(apex.get("/etc/nylzo/host.env")!, /^WWW_REDIRECT=true$/mu);
-  assert.match(apex.get("/etc/nylzo/host.env")!, /^HARDWARE_KEYS_ONLY=false$/mu);
-  assert.match(apex.get("/etc/nylzo/host.env")!, /^ENCRYPTED_STORAGE_REQUIRED=false$/mu);
+  assert.match(entry(apex, "/etc/nylzo/host.env"), /^WWW_REDIRECT=true$/mu);
+  assert.match(entry(apex, "/etc/nylzo/host.env"), /^HARDWARE_KEYS_ONLY=false$/mu);
+  assert.match(entry(apex, "/etc/nylzo/host.env"), /^ENCRYPTED_STORAGE_REQUIRED=false$/mu);
   assert(!decode((await render(site, bundle)).ignition).has("/etc/nylzo/tang.json"));
 });
 
 test("the host bundle isolates the pepper, the probe and the deployment credentials", async () => {
   const sources = await hostSources();
-  assert.match(sources.get("application/run")!, /\/run\/nylzo-pepper:ro,Z/u);
-  assert.match(sources.get("application/run")!, /--ulimit memlock=-1:-1/u);
-  assert(!sources.get("application/run")!.includes("--publish"));
-  assert.match(sources.get("monitoring/host-policy")!, /SELinux enforcement is required/u);
-  assert.match(sources.get("application/prepare")!, /systemd-sysctl \/etc\/sysctl\.d\/90-nylzo\.conf/u);
-  assert.match(sources.get("application/health")!, /\/opt\/nylzo\/runtime\/host-policy/u);
-  assert.match(sources.get("proxy/Caddyfile")!, /reverse_proxy 172\.30\.81\.2:8080/u);
-  assert(!sources.get("update/update")!.includes("gh api"));
-  assert.match(sources.get("update/update")!, /--network none/u);
-  const update = sources.get("update/update")!;
+  assert.match(entry(sources, "application/run"), /\/run\/nylzo-pepper:ro,Z/u);
+  assert.match(entry(sources, "application/run"), /--ulimit memlock=-1:-1/u);
+  assert(!entry(sources, "application/run").includes("--publish"));
+  assert.match(entry(sources, "monitoring/host-policy"), /SELinux enforcement is required/u);
+  assert.match(entry(sources, "application/prepare"), /systemd-sysctl \/etc\/sysctl\.d\/90-nylzo\.conf/u);
+  assert.match(entry(sources, "application/health"), /\/opt\/nylzo\/runtime\/host-policy/u);
+  assert.match(entry(sources, "proxy/Caddyfile"), /reverse_proxy 172\.30\.81\.2:8080/u);
+  assert(!entry(sources, "update/update").includes("gh api"));
+  assert.match(entry(sources, "update/update"), /--network none/u);
+  const update = entry(sources, "update/update");
   assert(update.indexOf('caddy "$version"') < update.indexOf('host "$version"'), "the compatible Caddy binary must be installed before a host bundle can introduce new directives");
   assert(update.indexOf('store_check "$image@$digest"') < update.indexOf('caddy "$version"'), "frontend activation must wait until the candidate passes the preflight checks");
   assert(update.indexOf('store_check "$image@$digest"') < update.indexOf("systemctl stop nylzo.service"), "the store check runs before the running release stops");
-  assert.match(sources.get("application/run")!, /--volume \/run\/nylzo-epoch:\/run\/nylzo-epoch:Z/u);
-  assert.match(sources.get("application/nylzo.service")!, /^ExecStartPre=\+\/usr\/bin\/chmod 0700 \/run\/nylzo-epoch$/mu);
-  assert.match(sources.get("update/update-engine.conf")!, /Requires=nylzo-ready\.service/u);
-  assert.match(sources.get("system/daemon.json")!, /"userns-remap":"dockremap"/u);
-  assert.match(sources.get("system/containerd.toml")!, /disabled_plugins = \["io\.containerd\.grpc\.v1\.cri"/u);
-  const containerd = Bun.TOML.parse(sources.get("system/containerd.toml")!) as { disabled_plugins: string[] };
+  assert.match(entry(sources, "application/run"), /--volume \/run\/nylzo-epoch:\/run\/nylzo-epoch:Z/u);
+  assert.match(entry(sources, "application/nylzo.service"), /^ExecStartPre=\+\/usr\/bin\/chmod 0700 \/run\/nylzo-epoch$/mu);
+  assert.match(entry(sources, "update/update-engine.conf"), /Requires=nylzo-ready\.service/u);
+  assert.match(entry(sources, "system/daemon.json"), /"userns-remap":"dockremap"/u);
+  assert.match(entry(sources, "system/containerd.toml"), /disabled_plugins = \["io\.containerd\.grpc\.v1\.cri"/u);
+  const containerd: unknown = Bun.TOML.parse(entry(sources, "system/containerd.toml"));
+  const disabled: unknown = isRecord(containerd) ? containerd["disabled_plugins"] : undefined;
+  assert(Array.isArray(disabled));
   for (const plugin of ["io.containerd.podsandbox.controller.v1.podsandbox", "io.containerd.monitor.container.v1.restart"]) {
-    assert(containerd.disabled_plugins.includes(plugin), `${plugin} must not initialize without the disabled CRI or transfer services`);
+    assert(disabled.includes(plugin), `${plugin} must not initialize without the disabled CRI or transfer services`);
   }
-  assert.match(sources.get("application/nylzo.service")!, /^Restart=on-failure$/mu);
-  const identity = sources.get("system/nylzo-ssh-identity.service")!;
+  assert.match(entry(sources, "application/nylzo.service"), /^Restart=on-failure$/mu);
+  const identity = entry(sources, "system/nylzo-ssh-identity.service");
   for (const expected of ["Requires=sshd-keygen.service", "-f /etc/ssh/ssh_host_ed25519_key.pub", "TTYPath=/dev/tty1"]) assert(identity.includes(expected));
-  const ssh = sources.get("system/sshd.conf")!;
+  const ssh = entry(sources, "system/sshd.conf");
   for (const expected of ["PubkeyAcceptedAlgorithms sk-ssh-ed25519@openssh.com,sk-ecdsa-sha2-nistp256@openssh.com,ssh-ed25519", "PubkeyAuthOptions touch-required", "HostKeyAlgorithms ssh-ed25519", "Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com", "MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com"]) assert(ssh.includes(`${expected}\n`), expected);
 });
 
 test("services that keep data start only after the data volume step has run and succeeded", async () => {
   const sources = await hostSources();
-  assert.doesNotMatch(sources.get("application/nylzo-storage.service")!, /^(Condition|Assert)/mu, "A skipped volume step lets the services that require it start on the plain root filesystem");
+  assert.doesNotMatch(entry(sources, "application/nylzo-storage.service"), /^(Condition|Assert)/mu, "A skipped volume step lets the services that require it start on the plain root filesystem");
   for (const name of ["application/nylzo-initialize.service", "application/nylzo.service", "proxy/caddy.service"]) {
-    assert.match(sources.get(name)!, /^Requires=.*nylzo-storage\.service/mu, name);
-    assert.match(sources.get(name)!, /^After=.*nylzo-storage\.service/mu, name);
+    assert.match(entry(sources, name), /^Requires=.*nylzo-storage\.service/mu, name);
+    assert.match(entry(sources, name), /^After=.*nylzo-storage\.service/mu, name);
   }
 });
 
 test("public services require the shared traffic ceiling and DNS provisioning works on Cloudflare Free", async () => {
   const sources = await hostSources();
-  assert.match(sources.get("units")!, /^enable always nylzo-bandwidth\.service$/mu);
-  assert(!sources.get("system/nylzo-bandwidth.service")!.includes("Requires=nylzo-tools.service"));
+  assert.match(entry(sources, "units"), /^enable always nylzo-bandwidth\.service$/mu);
+  assert(!entry(sources, "system/nylzo-bandwidth.service").includes("Requires=nylzo-tools.service"));
   for (const name of ["update/nylzo-tools.service", "application/nylzo-initialize.service", "application/nylzo.service", "proxy/caddy.service"]) {
-    assert.match(sources.get(name)!, /Requires=.*nylzo-bandwidth.service/u, name);
-    assert.match(sources.get(name)!, /After=.*nylzo-bandwidth.service/u, name);
+    assert.match(entry(sources, name), /Requires=.*nylzo-bandwidth.service/u, name);
+    assert.match(entry(sources, name), /After=.*nylzo-bandwidth.service/u, name);
   }
   // Both address families share one NIC. Even continuous use leaves a margin
   // below the included allowance, including a maximum-length calendar month.
-  const script = sources.get("system/bandwidth")!;
+  const script = entry(sources, "system/bandwidth");
   assert(!script.includes("jq"), "The first-boot ceiling must not depend on downloaded tools");
   const rate = /tbf rate ([0-9]+)mbit/u.exec(script);
   assert(rate);
@@ -184,6 +203,6 @@ test("DNS allows only the instance's Let's Encrypt account by HTTP-01, no wildca
   assert.match(dns, /content = "\\"v=spf1 -all\\""/u);
   assert.match(dns, /content = "\\"v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s\\""/u);
   assert.match(dns, /count {3}= local\.apex \? 1 : 0/u);
-  const caddy = (await hostSources()).get("proxy/Caddyfile")!;
+  const caddy = entry(await hostSources(), "proxy/Caddyfile");
   assert.match(caddy, /disable_tlsalpn_challenge/u);
 });

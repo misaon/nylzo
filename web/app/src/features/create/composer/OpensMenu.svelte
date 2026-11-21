@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import Button from '../../../shared/ui/button/Button.svelte';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import type { Composer } from './composer.svelte.ts';
   import ComposerMenu from './ComposerMenu.svelte';
@@ -27,30 +28,32 @@
   <p class="px-3 pt-1.5 pb-1 text-caption text-ink-mute">{title}</p>
   <div class="mx-1 rounded-pane p-2 well">
     <div class="flex items-center justify-between">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon"
         aria-disabled={composer.opensMax <= 1}
         onclick={() => (composer.opensMax = Math.max(1, composer.opensMax - 1))}
         aria-label={translate('compose.opens.less')}
-        class="group/action button-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition aria-disabled:opacity-40 md:size-9"
+        class="transition aria-disabled:opacity-40"
       >
         <Icon name="minus" class="size-4 shrink-0" animated />
-      </button>
+      </Button>
       <div class="flex flex-col items-center gap-1">
         <output class="text-stat font-light text-ink tabular-nums" aria-live="polite">{composer.opensMax}</output>
         <span class="text-micro text-ink-mute" aria-hidden="true"
           >{translator.plural('compose.opens.unit', composer.opensMax)}</span
         >
       </div>
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon"
         aria-disabled={composer.opensMax >= composer.maxOpens}
         onclick={() => (composer.opensMax = Math.min(composer.maxOpens, composer.opensMax + 1))}
         aria-label={translate('compose.opens.more')}
-        class="group/action button-ghost inline-grid size-11 shrink-0 place-items-center rounded-control transition aria-disabled:opacity-40 md:size-9"
+        class="transition aria-disabled:opacity-40"
       >
         <Icon name="plus" class="size-4 shrink-0" animated />
-      </button>
+      </Button>
     </div>
     <div class="mt-2.5 flex gap-1 px-1 pb-0.5" aria-hidden="true">
       {#each SEGMENTS as segment (segment)}
@@ -63,7 +66,4 @@
       {/each}
     </div>
   </div>
-  {#if composer.opensMax > 1 && !composer.usesPassphrase}
-    <p class="px-3 pt-2 pb-1 text-micro text-pretty text-nebula-300">{translate('compose.opens.history')}</p>
-  {/if}
 </ComposerMenu>

@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { fade, slide } from 'svelte/transition';
+  import { slide } from 'svelte/transition';
 
-  import { clearClipboard } from '../../../shared/clipboard/clear-clipboard.ts';
   import { formatMoment } from '../../../shared/language/format.ts';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import { MAX_LABEL_CHARACTERS } from '../../../shared/sent-records/sent-record.ts';
@@ -10,26 +9,39 @@
   import { FocusTargets, keepFocus } from '../../../shared/ui/focus/focus.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
-  import Switch from '../../../shared/ui/switch/Switch.svelte';
+  import ErrorNote from '../../../shared/ui/notice/ErrorNote.svelte';
   import IconTile from '../../../shared/ui/tile/IconTile.svelte';
   import { Flash } from '../../../shared/ui/transition/flash.svelte.ts';
-  import { motionMs } from '../../../shared/ui/transition/motion.ts';
+  import { collapse, motionMs } from '../../../shared/ui/transition/motion.ts';
   import type { Remembered } from '../composer/composer.svelte.ts';
   import type { Created } from '../create-message.ts';
   import { linkSegments } from './link-segments.ts';
 
   interface Props {
-    readonly created: Created;
+    readonly created: Pick<Created, 'expiresAt' | 'link'>;
     readonly opensMax: number;
     readonly passphrase: string;
-    readonly canKeep: boolean;
-    readonly canTrackInTab: boolean;
+    readonly trackable: boolean;
+    readonly keeps: boolean;
     readonly remembered: Remembered;
-    readonly onremember: (label: string, keep: boolean) => void;
+    readonly onremember: (label: string) => void;
+    readonly ontrackingleft: () => void;
     readonly onanother: () => void;
+    readonly sizing?: boolean;
   }
 
-  const { created, opensMax, passphrase, canKeep, canTrackInTab, remembered, onremember, onanother }: Props = $props();
+  const {
+    created,
+    opensMax,
+    passphrase,
+    trackable,
+    keeps,
+    remembered,
+    onremember,
+    ontrackingleft,
+    onanother,
+    sizing = false,
+  }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
   const id = $props.id();
@@ -37,17 +49,19 @@
   const COPIED_MS = 2400;
   const SAVED_MS = 900;
   const PASSPHRASE_MASK = '•'.repeat(18);
+  // Safari stops breaking after hyphens under keep-all, so only CJK passphrases keep their words whole.
+  const CJK = /[\p{scx=Han}\p{scx=Hiragana}\p{scx=Katakana}\p{scx=Hangul}]/u;
   const RISE = 'transition-[opacity,translate] duration-500 starting:[translate:0_0.375rem] starting:opacity-0';
 
   const copied = new Flash(COPIED_MS);
   const passphraseCopied = new Flash(COPIED_MS);
   const justSaved = new Flash(SAVED_MS);
-  const focus = new FocusTargets<'clipboard' | 'link' | 'title'>();
+  const focus = new FocusTargets<'link' | 'title'>();
   let editing = $state(false);
-  let clipboard = $state<'cleared' | 'copied' | 'failed' | 'untouched'>('untouched');
+  let copyFailed = $state(false);
   let passphraseShown = $state(false);
+  let tracking = $state(false);
   let label = $state('');
-  let keep = $state(false);
 
   const segments = $derived(linkSegments(created.link));
   const shareable = $derived(
@@ -55,24 +69,17 @@
       typeof navigator.share === 'function' &&
       navigator.canShare({ url: created.link }),
   );
-  const trackingShown = $derived((canKeep || canTrackInTab) && (remembered !== 'remembered' || justSaved.shown));
+  const trackingOffered = $derived(trackable && !tracking && remembered !== 'remembered');
+  const trackingShown = $derived(trackable && tracking && (remembered !== 'remembered' || justSaved.shown));
   const trackingLocked = $derived(remembered === 'saving' || remembered === 'remembered');
-  // After a failed browser save only the tab may take a second try.
-  const keepChosen = $derived(canKeep && (!canTrackInTab || (keep && remembered === 'off')));
-  const clipboardText = $derived.by(() => {
-    if (clipboard === 'failed') {
-      return translate('created.copy_failed');
-    }
-    return translate(clipboard === 'cleared' ? 'clipboard.cleared' : 'clipboard.copied');
-  });
 
   async function copy() {
     try {
       await navigator.clipboard.writeText(created.link);
-      clipboard = 'copied';
+      copyFailed = false;
       copied.show();
     } catch {
-      clipboard = 'failed';
+      copyFailed = true;
       focus.focus('link');
     }
   }
@@ -80,18 +87,10 @@
   async function copyPassphrase() {
     try {
       await navigator.clipboard.writeText(passphrase);
-      clipboard = 'copied';
       passphraseCopied.show();
     } catch {
       passphraseShown = true;
     }
-  }
-
-  async function clearCopies() {
-    await clearClipboard((state) => {
-      clipboard = state;
-    });
-    await focus.keepFocusAfterUpdate('clipboard');
   }
 
   async function share() {
@@ -107,7 +106,7 @@
     size="large"
     onclick={() => void copy()}
     aria-label={translate('created.copy')}
-    class={shareable ? 'w-full' : 'w-full sm:w-auto'}
+    class="w-full"
   >
     <SwapIcon class="relative" from="copy" to="check" swapped={copied.shown} size="size-[18px]" />
     <span class="relative">
@@ -119,7 +118,7 @@
 
 <div
   class="relative flex flex-col overflow-hidden text-left fade-swap starting:[translate:0_0.75rem] starting:opacity-0"
-  out:fade={{ duration: motionMs(400) }}
+  out:collapse={{ duration: motionMs(400) }}
 >
   <div
     class="relative flex min-h-0 flex-1 flex-col items-center justify-center px-5 py-9 text-center sm:px-10 md:py-12"
@@ -141,7 +140,11 @@
     </span>
     <h2
       {@attach focus.attach('title')}
-      {@attach () => focus.focus('title')}
+      {@attach () => {
+        if (!sizing) {
+          focus.focus('title');
+        }
+      }}
       tabindex="-1"
       class={[
         'relative mt-5 font-display text-panel font-light text-ink delay-120 outline-none md:text-panel-lg',
@@ -154,203 +157,158 @@
       {translate(passphrase === '' ? 'created.sub' : 'created.sub.passphrase')}
     </p>
 
-    <div class={['relative mt-7 w-full max-w-[720px] delay-180 md:mt-8', RISE]}>
-      <div class="relative rounded-card">
+    <div
+      class={[
+        'relative mt-7 grid w-full max-w-[720px] grid-cols-1 gap-y-3 delay-180 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-x-3 md:mt-8',
+        RISE,
+      ]}
+    >
+      <div
+        class="relative col-span-full grid grid-cols-subgrid items-center gap-y-2.5 rounded-card well max-sm:p-2 sm:p-2 sm:pl-4"
+      >
         <span
           class={[
             'pointer-events-none absolute inset-0 rounded-card shadow-[0_0_36px_-6px_oklch(0.56_0.19_258/0.9)] ring-1 ring-aegis-300/50 transition-opacity duration-500 max-sm:hidden',
-            copied.shown || clipboard === 'failed' ? 'opacity-100' : 'opacity-0',
+            copied.shown || copyFailed ? 'opacity-100' : 'opacity-0',
           ]}
           aria-hidden="true"
         ></span>
-        <div class="rounded-card well max-sm:p-2">
-          <div class="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:gap-3 sm:p-2 sm:pl-4">
-            <div
-              class="flex min-w-0 flex-1 items-center gap-3 rounded-pane px-2 py-1 text-left outline-offset-3 outline-transparent transition not-forced-colors:outline-2 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-aegis-300 sm:p-0"
+        <div
+          class="flex min-w-0 items-center gap-3 rounded-pane px-2 py-1 text-left outline-offset-3 outline-transparent transition not-forced-colors:outline-2 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-aegis-300 sm:p-0"
+        >
+          <Icon name="lock" class="size-4 shrink-0 text-aegis-300" />
+          <div class="relative min-h-11 min-w-0 flex-1">
+            <p
+              translate="no"
+              aria-hidden="true"
+              class={[
+                'pointer-events-none flex h-full min-h-11 min-w-0 items-center text-body-sm whitespace-nowrap text-ink-soft tabular-nums transition-opacity md:text-body',
+                editing ? 'opacity-0' : 'opacity-100',
+              ]}
             >
-              <Icon name="lock" class="size-4 shrink-0 text-aegis-300" />
-              <div class="relative min-h-11 min-w-0 flex-1">
-                <p
-                  translate="no"
-                  aria-hidden="true"
-                  class={[
-                    'pointer-events-none flex h-full min-h-11 min-w-0 items-center text-body-sm whitespace-nowrap tabular-nums transition-opacity md:text-body',
-                    editing ? 'opacity-0' : 'opacity-100',
-                  ]}
-                >
-                  {#each segments as segment (segment.id)}
-                    {#if segment.secret}
-                      <span
-                        class="relative shrink-0 bg-linear-to-r from-aegis-200 via-aegis-300 to-nebula-300 bg-clip-text font-medium text-transparent after:absolute after:inset-x-0 after:-bottom-1 after:h-0.5 after:rounded-full after:bg-linear-to-r after:from-aegis-300/70 after:to-nebula-300/70 after:shadow-[0_0_8px_oklch(0.72_0.14_305/0.6)]"
-                      >
-                        <span class="sm:hidden">{segment.short}</span>
-                        <span class="hidden sm:inline">{segment.text}</span>
-                      </span>
-                    {:else if segment.id === 'host'}
-                      <span
-                        class="min-w-0 overflow-hidden whitespace-nowrap text-ink-mute max-[379px]:[mask-image:linear-gradient(90deg,black_70%,transparent)] sm:shrink-0"
-                        >{segment.text}</span
-                      >
-                    {:else}
-                      <span class="shrink-0 text-ink-mute">
-                        <span class="sm:hidden">{segment.short}</span>
-                        <span class="hidden sm:inline">{segment.text}</span>
-                      </span>
-                    {/if}
-                  {/each}
-                </p>
-                <label class="sr-only" for="{id}-link">{translate('created.link')}</label>
-                <input
-                  id="{id}-link"
-                  {@attach focus.attach('link')}
-                  type="text"
-                  readonly
-                  autocomplete="off"
-                  translate="no"
-                  spellcheck="false"
-                  value={created.link}
-                  onfocus={(event) => {
-                    editing = true;
-                    event.currentTarget.select();
-                  }}
-                  onblur={() => (editing = false)}
-                  class={[
-                    'absolute inset-0 h-full w-full bg-transparent text-ui tabular-nums caret-transparent outline-none md:text-body',
-                    editing ? 'text-ink-soft' : 'text-transparent',
-                  ]}
-                />
-              </div>
-            </div>
-            {#if shareable}
-              <div class="grid grid-cols-2 gap-2.5">
-                {@render copyLinkButton()}
-                <Button variant="tint" size="large" onclick={() => void share()} class="w-full">
-                  <Icon name="upload" class="size-4 shrink-0" />
-                  <span>{translate('created.share')}</span>
-                </Button>
-              </div>
-            {:else}
-              {@render copyLinkButton()}
+              {#each segments as segment (segment.id)}
+                {#if segment.id === 'host'}
+                  <span
+                    class="min-w-0 overflow-hidden whitespace-nowrap max-[379px]:[mask-image:linear-gradient(90deg,black_70%,transparent)] sm:shrink-0"
+                    >{segment.text}</span
+                  >
+                {:else}
+                  <span class="shrink-0">
+                    <span class="sm:hidden">{segment.short}</span>
+                    <span class="hidden sm:inline">{segment.text}</span>
+                  </span>
+                {/if}
+              {/each}
+            </p>
+            {#if !sizing}
+              <label class="sr-only" for="{id}-link">{translate('created.link')}</label>
             {/if}
+            <input
+              id="{id}-link"
+              {@attach focus.attach('link')}
+              type="text"
+              readonly
+              autocomplete="off"
+              translate="no"
+              spellcheck="false"
+              value={created.link}
+              onfocus={(event) => {
+                editing = true;
+                event.currentTarget.select();
+              }}
+              onblur={() => (editing = false)}
+              class={[
+                'absolute inset-0 h-full w-full bg-transparent text-ui tabular-nums caret-transparent outline-none md:text-body',
+                editing ? 'text-ink-soft' : 'text-transparent',
+              ]}
+            />
           </div>
-          <p
-            class="-mx-2 mt-2 -mb-2 flex items-center gap-2 rounded-b-card border-t border-white/8 bg-white/4 px-4 py-3 text-left text-caption text-pretty text-ink-soft sm:m-0"
-          >
-            <Icon name="alert" class="size-4 shrink-0 text-[oklch(0.82_0.12_80)]" />
-            <span>{translate('created.once')}</span>
-          </p>
         </div>
+        {#if shareable}
+          <div class="relative grid grid-cols-2 gap-2.5">
+            {@render copyLinkButton()}
+            <Button variant="tint" size="large" onclick={() => void share()} class="w-full">
+              <Icon name="upload" class="size-4 shrink-0" />
+              <span>{translate('created.share')}</span>
+            </Button>
+          </div>
+        {:else}
+          {@render copyLinkButton()}
+        {/if}
       </div>
 
       {#if passphrase !== ''}
         <div
-          class="mt-3 flex flex-col gap-2.5 rounded-card text-left well max-sm:p-2 sm:flex-row sm:items-center sm:gap-3 sm:p-2 sm:pl-4"
+          class="col-span-full grid grid-cols-subgrid items-center gap-y-2.5 rounded-card text-left well max-sm:p-2 sm:p-2 sm:pl-4"
         >
-          <div class="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-pane px-2 sm:px-0">
+          <div
+            class={[
+              'flex min-h-11 min-w-0 items-center gap-3 rounded-pane px-2 sm:px-0',
+              passphraseShown && 'max-sm:flex-wrap',
+            ]}
+          >
             <Icon name="key" class="size-4 shrink-0 text-nebula-300" />
             <span class="shrink-0 text-body-sm text-ink-mute">{translate('create.passphrase')}</span>
             <span
               translate="no"
-              class={['truncate text-body font-medium text-ink', passphraseShown ? '' : 'tracking-[0.18em]']}
-              >{passphraseShown ? passphrase : PASSPHRASE_MASK}</span
+              class={[
+                'min-w-0 text-body font-medium text-ink',
+                passphraseShown
+                  ? [
+                      'wrap-break-word whitespace-pre-wrap max-sm:order-last max-sm:basis-full max-sm:pb-2 max-sm:pl-7 sm:py-1.5',
+                      CJK.test(passphrase) && 'break-keep',
+                    ]
+                  : 'truncate tracking-[0.18em]',
+              ]}>{passphraseShown ? passphrase : PASSPHRASE_MASK}</span
             >
-            <button
-              type="button"
+            <Button
+              variant="plain"
+              size="icon"
               aria-label={translate(passphraseShown ? 'created.passphrase.hide' : 'created.passphrase.show')}
               onclick={() => (passphraseShown = !passphraseShown)}
-              class="group/action ml-auto grid size-11 shrink-0 place-items-center rounded-control text-ink-mute transition hover:bg-white/6 hover:text-ink md:size-9"
+              class="ml-auto"
             >
               <SwapIcon from="eye" to="eyeOff" swapped={passphraseShown} />
-            </button>
+            </Button>
           </div>
-          <Button variant="tint" size="large" onclick={() => void copyPassphrase()} class="w-full sm:w-auto">
+          <Button variant="tint" size="large" onclick={() => void copyPassphrase()} class="w-full">
             <SwapIcon from="copy" to="check" swapped={passphraseCopied.shown} />
             <span>{translate('created.passphrase.copy')}</span>
           </Button>
         </div>
       {/if}
 
-      <div class="relative mt-3 text-caption text-ink-mute sm:mt-4 md:mt-5">
-        <ul
-          role="list"
-          class={[
-            'mx-auto flex w-fit items-center justify-center gap-6 fade-swap max-sm:hidden',
-            clipboard === 'untouched' ? 'opacity-100' : 'opacity-0',
-          ]}
-        >
-          <li class="flex items-center gap-2">
-            <span class="size-1.5 shrink-0 rounded-full bg-ink-mute" aria-hidden="true"></span>
-            {translate('created.legend.server')}
-          </li>
-          <li class="flex items-center gap-2">
-            <span
-              class="h-1 w-4 shrink-0 rounded-full bg-linear-to-r from-aegis-300 to-nebula-300 shadow-[0_0_8px_oklch(0.72_0.14_305/0.6)]"
-              aria-hidden="true"
-            ></span>
-            {translate('created.legend.key')}
-          </li>
-        </ul>
-        <p
-          {@attach focus.attach('clipboard')}
-          role="status"
-          tabindex="-1"
-          data-idle={clipboard === 'untouched' ? '' : undefined}
-          class={[
-            'absolute inset-x-0 top-0 flex flex-col items-center justify-center gap-x-3 gap-y-1 fade-swap outline-none max-sm:static max-sm:mt-3 max-sm:overflow-y-clip max-sm:[transition-property:opacity,transform,translate,height,margin-top] max-sm:duration-200 max-sm:[interpolate-size:allow-keywords] max-sm:data-idle:mt-0 max-sm:data-idle:h-0 sm:flex-row',
-            clipboard === 'untouched' ? 'pointer-events-none opacity-0' : 'opacity-100',
-            clipboard === 'failed' && 'text-rose-300',
-          ]}
-        >
-          <span class="text-pretty">{clipboard === 'untouched' ? '' : clipboardText}</span>
-          {#if clipboard === 'copied'}
-            <Button variant="ghost" size="compact" onclick={() => void clearCopies()}>
-              {translate('clipboard.clear')}
-            </Button>
-          {/if}
+      <div class="col-span-full mt-1 stack justify-items-center text-caption">
+        <p class={['text-center text-balance text-ink-mute fade-swap', copyFailed && 'invisible opacity-0']}>
+          {translate('created.once')}
         </p>
+        <ErrorNote
+          message={copyFailed ? translate('created.copy_failed') : ''}
+          class={['text-left fade-swap', copyFailed ? 'opacity-100' : 'invisible opacity-0']}
+        />
       </div>
+      <span class="sr-only" role="status"
+        >{copied.shown || passphraseCopied.shown ? translate('action.copied') : ''}</span
+      >
     </div>
   </div>
 
   {#if trackingShown}
     <div
-      out:slide={{ duration: motionMs(400) }}
-      onoutroend={() => keepFocus(focus.get('title'))}
-      class={[
-        'flex flex-col gap-3 border-t border-white/8 px-4 py-4 text-left delay-220 sm:flex-row sm:items-center sm:gap-4',
-        RISE,
-      ]}
+      transition:slide={{ duration: motionMs(400) }}
+      onoutroend={() => {
+        keepFocus(focus.get('title'));
+        ontrackingleft();
+      }}
+      class="flex flex-col gap-3 border-t border-white/8 px-4 py-4 text-left sm:flex-row sm:items-center sm:gap-4"
     >
       <div class="flex min-w-0 flex-1 items-center gap-3">
         <IconTile icon="eye" tone="neutral" size="medium" />
         <div class="min-w-0">
           <p class="text-ui font-medium text-ink">{translate('created.track.title')}</p>
-          <p class="stack text-caption text-pretty text-ink-mute">
-            {#if canTrackInTab}
-              <span id="{id}-track-note" class={[keepChosen && 'invisible']} aria-hidden={keepChosen}>
-                {translate('created.track.note')}
-              </span>
-            {/if}
-            {#if canKeep}
-              <span id="{id}-track-note-kept" class={[!keepChosen && 'invisible']} aria-hidden={!keepChosen}>
-                {translate('created.track.note.kept')}
-              </span>
-            {/if}
+          <p class="text-caption text-pretty text-ink-mute">
+            {translate(keeps ? 'created.track.note.kept' : 'created.track.note')}
           </p>
-          {#if canKeep && canTrackInTab}
-            <button
-              type="button"
-              role="switch"
-              aria-checked={keepChosen}
-              aria-describedby={keepChosen ? `${id}-track-note-kept` : `${id}-track-note`}
-              disabled={remembered !== 'off'}
-              onclick={() => (keep = !keep)}
-              class="-mx-1.5 mt-1.5 flex min-h-11 items-center gap-2.5 rounded-control px-1.5 py-2 text-left text-caption text-ink-soft transition hover:bg-white/4 disabled:opacity-40 md:min-h-0 md:py-1"
-            >
-              <Switch on={keepChosen} />
-              {translate('created.track.keep')}
-            </button>
-          {/if}
         </div>
       </div>
       <form
@@ -358,7 +316,7 @@
         onsubmit={(event) => {
           event.preventDefault();
           justSaved.show();
-          onremember(label, keepChosen);
+          onremember(label);
         }}
       >
         <label
@@ -366,6 +324,7 @@
         >
           <span class="sr-only">{translate('created.track.label')}</span>
           <input
+            {@attach (field) => field.focus({ preventScroll: true })}
             type="text"
             bind:value={label}
             maxlength={MAX_LABEL_CHARACTERS}
@@ -421,9 +380,17 @@
         </li>
       {/if}
     </ul>
-    <Button variant="ghost" size="compact" onclick={onanother} class="w-full sm:w-auto">
-      <Icon name="plus" class="size-4 shrink-0" animated />
-      {translate('created.another')}
-    </Button>
+    <div class="flex items-center gap-1.5 max-sm:flex-col max-sm:items-stretch">
+      {#if trackingOffered}
+        <Button variant="tint-soft" size="compact" onclick={() => (tracking = true)}>
+          <Icon name="eye" class="size-4 shrink-0 text-aegis-300" animated />
+          {translate('created.track.title')}
+        </Button>
+      {/if}
+      <Button variant="ghost" size="compact" onclick={onanother} class="w-full sm:w-auto">
+        <Icon name="plus" class="size-4 shrink-0" animated />
+        {translate('created.another')}
+      </Button>
+    </div>
   </div>
 </div>

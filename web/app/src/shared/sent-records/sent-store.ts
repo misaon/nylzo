@@ -127,7 +127,7 @@ export function browserSentStore(
       if (!(await databaseCreated())) {
         return [];
       }
-      const values = await withRecords('readonly', async (records) => requestResult(records.getAll()));
+      const values = await withRecords('readonly', async (records) => requestResult<unknown[]>(records.getAll()));
       const kept: SentRecord[] = [];
       for (const value of values) {
         const record = await usableRecord(value);

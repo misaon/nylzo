@@ -16,6 +16,20 @@ export const TIMELINE_METRICS = [
 
 export type TimelineMetric = (typeof TIMELINE_METRICS)[number];
 
+export function byTimelineMetric<Value>(read: (metric: TimelineMetric) => Value): Record<TimelineMetric, Value> {
+  return {
+    'views.people': read('views.people'),
+    'views.robots': read('views.robots'),
+    'views.unconfirmed': read('views.unconfirmed'),
+    visitors: read('visitors'),
+    'messages.created': read('messages.created'),
+    'messages.opened': read('messages.opened'),
+    'messages.ended': read('messages.ended'),
+    'messages.expired': read('messages.expired'),
+    refusals: read('refusals'),
+  };
+}
+
 export interface Share {
   readonly name: string;
   readonly value: number;

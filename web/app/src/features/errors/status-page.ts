@@ -1,5 +1,5 @@
-export type StatusPage = 'error' | 'maintenance';
+export const STATUS_PAGES = ['error', 'maintenance'] as const;
 
-export const STATUS_PAGES: readonly StatusPage[] = ['error', 'maintenance'];
+export type StatusPage = (typeof STATUS_PAGES)[number];
 
 export const MAINTENANCE_RELOAD_SECONDS = 30;

@@ -1,3 +1,4 @@
+import { IDBFactory as MemoryDatabases } from 'fake-indexeddb';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { browserDatabases, committed, databaseExists, openDatabase, requestResult } from './indexed-database.ts';
@@ -5,7 +6,8 @@ import { browserDatabases, committed, databaseExists, openDatabase, requestResul
 function opening() {
   const close = vi.fn<(...arguments_: unknown[]) => void>();
   const database = { close } as unknown as IDBDatabase;
-  const request = Object.assign(new EventTarget(), { result: database, error: null as DOMException | null });
+  const outcome: { result: IDBDatabase; error: DOMException | null } = { result: database, error: null };
+  const request = Object.assign(new EventTarget(), outcome);
   const open = vi.fn<() => typeof request>(() => request);
   const factory = { open } as unknown as IDBFactory;
   return { close, database, request, open, factory };
@@ -29,12 +31,14 @@ describe('IndexedDB lifecycle', () => {
     vi.stubGlobal('indexedDB', undefined);
     expect(browserDatabases()).toBeUndefined();
     await expect(databaseExists(undefined, 'nylzo')).resolves.toBe(false);
-    const databases = vi.fn<() => Promise<{ name: string }[]>>().mockResolvedValue([{ name: 'nylzo' }]);
-    const factory = { databases } as unknown as IDBFactory;
+    const factory = new MemoryDatabases();
+    const opened = await requestResult(factory.open('nylzo'));
+    opened.close();
     vi.stubGlobal('indexedDB', factory);
     expect(browserDatabases()).toBe(factory);
     await expect(databaseExists(factory, 'nylzo')).resolves.toBe(true);
     await expect(databaseExists(factory, 'other')).resolves.toBe(false);
+    await expect(factory.databases()).resolves.toHaveLength(1);
     await expect(openDatabase(undefined, 'nylzo', vi.fn<(...arguments_: unknown[]) => void>())).rejects.toMatchObject({
       name: 'StorageUnavailableError',
     });
@@ -80,7 +84,8 @@ describe('IndexedDB lifecycle', () => {
   });
 
   it('resolves request results and propagates both explicit and unspecified request errors', async () => {
-    const request = Object.assign(new EventTarget(), { result: ['synthetic'], error: null as DOMException | null });
+    const outcome: { result: string[]; error: DOMException | null } = { result: ['synthetic'], error: null };
+    const request = Object.assign(new EventTarget(), outcome);
     const success = requestResult(request as unknown as IDBRequest<string[]>);
     request.dispatchEvent(new Event('success'));
     await expect(success).resolves.toEqual(['synthetic']);

@@ -3,13 +3,24 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import assert from "node:assert/strict";
-import { administratorKeyIsHardware, configuration } from "./configuration.mts";
-import { archive, hostSources } from "./bundle.mts";
+import { administratorKeyIsHardware, configuration, isRecord } from "./configuration.mts";
+import { archive, hostSource, hostSources, manifestEntries } from "./bundle.mts";
+
+type IgnitionFile = { path: string; mode: number; overwrite: boolean; contents: { source: string; compression?: string; verification?: { hash: string } } };
+type Digests = { amd64: string; arm64: string };
+type PinnedTool = Digests & { version: string };
+type Toolchain = { flatcar: string; gh: PinnedTool; cosign: PinnedTool; jq: PinnedTool };
+type Runtime = Digests & { docker: string };
+
+const hasDigests = (value: unknown): value is Record<string, unknown> & Digests => isRecord(value) && typeof value["amd64"] === "string" && typeof value["arm64"] === "string";
+const isPinnedTool = (value: unknown): value is PinnedTool => hasDigests(value) && typeof value["version"] === "string";
+const isToolchain = (value: unknown): value is Toolchain => isRecord(value) && typeof value["flatcar"] === "string" && isPinnedTool(value["gh"]) && isPinnedTool(value["cosign"]) && isPinnedTool(value["jq"]);
+const isRuntime = (value: unknown): value is Runtime => hasDigests(value) && typeof value["docker"] === "string";
 
 export const profile = fileURLToPath(new URL("../../deploy/hetzner-flatcar/", import.meta.url));
 const read = (filename: string) => readFile(path.join(profile, filename), "utf8");
-const embedded = (filename: string, contents: string | Buffer, mode = 0o644) => ({ path: filename, mode, overwrite: true, contents: { compression: "gzip", source: `data:;base64,${gzipSync(contents, { level: 9 }).toString("base64")}` } });
-const remote = (filename: string, bundle: { url: string; sha256: string }) => {
+const embedded = (filename: string, contents: string | Buffer, mode = 0o644): IgnitionFile => ({ path: filename, mode, overwrite: true, contents: { compression: "gzip", source: `data:;base64,${gzipSync(contents, { level: 9 }).toString("base64")}` } });
+const remote = (filename: string, bundle: { url: string; sha256: string }): IgnitionFile => {
   assert.match(bundle.url, /^https:\/\/github\.com\/misaon\/nylzo\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+\/nylzo-host_[0-9]+\.[0-9]+\.[0-9]+\.tar$/u);
   assert.match(bundle.sha256, /^[a-f0-9]{64}$/u);
   return { path: filename, mode: 0o600, overwrite: true, contents: { source: bundle.url, verification: { hash: `sha256-${bundle.sha256}` } } };
@@ -17,7 +28,9 @@ const remote = (filename: string, bundle: { url: string; sha256: string }) => {
 const service = (name: string, contents: string, enabled = false) => ({ name, contents, enabled });
 const environmentFile = (values: Record<string, unknown>) => Object.entries(values).map(([name, value]) => `${name}=${value}`).join("\n") + "\n";
 export const key = await read("bootstrap/flatcar.asc");
-export const toolchain = JSON.parse(await read("toolchain.json"));
+const pinned: unknown = JSON.parse(await read("toolchain.json"));
+assert(isToolchain(pinned), "toolchain.json must pin Flatcar and the gh, cosign and jq builds of both architectures");
+export const toolchain = pinned;
 const early = ["/etc/ssh/sshd_config.d/20-nylzo.conf", "/etc/sysctl.d/90-nylzo.conf", "/etc/systemd/journald.conf.d/20-nylzo.conf", "/etc/systemd/coredump.conf.d/20-nylzo.conf"];
 const firstBoot = `[Unit]
 Description=Install the host configuration of this Nylzo release
@@ -46,7 +59,7 @@ export async function render(input: unknown, bundle: HostBundle) {
   const host = bundle instanceof Map ? bundle : await hostSources();
   const tools = environmentFile({
     ARCHITECTURE: site.architecture,
-    ...Object.fromEntries(["gh", "cosign", "jq"].flatMap(name => [[`${name.toUpperCase()}_VERSION`, toolchain[name].version], [`${name.toUpperCase()}_SHA256`, toolchain[name][site.architecture]]])),
+    ...Object.fromEntries((["gh", "cosign", "jq"] as const).flatMap(name => [[`${name.toUpperCase()}_VERSION`, toolchain[name].version], [`${name.toUpperCase()}_SHA256`, toolchain[name][site.architecture]]])),
   });
   const environment = environmentFile({
     NYLZO_LISTEN: ":8080", NYLZO_DATA_DIR: "/home/nonroot", NYLZO_PEPPER_FILE: "/run/nylzo-pepper",
@@ -57,18 +70,24 @@ export async function render(input: unknown, bundle: HostBundle) {
   });
   const settings = environmentFile({
     AUTOMATIC_UPDATES: site.automaticUpdates, PUBLIC_ACCESS: site.publicAccess ?? false,
-    WWW_REDIRECT: site.dnsZone === site.domain, ADMINISTRATOR_NETWORKS: site.administratorNetworks.map((network: string) => network.toLowerCase()).join(","),
+    WWW_REDIRECT: site.dnsZone === site.domain, ADMINISTRATOR_NETWORKS: site.administratorNetworks.map(network => network.toLowerCase()).join(","),
     HARDWARE_KEYS_ONLY: administratorKeyIsHardware(site.administratorPublicKey),
     ENCRYPTED_STORAGE_REQUIRED: site.tang !== undefined,
   });
-  const manifest = new Map(host.get("manifest")!.trimEnd().split("\n").slice(1).map(line => line.split(" ") as [string, string]));
-  const runtime = JSON.parse(host.get("system/runtime.json")!);
+  const manifest = new Map(manifestEntries(host).map(({ target, source }) => [target, source]));
+  const earlySource = (target: string) => {
+    const source = manifest.get(target);
+    assert(source !== undefined, `The host manifest does not install ${target}`);
+    return hostSource(host, source);
+  };
+  const runtime: unknown = JSON.parse(hostSource(host, "system/runtime.json"));
+  assert(isRuntime(runtime), "The host bundle's runtime.json must name the Docker version and the image digest of both architectures");
   assert.match(runtime.docker, /^[0-9]+\.[0-9]+\.[0-9]+$/u);
   const runtimeDigest = runtime[site.architecture];
   assert.match(runtimeDigest, /^[a-f0-9]{64}$/u);
   const runtimeAsset = site.architecture === "amd64" ? "x86-64" : "arm64";
   const runtimePath = `/opt/nylzo/extensions/docker-${runtime.docker}-${runtimeAsset}.raw`;
-  const files: any[] = [
+  const files: IgnitionFile[] = [
     { path: runtimePath, mode: 0o644, overwrite: true, contents: {
       source: `https://github.com/flatcar/sysext-bakery/releases/download/docker-${runtime.docker}/docker-${runtime.docker}-${runtimeAsset}.raw`,
       verification: { hash: `sha256-${runtimeDigest}` },
@@ -81,11 +100,11 @@ export async function render(input: unknown, bundle: HostBundle) {
     embedded("/etc/subuid", "dockremap:100000:65536\n"),
     embedded("/etc/subgid", "dockremap:100000:65536\n"),
     embedded("/etc/selinux/config", "SELINUX=enforcing\nSELINUXTYPE=mcs\n"),
-    ...early.map(target => embedded(target, host.get(manifest.get(target)!)!)),
+    ...early.map(target => embedded(target, earlySource(target))),
     bundle instanceof Map ? embedded("/opt/nylzo/host/initial.tar", archive(bundle), 0o600) : remote("/opt/nylzo/host/initial.tar", bundle),
   ];
   if (site.heartbeatUrl) files.push(embedded("/etc/nylzo/heartbeat.url", `${site.heartbeatUrl}\n`, 0o600));
-  if (site.tang) files.push(embedded("/etc/nylzo/tang.json", JSON.stringify({ t: site.tang.threshold, pins: { tang: site.tang.servers.map((server: { url: string; thumbprint: string }) => ({ url: server.url, thp: server.thumbprint })) } }), 0o600));
+  if (site.tang) files.push(embedded("/etc/nylzo/tang.json", JSON.stringify({ t: site.tang.threshold, pins: { tang: site.tang.servers.map(server => ({ url: server.url, thp: server.thumbprint })) } }), 0o600));
   const ignition = {
     ignition: { version: "3.4.0" },
     passwd: { groups: [{ name: "dockremap", gid: 2000 }, { name: "caddy", gid: 2001 }], users: [
@@ -101,22 +120,23 @@ export async function render(input: unknown, bundle: HostBundle) {
     ] },
   };
   const board = site.architecture === "amd64" ? "amd64-usr" : "arm64-usr";
+  const imageKey = embedded("/opt/nylzo-image/flatcar.asc", key);
+  const install = embedded("/opt/nylzo-image/install", await read("bootstrap/install"), 0o700);
   const installer = {
     ignition: { version: "3.4.0" },
-    storage: { files: [embedded("/opt/nylzo-image/flatcar.asc", key), embedded("/opt/nylzo-image/install", await read("bootstrap/install"), 0o700)] },
+    storage: { files: [imageKey, install] },
     systemd: { units: [
       service("nylzo-image-install.service", `[Unit]\nWants=network-online.target\nAfter=network-online.target\n[Service]\nType=oneshot\nEnvironment=FLATCAR_BOARD=${board}\nEnvironment=FLATCAR_VERSION=${toolchain.flatcar}\nEnvironment=EXPECTED_BUILDER_NAME=${site.name}-image-builder\nExecStart=/opt/nylzo-image/install\nTimeoutStartSec=20min\n[Install]\nWantedBy=multi-user.target\n`, true),
       ...["update-engine.service", "locksmithd.service", "sshd.service", "sshd.socket"].map(name => ({ name, mask: true })),
     ] },
   };
-  const cloudInstaller = structuredClone(installer);
-  cloudInstaller.storage.files[0]!.contents.source = "@@FLATCAR_IMAGE_KEY@@";
+  const cloudInstaller = { ...installer, storage: { files: [{ ...imageKey, contents: { ...imageKey.contents, source: "@@FLATCAR_IMAGE_KEY@@" } }, install] } };
   const cloud = "#cloud-config\n" + JSON.stringify({
     ssh_pwauth: false,
-    write_files: [
+    write_files: ([
       ["flatcar.asc", key], ["installer.ign", JSON.stringify(cloudInstaller)], ["boot", await read("bootstrap/boot")],
       ["env", `FLATCAR_BOARD=${board}\nFLATCAR_VERSION=${toolchain.flatcar}\nEXPECTED_BUILDER_NAME=${site.name}-image-builder\n`],
-    ].map(([name, contents]) => ({ path: `/var/tmp/nylzo-image/${name}`, encoding: "gz+b64", content: gzipSync(contents!).toString("base64"), permissions: "0600" })),
+    ] satisfies [string, string][]).map(([name, contents]) => ({ path: `/var/tmp/nylzo-image/${name}`, encoding: "gz+b64", content: gzipSync(contents).toString("base64"), permissions: "0600" })),
     runcmd: [["/bin/bash", "-c", "set -a; . /var/tmp/nylzo-image/env; exec /bin/bash /var/tmp/nylzo-image/boot"]],
   });
   assert(Buffer.byteLength(cloud) <= 32768, "Image factory user_data exceeds 32 KiB");
@@ -125,8 +145,10 @@ export async function render(input: unknown, bundle: HostBundle) {
 }
 
 if (import.meta.main) {
-  const result = await render(JSON.parse(await readFile(process.argv[2]!, "utf8")), await hostSources());
-  const destination = path.resolve(process.argv[3] ?? ".deploy/rendered");
+  const [siteFile, output = ".deploy/rendered"] = process.argv.slice(2);
+  assert(siteFile, "Usage: bun tools/deploy/render.mts SITE_JSON [DESTINATION]");
+  const result = await render(JSON.parse(await readFile(siteFile, "utf8")), await hostSources());
+  const destination = path.resolve(output);
   await mkdir(destination, { recursive: true, mode: 0o700 });
   for (const [name, contents] of Object.entries({ "server.ign": JSON.stringify(result.ignition), "installer.ign": JSON.stringify(result.installer), "image.cloud-config": result.cloud })) await writeFile(path.join(destination, name), contents, { mode: 0o600 });
   console.log(`Rendered image factory and server configuration in ${destination}`);

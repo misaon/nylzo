@@ -105,7 +105,7 @@ export function createGitHubSource(client: GitHubClient): GuardSource {
       } satisfies PullRequest;
     },
 
-    async releaseAssetDigest(fullName, tag, asset) {
+    async releaseAssetDigest({ asset, repository: fullName, tag }) {
       const response = await unlessMissing(client.rest.repos.getReleaseByTag({ ...upstream(fullName), tag }));
       if (response === undefined) {
         return;
@@ -126,7 +126,7 @@ export function createGitHubSource(client: GitHubClient): GuardSource {
         .map((review): Review => ({ commit: review.commit_id, reviewer: review.user, state: review.state }));
     },
 
-    async tagCommit(fullName, tag) {
+    async tagCommit({ repository: fullName, tag }) {
       const owner = upstream(fullName);
       const reference = await unlessMissing(client.rest.git.getRef({ ...owner, ref: `tags/${tag}` }));
       if (reference === undefined) {

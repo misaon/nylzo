@@ -25,7 +25,7 @@
 </script>
 
 <div
-  class={['overflow-hidden fade-swap', panelClasses(page.phase === 'opening', page.phase)]}
+  class={['overflow-hidden fade-swap', panelClasses(page.phase === 'opening')]}
   aria-hidden="true"
   data-paused={page.phase !== 'opening' || undefined}
 >

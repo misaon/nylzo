@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { requestKey } from '@nylzo/core';
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -18,7 +17,8 @@ describe('created message panel', () => {
   let created: Created;
   const translator = new Translator('en');
   const another = vi.fn<() => void>();
-  const remember = vi.fn<(label: string, keep: boolean) => void>();
+  const remember = vi.fn<(label: string) => void>();
+  const trackingLeft = vi.fn<() => void>();
   const writeText = vi.fn<(text: string) => Promise<void>>();
   const share = vi.fn<() => Promise<void>>();
   const canShare = vi.fn<() => boolean>();
@@ -27,14 +27,14 @@ describe('created message panel', () => {
   function show({
     passphrase = '',
     opensMax = 1,
-    canKeep = true,
-    canTrackInTab = true,
+    trackable = true,
+    keeps = true,
     remembered = 'off',
   }: {
     readonly passphrase?: string;
     readonly opensMax?: number;
-    readonly canKeep?: boolean;
-    readonly canTrackInTab?: boolean;
+    readonly trackable?: boolean;
+    readonly keeps?: boolean;
     readonly remembered?: Remembered;
   } = {}): void {
     component = mount(CreatedPanel, {
@@ -43,10 +43,11 @@ describe('created message panel', () => {
         created,
         opensMax,
         passphrase,
-        canKeep,
-        canTrackInTab,
+        trackable,
+        keeps,
         remembered,
         onremember: remember,
+        ontrackingleft: trackingLeft,
         onanother: another,
       },
     });
@@ -110,40 +111,23 @@ describe('created message panel', () => {
     expect(another).toHaveBeenCalledOnce();
   });
 
-  it('copies the complete secret link, clears the clipboard and expires the success indicator', async () => {
+  it('copies the complete secret link and announces it', async () => {
     show();
     button('created.copy').click();
     await tick();
     expect(writeText).toHaveBeenCalledExactlyOnceWith(created.link);
-    expect(status()).toContain(translator.translate('clipboard.copied'));
-    vi.advanceTimersToNextFrame();
-    const clear = button('clipboard.clear');
-    clear.focus();
-    clear.click();
-    await tick();
-    expect(writeText).toHaveBeenLastCalledWith('');
-    expect(target.textContent).not.toContain(translator.translate('clipboard.clear'));
-    expect(status()).toContain(translator.translate('clipboard.cleared'));
-    await vi.waitFor(() => expect(document.activeElement?.getAttribute('role')).toBe('status'));
+    expect(status()).toBe(translator.translate('action.copied'));
   });
 
-  it('selects the link for manual copy if the clipboard API refuses', async () => {
+  it('selects the link for manual copy and says so if the clipboard API refuses', async () => {
     writeText.mockRejectedValue(new Error('permission denied'));
     show();
     button('created.copy').click();
     await tick();
     expect(document.activeElement).toBe(target.querySelector('input'));
-    expect(status()).toBe(translator.translate('created.copy_failed'));
-  });
-
-  it('keeps clearing available if the clipboard refuses to clear', async () => {
-    show();
-    button('created.copy').click();
-    await tick();
-    writeText.mockRejectedValue(new Error('denied'));
-    button('clipboard.clear').click();
-    await tick();
-    expect(button('clipboard.clear').disabled).toBe(false);
+    expect(target.querySelector('[role="alert"]')?.textContent.trim()).toBe(
+      translator.translate('created.copy_failed'),
+    );
   });
 
   it('masks the passphrase until asked and copies it exactly', async () => {
@@ -158,44 +142,39 @@ describe('created message panel', () => {
     expect(writeText).toHaveBeenCalledExactlyOnceWith(passphrase);
   });
 
-  it('saves to Sent only when asked, with the typed label, in this tab unless the sender keeps it', () => {
-    show();
-    const label = target.querySelector<HTMLInputElement>(
-      `input[placeholder="${CSS.escape(translator.translate('created.track.placeholder'))}"]`,
-    );
-    const keep = target.querySelector<HTMLButtonElement>('button[role="switch"]');
-    const save = () => target.querySelector<HTMLButtonElement>('form button[type="submit"]')?.click();
-    if (!label || !keep) {
-      throw new Error('missing label field or keep switch');
-    }
-    expect(remember).not.toHaveBeenCalled();
-    const note = () => target.querySelector(`#${CSS.escape(keep.getAttribute('aria-describedby') ?? '')}`);
-    expect(keep.getAttribute('aria-checked')).toBe('false');
-    expect(note()?.textContent.trim()).toBe(translator.translate('created.track.note'));
-    expect(note()?.getAttribute('aria-hidden')).toBe('false');
-    label.value = 'Password for Peter';
-    label.dispatchEvent(new Event('input', { bubbles: true }));
-    save();
-    expect(remember).toHaveBeenLastCalledWith('Password for Peter', false);
-    keep.click();
-    flushSync();
-    expect(keep.getAttribute('aria-checked')).toBe('true');
-    expect(note()?.textContent.trim()).toBe(translator.translate('created.track.note.kept'));
-    expect(note()?.getAttribute('aria-hidden')).toBe('false');
-    save();
-    expect(remember).toHaveBeenLastCalledWith('Password for Peter', true);
-  });
-
   it.each([
-    { name: 'the page cannot keep it in the browser', props: { canKeep: false }, keep: false },
-    { name: 'the browser lacks the Navigation API', props: { canTrackInTab: false }, keep: true },
-    { name: 'a browser save failed', props: { remembered: 'failed' as Remembered }, keep: false },
-  ])('offers one place to track when $name', ({ props, keep }) => {
-    show(props);
-    const toggle = target.querySelector<HTMLButtonElement>('button[role="switch"]');
-    expect(toggle === null || toggle.disabled).toBe(true);
-    target.querySelector<HTMLButtonElement>('form button[type="submit"]')?.click();
-    expect(remember).toHaveBeenCalledExactlyOnceWith('', keep);
+    { keeps: true, note: 'created.track.note.kept' },
+    { keeps: false, note: 'created.track.note' },
+  ] as const)(
+    'saves to Sent only when asked, with the typed label, and says where: keeps=$keeps',
+    async ({ keeps, note }) => {
+      show({ keeps });
+      const labelField = () =>
+        target.querySelector<HTMLInputElement>(
+          `input[placeholder="${CSS.escape(translator.translate('created.track.placeholder'))}"]`,
+        );
+      expect(labelField()).toBeNull();
+      button('created.track.title').click();
+      await tick();
+      const label = labelField();
+      if (!label) {
+        throw new Error('missing label field');
+      }
+      expect(document.activeElement).toBe(label);
+      expect(target.textContent).toContain(translator.translate(note));
+      expect(remember).not.toHaveBeenCalled();
+      label.value = 'Password for Peter';
+      label.dispatchEvent(new Event('input', { bubbles: true }));
+      target.querySelector<HTMLButtonElement>('form button[type="submit"]')?.click();
+      expect(remember).toHaveBeenCalledExactlyOnceWith('Password for Peter');
+    },
+  );
+
+  it('offers no tracking when nothing can remember the message', () => {
+    show({ trackable: false });
+    expect([...target.querySelectorAll('button')].map((element) => element.textContent.trim())).not.toContain(
+      translator.translate('created.track.title'),
+    );
   });
 
   it.each([false, true])('handles native sharing and cancellation: cancelled=%s', async (cancelled) => {

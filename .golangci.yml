@@ -18,7 +18,7 @@ linters:
     # Zero values are deliberate defaults; listing every field of net/http and crypto/tls structs adds noise.
     - exhaustruct
     - exhaustruct_v5
-    # JSON names follow spec/protocol.md, not a naming rule.
+    # JSON names follow docs/wiki/reference/Protocol.md, not a naming rule.
     - tagliatelle
     # Errors cross package boundaries with %w where the caller gains context; wrapping every return does not.
     - wrapcheck

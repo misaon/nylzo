@@ -48,7 +48,7 @@ async function databaseNames(page: Page): Promise<string[]> {
 }
 
 test(
-  'an interrupted open keeps only the lease, and opening the link again finishes it without another open (W2-01)',
+  'an interrupted open keeps only the lease, and opening the link again finishes it without another open',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi({ text: 'finish from the lease' });
@@ -79,38 +79,34 @@ test(
   },
 );
 
-test(
-  'deletes the encrypted link copies that earlier clients stored (W2-01)',
-  { tag: '@cross-browser' },
-  async ({ page }) => {
-    const id = 'AAAAAAAAAAAAAAAAAAAAAA';
-    await openApp(page, '/sent');
-    await page.evaluate(async (messageId) => {
-      await new Promise<void>((resolve, reject) => {
-        const opening = indexedDB.open('nylzo-resume', 1);
-        opening.addEventListener('upgradeneeded', () => {
-          opening.result.createObjectStore('keys', { keyPath: 'token' });
-        });
-        opening.addEventListener('success', () => {
-          opening.result.close();
-          resolve();
-        });
-        opening.addEventListener('error', () => {
-          reject(opening.error ?? new Error('the old store did not open'));
-        });
+test('deletes the encrypted link copies that earlier clients stored', { tag: '@cross-browser' }, async ({ page }) => {
+  const id = 'AAAAAAAAAAAAAAAAAAAAAA';
+  await openApp(page, '/sent');
+  await page.evaluate(async (messageId) => {
+    await new Promise<void>((resolve, reject) => {
+      const opening = indexedDB.open('nylzo-resume', 1);
+      opening.addEventListener('upgradeneeded', () => {
+        opening.result.createObjectStore('keys', { keyPath: 'token' });
       });
-      sessionStorage.setItem(`nylzo:link:${messageId}`, 'a'.repeat(43));
-      sessionStorage.setItem(`nylzo:lease:${messageId}`, 'lease');
-    }, id);
-    await openApp(page, '/sent');
-    await expect.poll(async () => databaseNames(page)).not.toContain('nylzo-resume');
-    const stored = await browserStorage(page);
-    expect(stored.session).toEqual({ [`nylzo:lease:${id}`]: 'lease' });
-  },
-);
+      opening.addEventListener('success', () => {
+        opening.result.close();
+        resolve();
+      });
+      opening.addEventListener('error', () => {
+        reject(opening.error ?? new Error('the old store did not open'));
+      });
+    });
+    sessionStorage.setItem(`nylzo:link:${messageId}`, 'a'.repeat(43));
+    sessionStorage.setItem(`nylzo:lease:${messageId}`, 'lease');
+  }, id);
+  await openApp(page, '/sent');
+  await expect.poll(async () => databaseNames(page)).not.toContain('nylzo-resume');
+  const stored = await browserStorage(page);
+  expect(stored.session).toEqual({ [`nylzo:lease:${id}`]: 'lease' });
+});
 
 test(
-  'the read page takes the key out of the address bar even when its scripts never arrive (W2-04)',
+  'the read page takes the key out of the address bar even when its scripts never arrive',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi();
@@ -127,7 +123,7 @@ test(
   },
 );
 
-test('Chromium offers to save no passphrase, hidden or shown (W2-03)', async () => {
+test('Chromium offers to save no passphrase, hidden or shown', async () => {
   await withChromiumProfile(async (context) => {
     const internals = context.pages()[0] ?? (await context.newPage());
     await internals.goto('chrome://password-manager-internals');

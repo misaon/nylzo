@@ -48,7 +48,6 @@ export interface SentPage {
   load(): Promise<void>;
   refresh(id: string): Promise<void>;
   cancel(id: string): Promise<CancelOutcome>;
-  forget(id: string): Promise<void>;
   forgetAll(): Promise<void>;
   stop(): void;
 }
@@ -58,15 +57,29 @@ function endedOnServer(status: Status): boolean {
   return status.endedAt !== undefined || (status.state !== 'available' && status.state !== 'opened');
 }
 
-export function assess(state: ItemState, expiresAt: number, now: number): Pick<SentItem, 'ended' | 'cancellable'> {
-  if (state.kind === 'failed' || state.kind === 'retry_later') {
-    return { ended: false, cancellable: expiresAt > now };
+export function assess({
+  state,
+  expiresAt,
+  now,
+}: {
+  readonly state: ItemState;
+  readonly expiresAt: number;
+  readonly now: number;
+}): Pick<SentItem, 'ended' | 'cancellable'> {
+  switch (state.kind) {
+    case 'failed':
+    case 'retry_later': {
+      return { ended: false, cancellable: expiresAt > now };
+    }
+    case 'loading':
+    case 'unknown': {
+      return { ended: false, cancellable: false };
+    }
+    case 'loaded': {
+      const ended = endedOnServer(state.status);
+      return { ended, cancellable: !ended };
+    }
   }
-  if (state.kind !== 'loaded') {
-    return { ended: false, cancellable: false };
-  }
-  const ended = endedOnServer(state.status);
-  return { ended, cancellable: !ended };
 }
 
 function failedState(error: unknown): ItemState {
@@ -118,7 +131,9 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
           createdAt: record.createdAt,
           expiresAt: record.expiresAt,
           state,
-          ...(concluded.has(record.id) ? { ended: true, cancellable: false } : assess(state, record.expiresAt, moment)),
+          ...(concluded.has(record.id)
+            ? { ended: true, cancellable: false }
+            : assess({ state, expiresAt: record.expiresAt, now: moment })),
           session: homes.get(record.id) === session,
         };
       }),
@@ -279,12 +294,6 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
     return outcome;
   }
 
-  async function forget(id: string): Promise<void> {
-    const home = homes.get(id);
-    await (home ? home.remove(id) : Promise.all([session.remove(id), browser?.remove(id)]));
-    drop(id);
-  }
-
   function stop(): void {
     generation++;
     storageFailed = false;
@@ -307,5 +316,5 @@ export function createSentPage(dependencies: SentDependencies, notify: (view: Se
     show();
   }
 
-  return { load, refresh, cancel, forget, forgetAll, stop };
+  return { load, refresh, cancel, forgetAll, stop };
 }

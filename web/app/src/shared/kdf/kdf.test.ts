@@ -1,5 +1,6 @@
 import { PowTimeoutError } from '@nylzo/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 
 import { KdfWorkerError } from './kdf-protocol.ts';
 import { solvePowInWorker, stopRunningWorkers, stretchInWorker } from './kdf.ts';
@@ -16,7 +17,7 @@ async function settled(promise: Promise<unknown>): Promise<unknown> {
 }
 
 describe('worker lifecycle', () => {
-  let worker: EventTarget & { postMessage: ReturnType<typeof vi.fn> };
+  let worker: EventTarget & { postMessage: Mock<(...arguments_: unknown[]) => void> };
   const stop = vi.fn<(...arguments_: unknown[]) => void>();
   const progress = vi.fn<(...arguments_: unknown[]) => void>();
   const oprfOutput = new Uint8Array(64).fill(1);
@@ -29,7 +30,7 @@ describe('worker lifecycle', () => {
     vi.useFakeTimers();
     vi.resetAllMocks();
     worker = Object.assign(new EventTarget(), { postMessage: vi.fn<(...arguments_: unknown[]) => void>() });
-    vi.mocked(startWorker).mockResolvedValue({ worker: worker as unknown as Worker, stop });
+    vi.mocked(startWorker).mockResolvedValue({ worker, stop });
   });
   afterEach(() => vi.useRealTimers());
 
@@ -63,7 +64,7 @@ describe('worker lifecycle', () => {
 
   it('forwards proof-of-work parameters and returns the token', async () => {
     const id = new Uint8Array(16).fill(2);
-    const result = solvePowInWorker('challenge', id, 4, 1234, progress);
+    const result = solvePowInWorker({ challenge: 'challenge', id, difficulty: 4, budgetMs: 1234 }, progress);
     await Promise.resolve();
     expect(worker.postMessage).toHaveBeenCalledExactlyOnceWith(
       {
@@ -83,9 +84,12 @@ describe('worker lifecycle', () => {
   it('counts the time the worker takes to start against the proof-of-work budget', async () => {
     const started = Promise.withResolvers<Awaited<ReturnType<typeof startWorker>>>();
     vi.mocked(startWorker).mockReturnValue(started.promise);
-    const result = solvePowInWorker('challenge', new Uint8Array(16), 1, 1000, progress);
+    const result = solvePowInWorker(
+      { challenge: 'challenge', id: new Uint8Array(16), difficulty: 1, budgetMs: 1000 },
+      progress,
+    );
     vi.advanceTimersByTime(300);
-    started.resolve({ worker: worker as unknown as Worker, stop });
+    started.resolve({ worker, stop });
     await vi.advanceTimersByTimeAsync(0);
     expect(worker.postMessage).toHaveBeenCalledOnce();
     expect(worker.postMessage.mock.calls[0]?.[0]).toMatchObject({ kind: 'pow', budgetMs: 700 });
@@ -122,7 +126,10 @@ describe('worker lifecycle', () => {
   });
 
   it('refuses a proof-of-work token for another challenge', async () => {
-    const result = solvePowInWorker('challenge', new Uint8Array(16), 1, 1, progress);
+    const result = solvePowInWorker(
+      { challenge: 'challenge', id: new Uint8Array(16), difficulty: 1, budgetMs: 1 },
+      progress,
+    );
     const failed = settled(result);
     await Promise.resolve();
     reply({ kind: 'token', token: 'other.0000000000000000' });
@@ -130,7 +137,10 @@ describe('worker lifecycle', () => {
   });
 
   it.each([true, false])('distinguishes proof-of-work budget expiry from worker failure: %s', async (timeout) => {
-    const result = solvePowInWorker('challenge', new Uint8Array(16), 1, 1, progress);
+    const result = solvePowInWorker(
+      { challenge: 'challenge', id: new Uint8Array(16), difficulty: 1, budgetMs: 1 },
+      progress,
+    );
     const failed = settled(result);
     await Promise.resolve();
     reply({ kind: 'error', timeout });
@@ -159,8 +169,11 @@ describe('worker lifecycle', () => {
     reply({ kind: 'token', token: 'wrong-kind' });
     expect(await rejectedKey).toBeInstanceOf(KdfWorkerError);
     worker = Object.assign(new EventTarget(), { postMessage: vi.fn<(...arguments_: unknown[]) => void>() });
-    vi.mocked(startWorker).mockResolvedValue({ worker: worker as unknown as Worker, stop });
-    const token = solvePowInWorker('challenge', new Uint8Array(16), 1, 1, progress);
+    vi.mocked(startWorker).mockResolvedValue({ worker, stop });
+    const token = solvePowInWorker(
+      { challenge: 'challenge', id: new Uint8Array(16), difficulty: 1, budgetMs: 1 },
+      progress,
+    );
     const rejectedToken = settled(token);
     await Promise.resolve();
     reply({ kind: 'key', key: new Uint8Array(64) });

@@ -17,7 +17,7 @@ import { isRetained, RETENTION_MS } from '../../shared/sent-records/sent-record.
 import type { SentRecord } from '../../shared/sent-records/sent-record.ts';
 import type { SentStore } from '../../shared/sent-records/sent-store.ts';
 import { assess, createSentPage } from './sent-page.ts';
-import type { SentPage, SentView } from './sent-page.ts';
+import type { SentView } from './sent-page.ts';
 
 const NOW = Date.parse('2026-10-23T12:00:00Z');
 
@@ -27,9 +27,6 @@ async function remembered(api: FakeApi, createdAt: number, opensMax = 1): Promis
     shareKey: newShareKey().publicKey,
     registrationRequest: createRegistrationRequest(utf8('sent page')).request,
   });
-  if (create === undefined) {
-    throw new Error('the fake server issued no id');
-  }
   const manageKey = await newRequestKey();
   await api.create({
     id: create.id,
@@ -222,12 +219,10 @@ describe('the sent page', () => {
     expect(sent.items()[0]?.state).toMatchObject({ kind: 'loaded', status: { state: 'available' } });
   });
 
-  it('forgets one message or all of them in the store too', async () => {
-    const { record, store, sent } = await setup({}, 3);
+  it('forgets every message in the store too', async () => {
+    const { store, sent } = await setup({}, 3);
     await sent.load();
-    await sent.forget(record(0).id);
-    expect(sent.items()).toHaveLength(2);
-    expect(store.records.has(record(0).id)).toBe(false);
+    expect(sent.items()).toHaveLength(3);
     await sent.forgetAll();
     expect(sent.last()).toEqual({ view: 'list', items: [], storageFailed: false });
     expect(store.records.size).toBe(0);
@@ -258,10 +253,7 @@ describe('the sent page', () => {
     expect(await sent.cancel(tracked.id)).toEqual({ outcome: 'cancelled' });
     expect(session.records.size).toBe(0);
     expect(browser.records.has(kept.id)).toBe(true);
-    await sent.forget(kept.id);
-    expect(browser.records.size).toBe(0);
     session.records.set(tracked.id, tracked);
-    browser.records.set(kept.id, kept);
     await sent.load();
     await sent.forgetAll();
     expect([session.records.size, browser.records.size]).toEqual([0, 0]);
@@ -272,8 +264,13 @@ describe('the sent page', () => {
     const withoutExpiry = { state: 'available' as const, opensUsed: 0, opensMax: 1, failedPassphraseAttempts: 0 };
     const status = { ...withoutExpiry, expiresAt: '2026-10-23T13:00:00Z' };
     const later = NOW + 3_600_000;
-    expect(assess({ kind: 'loaded', status }, later, NOW)).toEqual({ ended: false, cancellable: true });
-    expect(assess({ kind: 'loaded', status: { ...status, state: 'opened' } }, later, NOW)).toEqual({
+    expect(assess({ state: { kind: 'loaded', status }, expiresAt: later, now: NOW })).toEqual({
+      ended: false,
+      cancellable: true,
+    });
+    expect(
+      assess({ state: { kind: 'loaded', status: { ...status, state: 'opened' } }, expiresAt: later, now: NOW }),
+    ).toEqual({
       ended: false,
       cancellable: true,
     });
@@ -284,17 +281,35 @@ describe('the sent page', () => {
       { ...status, state: 'deleted' as const },
       { ...status, state: 'lost' as const },
     ];
-    expect(endedStatuses.map((ended) => assess({ kind: 'loaded', status: ended }, later, NOW))).toEqual(
-      endedStatuses.map(() => ({ ended: true, cancellable: false })),
-    );
-    expect(assess({ kind: 'loaded', status: { ...status, expiresAt: '2026-10-23T11:00:00Z' } }, NOW, NOW)).toEqual({
+    expect(
+      endedStatuses.map((ended) => assess({ state: { kind: 'loaded', status: ended }, expiresAt: later, now: NOW })),
+    ).toEqual(endedStatuses.map(() => ({ ended: true, cancellable: false })));
+    expect(
+      assess({
+        state: { kind: 'loaded', status: { ...status, expiresAt: '2026-10-23T11:00:00Z' } },
+        expiresAt: NOW,
+        now: NOW,
+      }),
+    ).toEqual({
       ended: false,
       cancellable: true,
     });
-    expect(assess({ kind: 'unknown' }, later, NOW)).toEqual({ ended: false, cancellable: false });
-    expect(assess({ kind: 'failed' }, later, NOW)).toEqual({ ended: false, cancellable: true });
-    expect(assess({ kind: 'retry_later', retryAfter: 30 }, later, NOW)).toEqual({ ended: false, cancellable: true });
-    expect(assess({ kind: 'failed' }, NOW, NOW)).toEqual({ ended: false, cancellable: false });
+    expect(assess({ state: { kind: 'unknown' }, expiresAt: later, now: NOW })).toEqual({
+      ended: false,
+      cancellable: false,
+    });
+    expect(assess({ state: { kind: 'failed' }, expiresAt: later, now: NOW })).toEqual({
+      ended: false,
+      cancellable: true,
+    });
+    expect(assess({ state: { kind: 'retry_later', retryAfter: 30 }, expiresAt: later, now: NOW })).toEqual({
+      ended: false,
+      cancellable: true,
+    });
+    expect(assess({ state: { kind: 'failed' }, expiresAt: NOW, now: NOW })).toEqual({
+      ended: false,
+      cancellable: false,
+    });
   });
 
   it('never signs with a key that another tab forgot', async () => {
@@ -309,22 +324,7 @@ describe('the sent page', () => {
     expect(sent.items().map((item) => item.id)).toEqual([record(1).id]);
   });
 
-  it('skips a message forgotten while the list loads and still marks the rest to try later', async () => {
-    const { api, record, store, sent } = await setup(
-      { failStatus: [new ApiError(500, 'internal'), new ApiError(429, 'rate_limited', { retryAfter: 9 })] },
-      4,
-    );
-    api.calls.length = 0;
-    const { id } = record(2);
-    const loading = sent.load();
-    await sent.forget(id);
-    await loading;
-    expect(store.records.has(id)).toBe(false);
-    expect(api.calls.filter((call) => call === 'status')).toHaveLength(2);
-    expect(sent.items().map((item) => item.state.kind)).toEqual(['failed', 'retry_later', 'retry_later']);
-  });
-
-  it('removes an ended message from storage once it shows the outcome, and keeps an unseen one a day past expiry (F16)', async () => {
+  it('removes an ended message from storage once it shows the outcome, and keeps an unseen one a day past expiry', async () => {
     const { api, record, store, sent } = await setup({}, 2);
     await api.cancel(parseId(record(0).id), record(0).manageKey);
     await sent.load();
@@ -337,10 +337,7 @@ describe('the sent page', () => {
     expect(isRetained({ expiresAt: NOW }, NOW + RETENTION_MS)).toBe(false);
   });
 
-  it.each([
-    ['forgets it', (sent: SentPage, id: string) => sent.forget(id)],
-    ['forgets every message', (sent: SentPage) => sent.forgetAll()],
-  ] as const)('keeps a record gone when the page %s while its status loads', async (_action, forget) => {
+  it('keeps a record gone when the page forgets every message while its status loads', async () => {
     const { api, record, store, sent } = await setup({}, 1);
     const { id, manageKey } = record(0);
     await api.cancel(parseId(id), manageKey);
@@ -355,7 +352,7 @@ describe('the sent page', () => {
     };
     const loading = sent.load();
     await asked.promise;
-    await forget(sent, id);
+    await sent.forgetAll();
     gate.resolve(undefined);
     await loading;
     expect(store.records.has(id)).toBe(false);

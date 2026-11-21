@@ -70,7 +70,7 @@
           ></path>
         {/each}
       </g>
-      {#if highlighted !== undefined && world.countries[highlighted] !== undefined}
+      {#if highlighted !== undefined && Object.hasOwn(world.countries, highlighted)}
         <g class="pointer-events-none animate-appear">
           <path d={world.countries[highlighted]} class="fill-aegis-200" opacity="0.9" filter="url(#{id}-glow)"></path>
           <path d={world.countries[highlighted]} class="fill-white stroke-white" stroke-width="1.5"></path>

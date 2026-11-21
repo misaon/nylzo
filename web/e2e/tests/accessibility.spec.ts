@@ -58,7 +58,11 @@ function smallTargets(page: Page, still: string): Promise<string[]> {
   }, still);
 }
 
-async function expectAccessible(page: Page, screen: string, scope?: string): Promise<void> {
+interface Audited {
+  readonly scope?: string;
+}
+
+async function expectAccessible(page: Page, screen: string, { scope }: Audited = {}): Promise<void> {
   await animationsFinished(page);
   const axe = new AxeBuilder({ page }).withTags(WCAG);
   const results = await (scope === undefined ? axe : axe.include(scope)).analyze();
@@ -74,7 +78,7 @@ async function openFresh(page: Page, url: string): Promise<void> {
   await page.goto(url);
 }
 
-test('the home page, its tabs, the composer popovers, an attachment and a refused passphrase pass axe with 44 px targets on a phone (AK20)', async ({
+test('the home page, its tabs, the composer popovers, an attachment and a refused passphrase pass axe with 44 px targets on a phone', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -90,7 +94,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
     await expect(tab).toHaveAttribute('aria-selected', 'true');
     const section = await tab.evaluate((element) => element.closest('section')?.id ?? '');
     expect(section).not.toBe('');
-    await expectAccessible(page, `tab ${index}`, `#${section}`);
+    await expectAccessible(page, `tab ${index}`, { scope: `#${section}` });
   }
 
   const popoverTriggers = page.locator('#create button[aria-haspopup="dialog"]');
@@ -99,7 +103,7 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
     const trigger = popoverTriggers.nth(index);
     await trigger.click();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    await expectAccessible(page, `popover ${index}`, '#create');
+    await expectAccessible(page, `popover ${index}`, { scope: '#create' });
     await page.keyboard.press('Escape');
     await expect(trigger).toHaveAttribute('aria-expanded', 'false');
   }
@@ -108,16 +112,16 @@ test('the home page, its tabs, the composer popovers, an attachment and a refuse
     .getByLabel(/File up to/u)
     .setInputFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') });
   await expect(page.getByText('notes.txt')).toBeVisible();
-  await expectAccessible(page, 'attachment', '#create');
+  await expectAccessible(page, 'attachment', { scope: '#create' });
 
   await page.getByLabel('Message text').fill('axe');
   await choosePassphrase(page, 'short');
   await page.getByRole('button', { name: 'Create link' }).click();
   await expect(page.getByLabel('Passphrase', { exact: true })).toBeFocused();
-  await expectAccessible(page, 'refused passphrase', '#create');
+  await expectAccessible(page, 'refused passphrase', { scope: '#create' });
 });
 
-test('the read page in every state, with its delete and download confirmations, passes axe with 44 px targets on a phone (AK20)', async ({
+test('the read page in every state, with its delete and download confirmations, passes axe with 44 px targets on a phone', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -151,7 +155,7 @@ test('the read page in every state, with its delete and download confirmations, 
   await expectAccessible(page, 'opened');
 
   const guarded = await createMessageThroughApi({ passphrase: 'four random words here' });
-  await showMessage(page, guarded.link, 'definitely the wrong one');
+  await showMessage(page, guarded.link, { passphrase: 'definitely the wrong one' });
   await expect(page.getByText(/Wrong passphrase/u)).toBeVisible({ timeout: 30_000 });
   await expectAccessible(page, 'rejected');
 
@@ -160,7 +164,7 @@ test('the read page in every state, with its delete and download confirmations, 
   await expectAccessible(page, 'damaged link');
 });
 
-test('the sent list, empty and with a message, and its cancel dialog pass axe with 44 px targets on a phone (AK20)', async ({
+test('the sent list, empty and with a message, and its cancel dialog pass axe with 44 px targets on a phone', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -219,21 +223,28 @@ test('with reduced motion nothing keeps moving on the home page (WCAG 2.3.3)', a
     .toBe(0);
 });
 
-test('with reduced motion the confirmation backdrop appears without a fade (WCAG 2.3.3)', async ({ page }) => {
+test('with reduced motion the confirmation dialog and its backdrop only cross-fade, without movement (WCAG 2.3.3)', async ({
+  page,
+}) => {
   await createMessageInPage(page, { text: 'still', remember: 'browser' });
   await page.goto('/sent');
   await page.getByRole('button', { name: 'Cancel message' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  const durations = await dialog.evaluate((element) =>
-    getComputedStyle(element, '::backdrop')
-      .transitionDuration.split(',')
-      .map((duration) => Number(duration.trim().slice(0, -1))),
-  );
-  expect(Math.max(...durations)).toBeLessThan(0.01);
+  for (const pseudo of [null, '::backdrop']) {
+    const transition = await dialog.evaluate((element, part) => {
+      const style = getComputedStyle(element, part);
+      return {
+        properties: style.transitionProperty.split(',').map((property) => property.trim()),
+        durations: style.transitionDuration.split(',').map((duration) => Number(duration.trim().slice(0, -1))),
+      };
+    }, pseudo);
+    expect(transition.properties).toEqual(['opacity', 'visibility', 'display', 'overlay']);
+    expect(Math.max(...transition.durations)).toBeLessThanOrEqual(0.15);
+  }
 });
 
-test('the transparency, terms, agents and not found pages pass axe with 44 px targets on a phone (AK20)', async ({
+test('the transparency, terms, agents and not found pages pass axe with 44 px targets on a phone', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);
@@ -252,7 +263,7 @@ test('the transparency, terms, agents and not found pages pass axe with 44 px ta
   await expectAccessible(page, 'not found');
 });
 
-test('the admin page set up, enrolling and signing in passes axe with 44 px targets on a phone (AK20)', async ({
+test('the admin page set up, enrolling and signing in passes axe with 44 px targets on a phone', async ({
   newPage,
 }) => {
   const page = await newPage(PHONE);

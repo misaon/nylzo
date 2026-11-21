@@ -69,6 +69,7 @@
       {#if loading}
         <Skeleton rows={6} class="mt-4" />
       {:else if countries.length > 0}
+        <!-- The country list scrolls, so keyboard users must be able to focus it. -->
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div
           class="relative -mx-3 mt-2 lg:max-h-[21rem] lg:overflow-y-auto lg:overscroll-contain"

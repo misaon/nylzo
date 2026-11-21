@@ -39,21 +39,33 @@ export interface TreeEntry {
 
 export type Tree = ReadonlyMap<string, TreeEntry>;
 
+export interface UpstreamTag {
+  readonly repository: string;
+  readonly tag: string;
+}
+
+export interface UpstreamAsset extends UpstreamTag {
+  readonly asset: string;
+}
+
 export interface GuardSource {
   blob(sha: string): Promise<string>;
   branchHead(branch: string): Promise<string>;
   commits(pullRequest: number): Promise<readonly Commit[]>;
   pullRequest(pullRequest: number): Promise<PullRequest>;
-  releaseAssetDigest(repository: string, tag: string, asset: string): Promise<string | undefined>;
+  releaseAssetDigest(asset: UpstreamAsset): Promise<string | undefined>;
   reviews(pullRequest: number): Promise<readonly Review[]>;
-  tagCommit(repository: string, tag: string): Promise<string | undefined>;
+  tagCommit(tag: UpstreamTag): Promise<string | undefined>;
   tree(commit: string): Promise<Tree>;
 }
 
-const regularFileModes = new Set(['100644', '100755']);
+export interface RegularFile extends TreeEntry {
+  readonly mode: '100644' | '100755';
+  readonly type: 'blob';
+}
 
-export function isRegularFile(entry: TreeEntry | undefined): entry is TreeEntry {
-  return entry?.type === 'blob' && regularFileModes.has(entry.mode);
+export function isRegularFile(entry: TreeEntry | undefined): entry is RegularFile {
+  return entry?.type === 'blob' && (entry.mode === '100644' || entry.mode === '100755');
 }
 
 export async function readFileAt(source: GuardSource, commit: string, path: string): Promise<string | undefined> {

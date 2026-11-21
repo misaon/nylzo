@@ -49,6 +49,8 @@ export interface RevealedFile {
   readonly bytes: Uint8Array<ArrayBuffer>;
 }
 
+type ReadyNotice = { readonly reason: 'lease_ended' } | PassphraseRejection;
+
 export type ReadView =
   | { readonly view: 'busy'; readonly step: BusyStep; readonly fraction?: number | undefined }
   | { readonly view: 'cleared' }
@@ -67,8 +69,7 @@ export type ReadView =
       readonly metadata: Metadata;
       readonly resumable: boolean;
       readonly deviceFailed: boolean;
-      readonly leaseEnded?: boolean | undefined;
-      readonly rejected?: PassphraseRejection | undefined;
+      readonly notice?: ReadyNotice | undefined;
     }
   | { readonly view: 'released' }
   | { readonly view: 'removed' }
@@ -131,11 +132,7 @@ interface Secrets {
   readonly readKey: RequestKey;
 }
 
-interface HeldKey {
-  readonly id: Uint8Array<ArrayBuffer>;
-  readonly kdfId: KdfId;
-  readonly readKey: RequestKey;
-}
+type HeldKey = Pick<Secrets, 'id' | 'kdfId' | 'readKey'>;
 
 interface Fetched {
   readonly envelope: Envelope;
@@ -343,9 +340,9 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     return shouldRetryLater(error) ? { view: 'retry_later', retryAfter: error.retryAfter } : { view: 'failed' };
   }
 
-  function readyView(rejected?: PassphraseRejection, leaseEnded?: boolean): ReadView {
+  function readyView(notice?: ReadyNotice): ReadView {
     return metadata && secrets
-      ? { view: 'ready', metadata, resumable: storedLease() !== null, deviceFailed, leaseEnded, rejected }
+      ? { view: 'ready', metadata, resumable: storedLease() !== null, deviceFailed, notice }
       : { view: 'failed' };
   }
 
@@ -458,7 +455,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
         return failureView(error);
       }
       forgetLease();
-      return error.state === 'available' ? readyView(undefined, true) : failureView(error);
+      return error.state === 'available' ? readyView({ reason: 'lease_ended' }) : failureView(error);
     }
   }
 
@@ -517,7 +514,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       if (exportKey === undefined) {
         throw new IntegrityError('the handshake gave no P');
       }
-      return await deriveContent(current.id, current.secret, exportKey, share);
+      return await deriveContent({ id: current.id, secret: current.secret, exportKey, share });
     } finally {
       share.fill(0);
     }

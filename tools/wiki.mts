@@ -22,16 +22,17 @@ for (const [source, page] of sources) {
   let markdown = await readFile(path.join(root, source), "utf8");
   const links = [...markdown.matchAll(/!?\[[^\]\n]*\]\(([^)\s]+)\)/gu)];
   for (const match of links.toReversed()) {
-    const target = match[1]!;
+    const [link, target] = match;
+    if (target === undefined) continue;
     let replacement = target;
     if (target.startsWith(`${wiki}/`)) {
       const name = new URL(target).pathname.split("/").at(-1);
-      if (![...sources.values()].includes(name!)) {
+      if (name === undefined || ![...sources.values()].includes(name)) {
         throw new Error(`${source}: unknown Wiki page ${target}`);
       }
     } else if (!/^(?:[a-z]+:|#)/iu.test(target)) {
-      const [filename, fragment = ""] = target.split("#");
-      const resolved = path.resolve(root, path.dirname(source), filename!);
+      const [filename = "", fragment = ""] = target.split("#");
+      const resolved = path.resolve(root, path.dirname(source), filename);
       const relative = path.relative(root, resolved);
       if (relative.startsWith("..") || path.isAbsolute(relative)) {
         throw new Error(`${source}: link escapes the repository: ${target}`);
@@ -44,7 +45,7 @@ for (const [source, page] of sources) {
         : `${repository}/${information.isDirectory() ? "tree" : "blob"}/main/${encoded}`;
       if (fragment) replacement += `#${fragment}`;
     }
-    const index = match.index + match[0].indexOf("](") + 2;
+    const index = match.index + link.indexOf("](") + 2;
     markdown = markdown.slice(0, index) + replacement + markdown.slice(index + target.length);
   }
   if (page !== "_Sidebar") {

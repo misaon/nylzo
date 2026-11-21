@@ -24,6 +24,7 @@ import {
   unwrapShare,
   utf8,
 } from '@nylzo/core';
+import type { Meta } from '@nylzo/core';
 import { stretchScrypt } from '@nylzo/core/scrypt';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -49,10 +50,9 @@ function refuseSigningKeyImport() {
   const importKey = crypto.subtle.importKey.bind(crypto.subtle);
   return vi
     .spyOn(crypto.subtle, 'importKey')
-    .mockImplementation(((...parameters: Parameters<typeof importKey>) =>
-      parameters[0] === 'pkcs8'
-        ? Promise.reject(new DOMException('refused', 'DataError'))
-        : importKey(...parameters)) as typeof crypto.subtle.importKey);
+    .mockImplementation((...parameters) =>
+      parameters[0] === 'pkcs8' ? Promise.reject(new DOMException('refused', 'DataError')) : importKey(...parameters),
+    );
 }
 
 function workerStretch(calls: string[] = []): Stretch {
@@ -179,11 +179,7 @@ async function leaseValue(link: string, lease: string): Promise<string> {
   return `${encodeBase64url(digest.subarray(0, 16))} ${lease}`;
 }
 
-async function storeRaw(
-  api: FakeApi,
-  meta: { text?: string; file?: { name: string; mime: string; size: number } },
-  file?: Uint8Array,
-): Promise<string> {
+async function storeRaw(api: FakeApi, meta: Meta, file?: Uint8Array): Promise<string> {
   const issuing = newShareKey();
   const secret = newSecret();
   const password = opaquePassword(await derivePassphraseSalt(secret), KDF_NONE, '');
@@ -193,13 +189,10 @@ async function storeRaw(
     shareKey: issuing.publicKey,
     registrationRequest: request,
   });
-  if (create === undefined) {
-    throw new Error('the fake server issued no id');
-  }
   const registration = await finalizeRegistrationRequest(state, create.registration, identityStretch);
   const keys = await deriveLink(create.id, secret);
   const share = await unwrapShare(issuing, create.share);
-  const content = await deriveContent(create.id, secret, registration.exportKey, share);
+  const content = await deriveContent({ id: create.id, secret, exportKey: registration.exportKey, share });
   const policy = { opensMax: 1, ttlSeconds: 3600, deadline: create.deadline };
   const object = await seal(content, newHeader(KDF_NONE), create.id, policy, { meta, file });
   const readKey = await requestKey(keys.readSeed);
@@ -217,11 +210,16 @@ async function storeRaw(
     ttlSeconds: 3600,
     object,
   });
-  return formatLink('https://nylzo.test', create.id, KDF_NONE, secret, await objectHash(object));
+  return formatLink('https://nylzo.test', {
+    kdfId: KDF_NONE,
+    id: create.id,
+    secret,
+    objectHash: await objectHash(object),
+  });
 }
 
 describe('reading a message', () => {
-  it('keeps the link secret out of session storage while a lease is pending (W2-01)', async () => {
+  it('keeps the link secret out of session storage while a lease is pending', async () => {
     const api = fakeApi();
     const created = await createMessage(input({ passphrase: 'four random words here' }), createDependencies(api));
     const display = Promise.withResolvers<undefined>();
@@ -244,7 +242,7 @@ describe('reading a message', () => {
     await revealing;
   });
 
-  it('asks for the link again after a reload with a pending lease, before any request (W2-01)', async () => {
+  it('asks for the link again after a reload with a pending lease, before any request', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const session = memorySession();
@@ -257,7 +255,7 @@ describe('reading a message', () => {
     expect(session.map.get(LEASE_KEY)).toBe(await leaseValue(created.link, 'pending-lease'));
   });
 
-  it('drops the fragment before its first request and acknowledges only once the page shows the message (D95)', async () => {
+  it('drops the fragment before its first request and acknowledges only once the page shows the message', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const display = Promise.withResolvers<undefined>();
@@ -275,7 +273,7 @@ describe('reading a message', () => {
     expect(reader.dropped()).toBe(1);
   });
 
-  it('explains after a reload before the claim that the key left the address (D95)', async () => {
+  it('explains after a reload before the claim that the key left the address', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const reader = openReader(api, created.link);
@@ -379,7 +377,7 @@ describe('reading a message', () => {
     await reader.reveal('špatná passphrase tady');
     expect(reader.last()).toMatchObject({
       view: 'ready',
-      rejected: { reason: 'wrong', attemptsLeft: 4, locked: false },
+      notice: { reason: 'wrong', attemptsLeft: 4, locked: false },
     });
     expect(reader.views.find((readView) => readView.view === 'busy' && readView.step === 'deriving')).toEqual({
       view: 'busy',
@@ -456,7 +454,7 @@ describe('reading a message', () => {
     });
   });
 
-  it('stops before any handshake when the server reports another profile (AK24)', async () => {
+  it('stops before any handshake when the server reports another profile', async () => {
     const api = fakeApi({ metadataKdfId: KDF_NONE });
     const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
     const reader = openReader(api, created.link);
@@ -468,7 +466,7 @@ describe('reading a message', () => {
 
   it.each<[string, FakeOptions]>([
     ['another profile in X-Nylzo-Policy', { servedKdfId: KDF_SCRYPT }],
-    ['F13: a deadline in X-Nylzo-Policy that the metadata does not report', { servedDeadline: 1_797_000_000 }],
+    ['a deadline in X-Nylzo-Policy that the metadata does not report', { servedDeadline: 1_797_000_000 }],
     ['opens_max in X-Nylzo-Policy that the object does not carry', { servedOpensMax: 2 }],
     ['ttl_s in X-Nylzo-Policy that the object does not carry', { servedTtlSeconds: 7200 }],
     ['metadata whose opens_max differs from X-Nylzo-Policy (SEC-9)', { metadataOpensMax: 2 }],
@@ -532,7 +530,7 @@ describe('reading a message', () => {
     const again = openReader(api, created.link, { session });
     await again.load();
     await again.reveal('mistyped passphrase here');
-    expect(again.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong', attemptsLeft: 4 } });
+    expect(again.last()).toMatchObject({ view: 'ready', notice: { reason: 'wrong', attemptsLeft: 4 } });
     expect(api.calls.filter((call) => call === 'blob')).toEqual([]);
     await again.reveal(passphrase);
     expect(again.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
@@ -548,7 +546,7 @@ describe('reading a message', () => {
     await reader.reveal('nesprávná passphrase');
     expect(reader.last()).toMatchObject({
       view: 'ready',
-      rejected: { reason: 'wrong', attemptsLeft: 0, retryAfter: 3600, locked: true },
+      notice: { reason: 'wrong', attemptsLeft: 0, retryAfter: 3600, locked: true },
     });
   });
 
@@ -634,7 +632,7 @@ describe('reading through the lease and claim edge cases', () => {
     const reads = () =>
       api.calls.filter((call) => call === 'blob' || call.startsWith('claim') || call === 'handshake+lease');
     expect(reads()).toEqual(['handshake+lease']);
-    expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, leaseEnded: true });
+    expect(reader.last()).toMatchObject({ view: 'ready', resumable: false, notice: { reason: 'lease_ended' } });
     expect(session.map.has(LEASE_KEY)).toBe(false);
     expect(storedOf(api, created.link)).toMatchObject({ opensRemaining: 3, failures: 0 });
     await reader.reveal();
@@ -716,20 +714,17 @@ describe('reading through the lease and claim edge cases', () => {
   it.each([
     ['ended', true],
     ['ended while its blob is still being deleted', false],
-  ])(
-    'shows a message whose key the server lost and %s as ended before asking to reveal it (F21)',
-    async (_, tombstone) => {
-      const options: FakeOptions = {};
-      const api = fakeApi(options);
-      const created = await createMessage(input(), createDependencies(api));
-      storedOf(api, created.link).state = 'lost';
-      options.tombstone = tombstone;
-      const reader = openReader(api, created.link);
-      await reader.load();
-      expect(reader.last()).toMatchObject({ view: 'ended', state: 'lost' });
-      expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
-    },
-  );
+  ])('shows a message whose key the server lost and %s as ended before asking to reveal it', async (_, tombstone) => {
+    const options: FakeOptions = {};
+    const api = fakeApi(options);
+    const created = await createMessage(input(), createDependencies(api));
+    storedOf(api, created.link).state = 'lost';
+    options.tombstone = tombstone;
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(reader.last()).toMatchObject({ view: 'ended', state: 'lost' });
+    expect(api.calls.some((call) => call.startsWith('claim'))).toBe(false);
+  });
 
   it.each([
     [429, 'rate_limited', 7],
@@ -788,7 +783,7 @@ describe('passphrase handling on the read page', () => {
     const reader = openReader(api, created.link, { stretch: workerStretch(derivations) });
     await reader.load();
     await reader.reveal(passphrase);
-    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: false, rejected: { reason } });
+    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: false, notice: { reason } });
     expect(reader.views.some((readView) => readView.view === 'busy')).toBe(false);
     expect(derivations).toEqual([]);
     expect(api.calls.some((call) => call === 'handshake' || call.startsWith('claim'))).toBe(false);
@@ -803,7 +798,7 @@ describe('passphrase handling on the read page', () => {
     });
     await reader.load();
     await reader.reveal('correct horse battery staple');
-    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: true, rejected: undefined });
+    expect(reader.last()).toMatchObject({ view: 'ready', deviceFailed: true, notice: undefined });
     const other = openReader(api, created.link, {
       stretch: () => Promise.reject(new ImpostorError('not the worker')),
     });
@@ -954,7 +949,7 @@ describe('leaving the page', () => {
   });
 });
 
-describe('deleting from the read page (D40)', () => {
+describe('deleting from the read page', () => {
   it('deletes a message before showing it and then refuses to reveal it', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
@@ -1001,21 +996,21 @@ describe('deleting from the read page (D40)', () => {
     expect(api.calls.filter((call) => call.startsWith('handshake'))).toHaveLength(2);
   });
 
-  it('deletes a message with a passphrase only with that passphrase, without showing a reveal (F05)', async () => {
+  it('deletes a message with a passphrase only with that passphrase, without showing a reveal', async () => {
     const api = fakeApi();
     const passphrase = 'tři slova a ještě čtvrté';
     const created = await createMessage(input({ passphrase }), createDependencies(api));
     const reader = openReader(api, created.link);
     await reader.load();
     expect(await reader.burn('špatná passphrase tady')).toEqual({ outcome: 'rejected' });
-    expect(reader.last()).toMatchObject({ view: 'ready', rejected: { reason: 'wrong', attemptsLeft: 4 } });
+    expect(reader.last()).toMatchObject({ view: 'ready', notice: { reason: 'wrong', attemptsLeft: 4 } });
     expect(storedOf(api, created.link)).toMatchObject({ state: 'available', failures: 1 });
     expect(await reader.burn(passphrase)).toEqual({ outcome: 'deleted' });
     expect(reader.last()).toMatchObject({ view: 'ended', state: 'deleted' });
     expect(reader.views.some((view) => view.view === 'busy')).toBe(false);
   });
 
-  it('deletes the remaining opens of a message with a passphrase with the passphrase of its reveal (F05)', async () => {
+  it('deletes the remaining opens of a message with a passphrase with the passphrase of its reveal', async () => {
     const api = fakeApi({ failBurn: [new ApiError(403, 'passphrase', { retryAfter: 60, attemptsLeft: 0 })] });
     const passphrase = 'tři slova a ještě čtvrté';
     const created = await createMessage(input({ opensMax: 3, passphrase }), createDependencies(api));
@@ -1123,7 +1118,7 @@ describe('deleting from the read page (D40)', () => {
   });
 });
 
-describe('native signing after a PKCS#8 import failure (WebKit on Linux, D66)', () => {
+describe('native signing after a PKCS#8 import failure (WebKit on Linux)', () => {
   it('reads and deletes with a non-extractable native key after PKCS#8 refusal', async () => {
     const refuse = refuseSigningKeyImport();
     try {

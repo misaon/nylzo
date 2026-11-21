@@ -3,16 +3,12 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Riprova',
   'app.crashed': 'Si è verificato un errore nella pagina. Ricaricala.',
+  'start.failed': 'Non è stato possibile avviare la pagina. Controlla la connessione e riprova.',
+  'start.failed.reopen': 'Non è stato possibile avviare la pagina. Controlla la connessione e riapri il link.',
 
-  'hero.eyebrow': 'Link cifrati monouso',
-  'hero.steps': 'Come funziona',
-  'hero.step.write': 'Scrivi un messaggio',
-  'hero.step.send': 'Invia il link',
-  'hero.step.vanish': 'Sparisce dopo la lettura',
   'hero.proof.label': 'Punti di forza',
-  'hero.proof.encrypted': 'Cifrato nel tuo browser',
-  'hero.proof.cipher': 'AES-256-GCM',
-  'hero.proof.tls': 'TLS post-quantistico',
+  'hero.proof.encrypted': 'Cifrato nel browser',
+  'hero.proof.free': 'Gratis, senza registrazione',
   'hero.proof.open': 'Open source',
   'terms.eyebrow': 'Note legali',
   'terms.title': 'Termini d’uso',
@@ -31,6 +27,7 @@ export const messages: Catalog = {
     'Il servizio su nylzo.com è gestito da una persona fisica (di seguito «gestore») a titolo gratuito, senza pubblicità e al di fuori della propria attività imprenditoriale.',
   'terms.operator.2':
     'Il software Nylzo è open source con licenza MIT. I presenti termini si applicano solo a nylzo.com.',
+  'terms.operator.identity': 'Comunichiamo l’identità del gestore su richiesta inviata tramite GitHub.',
   'terms.agreement.title': 'Accettazione',
   'terms.agreement.1': 'Creando o aprendo un messaggio accetti i presenti termini.',
   'terms.service.title': 'Come funziona il servizio',
@@ -50,6 +47,9 @@ export const messages: Catalog = {
   'terms.forbidden.6': 'L’aggiramento dei limiti del servizio e gli attacchi contro di esso.',
   'terms.forbidden.note': 'Chi ha creato un messaggio è responsabile del suo contenuto.',
   'terms.removal.title': 'Rimozione dei messaggi',
+  'terms.removal.notice':
+    'Segnala i contenuti illeciti con una {link} su GitHub. Indica il motivo e l’ID del messaggio, che nel link si trova dopo il # tra il secondo e il terzo punto. Non inviare il link completo.',
+  'terms.removal.notice.link': 'segnalazione privata',
   'terms.removal.1':
     'Se un messaggio viola la legge o i presenti termini, lo eliminiamo. L’eliminazione è irreversibile.',
   'terms.removal.2':
@@ -102,6 +102,7 @@ export const messages: Catalog = {
   'wait.minute': { one: '{count}\u{A0}minuto', other: '{count}\u{A0}minuti' },
   'wait.hour': { one: '{count}\u{A0}ora', other: '{count}\u{A0}ore' },
   'action.copied': 'Copiato',
+  'action.copy_failed': 'Errore',
   'error.notFound.label': 'Errore 404',
   'error.notFound.title': 'Questa pagina non esiste',
   'error.notFound.lead': 'L’indirizzo potrebbe contenere un errore di battitura o essere incompleto.',
@@ -140,8 +141,6 @@ export const messages: Catalog = {
   'create.text': 'Testo del messaggio',
   'create.file.clear': 'Rimuovi l’allegato',
   'create.passphrase': 'Password',
-  'create.passphrase.hint':
-    'Generiamo una password casuale facile da dettare. Inviala al destinatario attraverso un canale diverso dal link.',
   'create.passphrase.weak': 'Consigliamo almeno {words} parole casuali e, in tutto, almeno {characters} caratteri.',
 
   'ttl.3600': '1\u{A0}ora',
@@ -179,9 +178,6 @@ export const messages: Catalog = {
   'created.link': 'Link al messaggio',
   'created.copy': 'Copia link',
   'created.share': 'Condividi',
-  'clipboard.copied': 'Copiato. Una copia può restare nella cronologia degli appunti e negli appunti sincronizzati.',
-  'clipboard.clear': 'Svuota appunti',
-  'clipboard.cleared': 'Gli appunti sono vuoti. Le copie già presenti nella cronologia degli appunti restano lì.',
   'created.another': 'Nuovo messaggio',
   'created.remembered': 'Questo dispositivo ha memorizzato il messaggio.',
   'created.remembered.session': 'Questa scheda ricorda il messaggio al massimo finché non la chiudi o la ricarichi.',
@@ -204,24 +200,18 @@ export const messages: Catalog = {
   'sent.state.cancelled': 'Annullato',
   'sent.state.deleted': 'Eliminato',
   'sent.state.lost': 'Perso',
-  'sent.label.time': 'Scadenza',
-  'sent.label.opens': 'Aperture',
-  'sent.label.attempts': 'Tentativi falliti',
-  'sent.label.first_opened': 'Prima apertura',
-  'sent.not_opened': 'non ancora',
-  'sent.until': '{time}',
-  'sent.opens': '{used} di {max}',
+  'sent.attempts': 'Tentativi falliti: {count}',
+  'sent.first_opened': 'Prima apertura: {time}',
+  'sent.until': 'Scadenza: {time}',
+  'sent.opens': 'Aperture: {used} di {max}',
   'sent.unknown':
-    'Il server non ha trovato il messaggio. Potrebbe essere già concluso. Se qui non ti serve più, rimuovilo.',
+    'Il server non ha trovato il messaggio. Potrebbe essere già concluso. «Svuota l’elenco» rimuove la voce.',
   'sent.failed': 'Impossibile caricare lo stato. Controlla la connessione e riprova.',
   'sent.cancel': 'Annulla messaggio',
   'sent.cancel.confirm': 'Dopo l’annullamento nessuno potrà più aprire il messaggio.',
   'sent.cancel.yes': 'Sì, annulla',
   'sent.cancel.no': 'Mantieni',
   'sent.cancelled': 'Il messaggio è stato annullato.',
-  'sent.forget': 'Rimuovi',
-  'sent.forget.confirm': 'Un messaggio rimosso non potrà più essere annullato da qui.',
-  'sent.forget.yes': 'Sì, rimuovi',
   'sent.forget_all': 'Svuota l’elenco',
   'sent.forget_all.confirm': 'I messaggi dell’elenco non potranno più essere annullati da qui.',
   'sent.forget_all.yes': 'Sì, svuota',
@@ -233,18 +223,14 @@ export const messages: Catalog = {
   'sent.state.unknown': 'Non trovato',
   'sent.state.failed': 'Stato sconosciuto',
   'sent.state.loading': 'Caricamento',
-  'sent.ended.opened': 'Aperto: {time}. È stato eliminato dal server, la voce sparirà quando lasci questa pagina.',
-  'sent.ended.expired': 'Scaduto: {time}. È stato eliminato dal server, la voce sparirà quando lasci questa pagina.',
-  'sent.ended.cancelled':
-    'Annullato: {time}. È stato eliminato dal server, la voce sparirà quando lasci questa pagina.',
-  'sent.ended.deleted':
-    'Lo ha eliminato il destinatario o lo ha rimosso il gestore. La voce sparirà quando lasci questa pagina.',
+  'sent.ended.opened': 'Aperto: {time}. È stato eliminato dal server.',
+  'sent.ended.expired': 'Scaduto: {time}. È stato eliminato dal server.',
+  'sent.ended.cancelled': 'Annullato: {time}. È stato eliminato dal server.',
+  'sent.ended.deleted': 'Lo ha eliminato il destinatario o lo ha rimosso il gestore.',
   'sent.ended.lost':
-    'Il server ha perso la sua chiave, di solito durante un riavvio, quindi nessuno potrà più aprirlo. Se serve ancora, invialo di nuovo. La voce sparirà quando lasci questa pagina.',
+    'Il server ha perso la sua chiave, di solito durante un riavvio, quindi nessuno potrà più aprirlo. Se serve ancora, invialo di nuovo.',
   'sent.cancel.title': 'Annullare il messaggio «{label}»?',
   'sent.cancel.title.untitled': 'Annullare il messaggio?',
-  'sent.forget.label': 'Rimuovi dall’elenco',
-  'sent.forget.title': 'Rimuovere il messaggio dall’elenco?',
   'sent.forget_all.title': 'Svuotare tutto l’elenco?',
 
   'read.title': 'Messaggio monouso',
@@ -264,8 +250,7 @@ export const messages: Catalog = {
     'Il tempo per ricaricare il messaggio in questa pagina è scaduto. Visualizzarlo ora consuma un’altra apertura.',
   'read.device':
     'L’ultima volta questo dispositivo non è riuscito a elaborare la password. Se succede di nuovo, apri il link su un altro dispositivo.',
-  'read.rejected.wrong':
-    'Password errata. Il messaggio non è stato aperto. Hai ancora {attempts}, poi dovrai aspettare un po’.',
+  'read.rejected.wrong': 'Password errata. Il messaggio non è stato aperto. Hai ancora {attempts}.',
   'read.rejected.wait': 'Password errata. Puoi riprovare tra {time}.',
   'read.rejected.malformed': 'La password contiene caratteri non validi.',
   'read.rejected.long': 'La password è troppo lunga.',
@@ -274,7 +259,8 @@ export const messages: Catalog = {
   'read.delete.rest.short': 'Elimina',
   'read.delete.rest.confirm': 'Eliminare le aperture rimanenti?',
   'read.delete.confirm.title': 'Eliminare il messaggio senza aprirlo?',
-  'read.note': 'Gratis e senza registrazione. La pagina del messaggio non usa cookie e non misura le visite.',
+  'read.terms': 'Mostrando il messaggio accetti i {link}.',
+  'read.copy_failed': 'Copia non riuscita. Seleziona il testo del messaggio e copialo a mano.',
   'read.delete.confirm': 'Poi nessuno potrà più aprire il messaggio, nemmeno tu.',
   'read.delete.yes': 'Sì, elimina',
   'read.delete.no': 'Non eliminare',
@@ -407,7 +393,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Non usiamo servizi esterni per analizzare le visite.',
   'transparency.personal.browser.title': 'Nel tuo browser',
   'transparency.personal.browser':
-    'La lingua scelta, un dato temporaneo durante l’apertura di un messaggio e l’elenco Inviati, se tieni un messaggio seguito anche dopo aver chiuso la scheda. Sono necessari per funzioni che hai richiesto e per questo non richiedono il consenso.',
+    'La lingua scelta, un dato temporaneo durante l’apertura di un messaggio e l’elenco Inviati, se segui un messaggio. Sono necessari per funzioni che hai richiesto e per questo non richiedono il consenso.',
   'transparency.limits.title': 'Limiti di questa istanza',
   'transparency.limits.short': 'Limiti',
   'transparency.limits.file': 'Allegato più grande',
@@ -474,6 +460,7 @@ export const messages: Catalog = {
 
   'hero.title': 'Un segreto che si apre {accent}',
   'hero.title.accent': 'una sola volta',
+  'hero.lead': 'Invia in modo sicuro una password, una chiave API o un file con un link che si apre una sola volta.',
   'seo.title': 'Come inviare una password in sicurezza: link monouso | Nylzo',
   'seo.description':
     'Invia una password, una chiave API o un file con un link che si apre una sola volta. La cifratura avviene già nel tuo browser. Gratis e senza registrazione.',
@@ -490,8 +477,6 @@ export const messages: Catalog = {
   'compose.opens.title': 'Quante volte si può aprire il messaggio',
   'compose.opens.less': 'Meno aperture',
   'compose.opens.more': 'Più aperture',
-  'compose.opens.history':
-    'Il destinatario che clicca sul link lo ritrova funzionante nella cronologia del browser finché il messaggio non esaurisce tutte le aperture consentite. Per questo proteggilo con una password.',
   'compose.security': 'Sicurezza',
   'compose.passphrase.chip': 'Con password',
   'compose.passphrase.chip.off': 'Senza password',
@@ -502,7 +487,9 @@ export const messages: Catalog = {
   'compose.attach': 'File fino a {size}',
   'compose.submit': 'Crea link',
   'compose.encrypting': 'Cifratura',
-  'compose.note': 'Gratis, senza registrazione e senza cookie.',
+  'compose.note': 'Creando un link accetti i {link}.',
+  'terms.agree.link': 'termini d’uso',
+  'link.new_tab': '(si apre in una nuova scheda)',
 
   'step.counter': 'Passo {step} di {total}',
   'step.key.label': 'Chiave',
@@ -530,8 +517,6 @@ export const messages: Catalog = {
   'created.copy.short': 'Copia',
   'created.copy_failed': 'Copia non riuscita. Il link è selezionato, copialo a mano.',
   'created.once': 'Vedi il link solo ora. Non aprirlo tu, consumeresti un’apertura.',
-  'created.legend.server': 'Il server riceve l’indirizzo e l’ID del messaggio',
-  'created.legend.key': 'Il browser non invia la chiave che segue #',
   'created.passphrase.show': 'Mostra password',
   'created.passphrase.hide': 'Nascondi password',
   'created.passphrase.copy': 'Copia password',
@@ -539,8 +524,7 @@ export const messages: Catalog = {
   'created.track.note':
     'Vedrai se qualcuno ha aperto il messaggio e potrai annullarlo. Lo ricorda solo questa scheda, al massimo finché non la chiudi o la ricarichi.',
   'created.track.note.kept':
-    'Vedrai se qualcuno ha aperto il messaggio e potrai annullarlo. Viene salvato in questo browser, quindi potrà annullarlo anche chiunque vi abbia accesso.',
-  'created.track.keep': 'Ricorda anche dopo aver chiuso la scheda',
+    'Vedrai se qualcuno ha aperto il messaggio e potrai annullarlo. Viene salvato in questo browser.',
   'created.track.label': 'Etichetta, la vedi solo tu',
   'created.track.placeholder': 'Etichetta, ad es. «Password per Marco»',
   'created.track.save': 'Salva',
@@ -552,7 +536,6 @@ export const messages: Catalog = {
   'open.ready.sub': 'Compare solo dopo un clic, che consuma un’apertura. Dopo l’ultima apertura il server lo elimina.',
   'open.loading.text': 'Verifichiamo il link con il server.',
   'open.passphrase.placeholder': 'Password del mittente',
-  'open.passphrase.hint': 'Il mittente ti ha inviato la password a parte, ad esempio per SMS o per telefono.',
   'open.passphrase.show': 'Mostra password',
   'open.passphrase.hide': 'Nascondi password',
   'open.passphrase.empty': 'Inserisci la password ricevuta dal mittente.',
@@ -736,7 +719,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': 'Senza la chiave del link non legge nemmeno i metadati',
   'brute.fact.pass': 'La password non si indovina via rete',
   'brute.fact.pass.note': 'Dopo 100\u{A0}password errate il messaggio si blocca',
-  'brute.fact.quantum': 'Un computer quantistico non legge il messaggio',
+  'brute.fact.quantum': 'Senza il link non lo legge nemmeno un computer quantistico',
   'brute.fact.quantum.note':
     'Il contenuto è protetto da una chiave a 256\u{A0}bit, la connessione da TLS post-quantistico',
 
@@ -801,7 +784,7 @@ export const messages: Catalog = {
   'tech.crypto.title': 'Cifratura',
   'tech.crypto.text': 'AES\u{2011}256\u{2011}GCM e TLS post\u{2011}quantistico',
   'tech.server.title': 'Server',
-  'tech.server.text': 'Go e SQLite, solo 6\u{A0}dipendenze dirette',
+  'tech.server.text': 'Go e SQLite, solo 7\u{A0}dipendenze dirette',
   'tech.web.title': 'Web',
   'tech.web.text': 'Svelte\u{A0}5, impronte SHA\u{2011}384 e nessun cookie',
   'tech.release.title': 'Sviluppo e rilasci',
@@ -896,10 +879,13 @@ export const messages: Catalog = {
   'about.terms.link': 'termini d’uso',
   'faq.eyebrow': 'Domande frequenti',
   'faq.title': 'Prima di inviare il tuo primo messaggio',
+  'faq.securely.question': 'Come inviare una password in modo sicuro?',
+  'faq.securely.answer':
+    'Incollala in Nylzo e invia solo il link. Il browser la cifra prima di inviarla e il server la elimina dopo l’ultima apertura.',
   'faq.unopened.question': 'E se il destinatario non apre il link?',
   'faq.unopened.answer':
     'Alla scadenza il messaggio si elimina da solo. Puoi scegliere una validità da 1\u{A0}ora a {days}.',
-  'faq.passphrase.question': 'Come comunicare la password?',
+  'faq.passphrase.question': 'Come comunicare la password del messaggio?',
   'faq.passphrase.answer':
     'Attraverso un canale diverso dal link. Per esempio il link via e-mail e la password per telefono o SMS.',
   'faq.save.question': 'Il destinatario può salvare il messaggio?',

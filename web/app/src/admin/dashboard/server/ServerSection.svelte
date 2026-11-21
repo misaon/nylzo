@@ -4,7 +4,7 @@
   import { getDashboardTools } from '../context.ts';
   import Section from '../Section.svelte';
   import { NOTE, TILE } from '../surfaces.ts';
-  import { usageValues } from './usage.ts';
+  import { usageSeries } from './usage.ts';
   import UsageChart from './UsageChart.svelte';
 
   interface Props {
@@ -18,12 +18,14 @@
   const { translate, format } = getDashboardTools();
   const latest = $derived(live.usage.at(-1));
   const processor = $derived(
-    usageValues(live.usageSupported, live.usage, (point) => (point.processor >= 0 ? point.processor : undefined)),
+    usageSeries({ live, waiting, read: (point) => (point.processor >= 0 ? point.processor : undefined) }),
   );
   const memory = $derived(
-    usageValues(live.usageSupported, live.usage, (point) =>
-      point.memoryTotal > 0 ? point.memoryUsed / point.memoryTotal : undefined,
-    ),
+    usageSeries({
+      live,
+      waiting,
+      read: (point) => (point.memoryTotal > 0 ? point.memoryUsed / point.memoryTotal : undefined),
+    }),
   );
   const storage = $derived(overview.storage);
   const diskKnown = $derived(storage.totalBytes > 0);
@@ -44,10 +46,9 @@
       title={translate('dashboard.server.processor')}
       label={translate('dashboard.server.chart.processor')}
       usage={live.usage}
-      values={processor}
-      {waiting}
+      series={processor}
       tone="people"
-      current={processor === undefined ? '–' : format.percent(processor.at(-1) ?? 0)}
+      current={processor.kind === 'measured' ? format.percent(processor.values.at(-1) ?? 0) : '–'}
       detail={latest && latest.load >= 0
         ? translate('dashboard.server.load', { load: format.decimal(latest.load) })
         : translate('dashboard.now.five')}
@@ -56,11 +57,10 @@
       title={translate('dashboard.server.memory')}
       label={translate('dashboard.server.chart.memory')}
       usage={live.usage}
-      values={memory}
-      {waiting}
+      series={memory}
       tone="robots"
-      current={memory === undefined ? '–' : format.percent(memory.at(-1) ?? 0)}
-      detail={memory === undefined || !latest
+      current={memory.kind === 'measured' ? format.percent(memory.values.at(-1) ?? 0) : '–'}
+      detail={memory.kind !== 'measured' || !latest
         ? translate('dashboard.now.five')
         : translate('dashboard.now.memory.value', {
             used: format.bytes(latest.memoryUsed),

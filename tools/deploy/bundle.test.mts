@@ -4,37 +4,48 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
-import { archive, hostSources, manifestEntries } from "./bundle.mts";
+import { archive, hostSource, hostSources, manifestEntries } from "./bundle.mts";
 
 const sources = await hostSources();
-const image = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(resolve("tools/deploy/runtime.test.mts"), "utf8"))![1]!;
+const source = (name: string) => hostSource(sources, name);
+const captured = (pattern: RegExp, text: string) => {
+  const capture = pattern.exec(text)?.[1];
+  assert(capture !== undefined, `${pattern} matches nothing`);
+  return capture;
+};
+function pinnedImage() {
+  const pinned = /"(ubuntu:\d+\.\d+@sha256:[a-f0-9]{64})"/u.exec(readFileSync(resolve("tools/deploy/runtime.test.mts"), "utf8"))?.[1];
+  assert(pinned, "The tests run in the pinned Ubuntu image of the runtime tests");
+  return pinned;
+}
+const image = pinnedImage();
 const available = spawnSync("docker", ["info"], { stdio: "ignore" }).status === 0;
 
 test("the host bundle is reproducible and every file has one place and one role on the host", () => {
   assert.deepEqual(archive(sources), archive(new Map([...sources].toReversed())));
-  const pattern = new RegExp(/^target_pattern='(.+)'$/mu.exec(sources.get("update/activate")!)![1]!, "u");
+  const pattern = new RegExp(captured(/^target_pattern='(.+)'$/mu, source("update/activate")), "u");
   const entries = manifestEntries(sources);
   const targets = entries.map(entry => entry.target);
   assert.equal(new Set(targets).size, targets.length, "Two manifest entries install the same target");
-  for (const { target, source } of entries) {
-    assert.match(target, pattern, `activate refuses ${target}`);
-    assert(sources.has(source), `missing ${source}`);
+  for (const entry of entries) {
+    assert.match(entry.target, pattern, `activate refuses ${entry.target}`);
+    assert(sources.has(entry.source), `missing ${entry.source}`);
   }
   const composed = ["proxy/Caddyfile", "proxy/www.Caddyfile", "system/sshd-hardware-keys.conf"];
   for (const name of sources.keys()) assert(["manifest", "units", ...composed].includes(name) || entries.some(entry => entry.source === name), `${name} is never installed`);
-  for (const line of sources.get("units")!.trimEnd().split("\n")) {
+  for (const line of source("units").trimEnd().split("\n")) {
     const [action, , unit] = line.split(" ");
     if (action === "enable" || action === "start") assert(targets.includes(`/etc/systemd/system/${unit}`), `${unit} is enabled but not installed`);
   }
-  const sandbox = /^ReadWritePaths=(.+)$/mu.exec(sources.get("update/sandbox.conf")!)![1]!.split(" ");
+  const sandbox = captured(/^ReadWritePaths=(.+)$/mu, source("update/sandbox.conf")).split(" ");
   for (const target of targets.filter(candidate => candidate.startsWith("/etc/"))) {
     assert(sandbox.some(directory => target.startsWith(`${directory}/`)), `the sandboxed updater cannot write ${target}`);
   }
   for (const name of [...sources.keys()].filter(candidate => /\.(service|timer)$/u.test(candidate))) {
-    assert.match(sources.get(name)!, /^\[(Unit|Service|Timer)\]$/mu, name);
+    assert.match(source(name), /^\[(Unit|Service|Timer)\]$/mu, name);
   }
   for (const name of ["proxy/caddy.service", "application/nylzo.service", "monitoring/nylzo-clock.service", "monitoring/nylzo-heartbeat.service", "system/nylzo-ipv6.service"]) {
-    const unit = sources.get(name)!;
+    const unit = source(name);
     for (const setting of ["NoNewPrivileges=true", "ProtectSystem=strict", "RestrictNamespaces=true", "SystemCallFilter=@system-service", "LimitCORE=0"]) assert(unit.includes(`${setting}\n`), `${name} lacks ${setting}`);
   }
 });
@@ -44,17 +55,17 @@ test("hosts install a bundle atomically, apply only what changed, and roll back 
   try {
     writeFileSync(join(directory, "initial.tar"), archive(sources));
     const next = new Map(sources);
-    next.set("system/sshd.conf", sources.get("system/sshd.conf")! + "ClientAliveInterval 60\n");
-    next.set("system/containerd.toml", sources.get("system/containerd.toml")! + "\n# Updated runtime configuration.\n");
-    next.set("monitoring/nylzo-clock.timer", sources.get("monitoring/nylzo-clock.timer")!.replace("OnUnitActiveSec=15min", "OnUnitActiveSec=10min"));
-    next.set("manifest", sources.get("manifest")!.split("\n").filter(line => !line.includes("heartbeat")).join("\n"));
-    next.set("units", sources.get("units")!.split("\n").filter(line => !line.includes("heartbeat")).join("\n"));
+    next.set("system/sshd.conf", source("system/sshd.conf") + "ClientAliveInterval 60\n");
+    next.set("system/containerd.toml", source("system/containerd.toml") + "\n# Updated runtime configuration.\n");
+    next.set("monitoring/nylzo-clock.timer", source("monitoring/nylzo-clock.timer").replace("OnUnitActiveSec=15min", "OnUnitActiveSec=10min"));
+    next.set("manifest", source("manifest").split("\n").filter(line => !line.includes("heartbeat")).join("\n"));
+    next.set("units", source("units").split("\n").filter(line => !line.includes("heartbeat")).join("\n"));
     next.delete("monitoring/heartbeat");
     next.delete("monitoring/nylzo-heartbeat.service");
     next.delete("monitoring/nylzo-heartbeat.timer");
     writeFileSync(join(directory, "next.tar"), archive(next));
-    writeFileSync(join(directory, "foreign.tar"), archive(new Map([...sources, ["manifest", sources.get("manifest")! + "/etc/passwd system/sshd.conf\n"]])));
-    writeFileSync(join(directory, "format.tar"), archive(new Map([...sources, ["manifest", sources.get("manifest")!.replace("format 1", "format 2")]])));
+    writeFileSync(join(directory, "foreign.tar"), archive(new Map([...sources, ["manifest", source("manifest") + "/etc/passwd system/sshd.conf\n"]])));
+    writeFileSync(join(directory, "format.tar"), archive(new Map([...sources, ["manifest", source("manifest").replace("format 1", "format 2")]])));
     const result = spawnSync("docker", ["run", "--interactive", "--rm", "--network", "none", "--cap-drop", "ALL", "--cap-add", "CHOWN", "--cap-add", "DAC_OVERRIDE", "--cap-add", "FOWNER",
       "--mount", `type=bind,source=${directory},target=/bundles,readonly`, image, "bash", "-s"], { encoding: "utf8", timeout: 100000, input: String.raw`set -euo pipefail
 trap 'echo "failed at line $LINENO: $BASH_COMMAND" >&2' ERR

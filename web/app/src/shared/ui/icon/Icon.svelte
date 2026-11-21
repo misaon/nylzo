@@ -10,9 +10,17 @@
     readonly stroke?: number | undefined;
     readonly animated?: boolean;
     readonly paint?: string;
+    readonly viewBox?: string;
   }
 
-  const { name, class: className = 'size-4', stroke = 1.8, animated = false, paint = 'currentColor' }: Props = $props();
+  const {
+    name,
+    class: className = 'size-4',
+    stroke = 1.8,
+    animated = false,
+    paint = 'currentColor',
+    viewBox = '0 0 24 24',
+  }: Props = $props();
   const shapes: readonly Shape[] = $derived(ICONS[name]);
   const motion = $derived(animated ? ICON_MOTION[name] : undefined);
   const svgMotion = $derived(motion?.shape === undefined ? motion?.classes : undefined);
@@ -20,7 +28,7 @@
 
 <svg
   class={[className, svgMotion]}
-  viewBox="0 0 24 24"
+  {viewBox}
   fill="none"
   stroke={paint}
   stroke-width={stroke}

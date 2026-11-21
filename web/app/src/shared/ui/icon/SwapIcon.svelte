@@ -21,11 +21,16 @@
   <Icon
     name={from}
     {animated}
-    class={[size, 'transition-[opacity,scale]', swapped ? 'scale-50 opacity-0' : 'scale-100 opacity-100']}
+    class={[size, 'transition-[opacity,scale] duration-200', swapped ? 'scale-50 opacity-0' : 'scale-100 opacity-100']}
   />
   <Icon
     name={to}
     {animated}
-    class={[size, 'transition-[opacity,scale]', toTone, swapped ? 'scale-100 opacity-100' : 'scale-50 opacity-0']}
+    class={[
+      size,
+      'transition-[opacity,scale] duration-200',
+      toTone,
+      swapped ? 'scale-100 opacity-100' : 'scale-50 opacity-0',
+    ]}
   />
 </span>

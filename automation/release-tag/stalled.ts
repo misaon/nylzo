@@ -15,7 +15,7 @@ const branch = maintenanceBranch(parseVersion(latest.tag));
 const tip = await branchTip(client, branch);
 
 if (tip !== null && tip !== latest.commit) {
-  const unreleased = await unreleasedPullRequests(client, latest.commit, tip, branch);
+  const unreleased = await unreleasedPullRequests(client, { branch, releaseCommit: latest.commit, tip });
   const current = await latestPublishedRelease(client);
   const now = Date.now();
   const waitedLongerThan = (delay: number) => (pull: { readonly mergedAt: number }) => now - pull.mergedAt > delay;

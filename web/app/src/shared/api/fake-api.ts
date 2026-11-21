@@ -4,7 +4,7 @@ import { createRegistrationResponse, generateKE2, newServerKeys } from '@nylzo/c
 
 import { ApiError, StoppedError } from './api-errors.ts';
 import type { MessageState } from './api-errors.ts';
-import type { Api, CreateRequest, Instance, Login, Metadata, Status } from './api.ts';
+import type { Api, CreateRequest, Creation, Instance, IssuingInstance, Login, Metadata, Status } from './api.ts';
 
 interface Stored {
   readonly request: CreateRequest;
@@ -51,7 +51,7 @@ function sameBytes(first: Uint8Array | undefined, second: Uint8Array | undefined
 }
 
 // The OPAQUE credential identifier of spec section 5.1: the id and the expiry share.
-function credentialOf(id: Uint8Array, share: Uint8Array): Uint8Array {
+function credentialOf({ id, share }: { readonly id: Uint8Array; readonly share: Uint8Array }): Uint8Array {
   return new Uint8Array([...id, ...share]);
 }
 
@@ -145,41 +145,59 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
     };
   }
 
+  function describedInstance(): Instance {
+    const challenge = encodeBase64url(new Uint8Array(36).fill(challenges.length + 1));
+    challenges.push(challenge);
+    return {
+      limits: {
+        maxFileBytes: 5_242_880,
+        maxTextBytes: 102_400,
+        maxObjectBytes: 5_373_952,
+        maxTtlSeconds: 604_800,
+        defaultTtlSeconds: 86_400,
+        maxOpens: 10,
+      },
+      pow: options.pow?.required
+        ? { required: true, difficulty: options.pow.difficulty, challenge }
+        : { required: false, difficulty: 4 },
+    };
+  }
+
+  async function issuingInstance(creation: Creation): Promise<IssuingInstance> {
+    calls.push('instance+id');
+    const described = describedInstance();
+    const id = crypto.getRandomValues(new Uint8Array(16));
+    issuedIds.push(id);
+    const share = crypto.getRandomValues(new Uint8Array(32));
+    shares.set(idToString(id), share);
+    const deadline = deadlineAfter(creation.ttlSeconds);
+    return {
+      ...described,
+      create: {
+        id,
+        idToken: 'token',
+        epoch: deadline / 60 - 1,
+        deadline,
+        share: await wrapShare(share, creation.shareKey),
+        registration: createRegistrationResponse(creation.registrationRequest, serverKeys, credentialOf({ id, share })),
+      },
+    };
+  }
+
+  function plainInstance(): Promise<Instance> {
+    calls.push('instance');
+    return Promise.resolve(describedInstance());
+  }
+
+  function instance(creation: Creation): Promise<IssuingInstance>;
+  function instance(): Promise<Instance>;
+  function instance(creation?: Creation): Promise<Instance> {
+    return creation === undefined ? plainInstance() : issuingInstance(creation);
+  }
+
   /* oxlint-disable typescript/require-await -- the fake keeps the async methods of Api, so a thrown ApiError rejects the promise as in the real client */
   const api: Api = {
-    async instance(creation): Promise<Instance> {
-      calls.push(creation === undefined ? 'instance' : 'instance+id');
-      const challenge = encodeBase64url(new Uint8Array(36).fill(challenges.length + 1));
-      challenges.push(challenge);
-      let create: Instance['create'];
-      if (creation !== undefined) {
-        const id = crypto.getRandomValues(new Uint8Array(16));
-        issuedIds.push(id);
-        const share = crypto.getRandomValues(new Uint8Array(32));
-        shares.set(idToString(id), share);
-        const deadline = deadlineAfter(creation.ttlSeconds);
-        create = {
-          id,
-          idToken: 'token',
-          epoch: deadline / 60 - 1,
-          deadline,
-          share: await wrapShare(share, creation.shareKey),
-          registration: createRegistrationResponse(creation.registrationRequest, serverKeys, credentialOf(id, share)),
-        };
-      }
-      return {
-        limits: {
-          maxFileBytes: 5_242_880,
-          maxTextBytes: 102_400,
-          maxObjectBytes: 5_373_952,
-          maxTtlSeconds: 604_800,
-          defaultTtlSeconds: 86_400,
-          maxOpens: 10,
-        },
-        pow: options.pow?.required ? { ...options.pow, challenge } : { required: false, difficulty: 4 },
-        create,
-      };
-    },
+    instance,
 
     async transparency() {
       calls.push('transparency');
@@ -240,13 +258,13 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
       }
       message.failures++;
       const share = shares.get(idToString(message.request.id)) ?? new Uint8Array(32);
-      const { ke2, expectedClientMac } = generateKE2(
-        options.otherServerKeys === true ? newServerKeys() : serverKeys,
-        message.request.registration,
-        credentialOf(message.request.id, share),
+      const { ke2, expectedClientMac } = generateKE2({
+        keys: options.otherServerKeys === true ? newServerKeys() : serverKeys,
+        record: message.request.registration,
+        credentialIdentifier: credentialOf({ id: message.request.id, share }),
         ke1,
-        opaqueContext(message.request.id, message.request.kdfId),
-      );
+        context: opaqueContext(message.request.id, message.request.kdfId),
+      });
       const challenge = new Uint8Array(36).fill(handshakes.length + 1);
       handshakes.push(encodeBase64url(challenge));
       expectedMacs.set(encodeBase64url(challenge), { id: idToString(message.request.id), mac: expectedClientMac });

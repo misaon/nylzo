@@ -173,7 +173,7 @@ func TestOnlyTheOfficialHomePagesAndImagesMayBeIndexed(t *testing.T) {
 	}{
 		{"https://nylzo.com", http.MethodGet, "/", true},
 		{"https://nylzo.com:443", http.MethodHead, "/zh-hans/", true},
-		{"https://nylzo.com", http.MethodGet, "/assets/og-image-a1.png", true},
+		{"https://nylzo.com", http.MethodGet, "/assets/og-image-a1.jpg", true},
 		{"https://nylzo.com", http.MethodGet, "/assets/favicon-b2.svg", true},
 		{"https://nylzo.com", http.MethodGet, "/favicon.ico", true},
 		{"https://nylzo.com", http.MethodPost, "/", false},
@@ -188,7 +188,7 @@ func TestOnlyTheOfficialHomePagesAndImagesMayBeIndexed(t *testing.T) {
 		{"https://nylzo.example", http.MethodGet, "/", false},
 		{"https://www.nylzo.com", http.MethodGet, "/", false},
 		{"https://nylzo.com:8443", http.MethodGet, "/", false},
-		{"", http.MethodGet, "/assets/og-image-a1.png", false},
+		{"", http.MethodGet, "/assets/og-image-a1.jpg", false},
 	} {
 		if got := webclient.Indexable(testCase.publicURL, testCase.method, testCase.path); got != testCase.indexable {
 			t.Errorf("%s %s %s: indexable %v", testCase.publicURL, testCase.method, testCase.path, got)

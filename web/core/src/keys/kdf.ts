@@ -24,8 +24,8 @@ export function parseKdfId(text: string): KdfId {
   return kdfId;
 }
 
-function normalizePassphrase(passphrase: string): Uint8Array<ArrayBuffer> {
-  return utf8(passphrase.normalize('NFC'));
+export function normalizePassphrase(passphrase: string): string {
+  return passphrase.replaceAll(/\p{Zs}/gu, ' ').normalize('NFC');
 }
 
 function assertWellFormedPassphrase(kdfId: KdfId, passphrase: string): void {
@@ -42,7 +42,7 @@ export function opaquePassword(passphraseSalt: Uint8Array, kdfId: KdfId, passphr
   if (kdfId === KDF_NONE) {
     return concatenate(passphraseSalt);
   }
-  const normalized = normalizePassphrase(passphrase);
+  const normalized = utf8(normalizePassphrase(passphrase));
   try {
     if (normalized.length > MAX_PASSPHRASE_BYTES) {
       throw new LongPassphraseError();

@@ -26,6 +26,7 @@ interface CreateAnswer {
 
 declare global {
   var nylzoCreateAnswer: CreateAnswer | undefined;
+  var nylzoClipboard: string[] | undefined;
 }
 
 const PASSPHRASE = 'four random words here';
@@ -151,21 +152,24 @@ async function watchCreateAnswer(page: Page): Promise<() => Promise<CreateAnswer
       },
     });
     const open: unknown = Object.getOwnPropertyDescriptor(IDBFactory.prototype, 'open')?.value;
+    const body: unknown = Reflect.get(Object.getOwnPropertyDescriptor(Response.prototype, 'body') ?? {}, 'get');
+    if (typeof open !== 'function' || typeof body !== 'function') {
+      return;
+    }
     Object.defineProperty(IDBFactory.prototype, 'open', {
-      value(this: IDBFactory, ...parameters: Parameters<IDBFactory['open']>): IDBOpenDBRequest {
+      value(this: IDBFactory, ...parameters: Parameters<IDBFactory['open']>): unknown {
         databaseOpens += 1;
-        return Reflect.apply(open as IDBFactory['open'], this, parameters);
+        return Reflect.apply(open, this, parameters);
       },
     });
-    const body: unknown = Reflect.get(Object.getOwnPropertyDescriptor(Response.prototype, 'body') ?? {}, 'get');
     Object.defineProperty(Response.prototype, 'body', {
-      get(this: Response): ReadableStream<Uint8Array> | null {
+      get(this: Response): unknown {
         if (this.url.endsWith('/api/v1/messages')) {
           setTimeout(() => {
             handled = true;
           }, 0);
         }
-        return Reflect.apply(body as () => ReadableStream<Uint8Array> | null, this, []);
+        return Reflect.apply(body, this, []);
       },
     });
   });
@@ -217,7 +221,7 @@ async function exhaustCreatesWithoutProofOfWork(): Promise<void> {
   }
 }
 
-test('the client solves the proof of work the instance asks for (D19)', async ({ newPage }) => {
+test('the client solves the proof of work the instance asks for', async ({ newPage }) => {
   await exhaustCreatesWithoutProofOfWork();
   const sender = await newPage();
   const violations = await watchViolations(sender);
@@ -233,9 +237,7 @@ test('the client solves the proof of work the instance asks for (D19)', async ({
   await expect(recipient.locator('pre')).toHaveText('pow');
 });
 
-test('the sender can hand the link to the share sheet and clear the clipboard after copying (W2-07)', async ({
-  page,
-}) => {
+test('the sender can hand the link to the share sheet and copy it', async ({ page }) => {
   await page.addInitScript(() => {
     const calls: string[] = [];
     Object.defineProperty(globalThis, 'nylzoClipboard', { value: calls });
@@ -265,11 +267,6 @@ test('the sender can hand the link to the share sheet and clear the clipboard af
   const link = await createMessageInPage(page, { text: 'share me' });
   await page.getByRole('button', { name: 'Share', exact: true }).click();
   await page.getByRole('button', { name: 'Copy link' }).click();
-  await page.getByRole('button', { name: 'Clear clipboard' }).click();
-  await expect(page.getByText('The clipboard is empty.', { exact: false })).toBeVisible();
-  expect(await page.evaluate(() => Reflect.get(globalThis, 'nylzoClipboard') as unknown)).toEqual([
-    `share ${link}`,
-    `copy ${link}`,
-    'copy ',
-  ]);
+  await expect(page.getByRole('status').filter({ hasText: 'Copied' })).toBeAttached();
+  expect(await page.evaluate(() => globalThis.nylzoClipboard)).toEqual([`share ${link}`, `copy ${link}`]);
 });

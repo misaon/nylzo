@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, untrack } from 'svelte';
+  import type { Component } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
   import { prefersReducedMotion } from 'svelte/motion';
 
@@ -35,6 +36,15 @@
     terms: 'page',
     transparency: 'page',
   } as const satisfies Record<Screen, 'home' | 'page' | 'read'>;
+  const CARD_SCREENS = {
+    agents: undefined,
+    create: undefined,
+    notFound: undefined,
+    read: undefined,
+    sent: Sent,
+    terms: Terms,
+    transparency: Transparency,
+  } as const satisfies Record<Screen, Component | undefined>;
   // Screens that hold no message secret, so the page can switch between them without loading a new document.
   const SWITCHABLE: ReadonlySet<Screen> = new Set(['agents', 'create', 'sent', 'terms', 'transparency']);
 
@@ -49,13 +59,29 @@
   const work = setScreenWork(new ScreenWork());
   const { translate } = translator;
   const variant = $derived(HEADER_VARIANTS[screen]);
+  const CardScreen = $derived(CARD_SCREENS[screen]);
   let requestedLanguage = startLanguage;
   const onlanguage = (language: Language) => void switchLanguage(language);
 
-  function returned() {
-    if (location.pathname !== path) {
-      location.reload();
+  function replaceAddress(address: string) {
+    replacingUrl = true;
+    try {
+      history.replaceState(history.state, '', address);
+    } finally {
+      replacingUrl = false;
     }
+  }
+
+  function returned() {
+    if (location.pathname === path) {
+      return;
+    }
+    // A language switch replaces only the current entry, so an earlier home entry still names the old language.
+    if (screen === 'create' && screenOf(location.pathname) === 'create') {
+      replaceAddress(`${path}${location.search}${location.hash}`);
+      return;
+    }
+    location.reload();
   }
 
   // Messages tracked only in this tab live in its memory: moving between screens keeps the document, leaving Nylzo forgets them.
@@ -76,6 +102,15 @@
     const destination = new URL(event.destination.url);
     const next = screenOf(destination.pathname);
     if (!SWITCHABLE.has(screen) || !SWITCHABLE.has(next)) {
+      return;
+    }
+    if (event.navigationType === 'traverse' && screen === 'create' && next === 'create') {
+      event.intercept({
+        handler: async () => {
+          await tick();
+          returned();
+        },
+      });
       return;
     }
     // A home page keeps the language shown, as a reload would through the saved choice.
@@ -131,12 +166,7 @@
     saveLanguage(browserPreferences(), language);
     if (screen === 'create') {
       path = homePath(language);
-      replacingUrl = true;
-      try {
-        history.replaceState(history.state, '', `${path}${location.hash}`);
-      } finally {
-        replacingUrl = false;
-      }
+      replaceAddress(`${path}${location.hash}`);
     }
   }
 </script>
@@ -163,16 +193,12 @@
             <Agents />
           {:else if screen === 'notFound'}
             <NotFound />
-          {:else}
-            <div class="mx-auto max-w-column px-4 pt-16 pb-24 sm:px-6 md:pt-24">
+          {:else if CardScreen}
+            <div
+              class={['mx-auto px-4 pt-16 pb-24 sm:px-6 md:pt-24', screen === 'sent' ? 'max-w-wide' : 'max-w-column']}
+            >
               <div class="glass animate-rise-visible rounded-card p-6 [animation-delay:80ms] md:p-10">
-                {#if screen === 'sent'}
-                  <Sent />
-                {:else if screen === 'terms'}
-                  <Terms />
-                {:else}
-                  <Transparency />
-                {/if}
+                <CardScreen />
               </div>
             </div>
           {/if}

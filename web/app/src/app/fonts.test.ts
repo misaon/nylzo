@@ -168,7 +168,7 @@ function codePoints(range: string): number[] {
   });
 }
 
-function faceRanges(css: string, family: string): Map<string, number[]> {
+function faceRanges({ css, family }: { readonly css: string; readonly family: string }): Map<string, number[]> {
   const faces = new Map<string, number[]>();
   for (const [, body = ''] of css.matchAll(/@font-face\s*\{([^}]*)\}/gu)) {
     const source = /src:\s*url\(['"]([^'"]+)['"]\)/u.exec(body)?.[1] ?? '';
@@ -180,7 +180,7 @@ function faceRanges(css: string, family: string): Map<string, number[]> {
   return faces;
 }
 
-describe('Czech font subsets (D86)', () => {
+describe('Czech font subsets', () => {
   const css = readFileSync(new URL('../styles/fonts.css', import.meta.url), 'utf8');
 
   it.each(FAMILIES)('$name comes from the same font release as the packaged latin-ext file', ({ file }) => {
@@ -194,7 +194,7 @@ describe('Czech font subsets (D86)', () => {
   });
 
   it.each(FAMILIES)('$name sends Czech letters to the subset and nothing else twice', ({ file, name }) => {
-    const faces = faceRanges(css, name);
+    const faces = faceRanges({ css, family: name });
     const czech = faces.get(`../../fonts/${file}-czech.woff2`);
     const extended =
       faces.get(`../../node_modules/@fontsource-variable/${file}/files/${file}-latin-ext-wght-normal.woff2`) ?? [];

@@ -3,16 +3,12 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Reintentar',
   'app.crashed': 'Se produjo un error en la página. Vuelve a cargarla.',
+  'start.failed': 'La página no se ha podido iniciar. Comprueba la conexión y vuelve a intentarlo.',
+  'start.failed.reopen': 'La página no se ha podido iniciar. Comprueba la conexión y vuelve a abrir el enlace.',
 
-  'hero.eyebrow': 'Enlaces cifrados de un solo uso',
-  'hero.steps': 'Cómo funciona',
-  'hero.step.write': 'Escribe un mensaje',
-  'hero.step.send': 'Envía el enlace',
-  'hero.step.vanish': 'Desaparece una vez leído',
   'hero.proof.label': 'Puntos fuertes',
-  'hero.proof.encrypted': 'Cifrado en tu navegador',
-  'hero.proof.cipher': 'AES-256-GCM',
-  'hero.proof.tls': 'TLS poscuántico',
+  'hero.proof.encrypted': 'Cifrado en el navegador',
+  'hero.proof.free': 'Gratis, sin registro',
   'hero.proof.open': 'Código abierto',
   'terms.eyebrow': 'Información legal',
   'terms.title': 'Condiciones de uso',
@@ -30,6 +26,7 @@ export const messages: Catalog = {
     'El servicio de nylzo.com lo opera una persona física (en adelante, el «operador») de forma gratuita, sin publicidad y al margen de su actividad empresarial.',
   'terms.operator.2':
     'El software Nylzo es de código abierto con licencia MIT. Estas condiciones se aplican solo a nylzo.com.',
+  'terms.operator.identity': 'Facilitamos la identidad del operador si se solicita a través de GitHub.',
   'terms.agreement.title': 'Aceptación',
   'terms.agreement.1': 'Al crear o abrir un mensaje, aceptas estas condiciones.',
   'terms.service.title': 'Cómo funciona el servicio',
@@ -50,6 +47,9 @@ export const messages: Catalog = {
   'terms.forbidden.6': 'La elusión de los límites del servicio y los ataques contra él.',
   'terms.forbidden.note': 'Quien crea un mensaje es responsable de su contenido.',
   'terms.removal.title': 'Retirada de mensajes',
+  'terms.removal.notice':
+    'Denuncia el contenido ilícito mediante un {link} en GitHub. Indica el motivo y el ID del mensaje, que en el enlace va tras el # entre el segundo y el tercer punto. No envíes el enlace completo.',
+  'terms.removal.notice.link': 'aviso privado',
   'terms.removal.1': 'Si un mensaje infringe la ley o estas condiciones, lo borramos. El borrado no se puede deshacer.',
   'terms.removal.2': 'Comunicamos a la policía las sospechas de delitos que pongan en peligro la vida o la seguridad.',
   'terms.removal.3':
@@ -100,6 +100,7 @@ export const messages: Catalog = {
   'wait.minute': { one: '{count}\u{A0}minuto', other: '{count}\u{A0}minutos' },
   'wait.hour': { one: '{count}\u{A0}hora', other: '{count}\u{A0}horas' },
   'action.copied': 'Copiado',
+  'action.copy_failed': 'Falló',
   'error.notFound.label': 'Error 404',
   'error.notFound.title': 'Esta página no existe',
   'error.notFound.lead': 'Puede que la dirección tenga un error de escritura o no esté completa.',
@@ -138,8 +139,6 @@ export const messages: Catalog = {
   'create.text': 'Texto del mensaje',
   'create.file.clear': 'Quitar el adjunto',
   'create.passphrase': 'Contraseña',
-  'create.passphrase.hint':
-    'Generaremos una contraseña aleatoria fácil de dictar. Envíasela al destinatario por un canal distinto al del enlace.',
   'create.passphrase.weak': 'Te recomendamos al menos {words} palabras aleatorias y {characters} caracteres.',
 
   'ttl.3600': '1 hora',
@@ -177,11 +176,6 @@ export const messages: Catalog = {
   'created.link': 'Enlace al mensaje',
   'created.copy': 'Copiar enlace',
   'created.share': 'Compartir',
-  'clipboard.copied':
-    'Copiado. Puede quedar una copia en el historial del portapapeles y en el portapapeles sincronizado.',
-  'clipboard.clear': 'Vaciar el portapapeles',
-  'clipboard.cleared':
-    'El portapapeles está vacío. Las copias que ya estén en el historial del portapapeles seguirán ahí.',
   'created.another': 'Nuevo mensaje',
   'created.remembered': 'El mensaje quedó guardado en este dispositivo.',
   'created.remembered.session': 'Esta pestaña recuerda el mensaje como mucho hasta que la cierres o la recargues.',
@@ -203,24 +197,18 @@ export const messages: Catalog = {
   'sent.state.cancelled': 'Anulado',
   'sent.state.deleted': 'Borrado',
   'sent.state.lost': 'Perdido',
-  'sent.label.time': 'Validez',
-  'sent.label.opens': 'Aperturas',
-  'sent.label.attempts': 'Intentos fallidos',
-  'sent.label.first_opened': 'Primera apertura',
-  'sent.not_opened': 'todavía no',
-  'sent.until': 'hasta el {time}',
-  'sent.opens': '{used} de {max}',
+  'sent.attempts': 'Intentos fallidos: {count}',
+  'sent.first_opened': 'Primera apertura: {time}',
+  'sent.until': 'Válido hasta el {time}',
+  'sent.opens': 'Aperturas: {used} de {max}',
   'sent.unknown':
-    'El servidor no encontró el mensaje. Puede que ya haya terminado. Si ya no lo necesitas aquí, quítalo.',
+    'El servidor no encontró el mensaje. Puede que ya haya terminado. «Vaciar la lista» quita la entrada.',
   'sent.failed': 'No se pudo cargar el estado. Comprueba la conexión e inténtalo de nuevo.',
   'sent.cancel': 'Anular mensaje',
   'sent.cancel.confirm': 'Una vez anulado, nadie podrá abrir el mensaje.',
   'sent.cancel.yes': 'Sí, anular',
   'sent.cancel.no': 'Conservar',
   'sent.cancelled': 'El mensaje está anulado.',
-  'sent.forget': 'Quitar',
-  'sent.forget.confirm': 'Si lo quitas, ya no podrás anular el mensaje desde aquí.',
-  'sent.forget.yes': 'Sí, quitar',
   'sent.forget_all': 'Vaciar la lista',
   'sent.forget_all.confirm': 'Ya no podrás anular desde aquí los mensajes de la lista.',
   'sent.forget_all.yes': 'Sí, vaciar',
@@ -232,20 +220,14 @@ export const messages: Catalog = {
   'sent.state.unknown': 'No encontrado',
   'sent.state.failed': 'Estado desconocido',
   'sent.state.loading': 'Cargando',
-  'sent.ended.opened':
-    'Abierto el {time}. Ya se borró del servidor; la entrada desaparecerá cuando salgas de esta página.',
-  'sent.ended.expired':
-    'Caducó el {time}. Ya se borró del servidor; la entrada desaparecerá cuando salgas de esta página.',
-  'sent.ended.cancelled':
-    'Anulado el {time}. Ya se borró del servidor; la entrada desaparecerá cuando salgas de esta página.',
-  'sent.ended.deleted':
-    'Lo borró el destinatario o lo retiró el operador. La entrada desaparecerá cuando salgas de esta página.',
+  'sent.ended.opened': 'Abierto el {time}. Ya se borró del servidor.',
+  'sent.ended.expired': 'Caducó el {time}. Ya se borró del servidor.',
+  'sent.ended.cancelled': 'Anulado el {time}. Ya se borró del servidor.',
+  'sent.ended.deleted': 'Lo borró el destinatario o lo retiró el operador.',
   'sent.ended.lost':
-    'El servidor perdió su clave, normalmente al reiniciarse, así que ya nadie podrá abrirlo. Si aún lo necesitas, envíalo de nuevo. La entrada desaparecerá cuando salgas de esta página.',
+    'El servidor perdió su clave, normalmente al reiniciarse, así que ya nadie podrá abrirlo. Si aún lo necesitas, envíalo de nuevo.',
   'sent.cancel.title': '¿Anular el mensaje «{label}»?',
   'sent.cancel.title.untitled': '¿Anular el mensaje?',
-  'sent.forget.label': 'Quitar de la lista',
-  'sent.forget.title': '¿Quitar el mensaje de la lista?',
   'sent.forget_all.title': '¿Vaciar toda la lista?',
 
   'read.title': 'Mensaje de un solo uso',
@@ -265,8 +247,7 @@ export const messages: Catalog = {
     'Se acabó el tiempo para volver a cargar el mensaje en esta página. Mostrarlo ahora consumirá otra apertura.',
   'read.device':
     'La última vez, este dispositivo no pudo procesar la contraseña. Si vuelve a ocurrir, abre el enlace en otro dispositivo.',
-  'read.rejected.wrong':
-    'La contraseña es incorrecta. El mensaje sigue sin abrirse. Tienes {attempts} más; después tendrás que esperar un poco.',
+  'read.rejected.wrong': 'La contraseña es incorrecta. El mensaje sigue sin abrirse. Tienes {attempts} más.',
   'read.rejected.wait': 'La contraseña es incorrecta. Podrás volver a intentarlo en {time}.',
   'read.rejected.malformed': 'La contraseña contiene caracteres no válidos.',
   'read.rejected.long': 'La contraseña es demasiado larga.',
@@ -275,7 +256,8 @@ export const messages: Catalog = {
   'read.delete.rest.short': 'Borrar',
   'read.delete.rest.confirm': '¿Borrar las aperturas restantes?',
   'read.delete.confirm.title': '¿Borrar el mensaje sin abrirlo?',
-  'read.note': 'Gratis y sin registrarte. La página del mensaje no usa cookies ni mide las visitas.',
+  'read.terms': 'Al mostrar el mensaje aceptas las {link}.',
+  'read.copy_failed': 'No se ha podido copiar. Selecciona el texto del mensaje y cópialo a mano.',
   'read.delete.confirm': 'Después, nadie podrá abrir el mensaje, ni siquiera tú.',
   'read.delete.yes': 'Sí, borrar',
   'read.delete.no': 'No borrar',
@@ -411,7 +393,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'No usamos un servicio externo para analizar las visitas.',
   'transparency.personal.browser.title': 'En tu navegador',
   'transparency.personal.browser':
-    'El idioma elegido, un dato temporal mientras se abre un mensaje y la lista de Enviados, si conservas un mensaje seguido después de cerrar la pestaña. Son necesarios para funciones que tú solicitas, por lo que no requieren consentimiento.',
+    'El idioma elegido, un dato temporal mientras se abre un mensaje y la lista de Enviados, si sigues un mensaje. Son necesarios para funciones que tú solicitas, por lo que no requieren consentimiento.',
   'transparency.limits.title': 'Límites de esta instancia',
   'transparency.limits.short': 'Límites',
   'transparency.limits.file': 'Adjunto máximo',
@@ -478,6 +460,8 @@ export const messages: Catalog = {
 
   'hero.title': 'Un secreto que se abre {accent}',
   'hero.title.accent': 'solo una vez',
+  'hero.lead':
+    'Envía de forma segura una contraseña, una clave de API o un archivo con un enlace que se abre una sola vez.',
   'seo.title': 'Cómo enviar una contraseña de forma segura | Nylzo',
   'seo.description':
     'Envía una contraseña, una clave de API o un archivo con un enlace que solo se abre una vez. Se cifra ya en tu navegador. Gratis y sin registrarte.',
@@ -494,8 +478,6 @@ export const messages: Catalog = {
   'compose.opens.title': 'Cuántas veces se puede abrir el mensaje',
   'compose.opens.less': 'Menos aperturas',
   'compose.opens.more': 'Más aperturas',
-  'compose.opens.history':
-    'El destinatario que haga clic en el enlace lo tendrá, todavía válido, en el historial del navegador hasta que el mensaje agote todas las aperturas permitidas. Por eso, protege el mensaje con una contraseña.',
   'compose.security': 'Seguridad',
   'compose.passphrase.chip': 'Con contraseña',
   'compose.passphrase.chip.off': 'Sin contraseña',
@@ -506,7 +488,9 @@ export const messages: Catalog = {
   'compose.attach': 'Adjunto hasta {size}',
   'compose.submit': 'Crear enlace',
   'compose.encrypting': 'Cifrando',
-  'compose.note': 'Gratis, sin registrarte y sin cookies.',
+  'compose.note': 'Al crear un enlace aceptas las {link}.',
+  'terms.agree.link': 'condiciones de uso',
+  'link.new_tab': '(se abre en una pestaña nueva)',
 
   'step.counter': 'Paso {step} de {total}',
   'step.key.label': 'Clave',
@@ -534,17 +518,13 @@ export const messages: Catalog = {
   'created.copy.short': 'Copiar',
   'created.copy_failed': 'No se pudo copiar. El enlace está seleccionado; cópialo manualmente.',
   'created.once': 'Solo verás el enlace ahora. No lo abras tú, o consumirás una apertura.',
-  'created.legend.server': 'El servidor recibe la dirección y el ID del mensaje',
-  'created.legend.key': 'El navegador no envía la clave que va tras #',
   'created.passphrase.show': 'Mostrar contraseña',
   'created.passphrase.hide': 'Ocultar contraseña',
   'created.passphrase.copy': 'Copiar contraseña',
   'created.track.title': 'Seguir en Enviados',
   'created.track.note':
     'Verás si alguien abrió el mensaje y podrás anularlo. Solo lo recuerda esta pestaña, como mucho hasta que la cierres o la recargues.',
-  'created.track.note.kept':
-    'Verás si alguien abrió el mensaje y podrás anularlo. Se guarda en este navegador, así que cualquiera que tenga acceso a él también podrá anularlo.',
-  'created.track.keep': 'Recordar también al cerrar la pestaña',
+  'created.track.note.kept': 'Verás si alguien abrió el mensaje y podrás anularlo. Se guarda en este navegador.',
   'created.track.label': 'Etiqueta, solo la ves tú',
   'created.track.placeholder': 'Etiqueta, p. ej., «Contraseña para Pablo»',
   'created.track.save': 'Guardar',
@@ -557,7 +537,6 @@ export const messages: Catalog = {
     'Solo se mostrará cuando hagas clic, lo que consume una apertura. Tras la última apertura, el servidor lo borra.',
   'open.loading.text': 'Comprobando el enlace con el servidor.',
   'open.passphrase.placeholder': 'Contraseña del remitente',
-  'open.passphrase.hint': 'El remitente te ha enviado la contraseña por separado, por ejemplo, por SMS o por teléfono.',
   'open.passphrase.show': 'Mostrar contraseña',
   'open.passphrase.hide': 'Ocultar contraseña',
   'open.passphrase.empty': 'Escribe la contraseña del remitente.',
@@ -739,7 +718,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': 'Sin la clave del enlace no puede leer ni los metadatos',
   'brute.fact.pass': 'La contraseña no se puede adivinar por la red',
   'brute.fact.pass.note': 'Tras 100\u{A0}contraseñas incorrectas, el mensaje se bloquea',
-  'brute.fact.quantum': 'La computación cuántica no puede leer el mensaje',
+  'brute.fact.quantum': 'Sin el enlace, ni la computación cuántica puede leerlo',
   'brute.fact.quantum.note': 'Una clave de 256\u{A0}bits protege el contenido, y TLS poscuántico, la conexión',
 
   'promise.eyebrow': 'Lo que prometemos',
@@ -803,7 +782,7 @@ export const messages: Catalog = {
   'tech.crypto.title': 'Cifrado',
   'tech.crypto.text': 'AES\u{2011}256\u{2011}GCM y TLS poscuántico',
   'tech.server.title': 'Servidor',
-  'tech.server.text': 'Go y SQLite, solo 6\u{A0}dependencias directas',
+  'tech.server.text': 'Go y SQLite, solo 7\u{A0}dependencias directas',
   'tech.web.title': 'Web',
   'tech.web.text': 'Svelte 5, huellas SHA\u{2011}384 y sin cookies',
   'tech.release.title': 'Desarrollo y publicación',
@@ -900,10 +879,13 @@ export const messages: Catalog = {
   'about.terms.link': 'condiciones de uso',
   'faq.eyebrow': 'Preguntas frecuentes',
   'faq.title': 'Antes de enviar tu primer mensaje',
+  'faq.securely.question': '¿Cómo envío una contraseña de forma segura?',
+  'faq.securely.answer':
+    'Pégala en Nylzo y envía solo el enlace. Tu navegador la cifra antes de enviarla y el servidor la borra tras la última apertura.',
   'faq.unopened.question': '¿Y si el destinatario no abre el enlace?',
   'faq.unopened.answer':
     'Cuando caduca, el mensaje se borra solo. Puedes elegir una validez de entre 1\u{A0}hora y {days}.',
-  'faq.passphrase.question': '¿Cómo comparto la contraseña?',
+  'faq.passphrase.question': '¿Cómo comparto la contraseña del mensaje?',
   'faq.passphrase.answer':
     'Por un canal distinto al del enlace. Por ejemplo, el enlace por correo electrónico y la contraseña por teléfono o SMS.',
   'faq.save.question': '¿Puede el destinatario guardar el mensaje?',

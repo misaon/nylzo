@@ -23,7 +23,13 @@
   import { createSentPage } from './sent-page.ts';
   import type { CancelOutcome, ItemState, SentItem, SentView } from './sent-page.ts';
 
-  type Confirming = { readonly kind: 'cancel' | 'forget'; readonly item: SentItem } | { readonly kind: 'forget_all' };
+  interface Fact {
+    readonly icon: 'alert' | 'check' | 'clock' | 'eye';
+    readonly text: string;
+    readonly warning?: boolean;
+  }
+
+  type Confirming = { readonly kind: 'cancel'; readonly item: SentItem } | { readonly kind: 'forget_all' };
 
   const translator = getTranslator();
   const { translate } = translator;
@@ -35,6 +41,14 @@
   const focus = new FocusTargets<string>();
   const retention = $derived(translator.plural('count.day', RETENTION_DAYS));
   const items = $derived(view.view === 'list' ? view.items : []);
+  let listedIds = '';
+  // Items glide only when the list itself changes; a status change resizes its own item with a slide.
+  const listChanged = $derived.by(() => {
+    const ids = items.map((item) => item.id).join(' ');
+    const changed = listedIds !== '' && ids !== listedIds;
+    listedIds = ids;
+    return changed;
+  });
 
   // A session of the local client has an origin nobody purges later, so it opens no storage (Protocol §14.1).
   const browser = servedByLocalClient() ? undefined : browserSentStore();
@@ -45,41 +59,57 @@
     },
   );
 
+  function cancelText(outcome: CancelOutcome): string {
+    switch (outcome.outcome) {
+      case 'cancelled': {
+        return translate('sent.cancelled');
+      }
+      case 'retry_later': {
+        return translate('read.retry_later', { time: formatWait(outcome.retryAfter, translator.plural) });
+      }
+      case 'failed': {
+        return translate('sent.failed');
+      }
+      case 'ended':
+      case 'unknown':
+      case 'ignored': {
+        return '';
+      }
+    }
+  }
+
   const status = $derived.by(() => {
     if (storageFailed || (view.view === 'list' && view.storageFailed)) {
       return translate('sent.unavailable');
     }
-    if (cancelled?.outcome === 'cancelled') {
-      return translate('sent.cancelled');
-    }
-    if (cancelled?.outcome === 'retry_later') {
-      return translate('read.retry_later', { time: formatWait(cancelled.retryAfter, translator.plural) });
-    }
-    return cancelled?.outcome === 'failed' ? translate('sent.failed') : '';
+    return cancelled ? cancelText(cancelled) : '';
   });
 
-  const dialog = $derived.by(() => {
-    if (confirming?.kind === 'cancel') {
-      const { label } = confirming.item;
-      return {
-        title: label ? translate('sent.cancel.title', { label }) : translate('sent.cancel.title.untitled'),
-        message: translate('sent.cancel.confirm'),
-        confirmLabel: translate('sent.cancel.yes'),
-        dismissLabel: translate('sent.cancel.no'),
-        icon: 'trash',
-      } as const;
+  function dialogOf(asked: Confirming) {
+    switch (asked.kind) {
+      case 'cancel': {
+        const { label } = asked.item;
+        return {
+          title: label ? translate('sent.cancel.title', { label }) : translate('sent.cancel.title.untitled'),
+          message: translate('sent.cancel.confirm'),
+          confirmLabel: translate('sent.cancel.yes'),
+          dismissLabel: translate('sent.cancel.no'),
+          icon: 'trash',
+        } as const;
+      }
+      case 'forget_all': {
+        return {
+          title: translate('sent.forget_all.title'),
+          message: translate('sent.forget_all.confirm'),
+          confirmLabel: translate('sent.forget_all.yes'),
+          dismissLabel: translate('sent.keep'),
+          icon: 'close',
+        } as const;
+      }
     }
-    if (!confirming) {
-      return;
-    }
-    return {
-      title: translate(confirming.kind === 'forget' ? 'sent.forget.title' : 'sent.forget_all.title'),
-      message: translate(confirming.kind === 'forget' ? 'sent.forget.confirm' : 'sent.forget_all.confirm'),
-      confirmLabel: translate(confirming.kind === 'forget' ? 'sent.forget.yes' : 'sent.forget_all.yes'),
-      dismissLabel: translate('sent.keep'),
-      icon: 'close',
-    } as const;
-  });
+  }
+
+  const dialog = $derived(confirming && dialogOf(confirming));
 
   void sent.load();
   onDestroy(() => {
@@ -103,24 +133,49 @@
     return translate(item.session ? 'sent.created.session' : 'sent.created', { time: time(item.createdAt) });
   }
 
+  function factsOf(item: SentItem): readonly Fact[] {
+    const facts: Fact[] = [{ icon: 'clock', text: translate('sent.until', { time: time(item.expiresAt) }) }];
+    if (item.state.kind !== 'loaded') {
+      return facts;
+    }
+    const { opensUsed, opensMax, firstOpenedAt, failedPassphraseAttempts } = item.state.status;
+    facts.push({ icon: 'eye', text: translate('sent.opens', { used: opensUsed, max: opensMax }) });
+    if (firstOpenedAt) {
+      facts.push({ icon: 'check', text: translate('sent.first_opened', { time: time(firstOpenedAt) }) });
+    }
+    if (failedPassphraseAttempts > 0) {
+      facts.push({
+        icon: 'alert',
+        text: translate('sent.attempts', { count: failedPassphraseAttempts }),
+        warning: true,
+      });
+    }
+    return facts;
+  }
+
   function endedState(state: MessageState): Exclude<MessageState, 'available'> {
     return state === 'available' ? 'expired' : state;
   }
 
   function badgeOf(item: SentItem): { readonly key: MessageKey; readonly tone: 'live' | 'quiet' | 'problem' } {
     const { state } = item;
-    if (state.kind === 'loaded' && !item.ended) {
-      return { key: 'sent.state.available', tone: 'live' };
+    switch (state.kind) {
+      case 'loaded': {
+        return item.ended
+          ? { key: `sent.state.${endedState(state.status.state)}`, tone: 'quiet' }
+          : { key: 'sent.state.available', tone: 'live' };
+      }
+      case 'unknown': {
+        return { key: 'sent.state.unknown', tone: 'quiet' };
+      }
+      case 'loading': {
+        return { key: 'sent.state.loading', tone: 'quiet' };
+      }
+      case 'retry_later':
+      case 'failed': {
+        return { key: 'sent.state.failed', tone: 'problem' };
+      }
     }
-    if (state.kind === 'loaded') {
-      return { key: `sent.state.${endedState(state.status.state)}`, tone: 'quiet' };
-    }
-    if (state.kind === 'unknown') {
-      return { key: 'sent.state.unknown', tone: 'quiet' };
-    }
-    return state.kind === 'loading'
-      ? { key: 'sent.state.loading', tone: 'quiet' }
-      : { key: 'sent.state.failed', tone: 'problem' };
   }
 
   function summaryOf(item: SentItem): string {
@@ -164,15 +219,7 @@
   function dismissed() {
     const current = confirming;
     confirming = undefined;
-    void afterAction(current && current.kind !== 'forget_all' ? current.item.id : undefined);
-  }
-
-  function askForget(item: SentItem) {
-    if (item.cancellable) {
-      confirming = { kind: 'forget', item };
-    } else {
-      void run(() => sent.forget(item.id));
-    }
+    void afterAction(current?.kind === 'cancel' ? current.item.id : undefined);
   }
 
   async function confirmed() {
@@ -182,14 +229,21 @@
     if (!current) {
       return;
     }
-    if (current.kind === 'cancel') {
-      await run(async () => {
-        cancelled = await sent.cancel(current.item.id);
-      }, current.item.id);
-    } else if (current.kind === 'forget') {
-      await run(() => sent.forget(current.item.id));
-    } else {
-      await run(() => sent.forgetAll());
+    switch (current.kind) {
+      case 'cancel': {
+        await run(async () => {
+          cancelled = await sent.cancel(current.item.id);
+        }, current.item.id);
+        break;
+      }
+      case 'forget_all': {
+        await run(() => sent.forgetAll());
+        break;
+      }
+      default: {
+        const exhaustive: never = current;
+        void exhaustive;
+      }
     }
   }
 </script>
@@ -200,7 +254,17 @@
   <title>{translate('title.sent')}</title>
 </svelte:head>
 
-{#snippet emptyCard(icon: 'inbox' | 'alert', title: string, text: string, tone: string)}
+{#snippet emptyCard({
+  icon,
+  title,
+  text,
+  tone,
+}: {
+  readonly icon: 'alert' | 'inbox';
+  readonly title: string;
+  readonly text: string;
+  readonly tone: string;
+})}
   <span class={['grid size-14 place-items-center rounded-full', tone]} aria-hidden="true">
     <Icon name={icon} class="size-6" stroke={1.6} />
   </span>
@@ -249,133 +313,113 @@
   </div>
 
   {#if items.length > 0}
-    <ul role="list" class="mt-8 grid gap-3">
+    <ul role="list" class="mt-8 animate-appear overflow-hidden rounded-pane bg-white/4 shadow-rim ring-1 ring-white/8">
       {#each items as item (item.id)}
         {const badge = $derived(badgeOf(item))}
         {const pending = $derived(item.state.kind === 'loading')}
         {const live = $derived(pending || (item.state.kind === 'loaded' && !item.ended))}
+        {const retryable = $derived(
+          item.state.kind === 'retry_later' || item.state.kind === 'failed' || item.state.kind === 'unknown',
+        )}
         <li
-          class="rounded-pane bg-white/4 p-4 shadow-rim ring-1 ring-white/8 sm:p-6"
-          animate:flip={{ duration: motionMs(500), easing: cubicOut }}
+          class="border-white/8 not-first:border-t"
+          animate:flip={{ duration: listChanged ? motionMs(500) : 0, easing: cubicOut }}
           out:fade={{ duration: motionMs(300) }}
         >
           <div
-            class="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3.5 sm:grid-cols-[auto_minmax(0,1fr)_auto]"
+            class="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-x-3.5 p-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-center sm:px-5 sm:py-4.5"
           >
             <span
               class={[
-                'grid size-10 shrink-0 place-items-center rounded-full',
+                'grid size-10 shrink-0 place-items-center rounded-full tile-blend',
                 item.ended ? 'text-ink-soft tile-neutral' : 'text-white tile-current',
               ]}
               aria-hidden="true"
             >
               <Icon name={item.ended ? 'envelopeOpen' : 'envelope'} class="size-[18px]" />
             </span>
-            <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 max-sm:gap-x-2.5">
-              <h2
-                id={headingId(item.id)}
-                tabindex="-1"
-                class="text-title-sm text-ink outline-none max-sm:basis-full"
-                {@attach focus.attach(headingId(item.id))}
+            <div class="min-w-0">
+              <div class="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
+                <h2
+                  id={headingId(item.id)}
+                  tabindex="-1"
+                  class="text-title-sm text-ink outline-none"
+                  {@attach focus.attach(headingId(item.id))}
+                >
+                  {item.label ?? translate('sent.item')}
+                </h2>
+                <span
+                  class={[
+                    'items-center gap-1.5 rounded-full px-2.5 py-1 text-micro font-medium ring-1 transition-[background-color,color,box-shadow]',
+                    pending ? 'inline-grid' : 'inline-flex',
+                    badge.tone === 'live' && 'bg-aegis-500/12 text-aegis-200 ring-aegis-400/35',
+                    badge.tone === 'quiet' && 'bg-white/6 text-ink-soft ring-white/12',
+                    badge.tone === 'problem' && 'bg-rose-500/12 text-rose-200 ring-rose-300/35',
+                  ]}
+                >
+                  {#if pending}
+                    <span class="invisible inline-flex items-center gap-1.5 [grid-area:1/1]">
+                      <span class="size-1.5"></span>{translate('sent.state.available')}
+                    </span>
+                    <span class="[grid-area:1/1]">{translate(badge.key)}</span>
+                  {:else if badge.tone === 'live'}
+                    <span class="size-1.5 animate-pulse-core rounded-full bg-aegis-300 shadow-glow"></span>
+                  {:else if item.state.kind === 'loaded' && item.state.status.state === 'opened'}
+                    <Icon name="check" class="size-3.5 shrink-0" />
+                  {/if}
+                  {#if !pending}{translate(badge.key)}{/if}
+                </span>
+              </div>
+              {#if live}
+                <p class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-caption text-ink-soft tabular-nums">
+                  {#each factsOf(item) as fact (fact.icon)}
+                    <span class={['flex items-center gap-1.5 whitespace-nowrap', fact.warning && 'text-rose-200']}>
+                      <Icon name={fact.icon} class={['size-4 shrink-0', !fact.warning && 'text-ink-mute']} />
+                      {fact.text}
+                    </span>
+                  {/each}
+                  <span class="whitespace-nowrap text-ink-mute">{createdText(item)}</span>
+                </p>
+              {:else}
+                <p
+                  class={[
+                    'mt-2 text-caption text-pretty tabular-nums',
+                    badge.tone === 'problem' ? 'text-rose-200' : 'text-ink-mute',
+                  ]}
+                >
+                  {summaryOf(item)}
+                </p>
+              {/if}
+            </div>
+            {#if retryable || item.cancellable || pending}
+              <div
+                class="col-span-2 mt-3 flex flex-wrap items-center gap-2 sm:col-span-1 sm:col-start-3 sm:mt-0 sm:justify-end"
               >
-                {item.label ?? translate('sent.item')}
-              </h2>
-              <span
-                class={[
-                  'items-center gap-1.5 rounded-full px-2.5 py-1 text-micro font-medium ring-1 transition-[background-color,color,box-shadow]',
-                  pending ? 'inline-grid' : 'inline-flex',
-                  badge.tone === 'live' && 'bg-aegis-500/12 text-aegis-200 ring-aegis-400/35',
-                  badge.tone === 'quiet' && 'bg-white/6 text-ink-soft ring-white/12',
-                  badge.tone === 'problem' && 'bg-rose-500/12 text-rose-200 ring-rose-300/35',
-                ]}
-              >
-                {#if pending}
-                  <span class="invisible inline-flex items-center gap-1.5 [grid-area:1/1]">
-                    <span class="size-1.5"></span>{translate('sent.state.available')}
-                  </span>
-                  <span class="[grid-area:1/1]">{translate(badge.key)}</span>
-                {:else if badge.tone === 'live'}
-                  <span class="size-1.5 animate-pulse-core rounded-full bg-aegis-300 shadow-glow"></span>
-                {:else if item.state.kind === 'loaded' && item.state.status.state === 'opened'}
-                  <Icon name="check" class="size-3.5 shrink-0" />
+                {#if retryable}
+                  <Button
+                    variant="tint"
+                    size="compact"
+                    class="max-sm:flex-auto"
+                    onclick={() => void run(() => sent.refresh(item.id), item.id)}
+                  >
+                    <Icon name="refresh" class="size-4 shrink-0" animated />
+                    {translate('action.retry')}
+                  </Button>
                 {/if}
-                {#if !pending}{translate(badge.key)}{/if}
-              </span>
-              <span class="text-caption text-ink-mute sm:hidden">{createdText(item)}</span>
-            </div>
-            <p class="col-start-2 mt-0.5 text-caption text-ink-mute max-sm:hidden">{createdText(item)}</p>
-            {#if live}
-              {const known = $derived(item.state.kind === 'loaded' ? item.state.status : undefined)}
-              {const facts = $derived([
-                { key: 'sent.label.time', value: translate('sent.until', { time: time(item.expiresAt) }) },
-                {
-                  key: 'sent.label.opens',
-                  value: known && translate('sent.opens', { used: known.opensUsed, max: known.opensMax }),
-                },
-                {
-                  key: 'sent.label.first_opened',
-                  value: known && (known.firstOpenedAt ? time(known.firstOpenedAt) : translate('sent.not_opened')),
-                },
-                { key: 'sent.label.attempts', value: known && String(known.failedPassphraseAttempts) },
-              ] as const)}
-              <dl
-                class="col-span-2 mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-pane bg-white/3 p-3.5 ring-1 ring-white/6 sm:col-span-2 sm:col-start-2 sm:mt-5 sm:gap-x-6 sm:gap-y-3.5 sm:p-4 md:grid-cols-[minmax(0,1.35fr)_repeat(3,minmax(0,1fr))]"
-              >
-                {#each facts as fact (fact.key)}
-                  <div class="min-w-0">
-                    <dt class="text-micro text-ink-mute">{translate(fact.key)}</dt>
-                    <dd class="mt-0.5 min-h-5 text-ui text-ink sm:mt-1">{fact.value}</dd>
-                  </div>
-                {/each}
-              </dl>
-            {:else}
-              <p
-                class={[
-                  'col-span-2 mt-3 text-ui text-pretty max-sm:text-body-sm sm:col-span-2 sm:col-start-2',
-                  badge.tone === 'problem' ? 'text-rose-200' : 'text-ink-soft',
-                ]}
-              >
-                {summaryOf(item)}
-              </p>
+                {#if item.cancellable || pending}
+                  <Button
+                    variant="danger"
+                    size="compact"
+                    aria-describedby={headingId(item.id)}
+                    class={['max-sm:flex-auto', pending && 'invisible']}
+                    onclick={() => (confirming = { kind: 'cancel', item })}
+                  >
+                    <Icon name="trash" class="size-4 shrink-0" animated />
+                    {translate('sent.cancel')}
+                  </Button>
+                {/if}
+              </div>
             {/if}
-            <div
-              class="col-span-2 mt-4 flex flex-wrap items-center gap-2 border-t border-white/8 pt-3 sm:col-span-1 sm:col-start-3 sm:row-span-2 sm:row-start-1 sm:mt-0 sm:justify-end sm:self-center sm:border-0 sm:pt-0"
-            >
-              {#if item.state.kind === 'retry_later' || item.state.kind === 'failed' || item.state.kind === 'unknown'}
-                <Button
-                  variant="tint"
-                  size="compact"
-                  class="max-sm:flex-auto"
-                  onclick={() => void run(() => sent.refresh(item.id), item.id)}
-                >
-                  <Icon name="refresh" class="size-4 shrink-0" animated />
-                  {translate('action.retry')}
-                </Button>
-              {/if}
-              {#if item.cancellable || pending}
-                <Button
-                  variant="danger"
-                  size="compact"
-                  aria-describedby={headingId(item.id)}
-                  class={['max-sm:flex-auto', pending && 'invisible']}
-                  onclick={() => (confirming = { kind: 'cancel', item })}
-                >
-                  <Icon name="trash" class="size-4 shrink-0" animated />
-                  {translate('sent.cancel')}
-                </Button>
-              {/if}
-              <Button
-                variant="ghost"
-                size="compact"
-                aria-describedby={headingId(item.id)}
-                class="transition max-sm:flex-auto"
-                onclick={() => askForget(item)}
-              >
-                <Icon name="close" class="size-4 shrink-0" animated />
-                <span class="sm:hidden" aria-hidden="true">{translate('sent.forget')}</span>
-                <span class="max-sm:sr-only">{translate('sent.forget.label')}</span>
-              </Button>
-            </div>
           </div>
         </li>
       {/each}
@@ -385,19 +429,19 @@
   {:else}
     <StateCard class="mt-8">
       {#if view.view === 'unavailable'}
-        {@render emptyCard(
-          'alert',
-          translate('sent.unavailable.title'),
-          translate('sent.unavailable'),
-          'tile-warning text-white',
-        )}
+        {@render emptyCard({
+          icon: 'alert',
+          title: translate('sent.unavailable.title'),
+          text: translate('sent.unavailable'),
+          tone: 'tile-warning text-white',
+        })}
       {:else}
-        {@render emptyCard(
-          'inbox',
-          translate('sent.empty.title'),
-          translate('sent.empty'),
-          'tile-neutral text-ink-soft',
-        )}
+        {@render emptyCard({
+          icon: 'inbox',
+          title: translate('sent.empty.title'),
+          text: translate('sent.empty'),
+          tone: 'tile-neutral text-ink-soft',
+        })}
       {/if}
     </StateCard>
   {/if}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { homePath, LANGUAGE_DETAILS, LANGUAGES } from '../shared/language/language.ts';
+import { homePath, languageDetails, LANGUAGES } from '../shared/language/language.ts';
 import { homeTemplate } from './prerender.ts';
 
 const INDEX = `<!doctype html>
@@ -20,7 +20,7 @@ const INDEX = `<!doctype html>
 <body></body>
 </html>
 `;
-const IMAGE = { path: '/assets/og-image-a1.png', width: 1200, height: 630 };
+const IMAGE = { path: '/assets/og-image-a1.jpg', width: 1200, height: 630 };
 const ASSETS = { image: IMAGE };
 const WITH_CZECH_LETTERS = new Set(['cs', 'sk']);
 const WITH_EXTENDED_LETTERS = new Set(['pl', 'sk']);
@@ -56,7 +56,7 @@ describe('homeTemplate', () => {
     expect(block).toContain('<link rel="alternate" hreflang="x-default" href="__NYLZO_PUBLIC_URL__/">');
     expect(block).toContain(`<meta property="og:image" content="__NYLZO_PUBLIC_URL__${IMAGE.path}">`);
     expect(page.replace(block, '')).not.toContain('__NYLZO_PUBLIC_URL__');
-    expect(page).toContain(`<meta property="og:locale" content="${LANGUAGE_DETAILS[language].openGraphLocale}">`);
+    expect(page).toContain(`<meta property="og:locale" content="${languageDetails(language).openGraphLocale}">`);
     expect(page).toContain('<noscript><style>');
     const hidden = page.indexOf('<style>html:not([data-fonts]) body{content-visibility:hidden}</style>');
     expect(hidden).toBeGreaterThan(-1);
@@ -70,25 +70,22 @@ describe('homeTemplate', () => {
   it('writes structured data that parses and matches the visible description and FAQ (TX12)', () => {
     const page = homeTemplate(INDEX, 'cs', ASSETS);
     const [, json = ''] = /<script type="application\/ld\+json">([^<]*)<\/script>/u.exec(page) ?? [];
-    const data = JSON.parse(json) as {
-      '@graph': {
-        '@type': string;
-        url?: string;
-        description?: string;
-        logo?: string;
-        mainEntity?: { name: string; acceptedAnswer: { text: string } }[];
-      }[];
-    };
-    const types = data['@graph'].map((node) => node['@type']);
-    expect(types).toEqual(['Organization', 'WebSite', 'WebApplication', 'FAQPage']);
-    expect(data['@graph'][0]?.logo).toBe('__NYLZO_PUBLIC_URL__/assets/apple-touch-icon-a7.png');
+    const data: unknown = JSON.parse(json);
     const description = /<meta name="description" content="([^"]*)"/u.exec(page)?.[1];
-    expect(data['@graph'][2]?.description).toBe(description);
-    expect(data['@graph'][2]?.url).toBe('__NYLZO_PUBLIC_URL__/cs/');
-    const questions = data['@graph'][3]?.mainEntity ?? [];
-    expect(questions).toHaveLength(8);
-    const visible = (text: string) => page.includes(text.replaceAll('\u{A0}', '&nbsp;')) || page.includes(text);
-    expect(questions.filter(({ name, acceptedAnswer }) => !visible(name) || !visible(acceptedAnswer.text))).toEqual([]);
+    const visible = (text: unknown) =>
+      typeof text === 'string' && (page.includes(text.replaceAll('\u{A0}', '&nbsp;')) || page.includes(text));
+    const visibleText: unknown = expect.toSatisfy(visible);
+    expect(data).toMatchObject({
+      '@graph': [
+        { '@type': 'Organization', logo: '__NYLZO_PUBLIC_URL__/assets/apple-touch-icon-a7.png' },
+        { '@type': 'WebSite' },
+        { '@type': 'WebApplication', description, url: '__NYLZO_PUBLIC_URL__/cs/' },
+        {
+          '@type': 'FAQPage',
+          mainEntity: Array.from({ length: 9 }, () => ({ name: visibleText, acceptedAnswer: { text: visibleText } })),
+        },
+      ],
+    });
   });
 
   it('refuses an index it cannot place the page in', () => {

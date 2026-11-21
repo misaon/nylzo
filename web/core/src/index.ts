@@ -28,7 +28,7 @@ export {
   type Stretch,
   wipeLogin,
 } from './keys/opaque.ts';
-export { loadPassphraseWords, type PassphraseLanguage } from './keys/passphrase-words.ts';
+export { INPUT_METHOD_LANGUAGES, loadPassphraseWords, type PassphraseLanguage } from './keys/passphrase-words.ts';
 export { generatePassphrase, MIN_PASSPHRASE_CHARACTERS, passphraseProblem } from './keys/passphrase.ts';
 export {
   HEADER_LENGTH,
@@ -38,6 +38,8 @@ export {
   MAX_OBJECT_BYTES,
   MAX_TEXT_BYTES,
   MIN_TTL_SECONDS,
+  OBJECT_HASH_LENGTH,
+  SECRET_LENGTH,
   transferSeconds,
 } from './limits.ts';
 export { assertProfile, formatLink, isReadPath, type Link, parseFragment, parseLink } from './link/link.ts';

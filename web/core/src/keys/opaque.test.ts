@@ -92,18 +92,18 @@ describe('RFC 9807 OPAQUE-3DH real vector 1, client steps', () => {
     const credential = hexToBytes(real.credential_identifier);
     const response = createRegistrationResponse(hexToBytes(real.registration_request), keys, credential);
     expect(response.toHex()).toBe(real.registration_response);
-    const { ke2, expectedClientMac } = generateKE2(
+    const { ke2, expectedClientMac } = generateKE2({
       keys,
-      hexToBytes(real.registration_upload),
-      credential,
-      hexToBytes(real.ke1),
-      rfcConfig.context,
-      {
+      record: hexToBytes(real.registration_upload),
+      credentialIdentifier: credential,
+      ke1: hexToBytes(real.ke1),
+      context: rfcConfig.context,
+      fixed: {
         maskingNonce: hexToBytes(real.masking_nonce),
         serverNonce: hexToBytes(real.server_nonce),
         keyshareSeed: hexToBytes(real.server_keyshare_seed),
       },
-    );
+    });
     expect(ke2.toHex()).toBe(real.ke2);
     expect(expectedClientMac.toHex()).toBe(real.ke3);
   });
@@ -149,7 +149,7 @@ function stretchFor(vector: OpaqueVector): Stretch {
   return kdfIdOf(vector.kdf_id) === KDF_SCRYPT ? (message) => Promise.resolve(stretchScrypt(message)) : identityStretch;
 }
 
-describe('AK9: OPAQUE runs with the configuration of spec 2.1', () => {
+describe('OPAQUE runs with the configuration of spec 2.1', () => {
   it.each(vectors.opaque)('$name', { timeout: 120_000 }, async (vector) => {
     const id = parseId(vector.id);
     const kdfId = kdfIdOf(vector.kdf_id);

@@ -1,3 +1,5 @@
+import { setTimeout as delay } from 'node:timers/promises';
+
 import type { Locator, Page } from '@playwright/test';
 
 import { expect, test } from './support/fixtures.ts';
@@ -36,6 +38,7 @@ async function watchLayout(page: Page): Promise<void> {
   await page.addInitScript(() => {
     interface LayoutShift extends PerformanceEntry {
       readonly value: number;
+      readonly hadRecentInput: boolean;
       readonly sources: { node?: Node | null; previousRect: DOMRectReadOnly; currentRect: DOMRectReadOnly }[];
     }
     const shifts: string[] = [];
@@ -44,7 +47,12 @@ async function watchLayout(page: Page): Promise<void> {
     const rectangle = (box: DOMRectReadOnly) =>
       `${Math.round(box.x)},${Math.round(box.y)} ${Math.round(box.width)}x${Math.round(box.height)}`;
     const recordShifts = (entries: PerformanceEntry[]) => {
-      for (const entry of entries as LayoutShift[]) {
+      const shifted = entries.filter((entry): entry is LayoutShift => entry.entryType === 'layout-shift');
+      for (const entry of shifted) {
+        // A shift within half a second of a click or key press does not count towards CLS.
+        if (entry.hadRecentInput) {
+          continue;
+        }
         const sources = entry.sources.map((source) => {
           const node =
             source.node instanceof Element
@@ -115,7 +123,7 @@ async function pagePosition(locator: Locator): Promise<string> {
   });
 }
 
-// The card grows into the created panel and shrinks to the revealed message by design (owner decision R11).
+// Waits until shifts stop, for steps whose size follows an answer from the server.
 async function settle(page: Page): Promise<void> {
   await expect
     .poll(
@@ -133,7 +141,7 @@ async function expectNothingMoved(page: Page, screen: string): Promise<void> {
 }
 
 for (const viewport of VIEWPORTS) {
-  test(`nothing shifts or resizes after loading or a click while creating and reading at ${viewport.width}x${viewport.height} (AK18)`, async ({
+  test(`nothing shifts or resizes after loading or a click while creating and reading at ${viewport.width}x${viewport.height}`, async ({
     newPage,
   }) => {
     const sender = await newPage({ viewport, ...FULL_MOTION });
@@ -146,7 +154,7 @@ for (const viewport of VIEWPORTS) {
     await layoutChanges(sender);
     await sender.getByRole('button', { name: 'Create link' }).click();
     await createdLink(sender);
-    await settle(sender);
+    await motionFinished(sender);
     await expectNothingMoved(sender, 'created');
 
     const recipient = await newPage({ viewport, ...FULL_MOTION });
@@ -165,11 +173,11 @@ for (const viewport of VIEWPORTS) {
     await show.click();
     await expectMessageShown(recipient);
     await expect(recipient.locator('pre')).toHaveText(LONG_TEXT);
-    await settle(recipient);
-    await expectNothingMoved(recipient, 'revealed and unscrambled');
+    await motionFinished(recipient);
+    await expectNothingMoved(recipient, 'revealed');
   });
 
-  test(`nothing shifts or resizes on the sent list and the read actions at ${viewport.width}x${viewport.height} (AK18)`, async ({
+  test(`nothing shifts or resizes on the sent list and the read actions at ${viewport.width}x${viewport.height}`, async ({
     newPage,
   }) => {
     const sender = await newPage({ viewport });
@@ -208,5 +216,21 @@ for (const viewport of VIEWPORTS) {
     await recipient.getByRole('alertdialog').getByRole('button', { name: 'Yes, delete' }).click();
     await expect(recipient.getByRole('button', { name: 'Delete message' })).toBeDisabled();
     await expectNothingMoved(recipient, 'rest deleted');
+
+    const unopened = await createMessageThroughApi({ text: 'layout' });
+    const deleter = await newPage({ viewport, ...FULL_MOTION });
+    await watchLayout(deleter);
+    await deleter.goto(unopened.link);
+    await expect(deleter.getByRole('button', { name: 'Show message' })).toBeVisible();
+    // A shift within half a second of a click does not count, so the answer that ends the message comes later.
+    await deleter.route(/\/api\//u, async (route) => {
+      await delay(600);
+      await route.continue();
+    });
+    await deleter.getByRole('button', { name: 'Delete without opening' }).click();
+    await deleter.getByRole('alertdialog').getByRole('button', { name: 'Yes, delete' }).click();
+    await expect(deleter.getByText('You deleted the message')).toBeVisible();
+    await motionFinished(deleter);
+    await expectNothingMoved(deleter, 'deleted before opening');
   });
 }

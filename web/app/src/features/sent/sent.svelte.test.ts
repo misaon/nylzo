@@ -1,4 +1,3 @@
-// @vitest-environment happy-dom
 import { flushSync, mount, tick, unmount } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -33,7 +32,6 @@ describe('sent messages interface', () => {
     load: vi.fn<() => Promise<void>>(),
     refresh: vi.fn<(id: string) => Promise<void>>(),
     cancel: vi.fn<(id: string) => Promise<CancelOutcome>>(),
-    forget: vi.fn<(id: string) => Promise<void>>(),
     forgetAll: vi.fn<() => Promise<void>>(),
     stop: vi.fn<() => void>(),
   };
@@ -46,14 +44,6 @@ describe('sent messages interface', () => {
     return element;
   }
 
-  function forgetButton(): HTMLButtonElement {
-    const label = translator.translate('sent.forget.label');
-    const element = [...target.querySelectorAll('button')].find((candidate) => candidate.textContent.includes(label));
-    if (!element) {
-      throw new Error(`missing button ${label}`);
-    }
-    return element;
-  }
   function show(items?: readonly SentItem[]): void {
     component = mount(Sent, { target });
     flushSync();
@@ -71,7 +61,6 @@ describe('sent messages interface', () => {
     vi.mocked(getSessionSentStore).mockReturnValue(sessionSentStore());
     page.load.mockResolvedValue();
     page.refresh.mockResolvedValue();
-    page.forget.mockResolvedValue();
     page.forgetAll.mockResolvedValue();
     page.cancel.mockResolvedValue({ outcome: 'cancelled' });
     vi.mocked(createSentPage).mockImplementation((_dependencies, onView) => {
@@ -121,7 +110,7 @@ describe('sent messages interface', () => {
     expect(page.refresh).toHaveBeenCalledExactlyOnceWith(item().id);
   });
 
-  it('renders opens, attempts, first-opened time and an ended timestamp without retaining counters', () => {
+  it('renders opens, attempts, first-opened time and an ended timestamp without retaining counters', async () => {
     const openedAt = new Date(NOW + 1000).toISOString();
     const loaded: ItemState = {
       kind: 'loaded',
@@ -146,7 +135,9 @@ describe('sent messages interface', () => {
     expect(target.textContent).toContain(
       translator.translate('sent.ended.expired', { time: formatMoment(openedAt, translator.language) }),
     );
-    expect(target.textContent).not.toContain(translator.translate('sent.opens', { used: 1, max: 3 }));
+    await expect
+      .poll(() => target.textContent, { timeout: 5000 })
+      .not.toContain(translator.translate('sent.opens', { used: 1, max: 3 }));
     expect(() => button(translator.translate('sent.cancel'))).toThrow('missing button');
   });
 
@@ -166,7 +157,7 @@ describe('sent messages interface', () => {
   it('marks a message that only this tab tracks', () => {
     const time = formatMoment(NOW, translator.language);
     show([item(), { ...item(), id: 'AQEBAQEBAQEBAQEBAQEBAQ', session: true }]);
-    const captions = [...target.querySelectorAll('li p.text-caption')].map((caption) => caption.textContent);
+    const captions = [...target.querySelectorAll('li p > span:last-child')].map((caption) => caption.textContent);
     expect(captions).toEqual([
       translator.translate('sent.created', { time }),
       translator.translate('sent.created.session', { time }),
@@ -189,26 +180,18 @@ describe('sent messages interface', () => {
     },
   );
 
-  it('dismisses confirmation without cancelling and asks before forgetting a live message', async () => {
+  it('dismisses confirmation without cancelling', async () => {
     show([item()]);
     button(translator.translate('sent.cancel')).click();
     flushSync();
     button(translator.translate('sent.cancel.no')).click();
     await tick();
     expect(page.cancel).not.toHaveBeenCalled();
-    forgetButton().click();
-    flushSync();
-    expect(page.forget).not.toHaveBeenCalled();
-    button(translator.translate('sent.forget.yes')).click();
-    await vi.waitFor(() => expect(page.forget).toHaveBeenCalledExactlyOnceWith(item().id));
+    expect(target.querySelector('dialog')).toBeNull();
   });
 
-  it('forgets an ended record directly, and confirms before forgetting the whole list', async () => {
+  it('confirms before forgetting the whole list', async () => {
     show([{ ...item(), cancellable: false, ended: true }]);
-    forgetButton().click();
-    await tick();
-    expect(page.forget).toHaveBeenCalledExactlyOnceWith(item().id);
-    expect(target.querySelector('dialog')).toBeNull();
     button(translator.translate('sent.forget_all')).click();
     flushSync();
     expect(page.forgetAll).not.toHaveBeenCalled();
@@ -217,9 +200,11 @@ describe('sent messages interface', () => {
   });
 
   it('shows storage failure if forgetting fails and returns focus to the page', async () => {
-    page.forget.mockRejectedValue(new Error('storage denied'));
+    page.forgetAll.mockRejectedValue(new Error('storage denied'));
     show([{ ...item(), cancellable: false }]);
-    forgetButton().click();
+    button(translator.translate('sent.forget_all')).click();
+    flushSync();
+    button(translator.translate('sent.forget_all.yes')).click();
     await vi.waitFor(() =>
       expect(target.querySelector('[role="status"]')?.textContent).toBe(translator.translate('sent.unavailable')),
     );

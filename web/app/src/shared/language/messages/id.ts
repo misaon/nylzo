@@ -3,16 +3,12 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Coba lagi',
   'app.crashed': 'Terjadi kesalahan di halaman ini. Muat ulang halamannya.',
+  'start.failed': 'Halaman gagal dijalankan. Periksa koneksi Anda, lalu coba lagi.',
+  'start.failed.reopen': 'Halaman gagal dijalankan. Periksa koneksi Anda, lalu buka tautannya lagi.',
 
-  'hero.eyebrow': 'Tautan terenkripsi sekali pakai',
-  'hero.steps': 'Cara kerjanya',
-  'hero.step.write': 'Tulis pesan',
-  'hero.step.send': 'Kirim tautannya',
-  'hero.step.vanish': 'Hilang setelah dibaca',
   'hero.proof.label': 'Keunggulan utama',
-  'hero.proof.encrypted': 'Dienkripsi di browser Anda',
-  'hero.proof.cipher': 'AES-256-GCM',
-  'hero.proof.tls': 'TLS pascakuantum',
+  'hero.proof.encrypted': 'Dienkripsi di browser',
+  'hero.proof.free': 'Gratis, tanpa pendaftaran',
   'hero.proof.open': 'Open source',
   'terms.eyebrow': 'Informasi hukum',
   'terms.title': 'Ketentuan Penggunaan',
@@ -30,6 +26,7 @@ export const messages: Catalog = {
     'Layanan di nylzo.com dijalankan oleh perorangan (selanjutnya disebut “operator”) secara gratis, tanpa iklan, dan di luar kegiatan usahanya.',
   'terms.operator.2':
     'Perangkat lunak Nylzo bersifat open source dengan lisensi MIT. Ketentuan ini hanya berlaku untuk nylzo.com.',
+  'terms.operator.identity': 'Identitas operator kami berikan atas permintaan melalui GitHub.',
   'terms.agreement.title': 'Persetujuan',
   'terms.agreement.1': 'Dengan membuat atau membuka pesan, Anda menyetujui ketentuan ini.',
   'terms.service.title': 'Cara kerja layanan',
@@ -50,6 +47,9 @@ export const messages: Catalog = {
   'terms.forbidden.6': 'Mengakali batas layanan dan menyerang layanan.',
   'terms.forbidden.note': 'Isi pesan menjadi tanggung jawab orang yang membuatnya.',
   'terms.removal.title': 'Pesan yang diturunkan',
+  'terms.removal.notice':
+    'Laporkan konten ilegal melalui {link} di GitHub. Sertakan alasannya dan ID pesan, yang ada di tautan setelah tanda # di antara titik kedua dan ketiga. Jangan kirim tautan lengkapnya.',
+  'terms.removal.notice.link': 'laporan privat',
   'terms.removal.1':
     'Jika pesan melanggar hukum atau ketentuan ini, kami akan menghapusnya. Pesan yang dihapus tidak dapat dikembalikan.',
   'terms.removal.2': 'Dugaan tindak pidana yang mengancam nyawa atau keselamatan akan kami laporkan ke polisi.',
@@ -101,6 +101,7 @@ export const messages: Catalog = {
   'wait.minute': { other: '{count}\u{A0}menit' },
   'wait.hour': { other: '{count}\u{A0}jam' },
   'action.copied': 'Disalin',
+  'action.copy_failed': 'Gagal',
   'error.notFound.label': 'Kesalahan 404',
   'error.notFound.title': 'Halaman ini tidak ada',
   'error.notFound.lead': 'Alamatnya mungkin salah ketik atau tidak lengkap.',
@@ -139,8 +140,6 @@ export const messages: Catalog = {
   'create.text': 'Teks pesan',
   'create.file.clear': 'Hapus lampiran',
   'create.passphrase': 'Kata sandi',
-  'create.passphrase.hint':
-    'Kami membuat kata sandi acak yang mudah didiktekan. Kirim kata sandi ke penerima melalui saluran yang berbeda dari tautan.',
   'create.passphrase.weak': 'Kami sarankan minimal {words} kata acak dan sekaligus {characters} karakter.',
 
   'ttl.3600': '1 jam',
@@ -177,10 +176,6 @@ export const messages: Catalog = {
   'created.link': 'Tautan ke pesan',
   'created.copy': 'Salin tautan',
   'created.share': 'Bagikan',
-  'clipboard.copied':
-    'Disalin. Salinannya bisa tetap tersimpan di riwayat papan klip dan di papan klip yang disinkronkan.',
-  'clipboard.clear': 'Kosongkan papan klip',
-  'clipboard.cleared': 'Papan klip sudah kosong. Salinan yang sudah ada di riwayat papan klip tetap tersimpan di sana.',
   'created.another': 'Pesan baru',
   'created.remembered': 'Perangkat ini sudah mengingat pesan tersebut.',
   'created.remembered.session': 'Tab ini mengingat pesan tersebut paling lama sampai tab ditutup atau dimuat ulang.',
@@ -203,24 +198,18 @@ export const messages: Catalog = {
   'sent.state.cancelled': 'Dibatalkan',
   'sent.state.deleted': 'Dihapus',
   'sent.state.lost': 'Hilang',
-  'sent.label.time': 'Masa berlaku',
-  'sent.label.opens': 'Dibuka',
-  'sent.label.attempts': 'Percobaan gagal',
-  'sent.label.first_opened': 'Pertama dibuka',
-  'sent.not_opened': 'belum',
-  'sent.until': 'hingga {time}',
-  'sent.opens': '{used} dari {max}',
+  'sent.attempts': 'Percobaan gagal: {count}',
+  'sent.first_opened': 'Pertama dibuka: {time}',
+  'sent.until': 'Berlaku hingga {time}',
+  'sent.opens': 'Dibuka: {used} dari {max}',
   'sent.unknown':
-    'Server tidak menemukan pesan ini. Mungkin pesan sudah berakhir. Jika tidak diperlukan lagi di sini, hapus dari daftar.',
+    'Server tidak menemukan pesan ini. Mungkin pesan sudah berakhir. “Kosongkan daftar” menghapus catatannya.',
   'sent.failed': 'Status tidak dapat dimuat. Periksa koneksi dan coba lagi.',
   'sent.cancel': 'Batalkan pesan',
   'sent.cancel.confirm': 'Setelah dibatalkan, tidak ada lagi yang bisa membuka pesan ini.',
   'sent.cancel.yes': 'Ya, batalkan',
   'sent.cancel.no': 'Biarkan',
   'sent.cancelled': 'Pesan sudah dibatalkan.',
-  'sent.forget': 'Keluarkan',
-  'sent.forget.confirm': 'Pesan yang sudah dikeluarkan tidak bisa lagi dibatalkan dari sini.',
-  'sent.forget.yes': 'Ya, keluarkan',
   'sent.forget_all': 'Kosongkan daftar',
   'sent.forget_all.confirm': 'Pesan dalam daftar ini tidak bisa lagi dibatalkan dari sini.',
   'sent.forget_all.yes': 'Ya, kosongkan',
@@ -232,20 +221,14 @@ export const messages: Catalog = {
   'sent.state.unknown': 'Tidak ditemukan',
   'sent.state.failed': 'Status tidak diketahui',
   'sent.state.loading': 'Memuat',
-  'sent.ended.opened':
-    'Dibuka {time}. Pesan sudah dihapus dari server, catatannya hilang saat Anda meninggalkan halaman ini.',
-  'sent.ended.expired':
-    'Masa berlaku berakhir {time}. Pesan sudah dihapus dari server, catatannya hilang saat Anda meninggalkan halaman ini.',
-  'sent.ended.cancelled':
-    'Dibatalkan {time}. Pesan sudah dihapus dari server, catatannya hilang saat Anda meninggalkan halaman ini.',
-  'sent.ended.deleted':
-    'Penerima menghapusnya, atau operator menurunkannya. Catatannya hilang saat Anda meninggalkan halaman ini.',
+  'sent.ended.opened': 'Dibuka {time}. Pesan sudah dihapus dari server.',
+  'sent.ended.expired': 'Masa berlaku berakhir {time}. Pesan sudah dihapus dari server.',
+  'sent.ended.cancelled': 'Dibatalkan {time}. Pesan sudah dihapus dari server.',
+  'sent.ended.deleted': 'Penerima menghapusnya, atau operator menurunkannya.',
   'sent.ended.lost':
-    'Server kehilangan kuncinya, biasanya saat dimulai ulang, sehingga pesan ini tidak bisa dibuka lagi oleh siapa pun. Kirim lagi jika masih diperlukan. Catatannya hilang saat Anda meninggalkan halaman ini.',
+    'Server kehilangan kuncinya, biasanya saat dimulai ulang, sehingga pesan ini tidak bisa dibuka lagi oleh siapa pun. Kirim lagi jika masih diperlukan.',
   'sent.cancel.title': 'Batalkan pesan “{label}”?',
   'sent.cancel.title.untitled': 'Batalkan pesan?',
-  'sent.forget.label': 'Keluarkan dari daftar',
-  'sent.forget.title': 'Keluarkan pesan dari daftar?',
   'sent.forget_all.title': 'Kosongkan seluruh daftar?',
 
   'read.title': 'Pesan sekali pakai',
@@ -265,8 +248,7 @@ export const messages: Catalog = {
     'Waktu untuk memuat ulang pesan di halaman ini sudah habis. Menampilkannya sekarang akan dihitung sebagai satu kali dibuka lagi.',
   'read.device':
     'Terakhir kali, perangkat ini gagal memproses kata sandi. Jika hal ini terulang, buka tautan di perangkat lain.',
-  'read.rejected.wrong':
-    'Kata sandi salah. Anda belum membuka pesan ini. Masih ada {attempts} lagi, setelah itu Anda perlu menunggu sebentar.',
+  'read.rejected.wrong': 'Kata sandi salah. Anda belum membuka pesan ini. Masih ada {attempts} lagi.',
   'read.rejected.wait': 'Kata sandi salah. Anda bisa mencoba lagi dalam {time}.',
   'read.rejected.malformed': 'Kata sandi berisi karakter yang tidak valid.',
   'read.rejected.long': 'Kata sandi terlalu panjang.',
@@ -275,7 +257,8 @@ export const messages: Catalog = {
   'read.delete.rest.short': 'Hapus',
   'read.delete.rest.confirm': 'Hapus pesan agar tidak bisa dibuka lagi?',
   'read.delete.confirm.title': 'Hapus pesan tanpa membukanya?',
-  'read.note': 'Gratis dan tanpa pendaftaran. Halaman pesan tidak memakai cookie dan tidak mengukur kunjungan.',
+  'read.terms': 'Dengan menampilkan pesan, Anda menyetujui {link}.',
+  'read.copy_failed': 'Gagal menyalin. Pilih teks pesan, lalu salin secara manual.',
   'read.delete.confirm': 'Setelah itu, tidak ada yang bisa membuka pesan ini lagi, termasuk Anda.',
   'read.delete.yes': 'Ya, hapus',
   'read.delete.no': 'Jangan hapus',
@@ -409,7 +392,7 @@ export const messages: Catalog = {
   'transparency.personal.processor': 'Kami tidak menggunakan layanan eksternal untuk analitik pengunjung.',
   'transparency.personal.browser.title': 'Di browser Anda',
   'transparency.personal.browser':
-    'Bahasa yang Anda pilih, data sementara selama pesan sedang dibuka, dan daftar Terkirim jika Anda tetap menyimpan pesan yang dipantau setelah tab ditutup. Semua itu diperlukan untuk fitur yang Anda minta, sehingga tidak memerlukan persetujuan.',
+    'Bahasa yang Anda pilih, data sementara selama pesan sedang dibuka, dan daftar Terkirim jika Anda memantau pesan. Semua itu diperlukan untuk fitur yang Anda minta, sehingga tidak memerlukan persetujuan.',
   'transparency.limits.title': 'Batas instans ini',
   'transparency.limits.short': 'Batas',
   'transparency.limits.file': 'Lampiran terbesar',
@@ -476,6 +459,7 @@ export const messages: Catalog = {
 
   'hero.title': 'Rahasia yang {accent}',
   'hero.title.accent': 'hanya terbuka sekali',
+  'hero.lead': 'Kirim kata sandi, kunci API, atau file dengan aman lewat tautan yang hanya bisa dibuka sekali.',
   'seo.title': 'Kirim kata sandi dengan aman: tautan sekali pakai | Nylzo',
   'seo.description':
     'Kirim kata sandi, kunci API, atau file lewat tautan yang hanya bisa dibuka sekali. Enkripsi sudah dilakukan di browser Anda. Gratis dan tanpa pendaftaran.',
@@ -492,8 +476,6 @@ export const messages: Catalog = {
   'compose.opens.title': 'Berapa kali pesan bisa dibuka',
   'compose.opens.less': 'Kurangi jumlah kali dibuka',
   'compose.opens.more': 'Tambah jumlah kali dibuka',
-  'compose.opens.history':
-    'Jika penerima mengeklik tautan, tautan yang masih berfungsi tetap tersimpan di riwayat browsernya sampai pesan habis dibuka sebanyak yang diizinkan. Karena itu, lindungi pesan dengan kata sandi.',
   'compose.security': 'Keamanan',
   'compose.passphrase.chip': 'Pakai kata sandi',
   'compose.passphrase.chip.off': 'Tanpa kata sandi',
@@ -504,7 +486,9 @@ export const messages: Catalog = {
   'compose.attach': 'File maks. {size}',
   'compose.submit': 'Buat tautan',
   'compose.encrypting': 'Mengenkripsi',
-  'compose.note': 'Gratis, tanpa pendaftaran, dan tanpa cookie.',
+  'compose.note': 'Dengan membuat tautan, Anda menyetujui {link}.',
+  'terms.agree.link': 'ketentuan penggunaan',
+  'link.new_tab': '(terbuka di tab baru)',
 
   'step.counter': 'Langkah {step} dari {total}',
   'step.key.label': 'Kunci',
@@ -533,8 +517,6 @@ export const messages: Catalog = {
   'created.copy_failed': 'Gagal menyalin. Tautan sudah dipilih, salin secara manual.',
   'created.once':
     'Tautan ini hanya ditampilkan sekarang. Jangan membukanya sendiri, karena itu akan dihitung sebagai satu kali dibuka.',
-  'created.legend.server': 'Server menerima alamat dan ID pesan',
-  'created.legend.key': 'Browser tidak mengirim kunci setelah #',
   'created.passphrase.show': 'Tampilkan kata sandi',
   'created.passphrase.hide': 'Sembunyikan kata sandi',
   'created.passphrase.copy': 'Salin kata sandi',
@@ -542,8 +524,7 @@ export const messages: Catalog = {
   'created.track.note':
     'Anda akan melihat apakah pesan sudah dibuka seseorang, dan Anda bisa membatalkannya. Hanya tab ini yang mengingatnya, paling lama sampai tab ditutup atau dimuat ulang.',
   'created.track.note.kept':
-    'Anda akan melihat apakah pesan sudah dibuka seseorang, dan Anda bisa membatalkannya. Data tersimpan di browser ini, jadi siapa pun yang bisa mengaksesnya juga bisa membatalkan pesan.',
-  'created.track.keep': 'Tetap ingat setelah tab ditutup',
+    'Anda akan melihat apakah pesan sudah dibuka seseorang, dan Anda bisa membatalkannya. Data tersimpan di browser ini.',
   'created.track.label': 'Label, hanya terlihat oleh Anda',
   'created.track.placeholder': 'Label, misalnya “Kata sandi untuk Budi”',
   'created.track.save': 'Simpan',
@@ -556,8 +537,6 @@ export const messages: Catalog = {
     'Pesan baru tampil setelah Anda mengeklik, dan itu dihitung sebagai satu kali dibuka. Setelah terakhir kali dibuka, server akan menghapusnya.',
   'open.loading.text': 'Memeriksa tautan ke server.',
   'open.passphrase.placeholder': 'Kata sandi dari pengirim',
-  'open.passphrase.hint':
-    'Pengirim mengirimkan kata sandi kepada Anda secara terpisah, misalnya lewat SMS atau telepon.',
   'open.passphrase.show': 'Tampilkan kata sandi',
   'open.passphrase.hide': 'Sembunyikan kata sandi',
   'open.passphrase.empty': 'Masukkan kata sandi dari pengirim.',
@@ -742,7 +721,7 @@ export const messages: Catalog = {
   'brute.fact.id.note': 'Tanpa kunci dari tautan, metadata pun tidak bisa dibaca',
   'brute.fact.pass': 'Kata sandi tidak bisa ditebak lewat jaringan',
   'brute.fact.pass.note': 'Setelah 100\u{A0}kata sandi salah, pesan akan terkunci',
-  'brute.fact.quantum': 'Komputer kuantum tidak bisa membaca pesan',
+  'brute.fact.quantum': 'Tanpa tautan, komputer kuantum pun tidak bisa membacanya',
   'brute.fact.quantum.note': 'Isi dilindungi kunci 256-bit, dan koneksi dilindungi TLS pascakuantum',
 
   'promise.eyebrow': 'Janji kami',
@@ -806,7 +785,7 @@ export const messages: Catalog = {
   'tech.crypto.title': 'Enkripsi',
   'tech.crypto.text': 'AES\u{2011}256\u{2011}GCM dan TLS pascakuantum',
   'tech.server.title': 'Server',
-  'tech.server.text': 'Go dan SQLite, hanya 6\u{A0}dependensi langsung',
+  'tech.server.text': 'Go dan SQLite, hanya 7\u{A0}dependensi langsung',
   'tech.web.title': 'Klien web',
   'tech.web.text': 'Svelte\u{A0}5, sidik jari SHA\u{2011}384, dan tanpa cookie',
   'tech.release.title': 'Pengembangan dan rilis',
@@ -902,10 +881,13 @@ export const messages: Catalog = {
   'about.terms.link': 'ketentuan penggunaan',
   'faq.eyebrow': 'Pertanyaan umum',
   'faq.title': 'Sebelum Anda mengirim pesan pertama',
+  'faq.securely.question': 'Bagaimana cara mengirim kata sandi dengan aman?',
+  'faq.securely.answer':
+    'Tempelkan di Nylzo dan kirim tautannya saja. Browser Anda mengenkripsinya sebelum dikirim, dan server menghapusnya setelah dibuka terakhir kali.',
   'faq.unopened.question': 'Bagaimana jika penerima tidak membuka tautan?',
   'faq.unopened.answer':
     'Setelah masa berlakunya habis, pesan akan terhapus dengan sendirinya. Anda bisa memilih masa berlaku dari 1\u{A0}jam hingga {days}.',
-  'faq.passphrase.question': 'Bagaimana cara memberikan kata sandi?',
+  'faq.passphrase.question': 'Bagaimana cara memberikan kata sandi pesan?',
   'faq.passphrase.answer':
     'Melalui saluran yang berbeda dari tautan. Misalnya, tautan lewat email dan kata sandi lewat telepon atau SMS.',
   'faq.save.question': 'Bisakah penerima menyimpan pesan?',

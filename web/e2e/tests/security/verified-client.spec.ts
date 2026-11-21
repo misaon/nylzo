@@ -2,7 +2,6 @@ import { spawn } from 'node:child_process';
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createServer, request as forward } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { createInterface } from 'node:readline';
 
 import { expect, test } from '../support/fixtures.ts';
@@ -103,7 +102,11 @@ async function startHostileServer(): Promise<HostileServer> {
   await new Promise<void>((resolve) => {
     server.listen(0, '127.0.0.1', resolve);
   });
-  origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    throw new TypeError('the hostile server listens on no TCP port');
+  }
+  origin = `http://127.0.0.1:${address.port}`;
   return hostile;
 }
 
@@ -124,7 +127,7 @@ function runNylzo(parameters: readonly string[], input = ''): Running {
 }
 
 test(
-  'a hostile instance reads a message opened on its website, but sees only API calls from the verified client (A3-01)',
+  'a hostile instance reads a message opened on its website, but sees only API calls from the verified client',
   { tag: '@cross-browser' },
   async ({ newPage }) => {
     test.setTimeout(120_000);
@@ -138,7 +141,7 @@ test(
       await showMessage(
         victim,
         control.replace(BASE_URL, () => hostile.origin),
-        PASSPHRASE,
+        { passphrase: PASSPHRASE },
       );
       await expectMessageShown(victim);
       await expect.poll(() => hostile.loot).toContain(fragment);
@@ -159,8 +162,7 @@ test(
         local,
       );
       expect(link.startsWith(`${hostile.origin}/r#`), 'links from the verified client name the instance').toBe(true);
-      await expect(sender.getByRole('switch', { name: 'Keep after closing this tab' })).toHaveCount(0);
-      await trackInSent(sender, '', 'tab');
+      await trackInSent(sender, { where: 'tab' });
       expect(await sender.evaluate(async () => indexedDB.databases())).toEqual([]);
 
       const open = runNylzo(['open', '--no-browser', '--server', hostile.origin], link);

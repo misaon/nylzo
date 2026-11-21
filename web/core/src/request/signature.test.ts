@@ -20,7 +20,7 @@ import type { RequestKey } from './signature.ts';
 
 const path = '/api/v1/messages/ye0eIOs8vLjsJSKaFFBFyg';
 
-describe('AK9: request vectors', () => {
+describe('request vectors', () => {
   it.each(vectors.request)('$name', async (vector) => {
     const seed = hexToBytes(vector.seed_hex);
     const key = await requestKey(seed);
@@ -35,12 +35,18 @@ describe('AK9: request vectors', () => {
       ke1: vector.components.ke1,
       ke3: vector.components.ke3,
     };
-    const message = await requestMessage(vector.purpose, vector.method, vector.path, challenge, body, components);
+    const request = {
+      purpose: vector.purpose,
+      method: vector.method,
+      path: vector.path,
+      challenge,
+      body,
+      components,
+    };
+    const message = await requestMessage(request);
     expect(message.toHex()).toBe(vector.message_hex);
 
-    const sign = (signingKey: RequestKey) =>
-      signRequest(signingKey, vector.purpose, vector.method, vector.path, challenge, body, components);
-    const signature = await sign(key);
+    const signature = await signRequest(key, request);
     expect(encodeBase64url(signature.signature)).toBe(vector.signature);
     expect(authorizationHeader(signature)).toBe(vector.authorization);
   });
@@ -51,7 +57,7 @@ describe('request signatures (spec 5.5)', () => {
     const key = await requestKey(new Uint8Array(SEED_LENGTH).fill(7));
     const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(3);
     const original = { shareKey: 'share-key', lease: 'lease-token', ke1: 'ke1', ke3: 'ke3' };
-    const signature = await signRequest(key, purpose, 'POST', path, challenge, undefined, original);
+    const signature = await signRequest(key, { purpose, method: 'POST', path, challenge, components: original });
     const publicKey = await crypto.subtle.importKey('raw', key.publicKey, 'Ed25519', false, ['verify']);
     for (const components of [
       original,
@@ -65,21 +71,27 @@ describe('request signatures (spec 5.5)', () => {
       {},
       { shareKey: original.lease, lease: original.shareKey },
     ]) {
-      const message = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), components);
+      const message = await requestMessage({ purpose, method: 'POST', path, challenge, components });
       expect(await crypto.subtle.verify('Ed25519', publicKey, signature.signature, message)).toBe(
         components === original,
       );
     }
-    const unsigned = await signRequest(key, purpose, 'POST', path, challenge);
-    const injected = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), original);
+    const unsigned = await signRequest(key, { purpose, method: 'POST', path, challenge });
+    const injected = await requestMessage({ purpose, method: 'POST', path, challenge, components: original });
     expect(await crypto.subtle.verify('Ed25519', publicKey, unsigned.signature, injected)).toBe(false);
-    const one = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), {
-      shareKey: 'a\0b',
-      lease: 'c',
+    const one = await requestMessage({
+      purpose,
+      method: 'POST',
+      path,
+      challenge,
+      components: { shareKey: 'a\0b', lease: 'c' },
     });
-    const two = await requestMessage(purpose, 'POST', path, challenge, new Uint8Array(0), {
-      shareKey: 'a',
-      lease: 'b\0c',
+    const two = await requestMessage({
+      purpose,
+      method: 'POST',
+      path,
+      challenge,
+      components: { shareKey: 'a', lease: 'b\0c' },
     });
     expect(one).not.toEqual(two);
   });
@@ -87,38 +99,39 @@ describe('request signatures (spec 5.5)', () => {
   it('rejects a seed or challenge of the wrong length', async () => {
     await expect(requestKey(new Uint8Array(SEED_LENGTH - 1))).rejects.toBeInstanceOf(Error);
     const short = new Uint8Array(CHALLENGE_LENGTH - 1);
-    await expect(requestMessage(PURPOSE_READ, 'GET', path, short, new Uint8Array(0))).rejects.toBeInstanceOf(Error);
+    await expect(
+      requestMessage({ purpose: PURPOSE_READ, method: 'GET', path, challenge: short }),
+    ).rejects.toBeInstanceOf(Error);
   });
 
-  it('generates a manage key whose private half never leaves Web Crypto (D39)', async () => {
+  it('generates a manage key whose private half never leaves Web Crypto', async () => {
     const key = await newRequestKey();
     expect(key.privateKey.extractable).toBe(false);
     expect(key.privateKey.usages).toEqual(['sign']);
     expect(key.publicKey).toHaveLength(32);
     await expect(crypto.subtle.exportKey('jwk', key.privateKey)).rejects.toBeInstanceOf(Error);
     const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(3);
-    const signature = await signRequest(key, PURPOSE_MANAGE, 'POST', path, challenge);
+    const signature = await signRequest(key, { purpose: PURPOSE_MANAGE, method: 'POST', path, challenge });
     const verifier = await crypto.subtle.importKey('raw', key.publicKey, 'Ed25519', false, ['verify']);
-    const message = await requestMessage(PURPOSE_MANAGE, 'POST', path, challenge, new Uint8Array(0));
+    const message = await requestMessage({ purpose: PURPOSE_MANAGE, method: 'POST', path, challenge });
     expect(await crypto.subtle.verify('Ed25519', verifier, signature.signature, message)).toBe(true);
   });
 
   it.each([0, 1])('wipes the PKCS#8 copy of the seed when import %i fails', async (failAt) => {
     const imported: Uint8Array[] = [];
     const importKey = crypto.subtle.importKey.bind(crypto.subtle);
-    const spy = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((
-      format: KeyFormat,
-      data: BufferSource,
-      ...rest: [AlgorithmIdentifier, boolean, KeyUsage[]]
-    ) => {
-      if (format === 'pkcs8' && data instanceof Uint8Array) {
-        imported.push(data);
-        if (imported.length === failAt) {
-          return Promise.reject(new Error('import failed'));
+    const spy = vi
+      .spyOn(crypto.subtle, 'importKey')
+      .mockImplementation((...parameters: Parameters<typeof importKey>) => {
+        const [format, data] = parameters;
+        if (format === 'pkcs8' && data instanceof Uint8Array) {
+          imported.push(data);
+          if (imported.length === failAt) {
+            return Promise.reject(new Error('import failed'));
+          }
         }
-      }
-      return importKey(format as 'pkcs8', data, ...rest);
-    }) as typeof crypto.subtle.importKey);
+        return importKey(...parameters);
+      });
     let outcome = 'resolved';
     try {
       await requestKey(new Uint8Array(SEED_LENGTH).fill(7));
@@ -138,14 +151,14 @@ describe('request signatures (spec 5.5)', () => {
     const native = await requestKey(seed);
     const importKey = crypto.subtle.importKey.bind(crypto.subtle);
     const imports: { format: KeyFormat; extractable: boolean }[] = [];
-    const refuse = vi.spyOn(crypto.subtle, 'importKey').mockImplementation(((
-      ...parameters: Parameters<typeof importKey>
-    ) => {
-      imports.push({ format: parameters[0], extractable: parameters[3] });
-      return parameters[0] === 'pkcs8'
-        ? Promise.reject(new DOMException('refused', 'DataError'))
-        : importKey(...parameters);
-    }) as typeof crypto.subtle.importKey);
+    const refuse = vi
+      .spyOn(crypto.subtle, 'importKey')
+      .mockImplementation((...parameters: Parameters<typeof importKey>) => {
+        imports.push({ format: parameters[0], extractable: parameters[3] });
+        return parameters[0] === 'pkcs8'
+          ? Promise.reject(new DOMException('refused', 'DataError'))
+          : importKey(...parameters);
+      });
     const exported = vi.spyOn(crypto.subtle, 'exportKey');
     try {
       const compatible = await requestKey(seed);
@@ -159,14 +172,14 @@ describe('request signatures (spec 5.5)', () => {
       expect(exported).not.toHaveBeenCalled();
       const challenge = new Uint8Array(CHALLENGE_LENGTH).fill(5);
       const body = utf8('body');
-      const nativeSignature = await signRequest(native, PURPOSE_READ, 'POST', '/api/v1/claim', challenge, body);
-      const compatibleSignature = await signRequest(compatible, PURPOSE_READ, 'POST', '/api/v1/claim', challenge, body);
+      const signClaim = (signingKey: RequestKey) =>
+        signRequest(signingKey, { purpose: PURPOSE_READ, method: 'POST', path: '/api/v1/claim', challenge, body });
+      const nativeSignature = await signClaim(native);
+      const compatibleSignature = await signClaim(compatible);
       expect(compatibleSignature.signature).toEqual(nativeSignature.signature);
       seed.fill(9);
       wipeRequestKey(compatible);
-      await expect(signRequest(compatible, PURPOSE_READ, 'POST', '/api/v1/claim', challenge, body)).rejects.toThrow(
-        'released',
-      );
+      await expect(signClaim(compatible)).rejects.toThrow('released');
     } finally {
       refuse.mockRestore();
       exported.mockRestore();
@@ -196,12 +209,12 @@ describe('request signatures (spec 5.5)', () => {
   it('tries generateKey again when it fails, as WebKit on Linux sometimes does', async () => {
     const generate = crypto.subtle.generateKey.bind(crypto.subtle);
     let calls = 0;
-    const flaky = vi.spyOn(crypto.subtle, 'generateKey').mockImplementation(((
-      ...arguments_: Parameters<typeof generate>
-    ) => {
-      calls++;
-      return calls <= 2 ? Promise.reject(new DOMException('flaky', 'OperationError')) : generate(...arguments_);
-    }) as typeof crypto.subtle.generateKey);
+    const flaky = vi
+      .spyOn(crypto.subtle, 'generateKey')
+      .mockImplementation((...arguments_: Parameters<typeof generate>) => {
+        calls++;
+        return calls <= 2 ? Promise.reject(new DOMException('flaky', 'OperationError')) : generate(...arguments_);
+      });
     try {
       const key = await newRequestKey();
       expect(calls).toBe(3);

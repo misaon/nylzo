@@ -1,5 +1,6 @@
 import { requestKey } from '@nylzo/core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
 
 import { createApi } from '../../../shared/api/api.ts';
 import { fakeApi } from '../../../shared/api/fake-api.ts';
@@ -37,10 +38,6 @@ const limits: InstanceLimits = {
   maxOpens: 10,
 };
 
-class TestInput extends Element {
-  value = 'selected-file';
-}
-
 describe('message composer interactions', () => {
   let created: Created;
   let composers: Composer[];
@@ -55,13 +52,11 @@ describe('message composer interactions', () => {
     return form;
   }
 
-  const querySelector = vi.fn<() => { content: string } | null>();
   const reload = vi.fn<(...arguments_: unknown[]) => void>();
 
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.resetAllMocks();
-    querySelector.mockReturnValue(null);
     composers = [];
     vi.mocked(createApi).mockReturnValue(fakeApi());
     created = {
@@ -74,9 +69,7 @@ describe('message composer interactions', () => {
     browser = Object.assign(memoryStore(), { close: vi.fn<() => void>() });
     vi.mocked(browserSentStore).mockReturnValue(browser);
     vi.mocked(rememberSent).mockResolvedValue(true);
-    vi.stubGlobal('document', { querySelector });
     vi.stubGlobal('location', { origin: 'https://nylzo.test', reload });
-    vi.stubGlobal('HTMLInputElement', TestInput);
   });
 
   afterEach(() => {
@@ -85,6 +78,7 @@ describe('message composer interactions', () => {
     }
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    document.head.replaceChildren();
   });
 
   it('loads instance limits, clamps opens and allows retry after a loading failure', async () => {
@@ -108,9 +102,12 @@ describe('message composer interactions', () => {
   });
 
   it('tracks only in the tab, never in browser storage, when served from the verified local client', () => {
-    querySelector.mockReturnValue({ content: 'https://instance.test' });
+    const instance = document.createElement('meta');
+    instance.name = 'nylzo-instance';
+    instance.content = 'https://instance.test';
+    document.head.append(instance);
     const form = composer();
-    const stop = form.start({} as HTMLElement);
+    const stop = form.start(document.createElement('section'));
     expect(form.canKeep).toBe(false);
     form.text = 'secret';
     if (typeof stop === 'function') {
@@ -188,8 +185,9 @@ describe('message composer interactions', () => {
     ]);
     form.pickFile(new File(['ok'], 'small.txt'));
     expect(form.problems).toEqual([{ field: 'passphrase', code: 'too_short' }]);
-    const input = new TestInput();
-    form.focus.attach('file')(input as unknown as HTMLElement);
+    const input = document.createElement('input');
+    input.value = 'selected-file';
+    form.focus.attach('file')(input);
     form.removeFile();
     expect(form.file).toBeUndefined();
     expect(input.value).toBe('');
@@ -254,13 +252,9 @@ describe('message composer interactions', () => {
     expect(focus).toHaveBeenCalledOnce();
   });
 
-  it.each([
-    [true, true],
-    [true, false],
-    [false, true],
-  ])(
-    'saves the manage key only when the sender asks, in the browser only when kept, and shows the result: kept=%s stored=%s',
-    async (keep, stored) => {
+  it.each([true, false])(
+    'saves the manage key in the browser only when the sender asks, and retries a failed save in the tab: stored=%s',
+    async (stored) => {
       const form = composer();
       form.text = 'remember this message';
       const gate = Promise.withResolvers<boolean>();
@@ -268,9 +262,9 @@ describe('message composer interactions', () => {
       await submit(form);
       vi.advanceTimersByTime(5100);
       expect(rememberSent).not.toHaveBeenCalled();
-      const remembering = form.remember('  Heslo pro Petra ', keep);
+      const remembering = form.remember('  Heslo pro Petra ');
       expect(rememberSent).toHaveBeenCalledWith(
-        keep ? browser : session,
+        browser,
         {
           id: created.id,
           createdAt: Date.now(),
@@ -280,16 +274,16 @@ describe('message composer interactions', () => {
         },
         5000,
       );
-      expect(browserSentStore).toHaveBeenCalledTimes(keep ? 1 : 0);
+      expect(browserSentStore).toHaveBeenCalledOnce();
       expect(form.remembered).toBe('saving');
       gate.resolve(stored);
       await remembering;
       expect(form.remembered).toBe(stored ? 'remembered' : 'failed');
-      expect(form.kept).toBe(keep);
-      await form.remember('', true);
-      expect(vi.mocked(rememberSent).mock.calls).toHaveLength(1);
-      await form.remember('', false);
-      expect(vi.mocked(rememberSent).mock.calls).toHaveLength(keep && !stored ? 2 : 1);
+      expect(form.kept).toBe(true);
+      await form.remember('');
+      expect(vi.mocked(rememberSent).mock.calls).toHaveLength(stored ? 1 : 2);
+      expect(vi.mocked(rememberSent).mock.lastCall?.[0]).toBe(stored ? browser : session);
+      expect(form.kept).toBe(stored);
     },
   );
 
@@ -299,10 +293,9 @@ describe('message composer interactions', () => {
     form.text = 'local client';
     await submit(form);
     vi.advanceTimersByTime(5100);
-    await form.remember('', true);
-    expect(rememberSent).not.toHaveBeenCalled();
-    await form.remember('', false);
-    expect(rememberSent).toHaveBeenCalledWith(session, expect.objectContaining({ id: created.id }), 5000);
+    await form.remember('');
+    expect(rememberSent).toHaveBeenCalledExactlyOnceWith(session, expect.objectContaining({ id: created.id }), 5000);
+    expect(browserSentStore).not.toHaveBeenCalled();
   });
 
   it('does not update a reset form when saving a previous record finishes late', async () => {
@@ -312,7 +305,7 @@ describe('message composer interactions', () => {
     vi.mocked(rememberSent).mockReturnValueOnce(gate.promise);
     await submit(form);
     vi.advanceTimersByTime(5100);
-    const remembering = form.remember('', true);
+    const remembering = form.remember('');
     await form.another();
     gate.resolve(true);
     await remembering;
@@ -394,7 +387,7 @@ describe('message composer interactions', () => {
   it('stops a running key derivation when the page is left (SEC-8)', async () => {
     const stop = vi.fn<() => void>();
     const worker = Object.assign(new EventTarget(), { postMessage: vi.fn<(...arguments_: unknown[]) => void>() });
-    vi.mocked(startWorker).mockResolvedValue({ worker: worker as unknown as Worker, stop });
+    vi.mocked(startWorker).mockResolvedValue({ worker, stop });
     const form = composer();
     form.text = 'synthetic message';
     form.protect = true;
@@ -432,10 +425,15 @@ describe('message composer interactions', () => {
     const form = composer();
     form.toggleMenu('ttl');
     expect(form.menu).toBe('ttl');
-    const menu = Object.assign(new Element(), { closest: () => ({}) });
-    form.onWindowClick({ target: menu } as unknown as MouseEvent);
+    const menu = document.createElement('div');
+    const item = document.createElement('button');
+    menu.dataset['menu'] = 'ttl';
+    menu.append(item);
+    const inside = new MouseEvent('click');
+    item.dispatchEvent(inside);
+    form.onWindowClick(inside);
     expect(form.menu).toBe('ttl');
-    form.onWindowClick({ target: null } as MouseEvent);
+    form.onWindowClick(new MouseEvent('click'));
     expect(form.menu).toBeUndefined();
     form.toggleMenu('opens');
     form.toggleMenu('opens');
@@ -444,19 +442,19 @@ describe('message composer interactions', () => {
     form.toggleMenu('security');
     form.closeMenu('security');
     expect(focus).toHaveBeenCalledOnce();
-    form.returned({ persisted: false } as PageTransitionEvent);
+    form.returned(Object.assign(new Event('pageshow'), { persisted: false }));
     expect(reload).not.toHaveBeenCalled();
-    form.returned({ persisted: true } as PageTransitionEvent);
+    form.returned(Object.assign(new Event('pageshow'), { persisted: true }));
     expect(reload).toHaveBeenCalledOnce();
   });
 });
 
 function submit(form: Composer): Promise<void> {
-  return form.submit(new Event('submit', { cancelable: true }) as SubmitEvent);
+  return form.submit(new SubmitEvent('submit', { cancelable: true }));
 }
 
-function focusTarget(form: Composer, target: Parameters<typeof form.focus.attach>[0]): ReturnType<typeof vi.fn> {
-  const focus = vi.fn<(...arguments_: unknown[]) => void>();
-  form.focus.attach(target)({ focus, scrollIntoView: vi.fn<() => void>() } as unknown as HTMLElement);
+function focusTarget(form: Composer, target: Parameters<typeof form.focus.attach>[0]): Mock<HTMLElement['focus']> {
+  const focus = vi.fn<HTMLElement['focus']>();
+  form.focus.attach(target)(Object.assign(document.createElement('button'), { focus }));
   return focus;
 }

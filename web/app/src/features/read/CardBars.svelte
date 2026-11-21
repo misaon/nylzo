@@ -4,6 +4,8 @@
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Button from '../../shared/ui/button/Button.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
+  import { openedFacts } from './read-facts.ts';
+  import { SHOWN_SECONDS } from './read-page.svelte.ts';
   import type { Fact, ReadPage } from './read-page.svelte.ts';
 
   interface Props {
@@ -11,13 +13,29 @@
   }
 
   const { page }: Props = $props();
-  const { translate } = getTranslator();
+  const translator = getTranslator();
+  const { translate } = translator;
   const id = $props.id();
 
   const readyBarShown = $derived((page.phase === 'ready' || page.phase === 'opening') && !page.askingDelete);
   const afterBarShown = $derived((page.phase === 'revealed' || page.phase === 'notice') && !page.askingDelete);
   const retryable = $derived(page.shown.view === 'failed' || page.shown.view === 'retry_later');
   const restShown = $derived(page.revealed !== undefined && (page.revealed.burnable || page.restDeleted));
+  const reservedFacts = $derived(
+    page.reservedOpens === undefined
+      ? []
+      : openedFacts(translator, { opensRemaining: page.reservedOpens, secondsLeft: SHOWN_SECONDS }),
+  );
+  const deleteState = $derived(page.ready === undefined && page.actions !== 'dim' ? 'off' : page.actions);
+  const DELETE_STATES = {
+    on: 'opacity-100',
+    dim: 'pointer-events-none opacity-40',
+    off: 'pointer-events-none opacity-0',
+  } as const;
+  const AFTER_BAR =
+    'flex flex-col justify-center p-3 fade-swap max-sm:gap-4 max-sm:px-5 max-sm:pt-4 max-sm:pb-5 sm:flex-row sm:items-center sm:gap-3 sm:pl-4';
+  const AFTER_FACTS =
+    'max-sm:-mx-5 max-sm:border-b max-sm:border-white/8 max-sm:px-5 max-sm:pt-0.5 max-sm:pb-4 sm:gap-x-4 sm:px-2';
 </script>
 
 {#snippet facts(list: readonly Fact[], className: ClassValue)}
@@ -34,6 +52,35 @@
   </ul>
 {/snippet}
 
+{#snippet actions({ deletable, sizing }: { readonly deletable: boolean; readonly sizing: boolean })}
+  <div class="flex items-center gap-2 max-sm:w-full">
+    {#if deletable}
+      <Button
+        {@attach sizing ? undefined : page.focus.attach('deleteRest')}
+        variant="danger"
+        disabled={sizing || !(page.revealed?.burnable ?? false) || page.deleting}
+        onclick={() => void page.askDelete()}
+        class="max-sm:flex-1"
+      >
+        <Icon name="trash" class="size-4" animated />
+        <span class="sm:hidden" aria-hidden="true">{translate('read.delete.rest.short')}</span>
+        <span class="max-sm:sr-only">{translate('read.delete.rest')}</span>
+      </Button>
+    {/if}
+    {#if retryable && !sizing}
+      <Button variant="primary" onclick={page.retry} class="max-sm:flex-1">
+        <Icon name="refresh" class="size-4 shrink-0" animated />
+        {translate('action.retry')}
+      </Button>
+    {:else}
+      <Button variant="primary" href="/" class="max-sm:flex-1">
+        <Icon name="pen" class="size-3.5 shrink-0 opacity-70" animated />
+        {translate('nav.write')}
+      </Button>
+    {/if}
+  </div>
+{/snippet}
+
 <div class="relative border-t border-white/8">
   <div class="stack">
     <div
@@ -48,49 +95,39 @@
         'min-h-6 py-0.5 transition-opacity duration-500 max-sm:w-full sm:min-h-5 sm:gap-x-4 sm:px-2 sm:py-0',
         page.phase === 'opening' ? 'pointer-events-none opacity-40' : 'opacity-100',
       ])}
+      <Button
+        {@attach page.focus.attach('deleteMessage')}
+        variant="danger"
+        size="compact"
+        disabled={page.actions !== 'on' || page.ready === undefined || page.deleting}
+        onclick={() => void page.askDelete()}
+        class={['transition-opacity duration-500 max-sm:self-end', DELETE_STATES[deleteState]]}
+      >
+        <Icon name="trash" class="size-4 shrink-0" animated />
+        {translate('read.delete')}
+      </Button>
     </div>
 
     <div
       class={[
-        'flex flex-col justify-center p-3 fade-swap max-sm:gap-4 max-sm:px-5 max-sm:pt-4 max-sm:pb-5 sm:flex-row sm:items-center sm:gap-3 sm:pl-4',
+        AFTER_BAR,
         page.afterFacts.length > 0 ? 'sm:justify-between' : 'sm:justify-end',
         afterBarShown ? 'opacity-100' : 'pointer-events-none opacity-0',
       ]}
       inert={!afterBarShown}
     >
       {#if page.afterFacts.length > 0}
-        {@render facts(
-          page.afterFacts,
-          'max-sm:-mx-5 max-sm:border-b max-sm:border-white/8 max-sm:px-5 max-sm:pt-0.5 max-sm:pb-4 sm:gap-x-4 sm:px-2',
-        )}
+        {@render facts(page.afterFacts, AFTER_FACTS)}
       {/if}
-      <div class="flex items-center gap-2 max-sm:w-full">
-        {#if restShown}
-          <Button
-            {@attach page.focus.attach('deleteRest')}
-            variant="danger"
-            disabled={!(page.revealed?.burnable ?? false) || page.deleting}
-            onclick={() => void page.askDelete()}
-            class="max-sm:flex-1"
-          >
-            <Icon name="trash" class="size-4" animated />
-            <span class="sm:hidden" aria-hidden="true">{translate('read.delete.rest.short')}</span>
-            <span class="max-sm:sr-only">{translate('read.delete.rest')}</span>
-          </Button>
-        {/if}
-        {#if retryable}
-          <Button variant="primary" onclick={page.retry} class="max-sm:flex-1">
-            <Icon name="refresh" class="size-4 shrink-0" animated />
-            {translate('action.retry')}
-          </Button>
-        {:else}
-          <Button variant="primary" href="/" class="max-sm:flex-1">
-            <Icon name="pen" class="size-3.5 shrink-0 opacity-70" animated />
-            {translate('nav.write')}
-          </Button>
-        {/if}
-      </div>
+      {@render actions({ deletable: restShown, sizing: false })}
     </div>
+
+    {#if page.reservedOpens !== undefined}
+      <div class={['invisible sm:justify-between', AFTER_BAR]} aria-hidden="true" inert>
+        {@render facts(reservedFacts, AFTER_FACTS)}
+        {@render actions({ deletable: page.reservedOpens > 0, sizing: true })}
+      </div>
+    {/if}
 
     <div
       role="alertdialog"

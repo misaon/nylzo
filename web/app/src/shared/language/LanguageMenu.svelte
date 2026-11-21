@@ -6,7 +6,7 @@
   import Button from '../ui/button/Button.svelte';
   import Icon from '../ui/icon/Icon.svelte';
   import Popover from '../ui/menu/Popover.svelte';
-  import { LANGUAGE_DETAILS, LANGUAGES } from './language.ts';
+  import { languageDetails, LANGUAGES } from './language.ts';
   import type { Language } from './language.ts';
   import LanguageFlag from './LanguageFlag.svelte';
   import { getTranslator } from './translator.svelte.ts';
@@ -19,7 +19,7 @@
 
   const nameOrder = new Intl.Collator('en');
   const ORDER = LANGUAGES.toSorted((first, second) =>
-    nameOrder.compare(LANGUAGE_DETAILS[first].name, LANGUAGE_DETAILS[second].name),
+    nameOrder.compare(languageDetails(first).name, languageDetails(second).name),
   );
 
   const { placement, onlanguage, class: className }: Props = $props();
@@ -28,7 +28,7 @@
   const id = $props.id();
   let open = $state(false);
   const current = $derived(translator.language);
-  const currentName = $derived(LANGUAGE_DETAILS[current].name);
+  const currentName = $derived(languageDetails(current).name);
   const currentCode = $derived(current.split('-', 1)[0]?.toUpperCase());
   const currentLabel = $derived(translate('language.current', { language: currentName }));
 
@@ -46,12 +46,12 @@
     const option = event.currentTarget;
     const options = [...(option.parentElement?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
     const index = options.indexOf(option);
-    const target = {
-      ArrowDown: options.at((index + 1) % options.length),
-      ArrowUp: options.at(index - 1),
-      Home: options.at(0),
-      End: options.at(-1),
-    }[event.key];
+    const target = new Map([
+      ['ArrowDown', options.at((index + 1) % options.length)],
+      ['ArrowUp', options.at(index - 1)],
+      ['Home', options.at(0)],
+      ['End', options.at(-1)],
+    ]).get(event.key);
     if (target) {
       event.preventDefault();
       target.focus();
@@ -98,7 +98,9 @@
     ondismiss={() => (open = false)}
     class={[
       'w-max max-w-[calc(100vw-2rem)] p-1.5',
-      placement === 'footer' ? 'bottom-full left-0 mb-2 sm:right-0 sm:left-auto' : 'top-full right-0 mt-2',
+      placement === 'footer'
+        ? 'bottom-full left-0 mb-2 origin-bottom-right sm:right-0 sm:left-auto'
+        : 'top-full right-0 mt-2 origin-top-right',
     ]}
   >
     <ul
@@ -116,19 +118,21 @@
           onclick={() => choose(language)}
           onkeydown={(event) => onkeydown(event, language)}
           class={[
-            'flex h-11 cursor-pointer items-center gap-3 rounded-control px-2.5 text-ui whitespace-nowrap transition md:h-10',
+            'flex h-11 cursor-pointer items-center gap-3 rounded-control press-soft px-2.5 text-ui whitespace-nowrap transition md:h-10',
             selected
               ? 'bg-aegis-500/12 text-ink shadow-rim ring-1 ring-aegis-400/35'
               : 'text-ink-soft hover:bg-white/6 hover:text-ink',
           ]}
         >
           <LanguageFlag {language} />
-          <span class="flex-1 text-left">{LANGUAGE_DETAILS[language].name}</span>
-          {#if selected}
-            <Icon name="check" class="size-4 shrink-0 text-aegis-200 drop-shadow-[0_0_6px_oklch(0.86_0.06_246/0.7)]" />
-          {:else}
-            <span class="size-4 shrink-0" aria-hidden="true"></span>
-          {/if}
+          <span class="flex-1 text-left">{languageDetails(language).name}</span>
+          <Icon
+            name="check"
+            class={[
+              'size-4 shrink-0 text-aegis-200 drop-shadow-[0_0_6px_oklch(0.86_0.06_246/0.7)] transition-opacity duration-300',
+              selected ? 'opacity-100' : 'opacity-0',
+            ]}
+          />
         </li>
       {/each}
     </ul>

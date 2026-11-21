@@ -23,13 +23,11 @@ describe('create form', () => {
     expect(await readAttachment(undefined, limits)).toEqual({ file: undefined });
   });
 
-  it('reports a file it cannot read, such as a dropped folder, instead of failing the submit (A-03)', async () => {
-    const folder = {
-      name: 'folder',
-      size: 0,
+  it('reports a file it cannot read, such as a dropped folder, instead of failing the submit', async () => {
+    const folder = Object.assign(new File([], 'folder'), {
       arrayBuffer: () => Promise.reject(new DOMException('', 'NotFoundError')),
-    };
-    expect(await readAttachment(folder as unknown as File, limits)).toEqual({
+    });
+    expect(await readAttachment(folder, limits)).toEqual({
       problem: { field: 'file', code: 'unreadable' },
     });
   });

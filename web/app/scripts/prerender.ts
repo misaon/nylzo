@@ -14,27 +14,61 @@ interface Prerender {
   readonly agentsMarkdown: () => string;
   readonly llmsText: () => string;
   readonly statusTemplates: (index: string) => ReadonlyMap<string, string>;
+  readonly skeletonIndex: (index: string) => string;
+}
+
+const PRERENDER_EXPORTS = [
+  'homeTemplates',
+  'agentsMarkdown',
+  'llmsText',
+  'statusTemplates',
+  'skeletonIndex',
+] as const satisfies readonly (keyof Prerender)[];
+
+function isPrerender(module: unknown): module is Prerender {
+  return (
+    typeof module === 'object' &&
+    module !== null &&
+    PRERENDER_EXPORTS.every((name) => typeof Reflect.get(module, name) === 'function')
+  );
+}
+
+interface HashedFile {
+  readonly prefix: string;
+  readonly extension: string;
+  readonly data: Buffer | string;
 }
 
 const root = path.resolve(import.meta.dirname, '..');
 const distribution = path.resolve(root, '../../internal/server/web/dist');
 const assets = path.join(distribution, 'assets');
 
-function hashedName(prefix: string, extension: string, data: Buffer | string): string {
+function hashedName({ prefix, extension, data }: HashedFile): string {
   return `${prefix}-${createHash('sha256').update(data).digest('base64url').slice(0, 8)}.${extension}`;
 }
 
-const imageFile = readFileSync(path.join(root, 'icons/og-image.png'));
-const imageName = hashedName('og-image', 'png', imageFile);
-writeFileSync(path.join(assets, imageName), imageFile);
-const image = {
-  path: `/assets/${imageName}`,
-  width: imageFile.readUInt32BE(16),
-  height: imageFile.readUInt32BE(20),
-};
+function jpegSize(data: Buffer): Omit<HomeAssets['image'], 'path'> {
+  for (let offset = 2; offset + 9 <= data.length; offset += 2 + data.readUInt16BE(offset + 2)) {
+    const marker = data.readUInt8(offset + 1);
+    if (data.readUInt8(offset) !== 0xff) {
+      break;
+    }
+    if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+      return { height: data.readUInt16BE(offset + 5), width: data.readUInt16BE(offset + 7) };
+    }
+  }
+  throw new Error('og-image.jpg has no frame header');
+}
 
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- This module was generated from our typed prerender entry point by the preceding Vite SSR build.
-const prerender = (await import(pathToFileURL(path.join(root, '.prerender/prerender.js')).href)) as Prerender;
+const imageFile = readFileSync(path.join(root, 'icons/og-image.jpg'));
+const imageName = hashedName({ prefix: 'og-image', extension: 'jpg', data: imageFile });
+writeFileSync(path.join(assets, imageName), imageFile);
+const image = { path: `/assets/${imageName}`, ...jpegSize(imageFile) };
+
+const prerender: unknown = await import(pathToFileURL(path.join(root, '.prerender/prerender.js')).href);
+if (!isPrerender(prerender)) {
+  throw new TypeError(`prerender: the SSR build must export ${PRERENDER_EXPORTS.join(', ')}`);
+}
 const index = readFileSync(path.join(distribution, 'index.html'), 'utf8');
 const pages = prerender.homeTemplates(index, { image });
 for (const [language, page] of pages) {
@@ -46,6 +80,7 @@ const statusPages = prerender.statusTemplates(index);
 for (const [name, page] of statusPages) {
   writeFileSync(path.join(distribution, name), page);
 }
+writeFileSync(path.join(distribution, 'index.html'), prerender.skeletonIndex(index));
 
 const bundled = new Map(
   readdirSync(assets)
@@ -57,10 +92,10 @@ for (const [name, data] of bundled) {
     throw new Error(`prerender: ${name} has no gzip variant, so the server would send it uncompressed`);
   }
   if (name.endsWith('.js')) {
-    checkScript(data.toString(), name, bundled);
+    checkScript({ code: data.toString(), from: name, assets: bundled });
   }
   if (name.endsWith('.css')) {
-    checkStyles(data.toString(), name, bundled);
+    checkStyles({ code: data.toString(), from: name, assets: bundled });
   }
 }
 // The admin page and the public pages name only their own scripts in their import maps.

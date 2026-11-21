@@ -37,7 +37,7 @@ The pages carry a strict Content Security Policy without nonces, SHA-384 integri
 What the browser keeps:
 
 - A browser records the whole link, key included, in its history, sync and session restore before the page can remove it. Anyone with that profile or synced account then holds a working link until the last open or expiry. A passphrase or `nylzo open` avoids this.
-- Track in Sent keeps a message's manage key in the tab's memory only. Keep after closing this tab stores it in IndexedDB, where Chromium and Firefox write it into the browser profile. That key can check status and cancel but cannot decrypt.
+- Track in Sent stores a message's manage key in IndexedDB, where Chromium and Firefox write it into the browser profile, so anyone who can use that profile can check the status and cancel the message. Where the page cannot store it, as in the local client, the key stays in the tab's memory only. That key cannot decrypt.
 - The link secret, the passphrase and the keys derived from them are never written to browser storage. A page cannot reliably erase JavaScript strings or garbage-collected memory.
 - Copied links and messages can stay in clipboard history. Do not save a message passphrase in a password manager.
 - Attachments download only after a warning that shows the real extension. Nylzo cannot scan encrypted files.

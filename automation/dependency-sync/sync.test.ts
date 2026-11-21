@@ -5,15 +5,18 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 
+import { z } from 'zod';
+
 const repositoryRoot = new URL('../..', import.meta.url).pathname;
 const script = new URL('sync.ts', import.meta.url).pathname;
 const toolchainPath = 'deploy/hetzner-flatcar/toolchain.json';
 const deployTaskPath = 'mise-tasks/deploy';
+const toolchainSchema = z.record(z.string(), z.unknown());
 const pinnedImage = (version: string) => `services:\n  caddy:\n    image: caddy:${version}@sha256:${'a'.repeat(64)}\n`;
 
 async function synchronized(
   files: Readonly<Record<string, string>>,
-): Promise<{ toolchain: Record<string, unknown>; deployTask: string | undefined }> {
+): Promise<{ toolchain: z.infer<typeof toolchainSchema>; deployTask: string | undefined }> {
   const directory = await mkdtemp(path.join(tmpdir(), 'nylzo-dependency-sync-'));
   try {
     for (const file of ['tools/dependencies/assets.json', toolchainPath]) {
@@ -27,7 +30,7 @@ async function synchronized(
     execFileSync(process.execPath, [script], { cwd: directory, stdio: 'pipe' });
     const read = (file: string) => readFile(path.join(directory, file), 'utf8');
     return {
-      toolchain: JSON.parse(await read(toolchainPath)) as Record<string, unknown>,
+      toolchain: toolchainSchema.parse(JSON.parse(await read(toolchainPath))),
       deployTask: files[deployTaskPath] === undefined ? undefined : await read(deployTaskPath),
     };
   } finally {
@@ -47,10 +50,8 @@ await test('the host toolchain takes Caddy from the module, or from Compose on a
 });
 
 await test('a maintenance branch keeps its OpenTofu pins in step with mise.toml', async () => {
-  const { flatcar, ...tools } = JSON.parse(await readFile(path.join(repositoryRoot, toolchainPath), 'utf8')) as Record<
-    string,
-    unknown
-  >;
+  const toolchainText = await readFile(path.join(repositoryRoot, toolchainPath), 'utf8');
+  const { flatcar, ...tools } = toolchainSchema.parse(JSON.parse(toolchainText));
   const result = await synchronized({
     [toolchainPath]: JSON.stringify({ flatcar, opentofu: '1.13.2', ...tools }),
     'mise.toml': '[tools]\nopentofu = "1.13.9"\n',

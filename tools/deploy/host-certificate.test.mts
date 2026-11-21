@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { createServer } from "node:tls";
 import { promisify } from "node:util";
 import test from "node:test";
+import { isRecord } from "./configuration.mts";
 
 const execute = promisify(execFile);
 
@@ -24,8 +25,8 @@ test("host certificate checks verify the live TLS identity, trust, renewal reser
       chmodSync(join(bin, name), 0o700);
     }
     writeFileSync(join(directory, "caddy.env"), "NYLZO_DOMAIN=nylzo.example.org\n");
-    for (const [name, domain, days] of [["valid", "nylzo.example.org", "7"], ["foreign", "other.example.org", "7"], ["renewal-due", "nylzo.example.org", "1"], ["long-lived", "nylzo.example.org", "30"]]) {
-      execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-days", days!, "-subj", `/CN=${domain}`, "-addext", `subjectAltName=DNS:${domain}`, "-addext", "extendedKeyUsage=serverAuth", "-keyout", join(directory, `${name}.key`), "-out", join(directory, `${name}.crt`)], { stdio: "pipe", timeout: 10000 });
+    for (const [name, domain, days] of [["valid", "nylzo.example.org", "7"], ["foreign", "other.example.org", "7"], ["renewal-due", "nylzo.example.org", "1"], ["long-lived", "nylzo.example.org", "30"]] as const) {
+      execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-days", days, "-subj", `/CN=${domain}`, "-addext", `subjectAltName=DNS:${domain}`, "-addext", "extendedKeyUsage=serverAuth", "-keyout", join(directory, `${name}.key`), "-out", join(directory, `${name}.crt`)], { stdio: "pipe", timeout: 10000 });
     }
     const run = async (endpoint: string, ca: string) => {
       await execute("bash", [resolve("deploy/hetzner-flatcar/host/monitoring/host-status")], { timeout: 15000, env: {
@@ -33,7 +34,10 @@ test("host certificate checks verify the live TLS identity, trust, renewal reser
         NYLZO_HOST_STATUS_DIR: output, NYLZO_DEPLOY_STATE: directory, NYLZO_CLOCK_STATE: join(directory, "no-clock"),
         NYLZO_CADDY_ENV: join(directory, "caddy.env"), NYLZO_CERTIFICATE_ENDPOINT: endpoint,
       } });
-      return JSON.parse(readFileSync(join(output, "status.json"), "utf8")).checks.certificate;
+      const report: unknown = JSON.parse(readFileSync(join(output, "status.json"), "utf8"));
+      const checks = isRecord(report) ? report["checks"] : undefined;
+      assert(isRecord(checks), "The host status reports no checks");
+      return checks["certificate"];
     };
     for (const [identity, ca, expected] of [["valid", "valid", true], ["valid", "foreign", false], ["foreign", "foreign", false], ["renewal-due", "renewal-due", false], ["long-lived", "long-lived", false]] as const) {
       const server = createServer({ key: readFileSync(join(directory, `${identity}.key`)), cert: readFileSync(join(directory, `${identity}.crt`)), minVersion: "TLSv1.3" }, socket => socket.end());

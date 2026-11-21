@@ -12,7 +12,7 @@ const PASSPHRASE = 'four random words here';
 const WRONG_PASSPHRASE = 'definitely the wrong one';
 
 test(
-  'a message with a passphrase and a file goes between two browsers under the enforced CSP, a wrong passphrase spends no open and no secret leaves either browser (AK1, AK2, AK5, AK10)',
+  'a message with a passphrase and a file goes between two browsers under the enforced CSP, a wrong passphrase spends no open and no secret leaves either browser',
   { tag: '@cross-browser' },
   async ({ newPage }) => {
     const sender = await newPage();
@@ -31,7 +31,7 @@ test(
     expect(link.startsWith(`${BASE_URL}/r#`)).toBe(true);
     expect(new URL(link).hash).toMatch(/^#3\.3\.[\w-]{22}\.[\w-]{43}\.[\w-]{43}$/u);
 
-    await showMessage(recipient, link, WRONG_PASSPHRASE);
+    await showMessage(recipient, link, { passphrase: WRONG_PASSPHRASE });
     await expect(recipient.getByText(/Wrong passphrase/u)).toBeVisible({ timeout: 30_000 });
     await recipient.getByLabel('Passphrase', { exact: true }).fill(PASSPHRASE);
     await recipient.getByRole('button', { name: 'Show message' }).click();
@@ -75,7 +75,7 @@ test(
 );
 
 test(
-  'no field for a secret offers it to spell checkers, translators, writing assistants or password managers (D38, D41, W2-03, W2-05)',
+  'no field for a secret offers it to spell checkers, translators, writing assistants or password managers',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi({ passphrase: PASSPHRASE, opensMax: 2 });
@@ -113,6 +113,7 @@ test(
     await page.getByLabel('Message text').fill('kept out of session restore');
     await page.getByRole('button', { name: 'Create link' }).click();
     await expect(page.getByLabel('Link to the message')).toHaveAttribute('autocomplete', 'off', { timeout: 45_000 });
+    await page.getByRole('button', { name: 'Track in Sent' }).click();
     await expectAttributes(page.getByPlaceholder(/label/iu), quiet);
 
     await page.goto(message.link);

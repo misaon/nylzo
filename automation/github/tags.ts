@@ -1,9 +1,8 @@
 import { z } from 'zod';
 
-export interface GitObject {
-  readonly sha: string;
-  readonly type: string;
-}
+const gitObjectSchema = z.object({ sha: z.string().regex(/^[a-f\d]{40}$/u), type: z.string() });
+
+export type GitObject = Readonly<z.infer<typeof gitObjectSchema>>;
 
 export interface TagReader {
   readonly rest: {
@@ -17,7 +16,6 @@ export interface TagReader {
   };
 }
 
-const gitObjectSchema = z.object({ sha: z.string().regex(/^[a-f\d]{40}$/u), type: z.string() });
 const nestedTagLimit = 3;
 
 export async function peelTag(

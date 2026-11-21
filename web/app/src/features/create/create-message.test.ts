@@ -37,7 +37,7 @@ function createDependencies(api: FakeApi, solve?: (call: PowCall, id: Uint8Array
     api,
     origin: 'https://nylzo.test',
     stretch,
-    solvePow: async (challenge, id, difficulty, budgetMs) => {
+    solvePow: async ({ challenge, id, difficulty, budgetMs }) => {
       const call = { challenge, difficulty, budgetMs };
       powCalls.push(call);
       api.calls.push('solve');
@@ -52,7 +52,7 @@ function input(overrides: Partial<CreateInput> = {}): CreateInput {
 }
 
 describe('creating a message', () => {
-  it('W2-06, F6: never compresses an attachment, which only a sender of the CLI may choose', async () => {
+  it('never compresses an attachment, which only a sender of the CLI may choose', async () => {
     const api = fakeApi();
     const bytes = new Uint8Array(256 * 1024).fill(65);
     const file = { name: 'rows.csv', mime: 'text/csv', bytes };
@@ -68,7 +68,7 @@ describe('creating a message', () => {
     expect(created.link).toMatch(/\/r#3\./u);
   });
 
-  it('F1, F7: pins the object in the link and registers with OPAQUE also without a passphrase', async () => {
+  it('pins the object in the link and registers with OPAQUE also without a passphrase', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));
     const [message] = api.stored.values();
@@ -205,7 +205,7 @@ describe('creating a message', () => {
     }
   });
 
-  it('warns unless the passphrase has 16 characters and 4 words (D37)', () => {
+  it('warns unless the passphrase has 16 characters and 4 words', () => {
     expect(passphraseIsWeak('twelve chars')).toBe(true);
     expect(passphraseIsWeak('sixteencharacter')).toBe(true);
     expect(passphraseIsWeak('one two three four')).toBe(false);
@@ -213,7 +213,7 @@ describe('creating a message', () => {
   });
 });
 
-describe('remembering the manage key (D39)', () => {
+describe('remembering the manage key', () => {
   it('returns a non-extractable manage key that signs the status of the new message', async () => {
     const api = fakeApi();
     const created = await createMessage(input(), createDependencies(api));

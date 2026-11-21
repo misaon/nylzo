@@ -15,28 +15,28 @@ type previewText struct {
 // previewHTML is the page link-preview agents get for a message link. It is the same for every message,
 // so a chat preview tells nothing about the message, its sender or its expiry.
 func previewHTML(language language, publicURL, image string) string {
-	text := language.preview
+	title, description := html.EscapeString(language.preview.title), html.EscapeString(language.preview.description)
 	var page strings.Builder
 	page.WriteString(`<!doctype html><html lang="` + language.tag + `"><head><meta charset="utf-8">`)
 	page.WriteString(`<meta name="viewport" content="width=device-width, initial-scale=1">`)
-	page.WriteString(`<meta name="robots" content="noindex, nofollow"><title>` + text.title + `</title>`)
+	page.WriteString(`<meta name="robots" content="noindex, nofollow"><title>` + title + `</title>`)
 	page.WriteString(`<meta property="og:type" content="website"><meta property="og:site_name" content="Nylzo">`)
-	page.WriteString(`<meta property="og:title" content="` + text.title + `">`)
-	page.WriteString(`<meta property="og:description" content="` + text.description + `">`)
+	page.WriteString(`<meta property="og:title" content="` + title + `">`)
+	page.WriteString(`<meta property="og:description" content="` + description + `">`)
 	card := "summary"
 	if publicURL != "" && image != "" {
 		page.WriteString(`<meta property="og:image" content="` + html.EscapeString(publicURL+"/assets/"+image) + `">`)
 		card = "summary_large_image"
 	}
 	page.WriteString(`<meta name="twitter:card" content="` + card + `"></head><body>`)
-	page.WriteString(`<p>` + text.description + `</p></body></html>`)
+	page.WriteString(`<p>` + description + `</p></body></html>`)
 	return page.String()
 }
 
 func previewPages(publicURL string, assets map[string]Asset) map[string][]byte {
 	image := ""
 	for _, name := range slices.Sorted(maps.Keys(assets)) {
-		if strings.HasPrefix(name, "og-image-") && strings.HasSuffix(name, ".png") {
+		if strings.HasPrefix(name, "og-image-") && strings.HasSuffix(name, ".jpg") {
 			image = name
 			break
 		}

@@ -5,7 +5,7 @@ import { geoEqualEarth, geoPath } from 'd3-geo';
 import type { GeoContext } from 'd3-geo';
 import countries from 'i18n-iso-countries';
 import { feature } from 'topojson-client';
-import type { GeometryCollection, Topology } from 'topojson-specification';
+import type { GeometryCollection, MultiPolygon, Polygon, Topology } from 'topojson-specification';
 import atlas from 'world-atlas/countries-110m.json' with { type: 'json' };
 import atlasPackage from 'world-atlas/package.json' with { type: 'json' };
 
@@ -13,13 +13,78 @@ interface CountryProperties {
   readonly name: string;
 }
 
+type CountryGeometry = Polygon<CountryProperties> | MultiPolygon<CountryProperties>;
+type CountryTopology = Topology<{ countries: GeometryCollection<CountryProperties> }>;
+
 const output = path.resolve(import.meta.dirname, '../src/admin/map/world-map.json');
 const width = 1000;
 const antarcticaId = '010';
 const kosovoName = 'Kosovo';
 
-// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- world-atlas ships untyped TopoJSON with the countries object.
-const topology = atlas as unknown as Topology<{ countries: GeometryCollection<CountryProperties> }>;
+function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNumberArray(value: unknown, depth = 1): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every((item: unknown) => (depth === 1 ? typeof item === 'number' : isNumberArray(item, depth - 1)))
+  );
+}
+
+function isNumberPair(value: unknown): boolean {
+  return Array.isArray(value) && value.length === 2 && isNumberArray(value);
+}
+
+function isOptionalBounds(value: unknown): boolean {
+  return (
+    value === undefined || (Array.isArray(value) && (value.length === 4 || value.length === 6) && isNumberArray(value))
+  );
+}
+
+function isCountryGeometry(value: unknown): value is CountryGeometry {
+  if (!isRecord(value) || !isRecord(value['properties'])) {
+    return false;
+  }
+  const { type, arcs, id, bbox, properties } = value;
+  return (
+    ((type === 'Polygon' && isNumberArray(arcs, 2)) || (type === 'MultiPolygon' && isNumberArray(arcs, 3))) &&
+    (id === undefined || typeof id === 'string' || typeof id === 'number') &&
+    isOptionalBounds(bbox) &&
+    typeof properties['name'] === 'string'
+  );
+}
+
+function isCountryTopology(value: unknown): value is CountryTopology {
+  if (!isRecord(value) || !isRecord(value['objects'])) {
+    return false;
+  }
+  const { type, arcs, bbox, transform, objects } = value;
+  const { countries: countryObject } = objects;
+  return (
+    type === 'Topology' &&
+    isNumberArray(arcs, 3) &&
+    isOptionalBounds(bbox) &&
+    (transform === undefined ||
+      (isRecord(transform) && isNumberPair(transform['scale']) && isNumberPair(transform['translate']))) &&
+    isRecord(countryObject) &&
+    countryObject['type'] === 'GeometryCollection' &&
+    countryObject['id'] === undefined &&
+    countryObject['properties'] === undefined &&
+    isOptionalBounds(countryObject['bbox']) &&
+    Array.isArray(countryObject['geometries']) &&
+    countryObject['geometries'].every((geometry: unknown) => isCountryGeometry(geometry))
+  );
+}
+
+function countryTopology(data: unknown): CountryTopology {
+  if (!isCountryTopology(data)) {
+    throw new TypeError('world-atlas countries-110m.json is not a topology of named country polygons');
+  }
+  return data;
+}
+
+const topology = countryTopology(atlas);
 const collection = feature(topology, topology.objects.countries);
 
 const inhabited = {

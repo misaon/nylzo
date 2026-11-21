@@ -5,7 +5,9 @@
   import Button from '../../../shared/ui/button/Button.svelte';
   import { privatePassphrase, submitOnEnter } from '../../../shared/ui/field/private-fields.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import ErrorNote from '../../../shared/ui/notice/ErrorNote.svelte';
   import Switch from '../../../shared/ui/switch/Switch.svelte';
+  import { lingering } from '../../../shared/ui/transition/lingering.ts';
   import { WEAK_BELOW_WORDS } from '../create-message.ts';
   import type { Composer } from './composer.svelte.ts';
   import ComposerMenu from './ComposerMenu.svelte';
@@ -17,6 +19,8 @@
   const { composer }: Props = $props();
   const { translate } = getTranslator();
   const id = $props.id();
+  const problem = $derived(composer.problemOf.passphrase !== undefined);
+  const keepProblem = lingering();
 </script>
 
 <ComposerMenu
@@ -37,7 +41,7 @@
     aria-labelledby="{id}-protect"
     aria-describedby="{id}-protect-note"
     onclick={() => void composer.toggleProtect()}
-    class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 rounded-control p-2.5 text-left transition hover:bg-white/4"
+    class="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 rounded-control press-soft p-2.5 text-left transition hover:bg-white/4"
   >
     <span id="{id}-protect" class="text-ui font-medium text-ink">{translate('compose.passphrase.switch')}</span>
     <span class="shrink-0"><Switch on={composer.protect} /></span>
@@ -70,8 +74,8 @@
             min: MIN_PASSPHRASE_CHARACTERS,
             words: WEAK_BELOW_WORDS,
           })}
-          aria-invalid={composer.problemOf.passphrase !== undefined}
-          aria-describedby="{id}-passphrase-hint {id}-passphrase-problem"
+          aria-invalid={problem}
+          aria-describedby={problem ? `${id}-passphrase-problem` : undefined}
           class="h-full min-w-0 flex-1 bg-transparent text-ui text-ink outline-none placeholder:text-ink-mute"
         />
       </div>
@@ -80,16 +84,18 @@
         {translate('compose.passphrase.generate')}
       </Button>
     </div>
-    <div class="mt-2 grid *:col-start-1 *:row-start-1">
-      <p
-        id="{id}-passphrase-hint"
-        class={['text-micro text-pretty text-ink-mute', composer.problemOf.passphrase !== undefined && 'invisible']}
-      >
-        {translate('create.passphrase.hint')}
-      </p>
-      <p id="{id}-passphrase-problem" class="flex items-start gap-1.5 text-caption text-rose-300 empty:invisible">
-        {composer.problemOf.passphrase === undefined ? '' : composer.passphraseMessage}
-      </p>
+    <div
+      class={[
+        'overflow-y-clip transition-[opacity,height,margin] duration-300 [interpolate-size:allow-keywords]',
+        problem ? 'mt-2 h-auto opacity-100' : 'mt-0 h-0 opacity-0',
+      ]}
+      inert={!problem}
+    >
+      <ErrorNote
+        id="{id}-passphrase-problem"
+        message={keepProblem(problem ? composer.passphraseMessage : '')}
+        class="py-0.5"
+      />
     </div>
   </div>
 </ComposerMenu>

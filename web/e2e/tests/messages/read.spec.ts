@@ -1,4 +1,5 @@
 import { KDF_NONE } from '@nylzo/core';
+import type { Page } from '@playwright/test';
 
 import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
@@ -22,7 +23,7 @@ const LEFT = 'You left the page, so it no longer shows the message.';
 const REMOVED = /^The key is no longer in the address bar$/u;
 
 test(
-  'pagehide removes decrypted text before the browser can freeze the document (D95)',
+  'pagehide removes decrypted text before the browser can freeze the document',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi({ text: 'clear this before freezing', opensMax: 2 });
@@ -37,7 +38,7 @@ test(
   },
 );
 
-test('loading drops the key from the address, and reloading or a return from the back/forward cache spend no open (AK3, D95)', async ({
+test('loading drops the key from the address, and reloading or a return from the back/forward cache spend no open', async ({
   page,
 }) => {
   const message = await createMessageThroughApi({ text: 'still unread' });
@@ -106,12 +107,13 @@ test(
             height: box.height,
           });
         }
+        const [navigation] = performance.getEntriesByType('navigation');
         return {
           fontGateReleased: document.documentElement.dataset['fonts'] !== undefined,
           ready: document.documentElement.dataset['ready'] !== undefined,
           visibility: document.visibilityState,
           fontStatus: document.fonts.status,
-          navigation: (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type,
+          navigation: navigation instanceof PerformanceNavigationTiming ? navigation.type : undefined,
           ancestors,
         };
       });
@@ -123,7 +125,7 @@ test(
   },
 );
 
-test('the reader acknowledges the open only once the message is on the screen, and leaving before that keeps the lease (D79)', async ({
+test('the reader acknowledges the open only once the message is on the screen, and leaving before that keeps the lease', async ({
   newPage,
 }) => {
   const message = await createMessageThroughApi({ text: 'on screen' });
@@ -199,7 +201,7 @@ test('leaving the page wipes the shown message and closes its dialogs without de
   expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
 });
 
-test('a prefetch or prerender reaches the read page and the API only as a refused Sec-Purpose request and spends no open (AK16)', async ({
+test('a prefetch or prerender reaches the read page and the API only as a refused Sec-Purpose request and spends no open', async ({
   page,
   request,
 }) => {
@@ -249,12 +251,12 @@ const HIDDEN_STATES = {
 };
 
 for (const [state, hide] of Object.entries(HIDDEN_STATES)) {
-  test(`a ${state} page does not start reading until it is shown (AK16)`, async ({ page }) => {
+  test(`a ${state} page does not start reading until it is shown`, async ({ page }) => {
     const message = await createMessageThroughApi({ passphrase: PASSPHRASE, text: 'shown' });
     const field = page.getByLabel('Passphrase', { exact: true });
     const show = page.getByRole('button', { name: 'Show message' });
     await page.addInitScript(hide);
-    await showMessage(page, message.link, PASSPHRASE);
+    await showMessage(page, message.link, { passphrase: PASSPHRASE });
     await nextFrames(page);
     await expect(show).toBeEnabled();
     await expect(notInert(page, field)).toBeEditable();
@@ -269,9 +271,7 @@ for (const [state, hide] of Object.entries(HIDDEN_STATES)) {
   });
 }
 
-test('the reader stops before the handshake when the server reports another passphrase profile (AK24)', async ({
-  page,
-}) => {
+test('the reader stops before the handshake when the server reports another passphrase profile', async ({ page }) => {
   const message = await createMessageThroughApi({ passphrase: PASSPHRASE });
   const sensitive: string[] = [];
   page.on('request', (request) => {
@@ -281,8 +281,9 @@ test('the reader stops before the handshake when the server reports another pass
   });
   await page.route(`${BASE_URL}/api/v1/messages/${message.id}`, async (route) => {
     const response = await route.fetch();
-    const json = (await response.json()) as Record<string, unknown>;
-    await route.fulfill({ response, json: { ...json, kdf_id: KDF_NONE } });
+    const metadata: unknown = await response.json();
+    const fields = typeof metadata === 'object' ? metadata : null;
+    await route.fulfill({ response, json: { ...fields, kdf_id: KDF_NONE } });
   });
   await page.goto(message.link);
   await expect(page.getByText(/cannot be opened safely/u)).toBeVisible();
@@ -291,8 +292,47 @@ test('the reader stops before the handshake when the server reports another pass
   expect(await message.status()).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
 });
 
+async function pasted(into: Page): Promise<string> {
+  await into.setContent('<textarea></textarea>');
+  await into.locator('textarea').focus();
+  await into.keyboard.press('ControlOrMeta+v');
+  return into.locator('textarea').inputValue();
+}
+
+test('a hand copy of a message keeps its hidden characters, not their labels', async ({ newPage }) => {
+  const text = 'pay \u{202E}0001 tnuocca\npass\u{200B}word \u{3164}x';
+  const message = await createMessageThroughApi({ text });
+  const page = await newPage();
+  const paste = await newPage();
+  await showMessage(page, message.link);
+  await expectMessageShown(page);
+  await expect(page.locator('pre mark')).toHaveCount(3);
+  await page.locator('pre').evaluate((pre) => getSelection()?.selectAllChildren(pre));
+  await page.keyboard.press('ControlOrMeta+c');
+  expect(await pasted(paste)).toBe(text);
+  await page.locator('pre').evaluate((pre) => {
+    const label = pre.querySelector('mark')?.firstChild;
+    if (label) {
+      getSelection()?.setBaseAndExtent(pre, 0, label, 3);
+    }
+  });
+  await page.keyboard.press('ControlOrMeta+c');
+  expect(await pasted(paste), 'a selection that ends inside a label').toBe('pay \u{202E}');
+  await page.locator('pre').evaluate((pre) => {
+    const label = pre.querySelector('mark')?.firstChild;
+    if (label) {
+      getSelection()?.setBaseAndExtent(label, label.textContent?.length ?? 0, pre, pre.childNodes.length);
+    }
+  });
+  await page.keyboard.press('ControlOrMeta+c');
+  expect(await pasted(paste), 'a selection that starts after a label').toBe(text.slice('pay \u{202E}'.length));
+  await page.locator('pre mark').first().click({ clickCount: 3 });
+  await page.keyboard.press('ControlOrMeta+c');
+  expect(await pasted(paste), 'a triple click on the first line').toMatch(/^pay \u{202E}0001 tnuocca/u);
+});
+
 test(
-  'marks hidden and direction-changing characters and asks before copying them (W2-12)',
+  'marks hidden and direction-changing characters and asks before copying them',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const message = await createMessageThroughApi({ text: 'pay \u{202E}0001 tnuocca' });

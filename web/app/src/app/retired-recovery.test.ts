@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import { IDBFactory } from 'fake-indexeddb';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { forgetRetiredRecovery } from './retired-recovery.ts';
@@ -13,24 +14,23 @@ describe('retired recovery cleanup', () => {
     sessionStorage.setItem('unrelated', 'keep');
     sessionStorage.setItem('nylzo:link:second', 'synthetic');
     sessionStorage.setItem('nylzo:kdf:AAAAAAAAAAAAAAAAAAAAAA', '1');
-    const deleteDatabase = vi.fn<(...arguments_: unknown[]) => void>();
-    forgetRetiredRecovery(() => sessionStorage, { deleteDatabase } as unknown as IDBFactory);
+    const databases = new IDBFactory();
+    const deleteDatabase = vi.spyOn(databases, 'deleteDatabase');
+    forgetRetiredRecovery(() => sessionStorage, databases);
     expect(sessionStorage.length).toBe(1);
     expect(sessionStorage.getItem('unrelated')).toBe('keep');
     expect(deleteDatabase).toHaveBeenCalledExactlyOnceWith('nylzo-resume');
   });
 
   it('continues startup when storage access or legacy deletion is refused', () => {
-    const deleteDatabase = vi.fn<(...arguments_: unknown[]) => never>(() => {
+    const databases = new IDBFactory();
+    const deleteDatabase = vi.spyOn(databases, 'deleteDatabase').mockImplementation(() => {
       throw new Error('blocked');
     });
     expect(() =>
-      forgetRetiredRecovery(
-        () => {
-          throw new Error('denied');
-        },
-        { deleteDatabase } as unknown as IDBFactory,
-      ),
+      forgetRetiredRecovery(() => {
+        throw new Error('denied');
+      }, databases),
     ).not.toThrow();
     expect(deleteDatabase).toHaveBeenCalledOnce();
     expect(() => forgetRetiredRecovery(() => sessionStorage, undefined)).not.toThrow();

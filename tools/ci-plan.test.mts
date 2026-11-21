@@ -42,6 +42,9 @@ test("Go and web changes retain integration coverage and their language security
   assert.equal(web.jobs["macos-release"], true);
   assert.equal(web.jobs.go, false);
   assert.equal(planChecks(["web/package.json"], "pull_request").dependencies, true);
+  const languages = planChecks(["internal/server/webclient/languages.json"], "pull_request");
+  assert.equal(languages.jobs.go, true);
+  assert.equal(languages.jobs.web, true);
 });
 
 test("pushes, mixed changes, renames, and full scans cannot hide executable changes behind Markdown", () => {
@@ -84,6 +87,9 @@ test("the required gate rejects failed classification, missing outputs, and ever
     }
     for (const jobs of ["", "null", "{}", "[]", '{"web":"false"}']) {
       assert.equal(checksPassed({ ...results, changes: { result: "success", outputs: { jobs } } }), false);
+    }
+    for (const malformed of [null, "success", [], { ...results, changes: null }, { ...results, changes: { result: "success", outputs: null } }]) {
+      assert.equal(checksPassed(malformed), false);
     }
   }
 });
@@ -138,13 +144,16 @@ test("the plan step tells release verification whether the run was forced, and u
     execFileSync(process.execPath, ["tools/ci-plan.mts"], {
       env: { ...process.env, GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: join(directory, "summary"), ...environment },
     });
-    return Object.fromEntries(readFileSync(output, "utf8").trim().split("\n").map((line) => line.split(/=(.*)/su, 2)));
+    return new Map(readFileSync(output, "utf8").trim().split("\n").map((line): [string, string | undefined] => {
+      const [key = "", value] = line.split(/=(.*)/su, 2);
+      return [key, value];
+    }));
   };
   try {
     const forced = plan({ EVENT: "pull_request", FORCE_FULL_VERIFICATION: "true", TRUSTED_COVERAGE: "false" });
-    assert.deepEqual([forced.forced, forced.full, forced.coverage], ["true", "true", "false"]);
+    assert.deepEqual([forced.get("forced"), forced.get("full"), forced.get("coverage")], ["true", "true", "false"]);
     const scheduled = plan({ EVENT: "schedule", FORCE_FULL_VERIFICATION: "false", TRUSTED_COVERAGE: "true" });
-    assert.deepEqual([scheduled.forced, scheduled.full, scheduled.coverage], ["false", "true", "true"]);
+    assert.deepEqual([scheduled.get("forced"), scheduled.get("full"), scheduled.get("coverage")], ["false", "true", "true"]);
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }

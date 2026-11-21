@@ -29,7 +29,7 @@ test('messages from the CLI, with and without a passphrase, open in the browser'
 
   const guarded = runCli(['create', '--server', BASE_URL, '--passphrase-file', passphraseFile()], 'chráněno').trim();
   expect(guarded).toContain('#3.3.');
-  await showMessage(page, guarded, PASSPHRASE);
+  await showMessage(page, guarded, { passphrase: PASSPHRASE });
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('chráněno');
 });
@@ -53,7 +53,7 @@ test('the CLI reads messages and files created in the browser', async ({ page })
 });
 
 test(
-  'an attachment the CLI sender chose to compress opens and downloads unchanged in every browser (W2-06, F6)',
+  'an attachment the CLI sender chose to compress opens and downloads unchanged in every browser',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const directory = mkdtempSync(path.join(tmpdir(), 'nylzo-compressed-'));
@@ -75,7 +75,7 @@ test(
 );
 
 test(
-  'the browser never compresses an attachment on its own and the CLI restores its bytes (W2-06, F6)',
+  'the browser never compresses an attachment on its own and the CLI restores its bytes',
   { tag: '@cross-browser' },
   async ({ page }) => {
     const bytes = Buffer.from('row,1,alpha\n'.repeat(20_000));

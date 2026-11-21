@@ -17,10 +17,9 @@ interface FileMeta {
   readonly size: number;
 }
 
-export interface Meta {
-  readonly text?: string | undefined;
-  readonly file?: FileMeta | undefined;
-}
+export type Meta =
+  | { readonly text: string; readonly file?: FileMeta | undefined }
+  | { readonly text?: string | undefined; readonly file: FileMeta };
 
 // oxlint-disable-next-line no-control-regex -- spec 3.1 forbids C0 controls and DEL in file names
 const FORBIDDEN_IN_FILE_NAME = /[\u{0}-\u{1F}\u{7F}/\\]/u;
@@ -136,11 +135,16 @@ function parseMetaJson(bytes: Uint8Array): JsonValue {
 }
 
 function metaFromJson(members: ReadonlyMap<string, JsonValue>): Meta {
-  const file = member(members, 'file');
-  return {
-    text: optionalString(member(members, 'text')),
-    file: file === undefined ? undefined : fileFromJson(file),
-  };
+  const text = optionalString(member(members, 'text'));
+  const fileValue = member(members, 'file');
+  const file = fileValue === undefined ? undefined : fileFromJson(fileValue);
+  if (file !== undefined) {
+    return { text, file };
+  }
+  if (text !== undefined) {
+    return { text, file };
+  }
+  throw new MetaError('meta needs text or file');
 }
 
 function fileFromJson(value: JsonValue): FileMeta {

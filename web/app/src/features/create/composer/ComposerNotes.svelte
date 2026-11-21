@@ -1,8 +1,10 @@
 <script lang="ts">
+  import Interpolated from '../../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Button from '../../../shared/ui/button/Button.svelte';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
-  import { ARROW_LINK } from '../../../shared/ui/link/link-classes.ts';
+  import { ARROW_LINK, INLINE_TARGET, TEXT_LINK } from '../../../shared/ui/link/link-classes.ts';
+  import ErrorNote from '../../../shared/ui/notice/ErrorNote.svelte';
   import ServiceCallout from '../../../shared/ui/notice/ServiceCallout.svelte';
   import { lingering } from '../../../shared/ui/transition/lingering.ts';
   import type { Composer } from './composer.svelte.ts';
@@ -19,7 +21,10 @@
   const keepProblem = lingering();
   const problemNotice = $derived(keepProblem(composer.problemNotice));
   const quiet = $derived(composer.notice === '' && composer.phase !== 'done');
-  const rememberedShown = $derived(composer.remembered === 'remembered' || composer.remembered === 'failed');
+  // The tracking panel lifts this row when it leaves, so a saved message waits for that and appears in its final place.
+  const rememberedShown = $derived(
+    (composer.remembered === 'remembered' && composer.trackingPanelLeft) || composer.remembered === 'failed',
+  );
   const rememberedText = $derived.by(() => {
     if (composer.remembered === 'remembered') {
       return translate(composer.kept ? 'created.remembered' : 'created.remembered.session');
@@ -35,12 +40,13 @@
       quiet ? 'opacity-100' : 'pointer-events-none opacity-0',
       failed && 'h-0',
     ]}
+    inert={!quiet}
   >
-    <Icon
-      name="shieldCheck"
-      stroke={1.7}
-      class="mr-2 inline-block size-4 shrink-0 align-[-3px] text-aegis-300"
-    />{translate('compose.note')}
+    <Interpolated text={translate('compose.note')} placeholder="link"
+      ><a href="/terms" target="_blank" rel="noreferrer" class={[TEXT_LINK, INLINE_TARGET]}
+        >{translate('terms.agree.link')}<span class="sr-only"> {translate('link.new_tab')}</span></a
+      ></Interpolated
+    >
   </p>
   <div
     class={[
@@ -60,11 +66,11 @@
   </div>
   <div
     class={[
-      'absolute inset-x-0 top-1/2 flex -translate-y-1/2 items-center justify-center text-center fade-swap',
+      'absolute inset-x-0 top-1/2 z-30 flex -translate-y-1/2 items-center justify-center text-left fade-swap',
       composer.problemNotice === '' ? 'pointer-events-none invisible opacity-0' : 'opacity-100',
     ]}
   >
-    <p id={noticeId} role="alert" class="font-medium text-balance text-[#fda4af]">{problemNotice}</p>
+    <ErrorNote id={noticeId} message={problemNotice} />
   </div>
   <div
     class={[

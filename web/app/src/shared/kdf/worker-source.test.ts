@@ -45,7 +45,6 @@ describe('verified worker source', () => {
     expect(fetchSource).toHaveBeenCalledExactlyOnceWith(
       expect.any(String),
       expect.objectContaining({
-        cache: 'no-store',
         credentials: 'omit',
         redirect: 'error',
         referrerPolicy: 'no-referrer',
@@ -65,6 +64,7 @@ describe('verified worker source', () => {
     await prepareWorker();
     const started = await startWorker();
     expect(fetchSource).toHaveBeenCalledTimes(2);
+    expect(fetchSource).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ cache: 'reload' }));
     started.stop();
   });
 

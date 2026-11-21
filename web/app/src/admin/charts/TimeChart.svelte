@@ -99,7 +99,7 @@
 
   function follow(event: PointerEvent & { readonly currentTarget: HTMLDivElement }): void {
     const bounds = event.currentTarget.getBoundingClientRect();
-    active = nearestIndex(event.clientX - bounds.left, left, right - left, count);
+    active = nearestIndex({ position: event.clientX - bounds.left, start: left, width: right - left, count });
   }
 
   function step(event: KeyboardEvent): void {
@@ -107,7 +107,7 @@
       active = undefined;
       return;
     }
-    const next = steppedIndex(event.key, active ?? count - 1, count);
+    const next = steppedIndex({ key: event.key, index: active ?? count - 1, count });
     if (next !== undefined) {
       event.preventDefault();
       active = next;

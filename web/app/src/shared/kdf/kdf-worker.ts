@@ -11,18 +11,27 @@ function reply(message: KdfResponse, transfer: Transferable[] = []): void {
 
 function handle(request: KdfRequest): void {
   const onProgress = throttledProgress((fraction) => reply({ kind: 'progress', fraction }));
-  if (request.kind === 'stretch') {
-    const key = stretchScrypt(request.message, onProgress);
-    request.message.fill(0);
-    reply({ kind: 'key', key }, [key.buffer]);
-    return;
+  switch (request.kind) {
+    case 'stretch': {
+      const key = stretchScrypt(request.message, onProgress);
+      request.message.fill(0);
+      reply({ kind: 'key', key }, [key.buffer]);
+      break;
+    }
+    case 'pow': {
+      const expected = 2 ** request.difficulty;
+      const token = solvePow(request.challenge, request.id, request.difficulty, {
+        budgetMs: request.budgetMs,
+        onAttempt: (counter) => onProgress(Math.min(counter / expected, 1)),
+      });
+      reply({ kind: 'token', token });
+      break;
+    }
+    default: {
+      const exhaustive: never = request;
+      void exhaustive;
+    }
   }
-  const expected = 2 ** request.difficulty;
-  const token = solvePow(request.challenge, request.id, request.difficulty, {
-    budgetMs: request.budgetMs,
-    onAttempt: (counter) => onProgress(Math.min(counter / expected, 1)),
-  });
-  reply({ kind: 'token', token });
 }
 
 addEventListener('message', (event: MessageEvent<unknown>) => {

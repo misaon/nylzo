@@ -50,7 +50,7 @@
         value={totals[stat.metric]}
         change={stat.metric === 'visitors' && !daily
           ? undefined
-          : trend(totals[stat.metric], overview.previous?.[stat.metric])}
+          : trend({ current: totals[stat.metric], previous: overview.previous?.[stat.metric] })}
         tone={stat.tone}
         growthIsGood={stat.growthIsGood}
         {range}
@@ -88,7 +88,7 @@
       formatTick={format.compact}
       periodLabel={(index) => format.period(timeline, index)}
       tickLabel={(index) => format.tick(timeline, index)}
-      tickIndexes={(width) => timeTicks(timeline, width, TICK_GAP)}
+      tickIndexes={(width) => timeTicks(timeline, { width, gap: TICK_GAP })}
     />
     <div class="mt-6 border-t border-white/8 pt-5">
       <h3 class="mb-3 text-caption text-ink-soft">{translate('dashboard.traffic.share')}</h3>
