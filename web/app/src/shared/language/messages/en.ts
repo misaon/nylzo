@@ -466,8 +466,6 @@ export const messages: Catalog = {
   'compose.opens.title': 'How many times the message opens',
   'compose.opens.less': 'Fewer opens',
   'compose.opens.more': 'More opens',
-  'compose.opens.history':
-    'A reader who clicks the link keeps a working link in their browser history until the last open, so protect the message with a passphrase.',
   'compose.security': 'Security',
   'compose.passphrase.chip': 'With passphrase',
   'compose.passphrase.chip.off': 'No passphrase',

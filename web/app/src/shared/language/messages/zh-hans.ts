@@ -442,8 +442,6 @@ export const messages: Catalog = {
   'compose.opens.title': '消息可以打开几次',
   'compose.opens.less': '减少打开次数',
   'compose.opens.more': '增加打开次数',
-  'compose.opens.history':
-    '点击链接的接收者，其浏览器历史记录中会留下一条可用的链接，直到消息用完全部允许的打开次数。因此请用密码保护消息。',
   'compose.security': '安全设置',
   'compose.passphrase.chip': '已设密码',
   'compose.passphrase.chip.off': '无密码',

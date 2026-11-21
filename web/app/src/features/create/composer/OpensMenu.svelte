@@ -66,7 +66,4 @@
       {/each}
     </div>
   </div>
-  {#if composer.opensMax > 1 && !composer.usesPassphrase}
-    <p class="px-3 pt-2 pb-1 text-micro text-pretty text-nebula-300">{translate('compose.opens.history')}</p>
-  {/if}
 </ComposerMenu>
