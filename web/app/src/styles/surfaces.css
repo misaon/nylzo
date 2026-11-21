@@ -12,12 +12,36 @@
 }
 
 @utility glass-pop {
-  background: linear-gradient(160deg, oklch(1 0 0 / 0.08), oklch(1 0 0 / 0.02) 50%), oklch(0.16 0.035 270 / 0.95);
+  background: linear-gradient(160deg, oklch(1 0 0 / 0.08), oklch(1 0 0 / 0.02) 50%), oklch(0.16 0.035 270);
   border: 1px solid oklch(1 0 0 / 0.12);
   box-shadow:
     inset 0 1px 0 oklch(1 0 0 / 0.08),
     0 24px 60px -20px oklch(0.04 0.03 275 / 0.95);
-  backdrop-filter: blur(24px) saturate(150%);
+}
+
+@utility scroll-edge {
+  @supports (animation-timeline: scroll()) {
+    @media (prefers-reduced-motion: no-preference) {
+      &::before {
+        content: '';
+        position: absolute;
+        inset: 0 0 -1.25rem;
+        z-index: -1;
+        background: linear-gradient(to bottom, var(--color-void-950) 30%, transparent);
+        opacity: 0;
+        pointer-events: none;
+        animation: scroll-edge-in linear both;
+        animation-timeline: scroll(root);
+        animation-range: 0 5rem;
+      }
+    }
+  }
+}
+
+@keyframes scroll-edge-in {
+  to {
+    opacity: 1;
+  }
 }
 
 @utility glass-soft {

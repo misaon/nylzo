@@ -63,7 +63,7 @@
   </div>
 
   <div {@attach composer.glide.attach}>
-    <div class="relative z-20 mx-auto mt-8 max-w-column animate-rise [animation-delay:240ms]">
+    <div class="relative z-20 mx-auto mt-8 max-w-column animate-rise [animation-delay:100ms]">
       <div class="glow-under" aria-hidden="true"></div>
       <div class="glass rounded-card">
         <div class="ring-light" aria-hidden="true"><div class="ring-light-spin animate-spin-slow"></div></div>
@@ -127,7 +127,7 @@
       role="list"
       aria-label={translate('hero.proof.label')}
       class={[
-        'glass-soft mx-auto mt-5 hidden w-fit animate-rise overflow-hidden rounded-full shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] transition-opacity duration-300 [animation-delay:280ms] [animation-fill-mode:backwards] md:flex',
+        'glass-soft mx-auto mt-5 hidden w-fit animate-rise overflow-hidden rounded-full shadow-[inset_0_1px_0_oklch(1_0_0/0.06)] transition-opacity duration-300 [animation-delay:160ms] [animation-fill-mode:backwards] md:flex',
         composer.phase === 'done' && 'pointer-events-none opacity-0',
       ]}
       inert={composer.phase === 'done'}
