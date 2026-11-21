@@ -20,7 +20,7 @@ test("the host bundle is reproducible and every file has one place and one role 
     assert.match(target, pattern, `activate refuses ${target}`);
     assert(sources.has(source), `missing ${source}`);
   }
-  const composed = ["proxy/Caddyfile", "proxy/www.Caddyfile", "proxy/monitor.Caddyfile", "system/sshd-hardware-keys.conf"];
+  const composed = ["proxy/Caddyfile", "proxy/www.Caddyfile", "system/sshd-hardware-keys.conf"];
   for (const name of sources.keys()) assert(["manifest", "units", ...composed].includes(name) || entries.some(entry => entry.source === name), `${name} is never installed`);
   for (const line of sources.get("units")!.trimEnd().split("\n")) {
     const [action, , unit] = line.split(" ");
@@ -74,7 +74,6 @@ export NYLZO_TEST_APPLICATION_ACTIVE=true
 printf 'AUTOMATIC_UPDATES=true\nPUBLIC_ACCESS=false\nWWW_REDIRECT=true\nADMINISTRATOR_NETWORKS=192.0.2.1/32\n' > /etc/nylzo/host.env
 printf 'NYLZO_DOMAIN=nylzo.example.org\n' > /etc/nylzo/caddy.env
 printf 'NYLZO_CONTACT=abuse@nylzo.example.org\n' > /etc/nylzo/service.env
-printf 'certificate\n' > /etc/nylzo/monitor-client.pem
 stage() {
   mkdir -p "/opt/nylzo/host/$2"
   tar --extract --file "/bundles/$1" --directory "/opt/nylzo/host/$2" --no-same-owner --no-same-permissions
@@ -85,7 +84,6 @@ bash /opt/nylzo/host/initial/update/activate --first-boot /opt/nylzo/host/initia
 [[ "$(stat -c %a /opt/nylzo/runtime/update)" = 755 && "$(stat -c %a /etc/systemd/system/nylzo.service)" = 644 ]]
 grep -q '^KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512,sntrup761x25519-sha512@openssh\.com$' /etc/ssh/sshd_config.d/20-nylzo.conf
 grep -q '^www\.{\$NYLZO_DOMAIN} {$' /etc/caddy/Caddyfile
-grep -q '^https://{\$NYLZO_DOMAIN}:8443 {$' /etc/caddy/Caddyfile
 [[ "$(cat /etc/nylzo/caddy.env)" = $'NYLZO_DOMAIN=nylzo.example.org\nNYLZO_CONTACT=abuse@nylzo.example.org' ]]
 [[ -s /etc/systemd/system/nylzo-update.service.d/20-sandbox.conf && -s /etc/systemd/system/nylzo-initialize.service.d/20-sandbox.conf ]]
 grep -qx 'enable --quiet nylzo-update.timer' /tmp/systemctl

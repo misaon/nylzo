@@ -607,7 +607,6 @@ func TestCaddyfilesLogNoRequestSecrets(t *testing.T) {
 	}
 	const messageID = "sentinel-message-id"
 	burn, claim := api.MessagePath(messageID)+api.BurnAction, api.MessagePath(messageID)+api.ClaimAction
-	// The monitor site is left out: it needs the monitor's client certificate file.
 	for name, profile := range map[string]struct {
 		parts     []string
 		redirects []string

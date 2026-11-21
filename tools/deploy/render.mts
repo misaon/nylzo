@@ -84,7 +84,6 @@ export async function render(input: unknown, bundle: HostBundle) {
     ...early.map(target => embedded(target, host.get(manifest.get(target)!)!)),
     bundle instanceof Map ? embedded("/opt/nylzo/host/initial.tar", archive(bundle), 0o600) : remote("/opt/nylzo/host/initial.tar", bundle),
   ];
-  if (site.monitorClientCertificate) files.push(embedded("/etc/nylzo/monitor-client.pem", site.monitorClientCertificate));
   if (site.heartbeatUrl) files.push(embedded("/etc/nylzo/heartbeat.url", `${site.heartbeatUrl}\n`, 0o600));
   if (site.tang) files.push(embedded("/etc/nylzo/tang.json", JSON.stringify({ t: site.tang.threshold, pins: { tang: site.tang.servers.map((server: { url: string; thumbprint: string }) => ({ url: server.url, thp: server.thumbprint })) } }), 0o600));
   const ignition = {

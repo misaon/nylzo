@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { isIP } from "node:net";
-import { X509Certificate, createPublicKey } from "node:crypto";
+import { createPublicKey } from "node:crypto";
 
 export function configuration(input: any) {
-  const allowed = ["name", "domain", "location", "serverType", "architecture", "administratorNetworks", "administratorPublicKey", "reportPublicKey", "operator", "contact", "hosting", "dailyCreates", "initialRelease", "automaticUpdates", "dnsZone", "cloudflareAccountId", "publicAccess", "monitorClientCertificate", "heartbeatUrl", "tang", "acmeAccountUri", "profile"];
+  const allowed = ["name", "domain", "location", "serverType", "architecture", "administratorNetworks", "administratorPublicKey", "reportPublicKey", "operator", "contact", "hosting", "dailyCreates", "initialRelease", "automaticUpdates", "dnsZone", "cloudflareAccountId", "publicAccess", "heartbeatUrl", "tang", "acmeAccountUri", "profile"];
   assert(input && typeof input === "object" && !Array.isArray(input));
   assert(Object.keys(input).every(key => allowed.includes(key)), "Unknown deployment option");
   assert.match(input.name, /^[a-z][a-z0-9-]{0,30}$/u);
@@ -36,22 +36,6 @@ export function configuration(input: any) {
     assert.equal(Buffer.from(input.reportPublicKey, "base64url").length, 1216);
   }
   assert.equal(typeof input.automaticUpdates, "boolean");
-  if (input.monitorClientCertificate !== undefined) {
-    assert(input.automaticUpdates, "Host monitoring requires automatic update checks");
-    assert.equal(typeof input.monitorClientCertificate, "string");
-    assert(input.monitorClientCertificate.length <= 4096);
-    assert(!input.monitorClientCertificate.includes("PRIVATE KEY"), "Supply only the public monitor certificate");
-    const certificate = new X509Certificate(input.monitorClientCertificate);
-    assert(certificate.toString().trim() === input.monitorClientCertificate.trim(), "Supply one public certificate, never a private key or a certificate bundle");
-    assert(!certificate.ca && certificate.verify(certificate.publicKey), "Use a self-signed monitor leaf identity");
-    assert(certificate.keyUsage?.includes("1.3.6.1.5.5.7.3.2"), "The monitor identity must permit TLS client authentication");
-    const key = certificate.publicKey;
-    assert(key.asymmetricKeyType === "ed25519" ||
-      (key.asymmetricKeyType === "ec" && ["prime256v1", "secp384r1", "secp521r1"].includes(key.asymmetricKeyDetails?.namedCurve ?? "")) ||
-      (["rsa", "rsa-pss"].includes(key.asymmetricKeyType ?? "") && (key.asymmetricKeyDetails?.modulusLength ?? 0) >= 3072), "Use a monitor key with at least 128-bit classical security");
-    assert(certificate.validToDate.getTime() - certificate.validFromDate.getTime() <= 397 * 86400000, "Monitor certificates must expire within 397 days");
-    assert(certificate.validFromDate.getTime() <= Date.now() && certificate.validToDate.getTime() > Date.now() + 30 * 86400000, "Rotate the monitor identity at least 30 days before expiry");
-  }
   if (input.heartbeatUrl !== undefined) assert.match(input.heartbeatUrl, /^https:\/\/[a-z0-9.-]{1,253}(?::[0-9]{1,5})?(?:\/[A-Za-z0-9._~-]+){1,8}$/u, "The heartbeat address must be one HTTPS URL without a query or fragment");
   if (input.tang !== undefined) {
     const { servers, threshold, ...unknown } = input.tang;
