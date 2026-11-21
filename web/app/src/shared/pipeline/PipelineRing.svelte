@@ -119,7 +119,7 @@
         class={[
           'transition-[opacity,translate]',
           active && index === current
-            ? 'translate-y-0 opacity-100 delay-120 duration-500'
+            ? 'translate-y-0 opacity-100 delay-75 duration-300'
             : 'translate-y-1.5 opacity-0 duration-150 ease-in',
         ]}
       >

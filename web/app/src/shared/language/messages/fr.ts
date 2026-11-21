@@ -484,8 +484,6 @@ export const messages: Catalog = {
   'compose.opens.title': 'Combien de fois le message peut être ouvert',
   'compose.opens.less': 'Moins d’ouvertures',
   'compose.opens.more': 'Plus d’ouvertures',
-  'compose.opens.history':
-    'Le destinataire qui clique sur le lien garde un lien fonctionnel dans l’historique de son navigateur tant que le message n’a pas épuisé toutes les ouvertures autorisées. Protégez donc le message par un mot de passe.',
   'compose.security': 'Sécurité',
   'compose.passphrase.chip': 'Avec mot de passe',
   'compose.passphrase.chip.off': 'Sans mot de passe',

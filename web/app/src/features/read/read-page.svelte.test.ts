@@ -196,7 +196,7 @@ describe('read page interactions', () => {
       await dependencies.shown?.();
       displayed();
     })();
-    vi.advanceTimersByTime(1900);
+    vi.advanceTimersByTime(800);
     expect(page.revealed).toBeUndefined();
     expect(displayed).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(2000);

@@ -476,8 +476,6 @@ export const messages: Catalog = {
   'compose.opens.title': 'Berapa kali pesan bisa dibuka',
   'compose.opens.less': 'Kurangi jumlah kali dibuka',
   'compose.opens.more': 'Tambah jumlah kali dibuka',
-  'compose.opens.history':
-    'Jika penerima mengeklik tautan, tautan yang masih berfungsi tetap tersimpan di riwayat browsernya sampai pesan habis dibuka sebanyak yang diizinkan. Karena itu, lindungi pesan dengan kata sandi.',
   'compose.security': 'Keamanan',
   'compose.passphrase.chip': 'Pakai kata sandi',
   'compose.passphrase.chip.off': 'Tanpa kata sandi',

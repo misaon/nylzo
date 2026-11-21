@@ -469,8 +469,6 @@ export const messages: Catalog = {
   'compose.opens.title': 'Koľkokrát sa dá správa otvoriť',
   'compose.opens.less': 'Menej otvorení',
   'compose.opens.more': 'Viac otvorení',
-  'compose.opens.history':
-    'Príjemcovi, ktorý na odkaz klikne, zostane funkčný odkaz v\u{A0}histórii prehliadača, kým správa nevyčerpá všetky povolené otvorenia. Preto ju chráňte heslom.',
   'compose.security': 'Zabezpečenie',
   'compose.passphrase.chip': 'S\u{A0}heslom',
   'compose.passphrase.chip.off': 'Bez hesla',

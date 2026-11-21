@@ -58,7 +58,7 @@
     aria-invalid={composer.problemOf.content !== undefined || composer.problemOf.text !== undefined}
     aria-describedby={composer.problemNotice === '' ? undefined : noticeId}
     class={[
-      'block min-h-[200px] w-full resize-none rounded-t-card bg-transparent px-6 pt-6 pb-14 text-lead text-ink caret-aegis-300 transition-opacity duration-500 outline-none placeholder:text-ink-mute md:min-h-[280px] md:text-lead-lg',
+      'block min-h-50 w-full resize-none rounded-t-card bg-transparent px-6 pt-6 pb-14 text-lead text-ink caret-aegis-300 transition-opacity duration-500 outline-none placeholder:text-ink-mute md:min-h-70 md:text-lead-lg',
       composer.phase === 'encrypting' ? 'opacity-0' : 'opacity-100',
     ]}></textarea>
   <div class="pointer-events-none absolute inset-x-4 bottom-3 flex items-center justify-between gap-3">

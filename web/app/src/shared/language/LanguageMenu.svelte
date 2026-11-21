@@ -98,7 +98,9 @@
     ondismiss={() => (open = false)}
     class={[
       'w-max max-w-[calc(100vw-2rem)] p-1.5',
-      placement === 'footer' ? 'bottom-full left-0 mb-2 sm:right-0 sm:left-auto' : 'top-full right-0 mt-2',
+      placement === 'footer'
+        ? 'bottom-full left-0 mb-2 origin-bottom-right sm:right-0 sm:left-auto'
+        : 'top-full right-0 mt-2 origin-top-right',
     ]}
   >
     <ul
@@ -116,7 +118,7 @@
           onclick={() => choose(language)}
           onkeydown={(event) => onkeydown(event, language)}
           class={[
-            'flex h-11 cursor-pointer items-center gap-3 rounded-control px-2.5 text-ui whitespace-nowrap transition md:h-10',
+            'flex h-11 cursor-pointer items-center gap-3 rounded-control press-soft px-2.5 text-ui whitespace-nowrap transition md:h-10',
             selected
               ? 'bg-aegis-500/12 text-ink shadow-rim ring-1 ring-aegis-400/35'
               : 'text-ink-soft hover:bg-white/6 hover:text-ink',

@@ -20,6 +20,36 @@
   --radius-pane: 0.75rem;
   --radius-control: 0.625rem;
   --ease-silk: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: linear(
+    0,
+    0.0576,
+    0.1806,
+    0.3213,
+    0.4558,
+    0.5736,
+    0.6717,
+    0.7507,
+    0.8127,
+    0.8606,
+    0.897,
+    0.9243,
+    0.9447,
+    0.9598,
+    0.9709,
+    0.979,
+    0.9849,
+    0.9892,
+    0.9923,
+    0.9945,
+    0.9961,
+    0.9972,
+    0.998,
+    0.9986,
+    1
+  );
+  --duration-press: 100ms;
+  --duration-spring-quick: 370ms;
+  --duration-spring: 440ms;
   --default-transition-duration: 300ms;
   --default-transition-timing-function: var(--ease-silk);
   --container-page: 1160px;
@@ -55,6 +85,7 @@
   --text-panel-lg--letter-spacing: -0.02em;
   --text-title: 1.125rem;
   --text-title--line-height: 1.625rem;
+  --text-title--letter-spacing: -0.01em;
   --text-title--font-weight: 500;
   --text-title-sm: 0.9375rem;
   --text-title-sm--line-height: 1.375rem;
@@ -71,8 +102,10 @@
   --text-ui--line-height: 1.25rem;
   --text-caption: 0.8125rem;
   --text-caption--line-height: 1.25rem;
+  --text-caption--letter-spacing: 0.005em;
   --text-micro: 0.75rem;
   --text-micro--line-height: 1rem;
+  --text-micro--letter-spacing: 0.01em;
   --text-eyebrow: 0.75rem;
   --text-eyebrow--line-height: 1rem;
   --text-eyebrow--letter-spacing: 0.12em;

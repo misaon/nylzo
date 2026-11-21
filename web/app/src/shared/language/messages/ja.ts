@@ -471,8 +471,6 @@ export const messages: Catalog = {
   'compose.opens.title': 'メッセージを開封できる回数',
   'compose.opens.less': '開封回数を減らす',
   'compose.opens.more': '開封回数を増やす',
-  'compose.opens.history':
-    'リンクをクリックした受信者のブラウザ履歴には、許可された開封回数をすべて使い切るまで、有効なリンクが残ります。そのため、パスワードで保護してください。',
   'compose.security': 'セキュリティ',
   'compose.passphrase.chip': 'パスワードあり',
   'compose.passphrase.chip.off': 'パスワードなし',

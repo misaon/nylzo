@@ -219,18 +219,25 @@ test('with reduced motion nothing keeps moving on the home page (WCAG 2.3.3)', a
     .toBe(0);
 });
 
-test('with reduced motion the confirmation backdrop appears without a fade (WCAG 2.3.3)', async ({ page }) => {
+test('with reduced motion the confirmation dialog and its backdrop only cross-fade, without movement (WCAG 2.3.3)', async ({
+  page,
+}) => {
   await createMessageInPage(page, { text: 'still', remember: 'browser' });
   await page.goto('/sent');
   await page.getByRole('button', { name: 'Cancel message' }).click();
   const dialog = page.getByRole('dialog');
   await expect(dialog).toBeVisible();
-  const durations = await dialog.evaluate((element) =>
-    getComputedStyle(element, '::backdrop')
-      .transitionDuration.split(',')
-      .map((duration) => Number(duration.trim().slice(0, -1))),
-  );
-  expect(Math.max(...durations)).toBeLessThan(0.01);
+  for (const pseudo of [null, '::backdrop']) {
+    const transition = await dialog.evaluate((element, part) => {
+      const style = getComputedStyle(element, part);
+      return {
+        properties: style.transitionProperty.split(',').map((property) => property.trim()),
+        durations: style.transitionDuration.split(',').map((duration) => Number(duration.trim().slice(0, -1))),
+      };
+    }, pseudo);
+    expect(transition.properties).toEqual(['opacity', 'visibility', 'display', 'overlay']);
+    expect(Math.max(...transition.durations)).toBeLessThanOrEqual(0.15);
+  }
 });
 
 test('the transparency, terms, agents and not found pages pass axe with 44 px targets on a phone', async ({

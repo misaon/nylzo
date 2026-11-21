@@ -511,8 +511,6 @@ export const messages: Catalog = {
   'compose.opens.title': 'Ile razy można otworzyć wiadomość',
   'compose.opens.less': 'Mniej otwarć',
   'compose.opens.more': 'Więcej otwarć',
-  'compose.opens.history':
-    'Gdy odbiorca kliknie link, ten zostaje w\u{A0}historii jego przeglądarki i\u{A0}działa, dopóki wiadomość nie wyczerpie wszystkich dozwolonych otwarć. Dlatego chroń ją hasłem.',
   'compose.security': 'Zabezpieczenie',
   'compose.passphrase.chip': 'Z\u{A0}hasłem',
   'compose.passphrase.chip.off': 'Bez hasła',
