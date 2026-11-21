@@ -6,59 +6,7 @@ import { compareSnapshots, emptyReview, placeholder, quote, snapshot } from './f
 import type { DependencyValue, FileReview, FileRule, Snapshot } from './file-review.ts';
 import { packageManifest, revertOverrideUpdates } from './manifests.ts';
 
-const deprecation = /^ +deprecated: /u;
-const integrityResolution = /^ +resolution: \{integrity: sha(?:256|384|512)-[\d+/A-Za-z]+=*\}$/u;
-const escapedOrAliased = /\\|[&*][\w-]/u;
-const customSourceKey = /(?:^|[\s,{])["']?(?:commit|repo|tarball)["']?\s*:/u;
 const externalSource = /\b(?:[a-z][\d+.a-z-]*:\/\/|git\+|git@|file:|link:|github:|gitlab:|bitbucket:)/iu;
-const workspaceLink = /\blink:(?<target>[^\s"',}]*)/gu;
-
-function documentHeaders(lockfile: string): string[] {
-  return lockfile.split(/^---$/mu).map((document) => document.split(/^(?:importers|packages):$/mu, 1)[0] ?? '');
-}
-
-function lockfileLineProblem(line: string, allowedLinks: readonly string[]): string | undefined {
-  if (escapedOrAliased.test(line)) {
-    return 'escaped or aliased value';
-  }
-  if (customSourceKey.test(line)) {
-    return 'custom package source';
-  }
-  const withoutWorkspaceLinks = line.replaceAll(workspaceLink, (link, target: string) =>
-    allowedLinks.includes(target) ? '' : link,
-  );
-  if (externalSource.test(withoutWorkspaceLinks)) {
-    return 'download source outside the registry';
-  }
-  if (line.includes('resolution') && !integrityResolution.test(line)) {
-    return 'resolution without registry integrity';
-  }
-  return undefined;
-}
-
-export function pnpmLock(allowedLinks: readonly string[]): FileRule {
-  return ({ after, before, path }) => {
-    const review = emptyReview();
-    if (documentHeaders(before).join('\n---\n') !== documentHeaders(after).join('\n---\n')) {
-      review.findings.push(`${path}: lockfile settings, overrides or patches changed`);
-    }
-    const reviewedDeprecations = new Set(before.split('\n').filter((line) => deprecation.test(line)));
-    for (const [index, line] of after.split('\n').entries()) {
-      if (deprecation.test(line) && reviewedDeprecations.has(line)) {
-        continue;
-      }
-      const problem = lockfileLineProblem(line, allowedLinks);
-      if (problem) {
-        review.findings.push(`${path}:${index + 1}: ${problem}: ${quote(line)}`);
-      }
-    }
-    if (after.split('\n').every((line) => !integrityResolution.test(line))) {
-      review.findings.push(`${path}: no package carries a registry integrity`);
-    }
-    return review;
-  };
-}
-
 // Bun's text lockfile is JSON with trailing commas. Never evaluate it as JavaScript.
 export function bunLock(allowedWorkspaces: readonly string[]): FileRule {
   return ({ after, before, path }) => {

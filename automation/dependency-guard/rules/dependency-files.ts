@@ -1,12 +1,11 @@
 import type { FileRule } from './file-review.ts';
-import { bunLock, goChecksums, miseLock, openTofuLock, pnpmLock } from './lockfiles.ts';
+import { bunLock, goChecksums, miseLock, openTofuLock } from './lockfiles.ts';
 import { binaryAssetManifest, hostToolchain, packageManifest } from './manifests.ts';
 import {
   composeFile,
   deployTask,
   goModule,
   miseToolVersions,
-  nodeVersion,
   openTofuVersions,
   releaseBaseImage,
   runtimeTest,
@@ -25,11 +24,8 @@ const rules: readonly (readonly [RegExp, FileRule])[] = [
     bunLock(['@nylzo/core@workspace:core', '@nylzo/web@workspace:app', '@nylzo/e2e@workspace:e2e']),
   ],
   [/^automation\/bun\.lock$/u, bunLock([])],
-  [/^web\/pnpm-lock\.yaml$/u, pnpmLock(['../core'])],
-  [/^automation\/pnpm-lock\.yaml$/u, pnpmLock([])],
   [/^mise\.toml$/u, miseToolVersions],
   [/^mise\.lock$/u, miseLock],
-  [/^web\/\.node-version$/u, nodeVersion],
   [/^tools\/dependencies\/assets\.json$/u, binaryAssetManifest],
   [/^deploy\/hetzner-flatcar\/toolchain\.json$/u, hostToolchain],
   [/^deploy\/hetzner-flatcar\/infrastructure\/(?:dns|image|server)\/main\.tf$/u, openTofuVersions],

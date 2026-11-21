@@ -9,7 +9,7 @@ type JsonObject = Record<string, unknown>;
 
 const dependencySections = ['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'];
 const exactVersion = /^\d+\.\d+\.\d+$/u;
-const packageManagerRelease = /^(?<manager>pnpm|bun)@(?<version>\d+\.\d+\.\d+)$/u;
+const packageManagerRelease = /^bun@(?<version>\d+\.\d+\.\d+)$/u;
 const sha256 = /^[a-f\d]{64}$/u;
 const versionPrefix = /^(?<prefix>jq-|v)?(?<version>.*)$/u;
 
@@ -100,16 +100,10 @@ export const packageManifest: FileRule = ({ after, before, path }) => {
     const updated = packageManagerRelease.exec(String(next['packageManager']))?.groups;
     const from = previous?.['version'];
     const to = updated?.['version'];
-    if (from !== undefined && to !== undefined && previous?.['manager'] === updated?.['manager']) {
+    if (from !== undefined && to !== undefined) {
       const oldEngines = old['engines'];
       const nextEngines = next['engines'];
-      if (
-        previous?.['manager'] === 'bun' &&
-        isObject(oldEngines) &&
-        isObject(nextEngines) &&
-        oldEngines['bun'] === from &&
-        nextEngines['bun'] === to
-      ) {
+      if (isObject(oldEngines) && isObject(nextEngines) && oldEngines['bun'] === from && nextEngines['bun'] === to) {
         review.updates.push({ after: to, before: from, name: `${path} engines.bun` });
         nextEngines['bun'] = oldEngines['bun'];
       }

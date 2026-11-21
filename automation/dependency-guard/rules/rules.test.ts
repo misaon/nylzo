@@ -48,7 +48,7 @@ modernc.org/libc v1.79.0/go.mod h1:uT3kR61NsbeKJSLqq83GJwSnZMVLlSjyAz4DfTaBy1M=
 const packageManifest = `{
   "name": "nylzo-web",
   "private": true,
-  "packageManager": "pnpm@12.15.0",
+  "packageManager": "bun@1.4.3",
   "scripts": { "test": "vitest run" },
   "dependencies": { "@nylzo/core": "workspace:*", "svelte": "5.57.2" },
   "devDependencies": { "typescript": "6.0.3" }
@@ -59,38 +59,6 @@ const overriddenManifest = packageManifest.replace(
   '"private": true,',
   '"private": true, "overrides": { "minimatch": "11.0.1" },',
 );
-
-const lockfile = `---
-lockfileVersion: '9.0'
-
-settings:
-  autoInstallPeers: true
-
-importers:
-
-  .:
-    dependencies:
-      '@nylzo/core':
-        specifier: workspace:*
-        version: link:../core
-      svelte:
-        specifier: 5.57.2
-        version: 5.57.2
-
-packages:
-
-  svelte@5.57.2:
-    resolution: {integrity: sha512-1YiPCAXT0Ct6g1vOMmSLa0Nsc3QRMvtDF32ihgglGVrugIuIK38RyDiFNXVDhtQ81TJjSO57NdMw6DyYLqSGDQ==}
-    deprecated: See https://example.invalid/support for supported versions.
-
-snapshots:
-
-  svelte@5.57.2: {}
-`;
-
-const lockfileUpdate = lockfile
-  .replaceAll('5.57.2', '5.57.3')
-  .replace('1YiPCAXT0Ct6g1vOMmSLa0Nsc3QRMvtDF32ihgglGVrugIuIK38RyDiFNXVDhtQ81TJjSO57NdMw6DyYLqSGDQ==', 'cHJvb2Y=');
 
 const miseTools = `min_version = "2026.10.9"
 
@@ -332,7 +300,7 @@ const cases: readonly Case[] = [
     path: 'go.sum',
   },
   {
-    after: packageManifest.replace('5.57.2', '5.57.3').replace('pnpm@12.15.0', 'pnpm@12.16.0'),
+    after: packageManifest.replace('5.57.2', '5.57.3').replace('bun@1.4.3', 'bun@1.4.4'),
     before: packageManifest,
     expected: 'safe',
     name: 'package.json version and package manager update',
@@ -360,10 +328,7 @@ const cases: readonly Case[] = [
     path: 'web/package.json',
   },
   {
-    after: packageManifest.replace(
-      '"private": true,',
-      '"private": true, "pnpm": { "overrides": { "svelte": "5.0.0" } },',
-    ),
+    after: packageManifest.replace('"private": true,', '"private": true, "overrides": { "svelte": "5.0.0" },'),
     before: packageManifest,
     expected: 'rejected',
     name: 'package.json adds overrides',
@@ -426,120 +391,17 @@ const cases: readonly Case[] = [
     path: 'web/package.json',
   },
   {
-    after: lockfileUpdate,
-    before: lockfile,
-    expected: 'safe',
-    name: 'pnpm lockfile update',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace(
-      /resolution: \{integrity: [^}]+\}/u,
-      'resolution: {tarball: https://attacker.invalid/svelte.tgz}',
-    ),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile tarball source',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace(
-      /resolution: \{integrity: [^}]+\}/u,
-      'resolution: {type: git, repo: https://github.com/attacker/svelte.git, commit: 0123abc}',
-    ),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile git source',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace(
-      /resolution: \{integrity: [^}]+\}/u,
-      'resolution: {"tarball": "//attacker.invalid/svelte.tgz"}',
-    ),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile protocol-relative tarball',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace('version: link:../core', 'version: link:../core-evil'),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile link beside the workspace package',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace('version: link:../core', 'version: file:../../outside'),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile file source',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate,
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile workspace link where none is allowed',
-    path: 'automation/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace('https://example.invalid/support', 'https://attacker.invalid/new-warning'),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile new deprecation link',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace('    deprecated:', '    key: &download tarball\n    deprecated:'),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile YAML anchor',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace(
-      '    deprecated:',
-      '    source: "\\u0068ttps://attacker.invalid/svelte.tgz"\n    deprecated:',
-    ),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile escaped source',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace('autoInstallPeers: true', 'autoInstallPeers: false'),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile settings change',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace(/resolution: \{integrity: [^}]+\}/u, 'resolution: {}'),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile without integrity',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: `${lockfileUpdate}\n  outside@1.0.0:\n    resolution: {directory: ../../outside, type: directory}\n`,
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile directory source',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
-    after: lockfileUpdate.replace('    deprecated:', '    tarball: //attacker.invalid/svelte.tgz\n    deprecated:'),
-    before: lockfile,
-    expected: 'rejected',
-    name: 'pnpm lockfile tarball key',
-    path: 'web/pnpm-lock.yaml',
-  },
-  {
     after: miseTools.replace('24.22.1', '24.22.2'),
     before: miseTools,
     expected: 'safe',
     name: 'mise tool update',
+    path: 'mise.toml',
+  },
+  {
+    after: miseTools.replace('"24.22.1"', '"⟪version⟫"'),
+    before: miseTools,
+    expected: 'rejected',
+    name: 'a literal placeholder in place of a version',
     path: 'mise.toml',
   },
   {
@@ -870,14 +732,6 @@ const cases: readonly Case[] = [
     name: 'distroless image swap',
     path: '.goreleaser.yaml',
   },
-  { after: '24.22.2\n', before: '24.22.1\n', expected: 'safe', name: 'Node.js version', path: 'web/.node-version' },
-  {
-    after: '⟪version⟫\n',
-    before: '24.22.1\n',
-    expected: 'rejected',
-    name: 'a literal placeholder in place of a version',
-    path: 'web/.node-version',
-  },
   {
     after: openTofuModule.replace('= 1.13.2', '= 1.13.3'),
     before: openTofuModule,
@@ -948,6 +802,9 @@ void test('files outside the dependency rules have no rule', () => {
     'internal/server/server.go',
     'tools/security/bootstrap-policy',
     'web/pnpm-workspace.yaml',
+    'web/pnpm-lock.yaml',
+    'automation/pnpm-lock.yaml',
+    'web/.node-version',
   ]) {
     assert.equal(ruleFor(path), undefined, path);
   }
