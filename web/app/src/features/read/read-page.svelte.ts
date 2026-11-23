@@ -319,6 +319,7 @@ export class ReadPage {
       return;
     }
     this.#close({ view: 'timed_out' });
+    void this.focus.keepFocusAfterUpdate('readTitle');
   };
 
   readonly onConfirmKeydown = (event: KeyboardEvent): void => {
@@ -330,8 +331,10 @@ export class ReadPage {
     void this.cancelDelete();
   };
 
-  readonly retry = (): void => {
-    void this.#reader.load();
+  readonly retry = async (): Promise<void> => {
+    const loaded = this.#reader.load();
+    await this.focus.keepFocusAfterUpdate('readTitle');
+    await loaded;
   };
 
   readonly returned = (event: Pick<PageTransitionEvent, 'persisted'>): void => {

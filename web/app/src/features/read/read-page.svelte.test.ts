@@ -130,7 +130,7 @@ describe('read page interactions', () => {
     vi.mocked(takeFragment).mockReturnValue({ fragment: '#handed', handedOver: true });
     dependencies.takeFragment();
     expect(page.linkInHistory).toBe(false);
-    page.retry();
+    void page.retry();
     expect(reader.load).toHaveBeenCalledTimes(2);
     expect(dependencies.page.visible()).toBe(true);
     expect(dependencies.page.prerendering()).toBe(false);

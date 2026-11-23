@@ -62,7 +62,7 @@
       </Button>
     {/if}
     {#if retryable && !sizing}
-      <Button variant="primary" onclick={page.retry} class="max-sm:flex-1">
+      <Button variant="primary" onclick={() => void page.retry()} class="max-sm:flex-1">
         <Icon name="refresh" class="size-4 shrink-0" animated />{translate('action.retry')}
       </Button>
     {:else}
