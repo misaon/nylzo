@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -133,13 +134,10 @@ func (s *Server) generateKE2(
 	message *store.Message,
 	registration, ke1 []byte,
 ) ([opaque.KE2Len]byte, opaque.ServerLogin, error) {
-	serverKeys, err := s.ring.OPAQUEKeys(id[:], message.RegistrationPepperID)
+	serverKeys, keysErr := s.ring.OPAQUEKeys(id[:], message.RegistrationPepperID)
 	defer serverKeys.Wipe()
-	if err != nil {
-		return [opaque.KE2Len]byte{}, opaque.ServerLogin{}, err
-	}
-	config, err := keys.OPAQUEConfig(id, core.KDF(message.KDF))
-	if err != nil {
+	config, configErr := keys.OPAQUEConfig(id, core.KDF(message.KDF))
+	if err := errors.Join(keysErr, configErr); err != nil {
 		return [opaque.KE2Len]byte{}, opaque.ServerLogin{}, err
 	}
 	credential := keys.CredentialIdentifier(id, expiryShare)

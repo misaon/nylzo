@@ -45,7 +45,10 @@ export interface Judgement {
 }
 
 export function judge(attacker: Attacker, quantum: boolean): Judgement {
-  const yearsLog10 = averageYearsLog10(attacker, quantum);
+  return judgementOf(averageYearsLog10(attacker, quantum));
+}
+
+export function judgementOf(yearsLog10: number): Judgement {
   const passed = MILESTONES.filter((milestone) => yearsLog10 > Math.log10(milestone.years));
   const universe = Math.log10(UNIVERSE_YEARS);
   const last = passed.at(-1)?.verdict ?? 'week';

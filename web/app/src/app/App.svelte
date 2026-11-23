@@ -20,7 +20,7 @@
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
-  import { screenOf } from './pages.ts';
+  import { SCREEN_TITLES, screenOf } from './pages.ts';
   import type { Screen } from './pages.ts';
 
   interface Props {
@@ -62,6 +62,12 @@
   const CardScreen = $derived(CARD_SCREENS[screen]);
   let requestedLanguage = startLanguage;
   const onlanguage = (language: Language) => void switchLanguage(language);
+
+  const title = $derived(translate(SCREEN_TITLES[screen]));
+
+  $effect(() => {
+    document.title = title;
+  });
 
   function replaceAddress(address: string) {
     replacingUrl = true;
@@ -193,7 +199,7 @@
             <Agents />
           {:else if screen === 'notFound'}
             <NotFound />
-          {:else if CardScreen}
+          {:else}
             <div
               class={['mx-auto px-4 pt-16 pb-24 sm:px-6 md:pt-24', screen === 'sent' ? 'max-w-wide' : 'max-w-column']}
             >

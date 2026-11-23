@@ -39,7 +39,7 @@ type linkCase struct {
 	input string
 }
 
-func (f *File) link() error {
+func (f *File) link() {
 	id := deterministicID("link")
 	secret := deterministic32("link/s")
 	hash := deterministic32("link/h")
@@ -56,9 +56,7 @@ func (f *File) link() error {
 		}
 		if link.Valid {
 			parsed, err := core.ParseLink(vector.input)
-			if err != nil {
-				return fmt.Errorf("vectors: link %q must parse: %w", vector.name, err)
-			}
+			require(err == nil, fmt.Errorf("vectors: link %q must parse: %w", vector.name, err))
 			link.ID = new(id.String())
 			link.KDFID = new(int(parsed.KDF))
 			link.S = new(hex.EncodeToString(secret[:]))
@@ -66,7 +64,6 @@ func (f *File) link() error {
 		}
 		f.Link = append(f.Link, link)
 	}
-	return nil
 }
 
 func linkCasesV3(id core.ID, secret, hash *[32]byte) []linkCase {

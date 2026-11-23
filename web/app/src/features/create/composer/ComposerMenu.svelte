@@ -43,6 +43,7 @@
   }: Props = $props();
   const id = $props.id();
   const open = $derived(composer.menu === menu);
+  const popoverId = $derived(`${id}-${menu}`);
 </script>
 
 <div class="min-w-0 sm:relative" data-menu>
@@ -51,7 +52,7 @@
     type="button"
     aria-haspopup="dialog"
     aria-expanded={open}
-    aria-controls="{id}-{menu}"
+    aria-controls={popoverId}
     onclick={() => composer.toggleMenu(menu)}
     class={[
       'group/action',
@@ -76,7 +77,7 @@
     />
   </button>
   <Popover
-    id="{id}-{menu}"
+    id={popoverId}
     label={title}
     {open}
     onclose={() => composer.closeMenu(menu)}

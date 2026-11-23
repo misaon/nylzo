@@ -33,18 +33,13 @@ func (s *Store) DueBlobs(ctx context.Context, now time.Time, after seal.Locator,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var page []store.DueBlob
-	for rows.Next() {
+	return readRows(rows, func(rows *sql.Rows) (store.DueBlob, error) {
 		var due store.DueBlob
 		var locator []byte
-		if scanErr := rows.Scan(&locator, &due.Reference); scanErr != nil {
-			return nil, scanErr
-		}
-		due.Locator = seal.Locator(locator)
-		page = append(page, due)
-	}
-	return page, rows.Err()
+		scanErr := rows.Scan(&locator, &due.Reference)
+		copy(due.Locator[:], locator)
+		return due, scanErr
+	})
 }
 
 func (s *Store) ShredBlobs(ctx context.Context, due []store.DueBlob) error {
@@ -88,19 +83,29 @@ func (s *Store) KnownBlobReferences(ctx context.Context) (map[string]struct{}, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	known := map[string]struct{}{}
-	for rows.Next() {
+	references, err := readRows(rows, func(rows *sql.Rows) (string, error) {
 		var reference string
-		if scanErr := rows.Scan(&reference); scanErr != nil {
-			return nil, scanErr
-		}
+		scanErr := rows.Scan(&reference)
+		return reference, scanErr
+	})
+	known := make(map[string]struct{}, len(references))
+	for _, reference := range references {
 		known[reference] = struct{}{}
 	}
-	if rowsErr := rows.Err(); rowsErr != nil {
-		return nil, rowsErr
+	return known, err
+}
+
+func readRows[Value any](rows *sql.Rows, read func(rows *sql.Rows) (Value, error)) ([]Value, error) {
+	defer rows.Close()
+	var values []Value
+	for rows.Next() {
+		value, err := read(rows)
+		if err != nil {
+			return nil, err
+		}
+		values = append(values, value)
 	}
-	return known, nil
+	return values, rows.Err()
 }
 
 func (s *Store) purge(ctx context.Context, query string, now time.Time, limit int) (int, error) {

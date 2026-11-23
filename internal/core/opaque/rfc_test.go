@@ -87,10 +87,7 @@ func expectHex(t *testing.T, what string, got []byte, want string) {
 
 func TestOPRFMatchesRFC9497(t *testing.T) {
 	file := loadRFCVectors(t)
-	key, _, err := deriveKeyPair(unhex(t, file.OPRF.Seed), string(unhex(t, file.OPRF.KeyInfo)))
-	if err != nil {
-		t.Fatal(err)
-	}
+	key, _ := deriveKeyPair(unhex(t, file.OPRF.Seed), string(unhex(t, file.OPRF.KeyInfo)))
 	expectHex(t, "skS", key.Bytes(), file.OPRF.SK)
 	for _, vector := range file.OPRF.Vectors {
 		t.Run(vector.Name, func(t *testing.T) {
@@ -202,10 +199,7 @@ func TestOPAQUEMatchesRFC9807(t *testing.T) {
 				credential: unhex(t, vector.CredentialIdentifier),
 			}
 			run.keys = vectorServerKeys(t, &vector)
-			key, err := oprfKey(&run.keys.OPRFSeed, run.credential)
-			if err != nil {
-				t.Fatal(err)
-			}
+			key := oprfKey(&run.keys.OPRFSeed, run.credential)
 			expectHex(t, "OPRF key", key.Bytes(), vector.OPRFKey)
 			runRegistration(t, &vector, run)
 			runLogin(t, &vector, run)

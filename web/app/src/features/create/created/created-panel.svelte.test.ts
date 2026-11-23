@@ -142,6 +142,17 @@ describe('created message panel', () => {
     expect(writeText).toHaveBeenCalledExactlyOnceWith(passphrase);
   });
 
+  it('shows the passphrase when it cannot be copied, keeping CJK words whole', async () => {
+    writeText.mockRejectedValue(new Error('permission denied'));
+    const passphrase = '山川 森林 海辺 夜空';
+    show({ passphrase });
+    expect(target.textContent).not.toContain(passphrase);
+    button('created.passphrase.copy').click();
+    await tick();
+    const shown = [...target.querySelectorAll('span')].find((element) => element.textContent === passphrase);
+    expect(shown?.classList).toContain('break-keep');
+  });
+
   it.each([
     { keeps: true, note: 'created.track.note.kept' },
     { keeps: false, note: 'created.track.note' },

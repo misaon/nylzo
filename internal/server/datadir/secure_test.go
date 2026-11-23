@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -73,4 +74,123 @@ func TestHoldLetsOneProcessServeADataDirectory(t *testing.T) {
 		t.Fatalf("a hold after the release: %v", err)
 	}
 	release()
+}
+
+func foreignDirectory(t *testing.T) string {
+	t.Helper()
+	if os.Getuid() != 0 {
+		return "/"
+	}
+	directory := t.TempDir()
+	if err := os.Chown(directory, 65534, 65534); err != nil {
+		t.Fatal(err)
+	}
+	return directory
+}
+
+func TestCheckRefusesALayoutItCannotSecure(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	regular := filepath.Join(directory, "regular")
+	if err := os.WriteFile(regular, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(directory, "link")
+	if err := os.Symlink(regular, link); err != nil {
+		t.Fatal(err)
+	}
+	underRegular := filepath.Join(regular, "inside")
+	for name, test := range map[string]struct {
+		layout Layout
+		want   error
+	}{
+		"missing directory":       {Layout{Directory: filepath.Join(directory, "absent")}, fs.ErrNotExist},
+		"foreign directory":       {Layout{Directory: foreignDirectory(t)}, ErrForeignOwner},
+		"file under a file":       {Layout{Directory: directory, Files: []string{underRegular}}, syscall.ENOTDIR},
+		"file is a symbolic link": {Layout{Directory: directory, Files: []string{link}}, ErrSymlink},
+		"tree under a file":       {Layout{Directory: directory, Trees: []string{underRegular}}, syscall.ENOTDIR},
+	} {
+		if err := Check(test.layout); !errors.Is(err, test.want) {
+			t.Errorf("%s: %v, want %v", name, err, test.want)
+		}
+	}
+}
+
+type failingEntry struct {
+	fs.DirEntry
+
+	err error
+}
+
+func (e failingEntry) Info() (fs.FileInfo, error) {
+	return nil, e.err
+}
+
+func TestSecureSkipsTreeEntriesThatVanishWhileItWalks(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	regular := filepath.Join(directory, "regular")
+	if err := os.WriteFile(regular, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	vanished := filepath.Join(directory, "vanished")
+	if err := os.WriteFile(vanished, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(vanished, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(vanished)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(vanished); err != nil {
+		t.Fatal(err)
+	}
+	narrowed := 0
+	walked := secureWalked(&narrowed)
+	if err = walked(vanished, failingEntry{err: fs.ErrNotExist}, nil); err != nil {
+		t.Errorf("an entry gone before its information was read: %v", err)
+	}
+	if err = walked(vanished, fs.FileInfoToDirEntry(info), nil); err != nil {
+		t.Errorf("an entry gone before its mode was narrowed: %v", err)
+	}
+	if narrowed != 0 {
+		t.Errorf("%d vanished entries counted as narrowed", narrowed)
+	}
+	if err = walked(vanished, failingEntry{err: fs.ErrPermission}, nil); !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("an entry whose information could not be read: %v", err)
+	}
+	if err = walked(
+		filepath.Join(regular, "inside"),
+		fs.FileInfoToDirEntry(info),
+		nil,
+	); !errors.Is(
+		err,
+		syscall.ENOTDIR,
+	) {
+		t.Errorf("an entry whose mode could not be narrowed: %v", err)
+	}
+}
+
+func TestHoldRefusesADirectoryItCannotOpen(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	regular := filepath.Join(directory, "regular")
+	if err := os.WriteFile(regular, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Hold(filepath.Join(regular, "data")); !errors.Is(err, syscall.ENOTDIR) {
+		t.Errorf("a data directory under a file: %v", err)
+	}
+	if os.Getuid() == 0 {
+		return
+	}
+	closed := filepath.Join(directory, "closed")
+	if err := os.Mkdir(closed, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Hold(closed); !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("a data directory the process may not read: %v", err)
+	}
 }

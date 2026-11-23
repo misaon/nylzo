@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/ecdh"
+	"crypto/hpke"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/hex"
@@ -14,6 +16,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -30,7 +33,9 @@ import (
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/core/envelope"
 	"github.com/misaon/nylzo/internal/epoch"
+	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/disk"
@@ -287,6 +292,15 @@ func TestCreateHeaderRules(t *testing.T) {
 		"opens-0":         mutateHeader(t, none, func(fields map[string]any) { fields["opens_max"] = 0 }),
 		"ttl-59":          mutateHeader(t, none, func(fields map[string]any) { fields["ttl_s"] = 59 }),
 		"kdf-4-reserved":  mutateHeader(t, none, func(fields map[string]any) { fields["kdf_id"] = 4 }),
+		"negative-kdf":    mutateHeader(t, none, func(fields map[string]any) { fields["kdf_id"] = -1 }),
+		"kdf-past-a-byte": mutateHeader(t, none, func(fields map[string]any) { fields["kdf_id"] = 256 }),
+		"malformed-id":    mutateHeader(t, none, func(fields map[string]any) { fields["id"] = "not an id" }),
+		"short-read-key":  mutateHeader(t, none, func(fields map[string]any) { fields["read_key"] = "AAAA" }),
+		"short-manage-key": mutateHeader(
+			t,
+			none,
+			func(fields map[string]any) { fields["manage_key"] = "AAAA" },
+		),
 		"trailing-brace":  core.Encode(append(append([]byte(nil), raw...), '}')),
 		"trailing-object": core.Encode(append(append([]byte(nil), raw...), []byte(" {}")...)),
 		"not-an-object":   core.Encode([]byte(`[1,2]`)),
@@ -358,6 +372,12 @@ func TestCreateValidation(t *testing.T) {
 			{
 				"size mismatch",
 				setHeader(harness.withIDToken(message.createHeader(int64(len(message.object) + 1)))),
+				http.StatusBadRequest,
+				"bad_request",
+			},
+			{
+				"a body shorter than the declared size",
+				setHeader(harness.withIDToken(message.createHeader(int64(len(message.object) + envelope.Pad)))),
 				http.StatusBadRequest,
 				"bad_request",
 			},
@@ -1349,18 +1369,31 @@ func TestTruncatedCreateStoresNothing(t *testing.T) {
 
 func TestCreateStorageFailureAnswers500(t *testing.T) {
 	t.Parallel()
-	synctest.Test(t, func(t *testing.T) {
-		harness := newHarness(t, baseSettings(pepperA, nil))
-		faulty := harness.withFaultyBlobs()
-		faulty.FailPut(errInjected)
-		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
-		if response, _ := harness.create(message); response.StatusCode != http.StatusInternalServerError {
-			t.Fatalf("storage failure: %d", response.StatusCode)
-		}
-		if response, _ := harness.metadata(message); response.StatusCode != http.StatusNotFound {
-			t.Fatal("a failed Put created a row")
-		}
-	})
+	for name, failing := range map[string]string{
+		"the blob store":            "",
+		"the read of the cap":       "RateGet",
+		"the reservation of a slot": "RateReserve",
+		"the check for the id":      "Load",
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			settings := baseSettings(pepperA, nil)
+			settings.Rates.GlobalDailyCreates = 100
+			harness := newHarness(t, settings)
+			inner := harness.store
+			if failing == "" {
+				harness.withFaultyBlobs().FailPut(errInjected)
+			} else {
+				harness.withFaultyStore(failingFrom(failing, 0))
+			}
+			message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+			if response, _ := harness.create(message); response.StatusCode != http.StatusInternalServerError {
+				t.Fatalf("a failure of %s: %d", name, response.StatusCode)
+			}
+			if _, err := harness.recordFrom(inner, message); !errors.Is(err, store.ErrNotFound) {
+				t.Fatalf("a failure of %s created a row: %v", name, err)
+			}
+		})
+	}
 }
 
 func TestStorageConflictMatchesEarlyConflict(t *testing.T) {
@@ -1688,4 +1721,319 @@ func loadSpecVectors(t *testing.T) vectors.File {
 		t.Fatal(err)
 	}
 	return file
+}
+
+func TestAnObjectOverTheInstanceLimitIsRefusedUnread(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Limits.MaxFileBytes = 1
+		harness := newHarness(t, settings)
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		size := settings.Limits.MaxObjectBytes() + envelope.Pad
+		response, body := harness.do(&testRequest{
+			method:  http.MethodPost,
+			path:    "/api/v1/messages",
+			body:    make([]byte, size),
+			headers: map[string]string{api.CreateHeaderName: message.createHeader(size)},
+		})
+		if response.StatusCode != http.StatusRequestEntityTooLarge || !response.Close || harness.storedBlobs() != 0 {
+			t.Fatalf("an object over the instance limit: %d %s", response.StatusCode, body)
+		}
+	})
+}
+
+func TestACreateWhoseSeedCannotBeReadAnswers500(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		harness.bindShare(message)
+		seedPath := filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)
+		if err := os.WriteFile(seedPath, []byte("damaged"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Sleep(time.Minute)
+		if response, _ := harness.do(createRequestFor(message)); response.StatusCode !=
+			http.StatusInternalServerError || !response.Close || harness.storedBlobs() != 0 {
+			t.Fatalf("a create whose seed cannot be read: %d", response.StatusCode)
+		}
+	})
+}
+
+func TestAFullCapWhoseCountCannotBeReadAsksForAShortRetry(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.GlobalDailyCreates = 1
+		harness := newHarness(t, settings)
+		harness.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "fills the cap"))
+		harness.withFaultyStore(failingFrom("RateGet", 1))
+		response, _ := harness.create(newMessage(t, core.KDFNone, "", 1, 3600, "over the cap"))
+		if response.StatusCode != http.StatusServiceUnavailable || response.Header.Get("Retry-After") != "60" ||
+			!harness.logged("global-cap") {
+			t.Fatalf(
+				"a full cap whose count cannot be read: %d %q",
+				response.StatusCode,
+				response.Header.Get("Retry-After"),
+			)
+		}
+	})
+}
+
+func TestWorkThatCannotBeCheckedStoresNothing(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		prepare func(harness *testHarness)
+		status  int
+	}{
+		"no free slot to check it": {
+			prepare: func(harness *testHarness) {
+				harness.server.work = proof.NewWork(harness.server.ring, harness.server.store, 0)
+			},
+			status: http.StatusServiceUnavailable,
+		},
+		"a store that cannot spend it": {
+			prepare: func(harness *testHarness) { harness.withFaultyStore(failingFrom("RateHit", 0)) },
+			status:  http.StatusInternalServerError,
+		},
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			settings := baseSettings(pepperA, nil)
+			settings.Rates.GlobalDailyCreates = 2
+			settings.PoWDifficulty = 1
+			harness := newHarness(t, settings)
+			harness.mustCreate(newMessage(t, core.KDFNone, "", 1, 3600, "takes half the cap"))
+			_, answer := harness.do(&testRequest{method: http.MethodGet, path: "/api/v1/instance"})
+			challenge, _ := decodeJSON(t, answer)["pow"].(map[string]any)["challenge"].(string)
+			test.prepare(harness)
+			message := newMessage(t, core.KDFNone, "", 1, 3600, "with work")
+			harness.bindShare(message)
+			request := createRequestFor(message)
+			request.headers[api.WorkHeaderName] = solveWork(t, challenge, message.id, 1)
+			response, body := harness.do(request)
+			if response.StatusCode != test.status || !response.Close || harness.storedBlobs() != 1 {
+				t.Fatalf("%s: %d %s", name, response.StatusCode, body)
+			}
+		})
+	}
+}
+
+func TestAnUploadLongerThanItsSizeIsRefused(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	message := newMessage(t, core.KDFNone, "", 1, 3600, "longer than declared")
+	request := createRequest{bodyBy: time.Now().Add(time.Minute), deadline: deadlineFor(3600)}
+	request.header.Size = int64(len(message.object))
+	request.header.KDFID = int(core.KDFNone)
+	upload := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodPost,
+		"/api/v1/messages",
+		bytes.NewReader(append(slices.Clone(message.object), 0)),
+	)
+	recorder := httptest.NewRecorder()
+	blob := newStoredBlob()
+	defer blob.clear()
+	if _, _, ok := harness.server.receiveBlob(&deadlineWriter{ResponseWriter: recorder}, upload, &request, &blob); ok ||
+		recorder.Code != http.StatusRequestEntityTooLarge || harness.storedBlobs() != 0 {
+		t.Fatalf("an upload longer than its size: %d %s", recorder.Code, recorder.Body)
+	}
+}
+
+func TestAStoredBlobIsPaddedToItsSizeClass(t *testing.T) {
+	t.Parallel()
+	size := int64(4<<20 + envelope.Pad)
+	if seal.PaddedSize(size) == size {
+		t.Fatal("the size needs no padding; the test would prove nothing")
+	}
+	blob := newStoredBlob()
+	defer blob.clear()
+	stored, err := io.Copy(io.Discard, blob.sealed(bytes.NewReader(make([]byte, size)), size))
+	if err != nil || stored != seal.StoredBlobSize(size) {
+		t.Fatalf("a blob of %d bytes stored %d bytes: %v", size, stored, err)
+	}
+}
+
+type uploadHookBlobs struct {
+	store.Blobs
+
+	uploaded  func(stored, expiresAt time.Time) time.Time
+	deleteErr error
+}
+
+func (b *uploadHookBlobs) PutExpiring(
+	ctx context.Context,
+	reference string,
+	content io.Reader,
+	size int64,
+	expiresAt time.Time,
+) (time.Time, error) {
+	stored, err := b.Blobs.PutExpiring(ctx, reference, content, size, expiresAt)
+	if err != nil {
+		return stored, err
+	}
+	return b.uploaded(stored, expiresAt), nil
+}
+
+func (b *uploadHookBlobs) Delete(ctx context.Context, reference string) error {
+	if b.deleteErr != nil {
+		return b.deleteErr
+	}
+	return b.Blobs.Delete(ctx, reference)
+}
+
+func TestASeedThatMovesOnDuringTheUploadStoresNothing(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		during    func(harness *testHarness, stored, expiresAt time.Time) time.Time
+		deleteErr error
+		status    int
+		code      string
+		blobs     int
+	}{
+		"the deadline passes": {
+			during: func(_ *testHarness, _, expiresAt time.Time) time.Time { return expiresAt },
+			status: http.StatusForbidden,
+			code:   api.ErrorIDToken,
+		},
+		"the ratchet passes the deadline": {
+			during: func(harness *testHarness, stored, expiresAt time.Time) time.Time {
+				if err := harness.server.advanceRatchet(expiresAt.Add(time.Minute)); err != nil {
+					harness.t.Error(err)
+				}
+				return stored
+			},
+			status: http.StatusConflict,
+			code:   api.ErrorShareLost,
+		},
+		"the ratchet passes the generation": {
+			during: func(harness *testHarness, stored, expiresAt time.Time) time.Time {
+				if err := harness.server.advanceRatchet(expiresAt.Add(30 * 24 * time.Hour)); err != nil {
+					harness.t.Error(err)
+				}
+				return stored
+			},
+			status: http.StatusConflict,
+			code:   api.ErrorShareLost,
+		},
+		"the seed becomes unreadable and the upload cannot be removed": {
+			during: func(harness *testHarness, stored, expiresAt time.Time) time.Time {
+				if err := harness.server.advanceRatchet(expiresAt.Add(30 * 24 * time.Hour)); err != nil {
+					harness.t.Error(err)
+				}
+				seedPath := filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)
+				if err := os.WriteFile(seedPath, []byte("damaged"), 0o600); err != nil {
+					harness.t.Error(err)
+				}
+				return stored
+			},
+			deleteErr: errInjected,
+			status:    http.StatusInternalServerError,
+			code:      api.ErrorInternal,
+			blobs:     1,
+		},
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			harness := newHarness(t, baseSettings(pepperA, nil))
+			harness.blobs = &uploadHookBlobs{
+				Blobs: harness.blobs,
+				uploaded: func(stored, expiresAt time.Time) time.Time {
+					return test.during(harness, stored, expiresAt)
+				},
+				deleteErr: test.deleteErr,
+			}
+			harness.reopen(&harness.settings)
+			message := newMessage(t, core.KDFNone, "", 1, 600, "x")
+			response, body := harness.create(message)
+			_, err := harness.record(message)
+			if response.StatusCode != test.status || decodeJSON(t, body)["error"] != test.code ||
+				!errors.Is(err, store.ErrNotFound) || harness.storedBlobs() != test.blobs {
+				t.Fatalf("%s: %d %s, %v", name, response.StatusCode, body, err)
+			}
+			if test.deleteErr != nil && !harness.logged("create-cleanup") {
+				t.Fatalf("%s: the failed removal was not logged", name)
+			}
+		})
+	}
+}
+
+func TestADeadlineTheConnectionCannotTakeIsLogged(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	harness.server.setCreateDeadlines(httptest.NewRecorder(), time.Now().Add(time.Minute))
+	if !harness.logged("read-deadline") || !harness.logged("write-deadline") {
+		t.Fatalf("deadlines the connection cannot take were not logged: %s", harness.logs.String())
+	}
+}
+
+func TestAnInstanceThatCannotIssueAnIDAnswers500(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		damage func(harness *testHarness)
+	}{
+		"a seed that cannot be read": {damage: func(harness *testHarness) {
+			seedPath := filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)
+			if err := os.WriteFile(seedPath, []byte("damaged"), 0o600); err != nil {
+				harness.t.Fatal(err)
+			}
+			synctest.Sleep(time.Minute)
+		}},
+		"a cap that cannot be read": {damage: func(harness *testHarness) {
+			harness.withFaultyStore(failingFrom("RateGet", 0))
+		}},
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			settings := baseSettings(pepperA, nil)
+			settings.Rates.GlobalDailyCreates = 100
+			harness := newHarness(t, settings)
+			test.damage(harness)
+			response, body := harness.do(&testRequest{
+				method: http.MethodGet,
+				path:   "/api/v1/instance",
+				headers: map[string]string{
+					api.TTLHeaderName:          "3600",
+					api.ShareKeyHeaderName:     testShareKeyHeader,
+					api.RegistrationHeaderName: testRegistrationRequest,
+				},
+			})
+			if response.StatusCode != http.StatusInternalServerError {
+				t.Fatalf("%s: %d %s", name, response.StatusCode, body)
+			}
+		})
+	}
+}
+
+func TestASharePutToAKeyOfAnotherSuiteIsNeverSent(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	otherSuite, err := hpke.DHKEM(ecdh.X25519()).GenerateKey()
+	if err != nil {
+		t.Fatal(err)
+	}
+	creation := creationRequest{requested: true, ttlSeconds: 3600, shareKey: otherSuite.PublicKey()}
+	if !parseElement(creation.registration[:], testRegistrationRequest) {
+		t.Fatal("the test registration request does not parse")
+	}
+	if created, issueErr := harness.server.issueID(&creation, time.Now()); issueErr == nil || created.Share != "" {
+		t.Fatalf("an id issued its share to a key of another suite: %+v", created)
+	}
+	message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+	harness.mustCreate(message)
+	record := harness.mustRecord(message)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
+	if wrapped, ok := harness.server.wrappedShare(recorder, request, &record, otherSuite.PublicKey()); ok ||
+		wrapped != "" || recorder.Code != http.StatusInternalServerError {
+		t.Fatalf("a claim wrapped its share to a key of another suite: %d", recorder.Code)
+	}
+}
+
+func TestAnIDForAnIdentityRegistrationIsNeverIssued(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	creation := creationRequest{requested: true, ttlSeconds: 3600, shareKey: testShareKey.PublicKey()}
+	if created, err := harness.server.issueID(&creation, time.Now()); err == nil || created.Registration != "" {
+		t.Fatalf("an id answered a registration of the identity element: %+v", created)
+	}
 }

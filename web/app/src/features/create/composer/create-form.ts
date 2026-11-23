@@ -25,8 +25,10 @@ export function problemKey(problem: CreateProblem): MessageKey {
   }
 }
 
-export function failureKey(failure: CreateFailure): MessageKey {
-  return failure.kind === 'invalid' ? 'failure.failed' : `failure.${failure.kind}`;
+export type SendFailure = Exclude<CreateFailure, { readonly kind: 'invalid' }>;
+
+export function failureKey(failure: SendFailure): MessageKey {
+  return `failure.${failure.kind}`;
 }
 
 export type ChosenFile = { readonly file?: FileInput | undefined } | { readonly problem: CreateProblem };

@@ -5,12 +5,12 @@ import { isKdfRequest, throttledProgress } from './kdf-protocol.ts';
 import type { KdfRequest, KdfResponse } from './kdf-protocol.ts';
 
 // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- postMessage requires a mutable transfer list in the platform API.
-function reply(message: KdfResponse, transfer: Transferable[] = []): void {
+function reply(message: KdfResponse, transfer: Transferable[]): void {
   postMessage(message, { transfer });
 }
 
 function handle(request: KdfRequest): void {
-  const onProgress = throttledProgress((fraction) => reply({ kind: 'progress', fraction }));
+  const onProgress = throttledProgress((fraction) => reply({ kind: 'progress', fraction }, []));
   switch (request.kind) {
     case 'stretch': {
       const key = stretchScrypt(request.message, onProgress);
@@ -24,12 +24,8 @@ function handle(request: KdfRequest): void {
         budgetMs: request.budgetMs,
         onAttempt: (counter) => onProgress(Math.min(counter / expected, 1)),
       });
-      reply({ kind: 'token', token });
+      reply({ kind: 'token', token }, []);
       break;
-    }
-    default: {
-      const exhaustive: never = request;
-      void exhaustive;
     }
   }
 }
@@ -45,6 +41,6 @@ addEventListener('message', (event: MessageEvent<unknown>) => {
     }
     handle(event.data);
   } catch (error) {
-    reply({ kind: 'error', timeout: error instanceof PowTimeoutError });
+    reply({ kind: 'error', timeout: error instanceof PowTimeoutError }, []);
   }
 });

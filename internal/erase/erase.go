@@ -4,6 +4,7 @@ package erase
 import (
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"math"
 	"os"
@@ -94,7 +95,7 @@ func SyncDirectory(directory string) error {
 	return errors.Join(handle.Sync(), handle.Close())
 }
 
-func regularSize(file *os.File) (int64, error) {
+func regularSize(file interface{ Stat() (fs.FileInfo, error) }) (int64, error) {
 	info, err := file.Stat()
 	if err != nil {
 		return 0, err
@@ -105,7 +106,7 @@ func regularSize(file *os.File) (int64, error) {
 	return info.Size(), nil
 }
 
-func writeZeros(file *os.File, start, length int64) error {
+func writeZeros(file io.WriterAt, start, length int64) error {
 	zeros := make([]byte, min(length, zeroBufferLen))
 	for offset := start; offset < start+length; {
 		chunk := zeros[:min(int64(len(zeros)), start+length-offset)]

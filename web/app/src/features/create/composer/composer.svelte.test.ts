@@ -1,4 +1,6 @@
-import { requestKey } from '@nylzo/core';
+import { generatePassphrase, KDF_NONE, KDF_SCRYPT, loadPassphraseWords, parseLink, requestKey } from '@nylzo/core';
+import { DetachedWindowAPI } from 'happy-dom';
+import { flushSync } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Mock } from 'vitest';
 
@@ -7,13 +9,21 @@ import { fakeApi } from '../../../shared/api/fake-api.ts';
 import type { InstanceLimits } from '../../../shared/api/responses.ts';
 import { KdfWorkerError } from '../../../shared/kdf/kdf-protocol.ts';
 import { startWorker } from '../../../shared/kdf/worker-source.ts';
+import { formatBytes, formatDuration } from '../../../shared/language/format.ts';
 import { Translator } from '../../../shared/language/translator.svelte.ts';
 import { memoryStore } from '../../../shared/sent-records/memory-sent-store.ts';
 import { browserSentStore, rememberSent } from '../../../shared/sent-records/sent-store.ts';
 import { CreateError, createMessage } from '../create-message.ts';
-import type { Created, CreateFailure } from '../create-message.ts';
+import type { Created, CreateFailure, CreateProblem } from '../create-message.ts';
 import { Composer } from './composer.svelte.ts';
 
+vi.mock(import('@nylzo/core'), (original) =>
+  original().then((actual) => ({
+    ...actual,
+    generatePassphrase: vi.fn<typeof actual.generatePassphrase>(actual.generatePassphrase),
+    loadPassphraseWords: vi.fn<typeof actual.loadPassphraseWords>(actual.loadPassphraseWords),
+  })),
+);
 vi.mock('../../../shared/api/api.ts', () => ({
   createApi: vi.fn<typeof import('../../../shared/api/api.ts').createApi>(),
 }));
@@ -37,6 +47,16 @@ const limits: InstanceLimits = {
   defaultTtlSeconds: 86_400,
   maxOpens: 10,
 };
+
+function reducedMotion(matches: boolean): void {
+  const environment: object = globalThis;
+  if (!('happyDOM' in environment) || !(environment.happyDOM instanceof DetachedWindowAPI)) {
+    throw new TypeError('these tests need the happy-dom environment');
+  }
+  environment.happyDOM.settings.device.prefersReducedMotion = matches ? 'reduce' : 'no-preference';
+  dispatchEvent(new Event('resize'));
+  flushSync();
+}
 
 describe('message composer interactions', () => {
   let created: Created;
@@ -98,7 +118,16 @@ describe('message composer interactions', () => {
     expect(form.opensMax).toBe(2);
     expect(form.ttlSeconds).toBe(7200);
     expect(form.ttlOptions).toContain(7200);
+    expect(form.ttlLabel(7200)).toBe(formatDuration(7200, 'en'));
     expect(form.fileLimit).toBe(16);
+  });
+
+  it('falls back to the format limits and the chosen lifetime before the instance answers', () => {
+    const form = new Composer(new Translator('en'), session);
+    composers.push(form);
+    form.ttlSeconds = 3600;
+    expect([form.textLimit, form.maxOpens, form.ttlOptions]).toEqual([102_400, 1, [3600]]);
+    expect(form.fileLimit).toBeGreaterThan(limits.maxFileBytes);
   });
 
   it('tracks only in the tab, never in browser storage, when served from the verified local client', () => {
@@ -151,6 +180,10 @@ describe('message composer interactions', () => {
     form.passphrase = 'password';
     expect(form.weak).toBe(true);
     expect(form.passphraseMessage).not.toBe('');
+    expect(form.usesPassphrase).toBe(true);
+    expect(form.nodes[1]?.detail).toBe(new Translator('en').translate('step.derive.detail.passphrase'));
+    form.passphrase = 'correct horse battery staple';
+    expect(form.passphraseMessage).toBe('');
     await form.toggleProtect();
     expect(form.protect).toBe(false);
     expect(form.passphrase).toBe('');
@@ -162,6 +195,14 @@ describe('message composer interactions', () => {
     form.passphrase = 'my own long passphrase';
     await toggled;
     expect(form.passphrase).toBe('my own long passphrase');
+  });
+
+  it('keeps a passphrase already in the field when protection turns on', async () => {
+    const form = composer();
+    form.passphrase = 'already typed words here';
+    await form.toggleProtect();
+    expect(form.passphrase).toBe('already typed words here');
+    expect(generatePassphrase).not.toHaveBeenCalled();
   });
 
   it('leaves the passphrase field empty when the sender reaches it before the generated words load', async () => {
@@ -225,6 +266,12 @@ describe('message composer interactions', () => {
     expect(form.proving).toBe(true);
     expect(form.timeline.fraction).toBe(0.25);
     expect(form.nodes[3]?.title).toBe(new Translator('en').translate('step.send.title.pow'));
+    expect(parseLink(form.placeholder?.link ?? '').kdfId).toBe(KDF_SCRYPT);
+    expect(form.placeholder?.expiresAt).toBe(new Date(Date.now() + form.ttlSeconds * 1000).toISOString());
+    expect(form.stepTitle).toBe(form.nodes[form.timeline.paced.step]?.title);
+    vi.mocked(createMessage).mock.calls[0]?.[2]?.({ step: 'uploading' });
+    expect([form.proving, form.timeline.fraction]).toEqual([false, undefined]);
+    expect(form.nodes[3]?.title).toBe(new Translator('en').translate('step.send.title'));
     await submit(form);
     expect(createMessage).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({ text: 'synthetic message', passphrase: 'correct horse battery staple', opensMax: 3 }),
@@ -241,6 +288,7 @@ describe('message composer interactions', () => {
     vi.advanceTimersByTime(5100);
     expect(form.phase).toBe('done');
     expect(form.sealed).toMatchObject({ created, opensMax: 3, passphrase: 'correct horse battery staple' });
+    expect([form.usesPassphrase, form.placeholder, form.stepTitle]).toEqual([true, undefined, '']);
     expect(form.remembered).toBe('off');
     expect(rememberSent).not.toHaveBeenCalled();
     expect(vi.getTimerCount()).toBe(0);
@@ -260,8 +308,10 @@ describe('message composer interactions', () => {
       const gate = Promise.withResolvers<boolean>();
       vi.mocked(rememberSent).mockReturnValueOnce(gate.promise);
       await submit(form);
+      expect(parseLink(form.placeholder?.link ?? '').kdfId).toBe(KDF_NONE);
       vi.advanceTimersByTime(5100);
       expect(rememberSent).not.toHaveBeenCalled();
+      expect([form.usesPassphrase, form.keeps]).toEqual([false, true]);
       const remembering = form.remember('  Heslo pro Petra ');
       expect(rememberSent).toHaveBeenCalledWith(
         browser,
@@ -276,6 +326,9 @@ describe('message composer interactions', () => {
       );
       expect(browserSentStore).toHaveBeenCalledOnce();
       expect(form.remembered).toBe('saving');
+      form.canKeep = false;
+      expect(form.keeps).toBe(true);
+      form.canKeep = true;
       gate.resolve(stored);
       await remembering;
       expect(form.remembered).toBe(stored ? 'remembered' : 'failed');
@@ -353,6 +406,69 @@ describe('message composer interactions', () => {
     vi.mocked(createMessage).mockRejectedValueOnce(new Error('unexpected'));
     await submit(form);
     expect(form.failure).toEqual({ kind: 'failed' });
+  });
+
+  it.each<[readonly CreateProblem[], string]>([
+    [
+      [{ field: 'text', code: 'too_large' }],
+      new Translator('en').translate('problem.text.too_large', { size: formatBytes(102_400, 'en') }),
+    ],
+    [
+      [
+        { field: 'file', code: 'too_large' },
+        { field: 'file', code: 'unreadable' },
+      ],
+      new Translator('en').translate('problem.file.too_large', { size: formatBytes(limits.maxFileBytes, 'en') }),
+    ],
+    [[{ field: 'ttl', code: 'out_of_range' }], new Translator('en').translate('problem.ttl.out_of_range')],
+    [
+      [{ field: 'opens', code: 'out_of_range' }],
+      new Translator('en').translate('problem.opens.out_of_range', { max: limits.maxOpens }),
+    ],
+  ])('shows the first problem the instance finds in a field: %j', async (problems, notice) => {
+    const form = composer();
+    form.text = 'draft';
+    vi.mocked(createMessage).mockRejectedValueOnce(new CreateError({ kind: 'invalid', problems }));
+    await submit(form);
+    expect(form.notice).toBe(notice);
+    expect(form.failure).toBeUndefined();
+  });
+
+  it.each([
+    ['a file without text', '', new File(['ok'], 'notes.txt'), 'notes.txt'],
+    ['blank text', '   ', undefined, ''],
+  ])('scrambles %s as the cipher of the sealing animation', async (_, text, file, cipher) => {
+    const form = composer();
+    form.text = text;
+    form.file = file;
+    vi.mocked(createMessage).mockReturnValueOnce(Promise.withResolvers<Created>().promise);
+    void submit(form);
+    await vi.waitFor(() => expect(createMessage).toHaveBeenCalledOnce());
+    expect(form.cipher).toBe(cipher);
+  });
+
+  it.each([false, true])('shows the link sooner when the sender prefers reduced motion: %s', async (reduced) => {
+    reducedMotion(reduced);
+    const form = composer();
+    form.text = 'synthetic message';
+    await submit(form);
+    vi.advanceTimersByTime(120);
+    const cipher = form.cipher;
+    vi.advanceTimersByTime(60);
+    expect(form.cipher === cipher).toBe(reduced);
+    vi.advanceTimersByTime(600);
+    expect(form.phase).toBe(reduced ? 'done' : 'encrypting');
+    reducedMotion(false);
+  });
+
+  it('keeps working when the generated words cannot load', async () => {
+    vi.mocked(loadPassphraseWords).mockRejectedValueOnce(new Error('offline'));
+    vi.mocked(generatePassphrase).mockRejectedValueOnce(new Error('offline'));
+    const form = composer();
+    form.toggleMenu('security');
+    expect(form.menu).toBe('security');
+    await form.toggleProtect();
+    expect([form.protect, form.passphrase]).toEqual([true, '']);
   });
 
   it.each([false, true])('ignores an upload that finishes after leaving, including failure: %s', async (failed) => {

@@ -11,8 +11,5 @@ func Free(directory string) (uint64, error) {
 	if err := syscall.Statfs(directory, &stat); err != nil {
 		return 0, err
 	}
-	if stat.Bsize <= 0 {
-		return 0, nil
-	}
-	return stat.Bavail * uint64(stat.Bsize), nil
+	return stat.Bavail * uint64(max(stat.Bsize, 0)), nil
 }

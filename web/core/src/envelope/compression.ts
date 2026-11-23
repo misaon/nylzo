@@ -13,7 +13,8 @@ export async function decompressAttachment(file: Uint8Array, size: number): Prom
     size < 0 ||
     size > MAX_FILE_BYTES ||
     file.length < GZIP_HEADER_LENGTH ||
-    ((file[GZIP_FLAGS_OFFSET] ?? 0) & GZIP_RESERVED_FLAGS) !== 0
+    (new DataView(file.buffer, file.byteOffset, file.byteLength).getUint8(GZIP_FLAGS_OFFSET) & GZIP_RESERVED_FLAGS) !==
+      0
   ) {
     throw new PlaintextError();
   }

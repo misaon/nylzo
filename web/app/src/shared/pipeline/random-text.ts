@@ -2,7 +2,7 @@ const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789
 
 // 256 is a multiple of the 64 letters, so a random byte picks each letter equally often.
 function letterOf(byte: number): string {
-  return ALPHABET[byte % ALPHABET.length] ?? 'A';
+  return ALPHABET.charAt(byte % ALPHABET.length);
 }
 
 export function randomText(length: number): string {

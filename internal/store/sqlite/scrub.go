@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"time"
 
-	driver "modernc.org/sqlite"
-
 	"github.com/misaon/nylzo/internal/erase"
 )
 
@@ -268,14 +266,18 @@ func (s *Store) scrubWhenAsked(ctx context.Context) {
 }
 
 func (s *Store) scrubWithRetries(ctx context.Context) error {
-	err := s.scrubLog(ctx, false)
+	return retryBusy(ctx, func(ctx context.Context) error { return s.scrubLog(ctx, false) })
+}
+
+func retryBusy(ctx context.Context, attempt func(context.Context) error) error {
+	err := attempt(ctx)
 	for retry := 1; retry < scrubRetries && errors.Is(err, ErrCheckpointBusy); retry++ {
 		select {
 		case <-ctx.Done():
-			return err
+			return ctx.Err()
 		case <-time.After(scrubRetryDelay):
 		}
-		err = s.scrubLog(ctx, false)
+		err = attempt(ctx)
 	}
 	return err
 }
@@ -299,11 +301,7 @@ func resetLog(ctx context.Context, path string) (bool, error) {
 	case info.Size() == 0:
 		return false, nil
 	}
-	connector, err := driver.NewConnector(exclusiveDataSourceName(path))
-	if err != nil {
-		return false, err
-	}
-	database := sql.OpenDB(persistentLog{Connector: connector})
+	database := sql.OpenDB(persistentLog{Connector: newConnector(exclusiveDataSourceName(path))})
 	skipped, err := checkpointAndZero(ctx, database, path)
 	return skipped, errors.Join(err, database.Close())
 }

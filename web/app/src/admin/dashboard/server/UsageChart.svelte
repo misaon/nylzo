@@ -6,7 +6,7 @@
   import type { AdminMessageKey } from '../../messages/catalog.ts';
   import { getDashboardTools } from '../context.ts';
   import { CARD } from '../surfaces.ts';
-  import { minuteTicks } from './usage.ts';
+  import { minuteTicks, sampleTime } from './usage.ts';
   import type { UsageSeries } from './usage.ts';
 
   interface Props {
@@ -41,7 +41,7 @@
     <div class="mt-4 grid h-44 place-items-center rounded-pane bg-white/3 ring-1 ring-white/6">
       <p class="flex items-center gap-2 px-6 text-center text-caption text-ink-mute">
         <Icon name="info" class="size-4 shrink-0" />
-        {translate(MISSING[series.kind])}
+        <span>{translate(MISSING[series.kind])}</span>
       </p>
     </div>
   {:else}
@@ -53,8 +53,8 @@
       ticks={PERCENT_TICKS}
       formatValue={format.percent}
       formatTick={format.percent}
-      periodLabel={(index) => format.time(usage[index]?.at ?? 0)}
-      tickLabel={(index) => format.clock(usage[index]?.at ?? 0)}
+      periodLabel={(index) => format.time(sampleTime(usage, index))}
+      tickLabel={(index) => format.clock(sampleTime(usage, index))}
       tickIndexes={(width) => minuteTicks(usage, { width, gap: TICK_GAP })}
     />
   {/if}

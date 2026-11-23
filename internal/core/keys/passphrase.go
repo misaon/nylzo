@@ -63,15 +63,17 @@ type codePointRange struct {
 	first, last rune
 }
 
-var assignedRanges = sync.OnceValue(func() []codePointRange {
-	lines := strings.Split(strings.TrimSuffix(AssignedCodePointList, "\n"), "\n")
+var assignedRanges = sync.OnceValue(func() []codePointRange { return parseAssignedRanges(AssignedCodePointList) })
+
+func parseAssignedRanges(list string) []codePointRange {
+	lines := strings.Split(strings.TrimSuffix(list, "\n"), "\n")
 	ranges := make([]codePointRange, 0, len(lines))
 	for _, line := range lines {
 		first, last, _ := strings.Cut(line, " ")
 		ranges = append(ranges, codePointRange{first: parseCodePoint(first), last: parseCodePoint(last)})
 	}
 	return ranges
-})
+}
 
 func parseCodePoint(text string) rune {
 	value, err := strconv.ParseInt(text, 16, 32)

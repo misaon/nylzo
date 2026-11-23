@@ -1,5 +1,5 @@
 import { requestKey } from '@nylzo/core';
-import { IDBFactory } from 'fake-indexeddb';
+import { forceCloseDatabase, IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { committed, openDatabase, requestResult } from './indexed-database.ts';
@@ -60,6 +60,67 @@ describe('persistent sent records', () => {
     expect(await failing.list()).toEqual([]);
     const created = await factory.databases();
     expect(created.map((database) => database.name)).toEqual(['nylzo']);
+  });
+
+  it('gives nothing for an id it never stored', async () => {
+    await store.put(record);
+    expect(await store.get('AQEBAQEBAQEBAQEBAQEBAQ')).toBeUndefined();
+  });
+
+  it('skips a stored value whose id is not text and leaves it in place', async () => {
+    await store.put(record);
+    const database = await openDatabase(factory, 'nylzo', () => {
+      throw new Error('must not recreate stores');
+    });
+    const transaction = database.transaction('sent', 'readwrite');
+    const done = committed(transaction);
+    await requestResult(transaction.objectStore('sent').put({ id: 5 }));
+    await done;
+    const listed = await store.list();
+    expect(listed.map((value) => value.id)).toEqual([record.id]);
+    const read = database.transaction('sent', 'readonly');
+    await expect(requestResult(read.objectStore('sent').count())).resolves.toBe(2);
+    database.close();
+  });
+
+  it('opens a new connection once the browser closed the old one', async () => {
+    const connections: IDBDatabase[] = [];
+    const watched = browserSentStore({
+      ...withListing(factory, async () => factory.databases()),
+      open: (name: string, version?: number) => {
+        const request = factory.open(name, version);
+        request.addEventListener('success', () => {
+          connections.push(request.result);
+        });
+        return request;
+      },
+    });
+    await watched.put(record);
+    const [first] = connections;
+    if (first === undefined) {
+      throw new Error('the store opened no connection');
+    }
+    Reflect.apply(forceCloseDatabase, undefined, [first]);
+    expect(await watched.list()).toHaveLength(1);
+    expect(connections).toHaveLength(2);
+  });
+
+  it('tries to open the database again after operations that failed to open it together', async () => {
+    let refusals = 1;
+    const flaky = browserSentStore({
+      ...withListing(factory, async () => factory.databases()),
+      open: (name: string, version?: number) => {
+        if (refusals > 0) {
+          refusals--;
+          throw new DOMException('storage is busy', 'InvalidStateError');
+        }
+        return factory.open(name, version);
+      },
+    });
+    const results = await Promise.allSettled([flaky.put(record), flaky.put(record)]);
+    expect(results.map(({ status }) => status)).toEqual(['rejected', 'rejected']);
+    await flaky.put(record);
+    expect(await flaky.list()).toHaveLength(1);
   });
 
   it('lets another tab delete the database while it is open, then opens it again', async () => {

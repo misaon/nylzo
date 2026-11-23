@@ -81,9 +81,6 @@ export class PlaintextError extends Error {
 
 export class MetaError extends Error {
   override readonly name = 'MetaError';
-  constructor(message = 'invalid meta') {
-    super(message);
-  }
 }
 
 export class LinkError extends Error {

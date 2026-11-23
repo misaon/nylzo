@@ -581,7 +581,7 @@ export class ReadPage {
     if (text !== undefined && !prefersReducedMotion.current) {
       const started = performance.now();
       const cut = Math.min(text.length, SCRAMBLED_CHARACTERS);
-      const astral = cut < text.length && (text.codePointAt(cut - 1) ?? 0) > 0xff_ff;
+      const astral = cut < text.length && Number(text.codePointAt(cut - 1)) > 0xff_ff;
       const characters = charactersOf(text.slice(0, astral ? cut + 1 : cut));
       const head = characters.join('');
       this.revealRest = text.slice(head.length);
@@ -595,11 +595,6 @@ export class ReadPage {
       }, REVEAL_TICK_MS);
     }
     await this.focus.focusAfterUpdate('revealedTitle');
-  }
-
-  // A getter, not $derived: a derived that nothing reads any more keeps its last value, the decrypted text.
-  get revealText(): string | undefined {
-    return this.revealHead === undefined ? undefined : this.revealHead + this.revealRest;
   }
 
   #clearReveal(): void {

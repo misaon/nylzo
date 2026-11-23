@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { LiveUpdate, UsagePoint } from '../api/types.ts';
 import { liveQuery, mergeLive } from './live-update.ts';
 import type { HeldLive } from './live-update.ts';
+import type { LiveUpdate, UsagePoint } from './types.ts';
 
 function sample(at: number): UsagePoint {
   return { at, processor: 0, load: 0, memoryUsed: 0, memoryTotal: 0, processBytes: 0 };
@@ -39,5 +39,18 @@ describe('mergeLive', () => {
     const stepped = mergeLive(later, update([sample(40), sample(45)]));
     expect(atOf(stepped)).toEqual([2, 7, 12, 17, 22, 27, 32, 37, 40, 45]);
     expect(mergeLive(later, update([], [])).live.refused).toEqual([]);
+  });
+
+  it('starts from an empty view and asks for everything while it holds nothing to compare', () => {
+    expect(liveQuery(undefined)).toBe('');
+    const nothing = mergeLive(undefined, { ...update([]), refusedVersion: undefined });
+    expect(nothing.live.usage).toEqual([]);
+    expect(nothing.live.refused).toEqual([]);
+    expect(liveQuery(nothing)).toBe('');
+    const versionOnly = mergeLive(nothing, update([], []));
+    expect(liveQuery(versionOnly)).toBe('?refused=2');
+    const held = mergeLive(undefined, update([sample(5)]));
+    const unchanged = mergeLive(held, update([]));
+    expect(atOf(unchanged)).toEqual([5]);
   });
 });

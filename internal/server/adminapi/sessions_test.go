@@ -3,6 +3,8 @@ package adminapi
 import (
 	"testing"
 	"time"
+
+	"github.com/misaon/nylzo/internal/server/adminstore"
 )
 
 // A session ends fifteen minutes after its last request and twelve hours after sign-in however busy it is; the
@@ -85,5 +87,27 @@ func TestSignInChallengesSurviveClockSteps(t *testing.T) {
 	later := issued.Add(2 * time.Minute)
 	if !held.signInOpen(held.signInChallenge(key, later), key, later) {
 		t.Fatal("a clock that once ran ahead refused a fresh challenge")
+	}
+}
+
+func TestTheOldestEnrollmentCeremonyMakesRoomForANewOne(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 15, 12, 0, 0, 0, time.UTC)
+	held := newSessions()
+	token := adminstore.HashToken([]byte("token"))
+	challenges := make([][]byte, 0, maxEnrollments+1)
+	for index := range maxEnrollments + 1 {
+		challenges = append(challenges, held.beginEnrollment(token, now.Add(time.Duration(index)*time.Second)))
+	}
+	if _, open := held.finishEnrollment(challenges[0], now); open {
+		t.Fatal("the oldest ceremony stayed open past the limit")
+	}
+	for _, challenge := range challenges[1:] {
+		if _, open := held.finishEnrollment(challenge, now); !open {
+			t.Fatal("a newer ceremony was dropped")
+		}
+	}
+	if _, open := held.finishEnrollment(challenges[1][:ceremonyChallenge-1], now); open {
+		t.Fatal("a shortened challenge finished a ceremony")
 	}
 }

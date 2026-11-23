@@ -46,7 +46,7 @@
       class="mt-4 flex items-center gap-2.5 rounded-pane bg-aegis-500/6 px-4 py-3.5 text-ui text-ink-soft ring-1 ring-aegis-400/20"
     >
       <Icon name="shieldCheck" class="size-4 shrink-0 text-aegis-300" />
-      {translate('dashboard.protection.empty')}
+      <span>{translate('dashboard.protection.empty')}</span>
     </p>
   {:else}
     <div class={[COLUMNS, 'mt-4 hidden border-b border-white/8 pb-2 text-micro text-ink-mute']} aria-hidden="true">
@@ -66,7 +66,7 @@
             <span class="text-ui font-medium text-ink tabular-nums md:hidden">{format.count(client.count)}</span>
           </div>
           <p class="text-caption text-ink-soft md:text-ui">
-            <span class="sr-only">{columns[1]}:</span>
+            <span class="sr-only">{`${columns[1]}:`}</span>
             {countryName(translate, format, client.country)}
           </p>
           <ul role="list" class="flex flex-wrap gap-1.5" aria-label={columns[2]}>
@@ -74,17 +74,17 @@
               <li
                 class="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 py-0.5 pr-2 pl-2.5 text-micro text-rose-100 ring-1 ring-rose-300/25"
               >
-                {reason.label}
+                <span>{reason.label}</span>
                 <span class="font-medium text-ink tabular-nums">{format.count(reason.count)}</span>
               </li>
             {/each}
           </ul>
           <p class="hidden text-right text-ui font-medium text-ink tabular-nums md:block">
-            <span class="sr-only">{columns[3]}:</span>
+            <span class="sr-only">{`${columns[3]}:`}</span>
             {format.count(client.count)}
           </p>
           <p class="text-caption text-ink-mute tabular-nums">
-            <span class="sr-only">{columns[4]}:</span>
+            <span class="sr-only">{`${columns[4]}:`}</span>
             <time datetime={new Date(client.first * 1000).toISOString()}>
               {format.relative(Math.min(client.first, now), now)}
             </time>

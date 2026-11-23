@@ -17,7 +17,7 @@ import {
   SCALAR_LENGTH,
   SEED_LENGTH,
 } from '../keys/opaque.ts';
-import { concatenate, utf8 } from '../primitives/bytes.ts';
+import { concatenate, utf8, xor } from '../primitives/bytes.ts';
 
 // The server steps of OPAQUE-3DH (RFC 9807), for the fake server of the client tests only; the Go server is the
 // one that runs.
@@ -99,7 +99,7 @@ export function generateKE2({ keys, record, credentialIdentifier, ke1, context, 
   const credentialResponse = concatenate(
     evaluate(keys, credentialIdentifier, ke1.subarray(0, ELEMENT_LENGTH)),
     random.maskingNonce,
-    pad.map((byte, index) => byte ^ (plain[index] ?? 0)),
+    xor(pad, plain),
   );
   const { secret, publicKey: keyshare } = deriveKeyPair(random.keyshareSeed, INFO_DIFFIE_HELLMAN);
   const preamble = preambleOf(

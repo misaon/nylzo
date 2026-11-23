@@ -18,6 +18,41 @@ const (
 	initialUserNamespace = 0xEFFFFFFD
 )
 
+type kernel struct {
+	threads   string
+	swaps     string
+	blocks    string
+	device    func(path string) (string, error)
+	getrlimit func(resource int, limit *unix.Rlimit) error
+	setrlimit func(resource int, limit *unix.Rlimit) error
+	prctl     func(option int, arg2, arg3, arg4, arg5 uintptr) error
+	capget    func(header *unix.CapUserHeader, data *unix.CapUserData) error
+	stat      func(path string, status *unix.Stat_t) error
+	mlockall  func(flags int) error
+	sysinfo   func(info *unix.Sysinfo_t) error
+}
+
+var thisKernel = kernel{
+	threads:   threadsDirectory,
+	swaps:     procSwaps,
+	blocks:    sysBlock,
+	device:    blockDevice,
+	getrlimit: unix.Getrlimit,
+	setrlimit: unix.Setrlimit,
+	prctl:     unix.Prctl,
+	capget:    unix.Capget,
+	stat:      unix.Stat,
+	mlockall:  unix.Mlockall,
+	sysinfo:   unix.Sysinfo,
+}
+
+var (
+	disableDumps = thisKernel.disableDumps
+	keepFromSwap = thisKernel.keepFromSwap
+	// LockMemory keeps every page the process maps out of swap; MCL_ONFAULT locks a page only once it is used.
+	LockMemory = thisKernel.lockMemory
+)
+
 var (
 	errFiniteMemoryLock = errors.New(
 		"the memlock limit is finite and the process lacks CAP_IPC_LOCK, so memory the runtime maps later could not be locked",
@@ -29,14 +64,14 @@ var (
 // disableDumps also makes /proc/<pid> root-owned, so no other process of the user reads the memory or environment.
 // A tracer that attached before keeps its access to the thread it traces, so the process refuses to go on while any
 // of its threads has one.
-func disableDumps() error {
-	if err := unix.Setrlimit(unix.RLIMIT_CORE, &unix.Rlimit{}); err != nil {
+func (k *kernel) disableDumps() error {
+	if err := k.setrlimit(unix.RLIMIT_CORE, &unix.Rlimit{}); err != nil {
 		return err
 	}
-	if err := unix.Prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
+	if err := k.prctl(unix.PR_SET_DUMPABLE, 0, 0, 0, 0); err != nil {
 		return err
 	}
-	return refuseTracers(threadsDirectory)
+	return refuseTracers(k.threads)
 }
 
 // refuseTracers fails closed when /proc cannot show the threads.
@@ -66,48 +101,47 @@ func refuseTracer(status []byte) error {
 	return nil
 }
 
-// LockMemory keeps every page the process maps out of swap; MCL_ONFAULT locks a page only once it is used.
-func LockMemory() error {
-	raiseLockLimit()
-	if err := requireUnlimitedLock(); err != nil {
+func (k *kernel) lockMemory() error {
+	k.raiseLockLimit()
+	if err := k.requireUnlimitedLock(); err != nil {
 		return err
 	}
-	return unix.Mlockall(lockFlags)
+	return k.mlockall(lockFlags)
 }
 
 // keepFromSwap locks the memory when no later mapping can fail for it; otherwise it names the swap that would keep
 // the pages in clear.
-func keepFromSwap() string {
-	lockErr := LockMemory()
+func (k *kernel) keepFromSwap() string {
+	lockErr := k.lockMemory()
 	if lockErr == nil {
 		return ""
 	}
-	exposed, err := clearSwap(procSwaps, sysBlock, blockDevice)
-	if errors.Is(err, errNoSwapTable) && !swapActive() {
+	exposed, err := clearSwap(k.swaps, k.blocks, k.device)
+	if errors.Is(err, errNoSwapTable) && !k.swapActive() {
 		return ""
 	}
 	return swapWarning(exposed, err, lockErr)
 }
 
 // swapActive asks the kernel directly, since /proc/swaps can be hidden (ProcSubset=pid) or not mounted.
-func swapActive() bool {
+func (k *kernel) swapActive() bool {
 	var info unix.Sysinfo_t
-	return unix.Sysinfo(&info) != nil || info.Totalswap > 0
+	return k.sysinfo(&info) != nil || info.Totalswap > 0
 }
 
-func raiseLockLimit() {
+func (k *kernel) raiseLockLimit() {
 	var limit unix.Rlimit
-	if unix.Getrlimit(unix.RLIMIT_MEMLOCK, &limit) == nil && limit.Cur < limit.Max {
-		_ = unix.Setrlimit(unix.RLIMIT_MEMLOCK, &unix.Rlimit{Cur: limit.Max, Max: limit.Max})
+	if k.getrlimit(unix.RLIMIT_MEMLOCK, &limit) == nil && limit.Cur < limit.Max {
+		_ = k.setrlimit(unix.RLIMIT_MEMLOCK, &unix.Rlimit{Cur: limit.Max, Max: limit.Max})
 	}
 }
 
 // requireUnlimitedLock refuses a finite memlock limit, which mlockall accepts while the heap is small; MCL_FUTURE then
 // makes a later mapping past the limit fail and the process stop. CAP_IPC_LOCK lifts the limit only in the initial
 // user namespace, so a container's own capability does not count.
-func requireUnlimitedLock() error {
+func (k *kernel) requireUnlimitedLock() error {
 	var limit unix.Rlimit
-	if err := unix.Getrlimit(unix.RLIMIT_MEMLOCK, &limit); err != nil {
+	if err := k.getrlimit(unix.RLIMIT_MEMLOCK, &limit); err != nil {
 		return err
 	}
 	if limit.Cur == unix.RLIM_INFINITY {
@@ -115,13 +149,13 @@ func requireUnlimitedLock() error {
 	}
 	header := unix.CapUserHeader{Version: unix.LINUX_CAPABILITY_VERSION_3}
 	var capabilities [2]unix.CapUserData
-	if err := unix.Capget(&header, &capabilities[0]); err != nil {
+	if err := k.capget(&header, &capabilities[0]); err != nil {
 		return err
 	}
 	const bitsPerWord = 32
 	held := capabilities[unix.CAP_IPC_LOCK/bitsPerWord].Effective&(1<<(unix.CAP_IPC_LOCK%bitsPerWord)) != 0
 	var namespace unix.Stat_t
-	if held && unix.Stat("/proc/self/ns/user", &namespace) == nil && namespace.Ino == initialUserNamespace {
+	if held && k.stat("/proc/self/ns/user", &namespace) == nil && namespace.Ino == initialUserNamespace {
 		return nil
 	}
 	return errFiniteMemoryLock

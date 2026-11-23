@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"os"
 	"os/exec"
@@ -20,16 +21,22 @@ func TestVectorCommandEntrypoint(t *testing.T) {
 			os.Args = append(os.Args, "-out", os.Getenv("NYLZO_TEST_VECTOR_FILE"))
 		case "invalid":
 			os.Args = append(os.Args, "unexpected-argument")
+		case "unwritable":
+			os.Args = append(
+				os.Args,
+				"-out",
+				filepath.Join(os.Getenv("NYLZO_TEST_VECTOR_FILE"), "missing", "vectors.json"),
+			)
 		default:
 			// With no flags the command writes vectors to stdout.
 		}
 		flag.CommandLine = flag.NewFlagSet("nylzo-vectors", flag.ExitOnError)
 		// The full generator needs gigabytes under the race detector; TestCommittedVectorsMatchGenerator covers it.
-		generate = func() (*vectors.File, error) { return &vectors.File{Spec: vectors.Spec}, nil }
+		generate = func() *vectors.File { return &vectors.File{Spec: vectors.Spec} }
 		main()
 		os.Exit(0)
 	}
-	for _, scenario := range []string{"stdout", "file", "invalid"} {
+	for _, scenario := range []string{"stdout", "file", "invalid", "unwritable"} {
 		t.Run(scenario, func(t *testing.T) {
 			destination := filepath.Join(t.TempDir(), "vectors.json")
 			command := exec.Command(os.Args[0], "-test.run=^TestVectorCommandEntrypoint$")
@@ -45,6 +52,12 @@ func TestVectorCommandEntrypoint(t *testing.T) {
 			if scenario == "invalid" {
 				if err == nil || !strings.Contains(string(output), "Usage") {
 					t.Fatalf("invalid arguments: %v\n%s", err, output)
+				}
+				return
+			}
+			if scenario == "unwritable" {
+				if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 1 {
+					t.Fatalf("an unwritable destination: %v\n%s", err, output)
 				}
 				return
 			}

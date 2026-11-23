@@ -67,15 +67,10 @@ var opaqueCases = []opaqueCase{
 	{"scrypt-nfc-decomposed", core.KDFScrypt, "héslo s češtinou"},
 }
 
-func (f *File) opaque() error {
+func (f *File) opaque() {
 	for _, vector := range opaqueCases {
-		run, err := opaqueVector(vector)
-		if err != nil {
-			return err
-		}
-		f.OPAQUE = append(f.OPAQUE, run)
+		f.OPAQUE = append(f.OPAQUE, opaqueVector(vector))
 	}
-	return nil
 }
 
 func deterministicBlind(label string) *[opaque.ScalarLen]byte {
@@ -83,11 +78,7 @@ func deterministicBlind(label string) *[opaque.ScalarLen]byte {
 }
 
 func deterministicBlindBytes(label string) []byte {
-	scalar, err := ristretto255.NewScalar().SetUniformBytes(deterministic(label, 64))
-	if err != nil {
-		panic(err)
-	}
-	return scalar.Bytes()
+	return must(ristretto255.NewScalar().SetUniformBytes(deterministic(label, 64))).Bytes()
 }
 
 type opaqueInputs struct {
@@ -102,7 +93,7 @@ type opaqueInputs struct {
 	keySeed    pepper.Tag
 }
 
-func opaqueSetup(vector opaqueCase) (*opaqueInputs, error) {
+func opaqueSetup(vector opaqueCase) *opaqueInputs {
 	inputs := &opaqueInputs{
 		id:     deterministicID("opaque/" + vector.name),
 		secret: deterministic32("opaque/s/" + vector.name),
@@ -110,28 +101,17 @@ func opaqueSetup(vector opaqueCase) (*opaqueInputs, error) {
 		pepper: deterministic("pepper/current", pepper.SecretLen),
 	}
 	inputs.credential = keys.CredentialIdentifier(inputs.id, inputs.share)
-	ring, err := pepper.NewRing(inputs.pepper, nil)
-	if err != nil {
-		return nil, err
-	}
-	if inputs.password, err = keys.Password(inputs.secret, vector.kdf, vector.passphrase); err != nil {
-		return nil, err
-	}
-	if inputs.config, err = keys.OPAQUEConfig(inputs.id, vector.kdf); err != nil {
-		return nil, err
-	}
-	if inputs.serverKeys, err = ring.OPAQUEKeys(inputs.id[:], ring.CurrentID()); err != nil {
-		return nil, err
-	}
+	ring := must(pepper.NewRing(inputs.pepper, nil))
+	inputs.password = must(keys.Password(inputs.secret, vector.kdf, vector.passphrase))
+	inputs.config = must(keys.OPAQUEConfig(inputs.id, vector.kdf))
+	inputs.serverKeys = must(ring.OPAQUEKeys(inputs.id[:], ring.CurrentID()))
 	inputs.keySeed = ring.MAC(pepper.OPAQUEServer, inputs.id[:])
-	oprfSeed, err := hkdf.Key(sha256.New, inputs.pepper, nil, infoOPRFSeed, opaque.OPRFSeedLen)
-	if err != nil {
-		return nil, err
-	}
-	if !bytes.Equal(oprfSeed, inputs.serverKeys.OPRFSeed[:]) {
-		return nil, fmt.Errorf("vectors: OPRF seed of %q %w", vector.name, errOPAQUERun)
-	}
-	return inputs, nil
+	oprfSeed := must(hkdf.Key(sha256.New, inputs.pepper, nil, infoOPRFSeed, opaque.OPRFSeedLen))
+	require(
+		bytes.Equal(oprfSeed, inputs.serverKeys.OPRFSeed[:]),
+		fmt.Errorf("vectors: OPRF seed of %q %w", vector.name, errOPAQUERun),
+	)
+	return inputs
 }
 
 type opaqueRun struct {
@@ -144,23 +124,13 @@ type opaqueRun struct {
 	random       opaque.ServerRandomness
 }
 
-func opaqueVector(vector opaqueCase) (OPAQUE, error) {
-	inputs, err := opaqueSetup(vector)
-	if err != nil {
-		return OPAQUE{}, err
-	}
+func opaqueVector(vector opaqueCase) OPAQUE {
+	inputs := opaqueSetup(vector)
 	label := "opaque/" + vector.name + "/"
 	run := &opaqueRun{}
-	if registerErr := run.register(inputs, label); registerErr != nil {
-		return OPAQUE{}, registerErr
-	}
-	if loginErr := run.logIn(inputs, label); loginErr != nil {
-		return OPAQUE{}, fmt.Errorf("vectors: OPAQUE run %q: %w", vector.name, loginErr)
-	}
-	salt, err := keys.PassphraseSalt(inputs.secret)
-	if err != nil {
-		return OPAQUE{}, err
-	}
+	run.register(inputs, label)
+	run.logIn(inputs, label, vector.name)
+	salt := keys.PassphraseSalt(inputs.secret)
 	return OPAQUE{
 		Name:                 vector.name,
 		ID:                   inputs.id.String(),
@@ -192,31 +162,22 @@ func opaqueVector(vector opaqueCase) (OPAQUE, error) {
 		KE3:                  core.Encode(run.ke3[:]),
 		P:                    hex.EncodeToString(run.registration.ExportKey[:]),
 		Heavy:                vector.kdf == core.KDFScrypt,
-	}, nil
+	}
 }
 
-func (r *opaqueRun) register(inputs *opaqueInputs, label string) error {
+func (r *opaqueRun) register(inputs *opaqueInputs, label string) {
 	request, state, err := opaque.CreateRegistrationRequestWith(
 		inputs.password,
 		deterministicBlind(label+"blind-registration"),
 	)
-	if err != nil {
-		return err
-	}
+	require(err == nil, fmt.Errorf("vectors: OPAQUE registration request: %w", err))
 	r.request = request
-	if r.response, err = opaque.CreateRegistrationResponse(
-		request[:],
-		&inputs.serverKeys,
-		inputs.credential,
-	); err != nil {
-		return err
-	}
+	r.response = must(opaque.CreateRegistrationResponse(request[:], &inputs.serverKeys, inputs.credential))
 	nonce := [opaque.NonceLen]byte(deterministic(label+"envelope-nonce", opaque.NonceLen))
-	r.registration, err = opaque.FinalizeRegistrationRequestWith(&state, r.response[:], &inputs.config, &nonce)
-	return err
+	r.registration = must(opaque.FinalizeRegistrationRequestWith(&state, r.response[:], &inputs.config, &nonce))
 }
 
-func (r *opaqueRun) logIn(inputs *opaqueInputs, label string) error {
+func (r *opaqueRun) logIn(inputs *opaqueInputs, label, name string) {
 	clientNonce := [opaque.NonceLen]byte(deterministic(label+"client-nonce", opaque.NonceLen))
 	clientSeed := [opaque.SeedLen]byte(deterministic(label+"client-keyshare-seed", opaque.SeedLen))
 	ke1, login, err := opaque.GenerateKE1With(
@@ -225,9 +186,7 @@ func (r *opaqueRun) logIn(inputs *opaqueInputs, label string) error {
 		&clientNonce,
 		&clientSeed,
 	)
-	if err != nil {
-		return err
-	}
+	require(err == nil, fmt.Errorf("vectors: OPAQUE run %q, KE1: %w", name, err))
 	r.ke1 = ke1
 	r.random = opaque.ServerRandomness{
 		MaskingNonce: [opaque.NonceLen]byte(deterministic(label+"masking-nonce", opaque.NonceLen)),
@@ -242,17 +201,12 @@ func (r *opaqueRun) logIn(inputs *opaqueInputs, label string) error {
 		&inputs.config,
 		&r.random,
 	)
-	if err != nil {
-		return err
-	}
+	require(err == nil, fmt.Errorf("vectors: OPAQUE run %q, KE2: %w", name, err))
 	r.ke2 = ke2
-	result, err := login.GenerateKE3(ke2[:], &inputs.config)
-	if err != nil {
-		return err
-	}
-	if result.ExportKey != r.registration.ExportKey || serverLogin.ServerFinish(result.KE3[:]) != nil {
-		return errOPAQUERun
-	}
+	result := must(login.GenerateKE3(ke2[:], &inputs.config))
+	require(
+		result.ExportKey == r.registration.ExportKey && serverLogin.ServerFinish(result.KE3[:]) == nil,
+		fmt.Errorf("vectors: OPAQUE run %q %w", name, errOPAQUERun),
+	)
 	r.ke3 = result.KE3
-	return nil
 }

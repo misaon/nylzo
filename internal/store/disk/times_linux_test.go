@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -40,6 +41,29 @@ func TestBlobReadKeepsAccessTime(t *testing.T) {
 	if after := fileTimes(t, path).Atim; after != before {
 		t.Fatalf("serving the blob recorded the read time in its atime: %v -> %v", before, after)
 	}
+}
+
+// O_NOATIME needs the owner of the file, which an operator who copied the blobs in as another user may not be.
+func TestABlobOfAnotherOwnerStillOpens(t *testing.T) {
+	t.Parallel()
+	foreign := "/etc/passwd"
+	info, err := os.Stat(foreign)
+	if err != nil || os.Geteuid() == 0 || info.Sys().(*syscall.Stat_t).Uid == uint32(os.Geteuid()) {
+		t.Skip("needs a readable file of another owner and a process without root")
+	}
+	directory := t.TempDir()
+	blobs := newBlobs(t, directory)
+	if err = os.Symlink(
+		foreign,
+		filepath.Join(directory, disk.Directory, hex.EncodeToString([]byte("ref"))),
+	); err != nil {
+		t.Fatal(err)
+	}
+	content, size, err := blobs.Open(t.Context(), "ref")
+	if err != nil || size != info.Size() {
+		t.Fatalf("a blob of another owner: %d %v", size, err)
+	}
+	content.Close()
 }
 
 func TestRestampHidesWhenEachBlobWasUploaded(t *testing.T) {

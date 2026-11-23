@@ -3,6 +3,7 @@ import type { Timeline } from '../charts/geometry/time.ts';
 import type { AdminLanguage } from '../messages/catalog.ts';
 
 const BINARY_UNITS = ['B', 'KiB', 'MiB', 'GiB', 'TiB'] as const;
+type BinaryUnit = (typeof BINARY_UNITS)[number];
 const KIBIBYTE = 1024;
 const MINUTE = 60;
 const HOUR = 3600;
@@ -29,12 +30,15 @@ export interface DashboardFormat {
 
 function binary(bytes: number, number: Intl.NumberFormat): string {
   let value = Math.max(0, bytes);
-  let unit = 0;
-  while (value >= KIBIBYTE && unit < BINARY_UNITS.length - 1) {
+  let unit: BinaryUnit = 'B';
+  for (const larger of BINARY_UNITS.slice(1)) {
+    if (value < KIBIBYTE) {
+      break;
+    }
     value /= KIBIBYTE;
-    unit += 1;
+    unit = larger;
   }
-  return `${number.format(value)}\u{A0}${BINARY_UNITS[unit] ?? 'B'}`;
+  return `${number.format(value)}\u{A0}${unit}`;
 }
 
 function relative(difference: number, format: Intl.RelativeTimeFormat): string {
@@ -88,7 +92,7 @@ export function dashboardFormat(language: AdminLanguage): DashboardFormat {
     bytes: (bytes) => binary(bytes, decimal),
     country: (code) => {
       try {
-        return regions.of(code) ?? code;
+        return String(regions.of(code));
       } catch {
         return code;
       }

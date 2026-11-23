@@ -12,5 +12,5 @@ export function scramble(characters: readonly string[], progress: number): strin
 }
 
 export function charactersOf(text: string): readonly string[] {
-  return text.match(/./gsu) ?? [];
+  return Array.from(text.matchAll(/./gsu), ([character]) => character);
 }

@@ -48,7 +48,6 @@ var (
 	ErrVersion   = errors.New("core: unsupported envelope version")
 	ErrIntegrity = errors.New("core: envelope integrity check failed")
 	ErrPlaintext = errors.New("core: malformed plaintext")
-	ErrTooLarge  = errors.New("core: content exceeds limits")
 	ErrPolicy    = errors.New("core: invalid policy")
 )
 
@@ -263,15 +262,8 @@ func padPlaintext(payload Payload, compress bool) ([]byte, error) {
 			meta, file, objectLen = encoded.meta, encoded.file, encoded.objectLen
 		}
 	}
-	metaLength := uint(len(meta))
-	if metaLength > MaxMetaBytes {
-		return nil, ErrMeta
-	}
-	if objectLen > MaxObjectBytes {
-		return nil, ErrTooLarge
-	}
 	plaintext := make([]byte, objectLen-PrefixLen-TagLen)
-	binary.BigEndian.PutUint32(plaintext, uint32(metaLength))
+	binary.BigEndian.PutUint32(plaintext, uint32(min(len(meta), MaxMetaBytes)))
 	copy(plaintext[MetaLenPrefix:], meta)
 	copy(plaintext[MetaLenPrefix+len(meta):], file)
 	return plaintext, nil
@@ -285,9 +277,6 @@ func fileMatchesMeta(payload Payload) bool {
 }
 
 func parsePlaintext(plaintext []byte) (Payload, error) {
-	if len(plaintext) < MetaLenPrefix {
-		return Payload{}, ErrPlaintext
-	}
 	metaLength := int64(binary.BigEndian.Uint32(plaintext))
 	contentStart := MetaLenPrefix + metaLength
 	if metaLength > MaxMetaBytes || contentStart > int64(len(plaintext)) {
@@ -321,9 +310,6 @@ func parsePlaintext(plaintext []byte) (Payload, error) {
 }
 
 func newAEAD(key *[core.KeyLen]byte) (cipher.AEAD, error) {
-	block, err := aes.NewCipher(key[:])
-	if err != nil {
-		return nil, err
-	}
+	block, _ := aes.NewCipher(key[:])
 	return cipher.NewGCM(block)
 }

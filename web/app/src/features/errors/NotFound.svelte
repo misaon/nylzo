@@ -9,10 +9,6 @@
   const id = $props.id();
 </script>
 
-<svelte:head>
-  <title>{translate('title.notFound')}</title>
-</svelte:head>
-
 <section class="px-4 pt-14 pb-20 sm:px-6 md:pt-20 md:pb-28" aria-labelledby="{id}-title">
   <div class="mx-auto flex max-w-[720px] flex-col items-center text-center">
     <p class="sr-only">{translate('error.notFound.label')}</p>

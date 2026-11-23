@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/server/webclient"
@@ -163,5 +164,56 @@ func TestSecurityTextFollowsRFC9116(t *testing.T) {
 	}
 	if !webclient.IsPublicDocument(webclient.SecurityTextPath) {
 		t.Fatal("scanners over classical TLS cannot read security.txt")
+	}
+}
+
+func TestNewHandlerRefusesAnInvalidPublicURLOrContact(t *testing.T) {
+	t.Parallel()
+	build := load(t, builtClient(t))
+	if _, err := webclient.NewHandler(build, "http://nylzo.example", "", buildinfo.Info{}); err == nil {
+		t.Error("a public URL over plain HTTP was accepted")
+	}
+	if _, err := webclient.NewHandler(build, "", "javascript:alert(1)", buildinfo.Info{}); err == nil {
+		t.Error("a script contact was accepted")
+	}
+}
+
+func TestAdminPageAndRootFilesExistOnlyInABuildThatHasThem(t *testing.T) {
+	t.Parallel()
+	withAdmin := builtClient(t)
+	withAdmin["dist/admin.html"] = &fstest.MapFile{Data: []byte(builtIndex)}
+	withAdmin["dist/llms.txt"] = &fstest.MapFile{Data: []byte("llms")}
+	for name, files := range map[string]fstest.MapFS{"without": builtClient(t), "with": withAdmin} {
+		handler, err := webclient.NewHandler(load(t, files), "https://nylzo.example", "", buildinfo.Info{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		get := func(path string) *httptest.ResponseRecorder {
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, path, http.NoBody))
+			return response
+		}
+		admin, llms := get(webclient.AdminPath), get("/llms.txt")
+		built := name == "with"
+		if (admin.Code == http.StatusOK) != built ||
+			strings.Contains(admin.Header().Get("Permissions-Policy"), "publickey-credentials-get=(self)") != built {
+			t.Errorf("a build %s the admin page answered %d with %v", name, admin.Code, admin.Header())
+		}
+		if (llms.Code == http.StatusOK) != built || (llms.Body.String() == "llms") != built {
+			t.Errorf("a build %s llms.txt answered %d", name, llms.Code)
+		}
+	}
+}
+
+func TestAHomePageWithoutItsSlashRedirectsToIt(t *testing.T) {
+	t.Parallel()
+	handler, err := webclient.NewHandler(load(t, builtClient(t)), "https://nylzo.example", "", buildinfo.Info{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/cs", http.NoBody))
+	if response.Code != http.StatusPermanentRedirect || response.Header().Get("Location") != "/cs/" {
+		t.Fatalf("/cs answered %d to %q", response.Code, response.Header().Get("Location"))
 	}
 }

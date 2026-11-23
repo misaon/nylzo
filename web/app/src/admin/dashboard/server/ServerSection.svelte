@@ -4,6 +4,7 @@
   import { getDashboardTools } from '../context.ts';
   import Section from '../Section.svelte';
   import { NOTE, TILE } from '../surfaces.ts';
+  import PendingValue from './PendingValue.svelte';
   import { usageSeries } from './usage.ts';
   import UsageChart from './UsageChart.svelte';
 
@@ -32,14 +33,6 @@
   const unknown = $derived(translate('dashboard.unknown'));
 </script>
 
-{#snippet value(pending: boolean, text: string)}
-  {#if pending}
-    <span class="inline-block h-5 w-20 animate-pulse rounded-xs bg-white/8 align-middle"></span>
-  {:else}
-    {text}
-  {/if}
-{/snippet}
-
 <Section id="dashboard-server" icon="server" title={translate('dashboard.server.title')}>
   <div class="grid gap-4 lg:grid-cols-2">
     <UsageChart
@@ -48,7 +41,7 @@
       usage={live.usage}
       series={processor}
       tone="people"
-      current={processor.kind === 'measured' ? format.percent(processor.values.at(-1) ?? 0) : '–'}
+      current={processor.kind === 'measured' ? format.percent(processor.latest) : '–'}
       detail={latest && latest.load >= 0
         ? translate('dashboard.server.load', { load: format.decimal(latest.load) })
         : translate('dashboard.now.five')}
@@ -59,7 +52,7 @@
       usage={live.usage}
       series={memory}
       tone="robots"
-      current={memory.kind === 'measured' ? format.percent(memory.values.at(-1) ?? 0) : '–'}
+      current={memory.kind === 'measured' ? format.percent(memory.latest) : '–'}
       detail={memory.kind !== 'measured' || !latest
         ? translate('dashboard.now.five')
         : translate('dashboard.now.memory.value', {
@@ -72,14 +65,17 @@
     <div class={[TILE, 'px-4 py-3.5']}>
       <dt class="text-caption text-ink-soft">{translate('dashboard.server.process')}</dt>
       <dd class="mt-1 text-title font-medium text-ink tabular-nums">
-        {@render value(waiting, latest && latest.processBytes > 0 ? format.bytes(latest.processBytes) : unknown)}
+        <PendingValue
+          pending={waiting}
+          text={latest && latest.processBytes > 0 ? format.bytes(latest.processBytes) : unknown}
+        />
       </dd>
     </div>
     <div class={[TILE, 'px-4 py-3.5']}>
       <dt class="text-caption text-ink-soft">{translate('dashboard.server.disk')}</dt>
       <dd class="mt-1">
         <span class="block text-title font-medium text-ink tabular-nums">
-          {@render value(loading, diskKnown ? format.bytes(storage.freeBytes) : unknown)}
+          <PendingValue pending={loading} text={diskKnown ? format.bytes(storage.freeBytes) : unknown} />
           {#if diskKnown}
             <span class="text-caption font-normal text-ink-mute">
               {translate('dashboard.now.disk.value', { total: format.bytes(storage.totalBytes) })}
@@ -104,13 +100,16 @@
     <div class={[TILE, 'px-4 py-3.5']}>
       <dt class="text-caption text-ink-soft">{translate('dashboard.server.database')}</dt>
       <dd class="mt-1 text-title font-medium text-ink tabular-nums">
-        {@render value(loading, storage.databaseBytes > 0 ? format.bytes(storage.databaseBytes) : unknown)}
+        <PendingValue
+          pending={loading}
+          text={storage.databaseBytes > 0 ? format.bytes(storage.databaseBytes) : unknown}
+        />
       </dd>
     </div>
     <div class={[TILE, 'px-4 py-3.5']}>
       <dt class="text-caption text-ink-soft">{translate('dashboard.server.version')}</dt>
       <dd class="mt-1 text-title font-medium wrap-anywhere text-ink tabular-nums">
-        {@render value(loading, overview.version || unknown)}
+        <PendingValue pending={loading} text={overview.version || unknown} />
       </dd>
     </div>
   </dl>

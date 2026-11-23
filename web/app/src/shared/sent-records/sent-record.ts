@@ -7,6 +7,7 @@ export const RETENTION_MS = RETENTION_DAYS * DAY_MS;
 const MAX_LIFETIME_MS = 31 * DAY_MS;
 const MAX_TIME_MS = 8.64e15;
 export const MAX_LABEL_CHARACTERS = 80;
+const LABEL_LENGTH = new RegExp(`^.{1,${MAX_LABEL_CHARACTERS}}$`, 'su');
 
 export interface SentRecord {
   readonly id: string;
@@ -59,13 +60,7 @@ function areTimes({ createdAt, expiresAt }: { readonly createdAt: unknown; reado
 }
 
 function isLabel(label: unknown): label is string {
-  return (
-    typeof label === 'string' &&
-    label !== '' &&
-    label.isWellFormed() &&
-    label.trim() === label &&
-    (label.match(/./gsu)?.length ?? 0) <= MAX_LABEL_CHARACTERS
-  );
+  return typeof label === 'string' && label.isWellFormed() && label.trim() === label && LABEL_LENGTH.test(label);
 }
 
 function isSigningKey(key: unknown): key is CryptoKey {

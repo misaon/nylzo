@@ -197,10 +197,12 @@ func readSecretFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
-	if info, statErr := file.Stat(); statErr != nil {
-		return nil, statErr
-	} else if info.Mode().Perm()&0o077 != 0 {
-		return nil, errSecretFileShared
+	info, err := file.Stat()
+	if err == nil && info.Mode().Perm()&0o077 != 0 {
+		err = errSecretFileShared
+	}
+	if err != nil {
+		return nil, err
 	}
 	raw, err := io.ReadAll(io.LimitReader(file, maxSecretFileBytes+1))
 	defer clear(raw)
@@ -232,7 +234,7 @@ func durationInto(target *time.Duration) func(string) error {
 	}
 }
 
-func integerInto[Integer int | int64](target *Integer) func(string) error {
+func integerInto[Integer int | int32 | int64](target *Integer) func(string) error {
 	return func(value string) error {
 		number, err := parseNonNegative(value)
 		if err != nil {

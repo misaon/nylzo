@@ -70,12 +70,9 @@ func TestUpgradeFromAReleaseFinishesAfterAnInterruptionAtEveryStep(t *testing.T)
 		},
 		"after deleting the rows": func(t *testing.T, path string) {
 			t.Helper()
-			database, err := openPersistent(path, true)
-			if err != nil {
-				t.Fatal(err)
-			}
+			database := openPersistent(path, true)
 			defer database.Close()
-			if err = deleteReleasedMessages(t.Context(), database); err != nil {
+			if err := deleteReleasedMessages(t.Context(), database); err != nil {
 				t.Fatal(err)
 			}
 		},
@@ -189,4 +186,53 @@ func queryPlan(database *sql.DB, query string, arguments ...any) (string, error)
 		plan.WriteString(detail + "\n")
 	}
 	return plan.String(), rows.Err()
+}
+
+func TestAnUpgradeStopsWhenItsDatabaseChangesOrRefuses(t *testing.T) {
+	t.Parallel()
+	ctx := t.Context()
+	raced := releasedDatabase(t, releasedSchemas[0])
+	_, err := UpgradeFromReleased(ctx, raced.path, func() error {
+		database := openPersistent(raced.path, true)
+		_, execErr := database.Exec(`PRAGMA user_version = ` + strconv.Itoa(schemaVersion))
+		return errors.Join(execErr, database.Close())
+	})
+	if !errors.Is(err, errUpgradeRaced) {
+		t.Fatalf("a schema that another process upgraded meanwhile: %v", err)
+	}
+	refusing := releasedDatabase(t, releasedSchemas[0])
+	database := openPersistent(refusing.path, true)
+	_, err = database.Exec(`CREATE TRIGGER refuse BEFORE DELETE ON messages BEGIN SELECT RAISE(ABORT, 'refused'); END`)
+	if closeErr := database.Close(); err != nil || closeErr != nil {
+		t.Fatal(err, closeErr)
+	}
+	if _, err = UpgradeFromReleased(ctx, refusing.path, func() error { return nil }); err == nil ||
+		!strings.Contains(err.Error(), "refused") {
+		t.Fatalf("a delete the database refuses: %v", err)
+	}
+	gone, cancel := context.WithCancel(ctx)
+	cancel()
+	database = openPersistent(refusing.path, true)
+	defer database.Close()
+	if err = deleteReleasedMessages(gone, database); !errors.Is(err, context.Canceled) {
+		t.Fatalf("an upgrade for a caller that left: %v", err)
+	}
+}
+
+func TestFinishingAnUpgradeNeedsTheReleasedSchemaWithCurrentTables(t *testing.T) {
+	t.Parallel()
+	current := filepath.Join(t.TempDir(), "nylzo.db")
+	opened, err := Open(t.Context(), current)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = opened.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err = finishUpgrade(t.Context(), current); !errors.Is(err, errUpgradeRaced) {
+		t.Fatalf("a schema another process upgraded: %v", err)
+	}
+	if err = finishUpgrade(t.Context(), releasedDatabase(t, releasedSchemas[0]).path); err == nil {
+		t.Fatal("an upgrade finished over tables it never replaced")
+	}
 }

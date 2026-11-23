@@ -72,10 +72,7 @@ func New(listeners *Listeners, config *Config) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	target, err := url.Parse(instance)
-	if err != nil {
-		return nil, err
-	}
+	target, _ := url.Parse(instance)
 	host := sessionHost(listeners.Port())
 	local := &Server{
 		host:     host,
@@ -148,7 +145,8 @@ func (s *Server) handleAsset(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleManifest(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.manifest)
+	body, _ := json.Marshal(s.manifest)
+	writeJSON(w, http.StatusOK, body)
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -158,14 +156,15 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	body, err := json.Marshal(value)
-	if err != nil {
-		status, body = http.StatusInternalServerError, []byte(`{"error":"internal"}`)
-	}
+func writeJSON(w http.ResponseWriter, status int, body []byte) {
 	w.Header().Set("Content-Type", jsonContentType)
 	w.WriteHeader(status)
 	w.Write(body)
+}
+
+func writeError(w http.ResponseWriter, status int, kind string) {
+	body, _ := json.Marshal(apiError{Error: kind})
+	writeJSON(w, status, body)
 }
 
 type apiError struct {

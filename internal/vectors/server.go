@@ -44,17 +44,11 @@ var purposes = []pepper.Purpose{
 	pepper.OPAQUEServer,
 }
 
-func (f *File) server() error {
+func (f *File) server() {
 	current := deterministic("pepper/current", 32)
 	previous := deterministic("pepper/previous", 32)
-	ring, err := pepper.NewRing(current, previous)
-	if err != nil {
-		return err
-	}
-	previousRing, err := pepper.NewRing(previous, nil)
-	if err != nil {
-		return err
-	}
+	ring := must(pepper.NewRing(current, previous))
+	previousRing := must(pepper.NewRing(previous, nil))
 	currentID, previousID := ring.CurrentID(), previousRing.CurrentID()
 	f.Server = Server{
 		Pepper:           hex.EncodeToString(current),
@@ -74,7 +68,6 @@ func (f *File) server() error {
 	epochID := deterministicID("epoch")
 	locator := seal.LocatorOf(epochID[:])
 	f.Server.MinuteEpochs = minuteEpochs(epoch.Seed(*deterministic32("epoch/minute-seed")), locator)
-	return nil
 }
 
 // minuteEpochs walks the first two minutes of an hour, its last minute and the first minutes of the next hour.

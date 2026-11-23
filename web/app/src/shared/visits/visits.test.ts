@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Screen } from '../../app/pages.ts';
-import { PERSON_EVENTS, watchVisit } from './visits.ts';
+import { PERSON_EVENTS, watchBrowserVisit, watchVisit } from './visits.ts';
 
 type Listener = (event: Pick<Event, 'isTrusted'>) => void;
 
@@ -70,5 +70,45 @@ describe('watchVisit', () => {
       events.dispatch(type);
     }
     expect(sent).toEqual([]);
+  });
+});
+
+describe('watchBrowserVisit', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('posts the signal once, without credentials, and drops the answer', async () => {
+    const answer = new Response('{}');
+    const cancel = vi.spyOn(answer.body ?? new ReadableStream(), 'cancel');
+    const fetchVisit = vi.fn<typeof fetch>().mockResolvedValue(answer);
+    vi.stubGlobal('fetch', fetchVisit);
+    vi.stubGlobal('navigator', { webdriver: true });
+    watchBrowserVisit('transparency');
+    await vi.waitFor(() => {
+      expect(cancel).toHaveBeenCalledOnce();
+    });
+    expect(fetchVisit).toHaveBeenCalledExactlyOnceWith(
+      '/api/v1/visits',
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ signal: 'automation', page: 'transparency' }),
+        keepalive: true,
+        credentials: 'omit',
+        redirect: 'error',
+      }),
+    );
+  });
+
+  it('lets a visit that cannot be sent go unreported', async () => {
+    const fetchVisit = vi.fn<typeof fetch>().mockRejectedValue(new TypeError('offline'));
+    vi.stubGlobal('fetch', fetchVisit);
+    vi.stubGlobal('navigator', { webdriver: true });
+    expect(() => {
+      watchBrowserVisit('sent');
+    }).not.toThrow();
+    await vi.waitFor(() => {
+      expect(fetchVisit).toHaveBeenCalledOnce();
+    });
   });
 });

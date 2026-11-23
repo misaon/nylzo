@@ -1,3 +1,5 @@
+import { equalBytes } from '@noble/curves/utils.js';
+
 import { IntegrityError, KdfMismatchError, MetaError, PlaintextError, TooLargeError } from '../errors.ts';
 import type { ContentKeys } from '../keys/derive.ts';
 import type { KdfId } from '../keys/kdf.ts';
@@ -126,12 +128,7 @@ async function hashMatches(expected: Uint8Array, object: Uint8Array): Promise<bo
   if (expected.length !== OBJECT_HASH_LENGTH) {
     return false;
   }
-  const actual = await objectHash(object);
-  let difference = 0;
-  for (const [index, byte] of actual.entries()) {
-    difference |= byte ^ (expected[index] ?? 0);
-  }
-  return difference === 0;
+  return equalBytes(await objectHash(object), expected);
 }
 
 async function commitmentMatches(
@@ -192,9 +189,6 @@ function buildPlaintext(payload: Payload): Uint8Array<ArrayBuffer> {
 }
 
 async function parsePlaintext(plaintext: Uint8Array<ArrayBuffer>): Promise<OpenedPayload> {
-  if (plaintext.length < META_LENGTH_PREFIX) {
-    throw new PlaintextError();
-  }
   const metaLength = new DataView(plaintext.buffer, plaintext.byteOffset, plaintext.byteLength).getUint32(0);
   const fileStart = META_LENGTH_PREFIX + metaLength;
   if (metaLength > MAX_META_BYTES || fileStart > plaintext.length) {

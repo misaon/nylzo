@@ -19,22 +19,30 @@ const (
 )
 
 func Create(path string) (*os.File, error) {
+	return createChecked(path, privateEntry)
+}
+
+func createChecked(path string, private func(*os.File) bool) (*os.File, error) {
 	file, err := createNew(path)
 	if err != nil {
 		return nil, err
 	}
-	if !privateEntry(file) {
+	if !private(file) {
 		return nil, refuse(path, errors.Join(file.Close(), os.Remove(path)))
 	}
 	return file, nil
 }
 
 func CreateIn(root *os.Root, name string) (*os.File, error) {
+	return createInChecked(root, name, privateEntry)
+}
+
+func createInChecked(root *os.Root, name string, private func(*os.File) bool) (*os.File, error) {
 	file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, fileMode)
 	if err != nil {
 		return nil, err
 	}
-	if !privateEntry(file) {
+	if !private(file) {
 		return nil, refuse(file.Name(), errors.Join(file.Close(), root.Remove(name)))
 	}
 	return file, nil
@@ -43,6 +51,10 @@ func CreateIn(root *os.Root, name string) (*os.File, error) {
 // MkdirTemp returns the new directory open, so files land in it even if its name is later replaced. It opens the
 // name inside the parent, where a link that leads out of the parent is refused.
 func MkdirTemp(directory, prefix string) (*os.Root, error) {
+	return mkdirTempChecked(directory, prefix, privateEntry)
+}
+
+func mkdirTempChecked(directory, prefix string, private func(*os.File) bool) (*os.Root, error) {
 	directory = cmp.Or(directory, os.TempDir())
 	base, err := os.OpenRoot(directory)
 	if err != nil {
@@ -57,8 +69,8 @@ func MkdirTemp(directory, prefix string) (*os.Root, error) {
 	if err != nil {
 		return nil, errors.Join(err, base.Remove(name))
 	}
-	private, err := emptyPrivateDirectory(root)
-	if private {
+	empty, err := emptyPrivateDirectory(root, private)
+	if empty {
 		return root, nil
 	}
 	cleanup := errors.Join(root.Close(), base.Remove(name))
@@ -69,7 +81,7 @@ func MkdirTemp(directory, prefix string) (*os.Root, error) {
 }
 
 // emptyPrivateDirectory also requires no entries, since the directory MkdirTemp made is empty.
-func emptyPrivateDirectory(root *os.Root) (bool, error) {
+func emptyPrivateDirectory(root *os.Root, private func(*os.File) bool) (bool, error) {
 	opened, err := root.Open(".")
 	if err != nil {
 		return false, err
@@ -79,7 +91,7 @@ func emptyPrivateDirectory(root *os.Root) (bool, error) {
 	if _, err = opened.ReadDir(1); !errors.Is(err, io.EOF) {
 		return false, err
 	}
-	return privateEntry(opened), nil
+	return private(opened), nil
 }
 
 // privateEntry reads back what the file system kept, since FAT, exFAT, network and FUSE mounts report a mode they do

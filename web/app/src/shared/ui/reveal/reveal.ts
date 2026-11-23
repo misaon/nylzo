@@ -16,28 +16,17 @@ export const REVEAL_INDEXES = [
 ] as const;
 
 let observer: IntersectionObserver | undefined;
-const measured = new WeakSet<Element>();
+type Watcher = (
+  entry: Readonly<Pick<IntersectionObserverEntry, 'isIntersecting' | 'intersectionRect' | 'boundingClientRect'>>,
+) => void;
+const watchers = new WeakMap<Element, Watcher>();
 
 // The first callback measures every element in one batch, so attaching forces no layout per element.
 function revealObserver(): IntersectionObserver {
   observer ??= new IntersectionObserver(
     (entries) => {
       for (const entry of entries) {
-        const element = entry.target;
-        if (!(element instanceof HTMLElement)) {
-          continue;
-        }
-        if (!measured.has(element)) {
-          measured.add(element);
-          if (entry.isIntersecting) {
-            observer?.unobserve(element);
-          } else {
-            element.dataset['reveal'] = 'pending';
-          }
-        } else if (entry.intersectionRect.height >= Math.min(entry.boundingClientRect.height * 0.25, 200)) {
-          element.dataset['reveal'] = 'in';
-          observer?.unobserve(element);
-        }
+        watchers.get(entry.target)?.(entry);
       }
     },
     { threshold: Array.from({ length: 21 }, (_, step) => step / 20) },
@@ -49,10 +38,24 @@ export const reveal: Attachment<HTMLElement> = (element) => {
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
     return;
   }
+  let measured = false;
+  watchers.set(element, ({ isIntersecting, intersectionRect, boundingClientRect }) => {
+    if (!measured) {
+      measured = true;
+      if (isIntersecting) {
+        observer?.unobserve(element);
+      } else {
+        element.dataset['reveal'] = 'pending';
+      }
+    } else if (intersectionRect.height >= Math.min(boundingClientRect.height * 0.25, 200)) {
+      element.dataset['reveal'] = 'in';
+      observer?.unobserve(element);
+    }
+  });
   revealObserver().observe(element);
   return () => {
     observer?.unobserve(element);
-    measured.delete(element);
+    watchers.delete(element);
     delete element.dataset['reveal'];
   };
 };

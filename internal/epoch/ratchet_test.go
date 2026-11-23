@@ -376,6 +376,21 @@ func TestSeedAndDirectoryMustBePrivate(t *testing.T) {
 			}
 			return directory
 		}, epoch.ErrSymlink},
+		{"a seed that is a directory", func(t *testing.T, directory string) string {
+			t.Helper()
+			path := filepath.Join(directory, epoch.FileName)
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(path, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			return directory
+		}, epoch.ErrNotRegular},
+		{"a directory that is a file", func(t *testing.T, directory string) string {
+			t.Helper()
+			return filepath.Join(directory, epoch.FileName)
+		}, epoch.ErrNotRegular},
 		{"a directory that is a link", func(t *testing.T, directory string) string {
 			t.Helper()
 			link := filepath.Join(t.TempDir(), "epoch")
@@ -440,4 +455,28 @@ func TestShareBindsTheLocator(t *testing.T) {
 func newLocator() seal.Locator {
 	id := core.NewID()
 	return seal.LocatorOf(id[:])
+}
+
+func TestTheSeedFileHoldsTheMinuteSeedsAndIsErasedInPlace(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	if paths := epoch.ErasablePaths(directory); !slices.Equal(paths, []string{directory}) {
+		t.Fatalf("before the seed: %v", paths)
+	}
+	ratchet := open(t, directory, start)
+	path := filepath.Join(directory, epoch.FileName)
+	if paths := epoch.ErasablePaths(directory); !slices.Equal(paths, []string{directory, path}) {
+		t.Fatalf("with the seed: %v", paths)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seeds := epoch.MinuteSeeds(content); len(seeds) != len(ratchet.Generations()) {
+		t.Fatalf("%d minute seeds for %d generations", len(seeds), len(ratchet.Generations()))
+	}
+	minute := epoch.Minute(start)
+	if ratchet.Passed(minute) || !ratchet.Passed(minute-1) {
+		t.Fatal("only an epoch before the minute of the ratchet has passed")
+	}
 }

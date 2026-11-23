@@ -120,8 +120,7 @@
       </div>
     {:else if area.stage === 'unavailable'}
       <Button variant="tint" class="mt-7" onclick={() => void area.start()}>
-        <Icon name="refresh" />
-        {translate('access.retry')}
+        <Icon name="refresh" />{translate('access.retry')}
       </Button>
     {/if}
     {#if area.problem}

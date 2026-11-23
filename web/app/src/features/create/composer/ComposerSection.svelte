@@ -25,6 +25,13 @@
     { key: 'hero.proof.open', icon: 'code' },
   ] as const;
   const PENDING_PASSPHRASE = 'pending';
+  const panelProps = $derived({
+    trackable: composer.trackable,
+    keeps: composer.keeps,
+    onremember: (label: string) => void composer.remember(label),
+    ontrackingleft: () => (composer.trackingPanelLeft = true),
+    onanother: () => void composer.another(),
+  });
 </script>
 
 <svelte:window
@@ -91,12 +98,8 @@
                 created={composer.sealed.created}
                 opensMax={composer.sealed.opensMax}
                 passphrase={composer.sealed.passphrase}
-                trackable={composer.trackable}
-                keeps={composer.keeps}
                 remembered={composer.remembered}
-                onremember={(label) => void composer.remember(label)}
-                ontrackingleft={() => (composer.trackingPanelLeft = true)}
-                onanother={() => void composer.another()}
+                {...panelProps}
               />
             {:else if composer.placeholder}
               <!-- Sized like the panel to come; the inner block keeps its fade-out from outliving the swap. -->
@@ -107,12 +110,8 @@
                     created={composer.placeholder}
                     opensMax={composer.opensMax}
                     passphrase={composer.sealingWithPassphrase ? PENDING_PASSPHRASE : ''}
-                    trackable={composer.trackable}
-                    keeps={composer.keeps}
                     remembered="off"
-                    onremember={(label) => void composer.remember(label)}
-                    ontrackingleft={() => (composer.trackingPanelLeft = true)}
-                    onanother={() => void composer.another()}
+                    {...panelProps}
                   />
                 {/key}
               </div>

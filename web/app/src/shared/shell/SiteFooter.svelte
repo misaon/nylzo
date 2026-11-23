@@ -9,7 +9,7 @@
   import { REPOSITORY_URL } from './repository.ts';
 
   interface Props {
-    readonly compact?: boolean;
+    readonly compact: boolean;
     readonly current: string;
     readonly onlanguage: (language: Language) => void;
   }
@@ -20,7 +20,7 @@
     readonly page?: string;
   }
 
-  const { compact = false, current, onlanguage }: Props = $props();
+  const { compact, current, onlanguage }: Props = $props();
   const translator = getTranslator();
   const { translate } = translator;
   const id = $props.id();
@@ -56,7 +56,7 @@
   ]);
 </script>
 
-{#snippet version(extra: string)}
+{#snippet version(extra?: string)}
   {#if versionHref}
     <a
       href={versionHref}
@@ -80,10 +80,10 @@
         <p class="text-body-sm text-ink-mute">{translate('footer.tagline')}</p>
       </div>
       <div class="flex flex-wrap items-center gap-x-5 gap-y-3 text-body-sm">
-        <a href="{home}#how-it-works" class={['text-ink-soft', LINK]}>{translate('footer.how')}</a>
+        <a href={`${home}#how-it-works`} class={['text-ink-soft', LINK]}>{translate('footer.how')}</a>
         <a href={REPOSITORY_URL} class={['text-ink-soft', LINK]}>{translate('footer.github')}</a>
         <div class="flex w-full items-center justify-between gap-4 sm:contents">
-          {@render version('')}
+          {@render version()}
           <LanguageMenu placement="footer" {onlanguage} />
         </div>
       </div>
@@ -96,8 +96,8 @@
           <p class="mt-4 max-w-[280px] text-body-sm text-ink-mute">{translate('footer.tagline')}</p>
         </div>
         {#each groups as group (group.key)}
-          <nav aria-labelledby="{id}-{group.key}" class="flex flex-col text-ui max-md:gap-0 md:gap-2.5">
-            <p id="{id}-{group.key}" class="text-micro text-ink-mute max-md:mb-1">{translate(group.key)}</p>
+          <nav aria-labelledby={`${id}-${group.key}`} class="flex flex-col text-ui max-md:gap-0 md:gap-2.5">
+            <p id={`${id}-${group.key}`} class="text-micro text-ink-mute max-md:mb-1">{translate(group.key)}</p>
             {#each group.links as link (link.key)}
               <a
                 href={link.href}

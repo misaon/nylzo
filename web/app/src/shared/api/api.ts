@@ -329,24 +329,23 @@ function leaseOf(response: Response): string {
 
 // Only the answered attempt's key can open a share, so the key of every other attempt is erased.
 function sentShareKey(shareKeys: ShareKeys) {
-  let current: ShareKey | undefined;
+  let current = shareKeys();
+  let sent = false;
   return {
     headers: () => {
-      current?.seed.fill(0);
-      current = shareKeys();
+      if (sent) {
+        current.seed.fill(0);
+        current = shareKeys();
+      }
+      sent = true;
       return { 'X-Nylzo-Share-Key': formatShareKey(current.publicKey) };
     },
-    last: (): ShareKey => {
-      if (!current) {
-        throw new ResponseError('no share key was sent');
-      }
-      return current;
-    },
+    last: (): ShareKey => current,
     completed: async <T>(request: () => Promise<T>): Promise<T> => {
       try {
         return await request();
       } catch (error) {
-        current?.seed.fill(0);
+        current.seed.fill(0);
         throw error;
       }
     },
@@ -357,10 +356,13 @@ export function createApi(options: ApiOptions = {}): Api {
   const base = options.base ?? '';
   const fetchResource = options.fetch ?? fetch.bind(globalThis);
 
-  async function call(path: string, requestInit: RequestInit, timeoutMs = SHORT_TIMEOUT_MS): Promise<Response> {
+  async function call(
+    path: string,
+    requestInit: RequestInit & { readonly method: SignedRequest['method'] },
+    timeoutMs = SHORT_TIMEOUT_MS,
+  ): Promise<Response> {
     const headers = new Headers(requestInit.headers);
-    const method = requestInit.method?.toUpperCase() ?? 'GET';
-    if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    if (requestInit.method === 'POST') {
       headers.set('X-Requested-With', 'XMLHttpRequest');
     }
     return fetchResource(`${base}${path}`, {

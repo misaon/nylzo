@@ -179,13 +179,6 @@ export type ClosedView = Extract<ReadView, { readonly view: 'cleared' | 'timed_o
 
 const LEFT_PAGE: ClosedView = { view: 'cleared' };
 
-function closedInstead(view: ReadView, closed: ClosedView): ReadView {
-  if (view.view === 'revealed') {
-    view.file?.bytes.fill(0);
-  }
-  return closed;
-}
-
 function burnOutcomeOf(error: unknown): BurnOutcome {
   if (isApiError(error, 'gone')) {
     const state = endedStateOf(error);
@@ -197,14 +190,14 @@ function burnOutcomeOf(error: unknown): BurnOutcome {
   return shouldRetryLater(error) ? { outcome: 'retry_later', retryAfter: error.retryAfter } : { outcome: 'failed' };
 }
 
-function policyMatches(envelope: Envelope, secrets: Secrets, metadata: Metadata | undefined): boolean {
+function matchedMetadata(envelope: Envelope, secrets: Secrets, metadata: Metadata | undefined): Metadata | undefined {
   const served = envelope.policy;
-  return (
+  const matches =
     served.kdfId === secrets.kdfId &&
     served.opensMax === metadata?.opensMax &&
     served.ttlSeconds === metadata.ttlSeconds &&
-    deadlineMatchesExpiry(served, metadata.expiresAt)
-  );
+    deadlineMatchesExpiry(served, metadata.expiresAt);
+  return matches ? metadata : undefined;
 }
 
 function takeFragment({ location, session, ...link }: ReaderDependencies): string | ReadView {
@@ -309,7 +302,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   }
 
   function show(next: ReadView): void {
-    const view = closedAs ? closedInstead(next, closedAs) : next;
+    const view = closedAs ?? next;
     revealable = view.view === 'ready';
     revealedView = view.view === 'revealed' ? view : undefined;
     if (view.view !== 'ready' && view.view !== 'busy') {
@@ -547,14 +540,12 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   }
 
   async function revealWith(current: Secrets, access: ContentAccess): Promise<ReadView | undefined> {
-    if (pageLeft()) {
-      return { view: 'cleared' };
-    }
     const fetched = await fetchEnvelope(current, access);
     if ('view' in fetched) {
       return fetched;
     }
-    if (!policyMatches(fetched.envelope, current, metadata)) {
+    const matched = matchedMetadata(fetched.envelope, current, metadata);
+    if (!matched) {
       fetched.envelope.shareKey.seed.fill(0);
       return { view: 'tampered' };
     }
@@ -582,7 +573,7 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
       return { view: 'cleared' };
     }
     const { text, file } = opened.payload.meta;
-    const remaining = (metadata?.opensRemaining ?? 0) - (fetched.fromLease ? 0 : 1);
+    const remaining = matched.opensRemaining - (fetched.fromLease ? 0 : 1);
     if (remaining > 0) {
       keptPassword?.fill(0);
       keptPassword = access.password;
@@ -679,19 +670,19 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   async function burn(passphrase = ''): Promise<BurnOutcome> {
     const current = heldKey;
     const shown = revealedView;
-    const unopened = revealable ? secrets : undefined;
-    if (!current || busy || !(unopened || shown?.burnable) || !allowed()) {
+    const kept = shown?.burnable === true ? keptPassword : undefined;
+    const target = revealable ? secrets : kept;
+    if (!current || busy || !target || !allowed()) {
       return { outcome: 'ignored' };
     }
     busy = true;
     let outcome: BurnOutcome;
     try {
       await acknowledged;
-      if (unopened) {
-        outcome = await burnUnopened(current, unopened, passphrase);
-      } else {
-        outcome = keptPassword ? await sendBurn(current, keptPassword) : { outcome: 'failed' };
-      }
+      outcome =
+        target instanceof Uint8Array
+          ? await sendBurn(current, target)
+          : await burnUnopened(current, target, passphrase);
     } finally {
       busy = false;
       wipeUnusedKeys();

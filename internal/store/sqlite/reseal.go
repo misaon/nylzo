@@ -83,19 +83,11 @@ func wrapsAfter(ctx context.Context, database *sql.DB, after []byte) ([]store.Ro
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	batch := make([]store.Row, 0, store.SweepBatch)
-	for rows.Next() {
+	return readRows(rows, func(rows *sql.Rows) (store.Row, error) {
 		var row store.Row
 		var locator []byte
-		if scanErr := rows.Scan(&locator, &row.ReadWrap, &row.ManageWrap); scanErr != nil {
-			return nil, scanErr
-		}
-		if len(locator) != seal.LocatorLen {
-			return nil, store.ErrCorrupt
-		}
-		row.Locator = seal.Locator(locator)
-		batch = append(batch, row)
-	}
-	return batch, rows.Err()
+		scanErr := rows.Scan(&locator, &row.ReadWrap, &row.ManageWrap)
+		copy(row.Locator[:], locator)
+		return row, scanErr
+	})
 }

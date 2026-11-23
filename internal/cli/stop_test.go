@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
@@ -243,5 +244,34 @@ func serveUntil(t *testing.T, stop os.Signal) {
 	_, _ = io.Copy(io.Discard, logs)
 	if err = process.Wait(); err != nil {
 		t.Fatalf("serve ended with %v after %v\n%s", err, stop, log.String())
+	}
+}
+
+func TestAStopSignalCancelsTheCommandAndStaysPending(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the test sends itself a signal")
+	}
+	pending := new(stopsignal.Pending)
+	ctx, cancel := context.WithCancelCause(t.Context())
+	release := stopOnSignal(pending, cancel)
+	self, err := os.FindProcess(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = self.Signal(syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ctx.Done():
+	case <-time.After(time.Minute):
+		t.Fatal("a termination request did not cancel the command")
+	}
+	release()
+	if cause := context.Cause(
+		ctx,
+	); !errors.Is(cause, context.Canceled) ||
+		cause.Error() != "terminated signal received" ||
+		pending.Signal() != syscall.SIGTERM {
+		t.Fatalf("cause %v, pending %v", cause, pending.Signal())
 	}
 }

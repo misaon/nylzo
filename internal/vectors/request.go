@@ -34,13 +34,10 @@ type requestCase struct {
 	components                  signing.Components
 }
 
-func (f *File) request() error {
+func (f *File) request() {
 	id := deterministicID("request").String()
 	messagePath := "/api/v1/messages/" + id
-	key, _, keyErr := deterministicShareKey("request-share-key")
-	if keyErr != nil {
-		return keyErr
-	}
+	key := deterministicShareKey(deterministic("request-share-key", 32))
 	shareKey := share.FormatKey(key.PublicKey())
 	lease := core.Encode(deterministic("request-lease", 32))
 	ke1 := core.Encode(deterministic("request-ke1", 96))
@@ -83,16 +80,11 @@ func (f *File) request() error {
 		{"ack read", signing.PurposeRead, http.MethodPost, messagePath + "/ack", nil, signing.Components{Lease: lease}},
 	}
 	for i := range cases {
-		request, err := requestVector(&cases[i])
-		if err != nil {
-			return err
-		}
-		f.Request = append(f.Request, request)
+		f.Request = append(f.Request, requestVector(&cases[i]))
 	}
-	return nil
 }
 
-func requestVector(vector *requestCase) (Request, error) {
+func requestVector(vector *requestCase) Request {
 	seed := deterministic32("request-seed/" + vector.name)
 	challenge := [signing.ChallengeLen]byte(deterministic("request-challenge/"+vector.name, signing.ChallengeLen))
 	signature := signing.SignRequest(
@@ -104,9 +96,10 @@ func requestVector(vector *requestCase) (Request, error) {
 		vector.body,
 		vector.components,
 	)
-	if !signature.Verify(vector.purpose, vector.method, vector.path, vector.body, vector.components) {
-		return Request{}, fmt.Errorf("vectors: request signature %q %w", vector.name, errSignatureUnverified)
-	}
+	require(
+		signature.Verify(vector.purpose, vector.method, vector.path, vector.body, vector.components),
+		fmt.Errorf("vectors: request signature %q %w", vector.name, errSignatureUnverified),
+	)
 	message := signing.RequestMessage(
 		vector.purpose,
 		vector.method,
@@ -128,5 +121,5 @@ func requestVector(vector *requestCase) (Request, error) {
 		Message:       hex.EncodeToString(message),
 		Signature:     core.Encode(signature.Value[:]),
 		Authorization: signature.Authorization(),
-	}, nil
+	}
 }

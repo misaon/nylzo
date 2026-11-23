@@ -41,22 +41,19 @@ func HSalt(id core.ID) [32]byte {
 }
 
 // DeriveRead derives R, the seed of the read key.
-func DeriveRead(id core.ID, secret *[core.SecretLen]byte) ([core.SeedLen]byte, error) {
+func DeriveRead(id core.ID, secret *[core.SecretLen]byte) [core.SeedLen]byte {
 	var read [core.SeedLen]byte
-	err := expandAll(id, secret[:], []expansion{{labelRead, read[:]}})
-	return read, err
+	expandAll(id, secret[:], []expansion{{labelRead, read[:]}})
+	return read
 }
 
 // PassphraseSalt derives salt_pw from S alone: a sender needs it before the server has issued the id.
-func PassphraseSalt(secret *[core.SecretLen]byte) ([PassphraseSaltLen]byte, error) {
+func PassphraseSalt(secret *[core.SecretLen]byte) [PassphraseSaltLen]byte {
 	var salt [PassphraseSaltLen]byte
-	derived, err := hkdf.Key(sha256.New, secret[:], nil, labelKDFSalt, len(salt))
-	if err != nil {
-		return salt, err
-	}
+	derived, _ := hkdf.Key(sha256.New, secret[:], nil, labelKDFSalt, len(salt))
 	copy(salt[:], derived)
 	clear(derived)
-	return salt, nil
+	return salt
 }
 
 // CredentialIdentifier is the credential_identifier of OPAQUE for a message: its id and its expiry share, so the OPRF
@@ -77,11 +74,11 @@ func DeriveContent(
 	keyMaterial := slices.Concat(secret[:], exportKey[:], share[:])
 	defer clear(keyMaterial)
 	var keys ContentKeys
-	err := expandAll(id, keyMaterial, []expansion{
+	expandAll(id, keyMaterial, []expansion{
 		{labelContent, keys.K[:]},
 		{labelCommitment, keys.Commitment[:]},
 	})
-	return keys, err
+	return keys, nil
 }
 
 type expansion struct {
@@ -89,30 +86,13 @@ type expansion struct {
 	output []byte
 }
 
-func expandAll(id core.ID, keyMaterial []byte, expansions []expansion) error {
+func expandAll(id core.ID, keyMaterial []byte, expansions []expansion) {
 	hsalt := HSalt(id)
-	prk, err := hkdf.Extract(sha256.New, keyMaterial, hsalt[:])
-	if err != nil {
-		return err
-	}
+	prk, _ := hkdf.Extract(sha256.New, keyMaterial, hsalt[:])
 	defer clear(prk)
 	for _, step := range expansions {
-		if err = expand(prk, step); err != nil {
-			for _, filled := range expansions {
-				clear(filled.output)
-			}
-			return err
-		}
+		derived, _ := hkdf.Expand(sha256.New, prk, step.info, len(step.output))
+		copy(step.output, derived)
+		clear(derived)
 	}
-	return nil
-}
-
-func expand(prk []byte, step expansion) error {
-	derived, err := hkdf.Expand(sha256.New, prk, step.info, len(step.output))
-	if err != nil {
-		return err
-	}
-	copy(step.output, derived)
-	clear(derived)
-	return nil
 }

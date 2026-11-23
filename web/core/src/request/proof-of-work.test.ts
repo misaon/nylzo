@@ -54,6 +54,14 @@ describe('proof of work (spec 8.1)', () => {
     expect(() => solvePow(challenge.slice(1), id, 0)).toThrow(EncodingError);
   });
 
+  it('counts every bit of a digest that is all zeros', () => {
+    expect(leadingZeroBits(new Uint8Array(32))).toBe(256);
+  });
+
+  it('measures its budget on the real clocks when none are given', () => {
+    expect(() => solvePow(challenge, id, MAX_POW_DIFFICULTY, { budgetMs: 0 })).toThrow(PowTimeoutError);
+  });
+
   it('stops when its budget is spent instead of solving past the challenge window', () => {
     let clock = 0;
     const attempts: number[] = [];

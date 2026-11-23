@@ -75,3 +75,23 @@ func TestDocumentVisitReportsOnlyCountedPages(t *testing.T) {
 		}
 	}
 }
+
+func TestABrokenLanguageTableStopsTheStart(t *testing.T) {
+	t.Parallel()
+	for name, table := range map[string]string{
+		"not JSON":     `{`,
+		"invalid tag":  `{"languages":[{"tag":"Czech"}]}`,
+		"repeated tag": `{"languages":[{"tag":"en"},{"tag":"EN"}],"previews":{"en":{"title":"t","description":"d"}}}`,
+		"no preview":   `{"languages":[{"tag":"en"}]}`,
+		"no default":   `{"languages":[{"tag":"cs"}],"previews":{"cs":{"title":"t","description":"d"}}}`,
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s: the table was accepted", name)
+				}
+			}()
+			mustParseLanguages([]byte(table))
+		}()
+	}
+}

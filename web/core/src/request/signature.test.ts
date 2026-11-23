@@ -180,6 +180,8 @@ describe('request signatures (spec 5.5)', () => {
       seed.fill(9);
       wipeRequestKey(compatible);
       await expect(signClaim(compatible)).rejects.toThrow('released');
+      wipeRequestKey(undefined);
+      expect(await signClaim(native)).toEqual(nativeSignature);
     } finally {
       refuse.mockRestore();
       exported.mockRestore();

@@ -24,20 +24,20 @@ func mapSeed(path string) ([]byte, error) {
 	file := os.NewFile(uintptr(descriptor), path)
 	defer file.Close()
 	info, err := file.Stat()
+	if err == nil {
+		err = checkSeedInfo(info)
+	}
+	if err == nil && info.Size() != FileLen {
+		err = fmt.Errorf("%w: %d bytes", ErrCorrupt, info.Size())
+	}
 	if err != nil {
 		return nil, err
-	}
-	if seedErr := checkSeedInfo(info); seedErr != nil {
-		return nil, seedErr
-	}
-	if info.Size() != FileLen {
-		return nil, fmt.Errorf("%w: %d bytes", ErrCorrupt, info.Size())
 	}
 	mapping, err := unix.Mmap(descriptor, 0, FileLen, unix.PROT_READ, unix.MAP_SHARED)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		err = unix.Mlock(mapping)
 	}
-	if err = unix.Mlock(mapping); err != nil {
+	if err != nil {
 		_ = unix.Munmap(mapping)
 		return nil, err
 	}

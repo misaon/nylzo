@@ -53,6 +53,16 @@ func newTestServer(t *testing.T) *testServer {
 
 func serveWith(t *testing.T, before func(*http.Request)) *testServer {
 	t.Helper()
+	return serveThrough(t, func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			before(request)
+			next.ServeHTTP(writer, request)
+		})
+	})
+}
+
+func serveThrough(t *testing.T, wrap func(http.Handler) http.Handler) *testServer {
+	t.Helper()
 	directory := t.TempDir()
 	settings := config.Defaults()
 	settings.DataDirectory = directory
@@ -75,11 +85,7 @@ func serveWith(t *testing.T, before func(*http.Request)) *testServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler := apiServer.HTTPServer().Handler
-	httpServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		before(request)
-		handler.ServeHTTP(writer, request)
-	}))
+	httpServer := httptest.NewServer(wrap(apiServer.HTTPServer().Handler))
 	t.Cleanup(httpServer.Close)
 	t.Cleanup(apiServer.Close)
 	return &testServer{url: httpServer.URL}
@@ -224,6 +230,7 @@ func TestManageTokenFormat(t *testing.T) {
 		"", good + "extra\n", "https://nylzo.example/m/" + id.String() + "#1.0.x\n" + core.Encode(seed[:]),
 		"http://nylzo.example/m/" + id.String() + "\n" + core.Encode(seed[:]), "https://nylzo.example/x/" + id.String() + "\n" + core.Encode(seed[:]),
 		"https://nylzo.example/m/" + id.String() + "\nshort",
+		"https://nylzo.example/m/%zz\n" + core.Encode(seed[:]),
 	} {
 		if _, err = parseManageToken(bad); err == nil {
 			t.Fatalf("accepted %q", bad)

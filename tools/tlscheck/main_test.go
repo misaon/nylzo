@@ -3,6 +3,8 @@ package main
 import (
 	"crypto/tls"
 	"encoding/pem"
+	"flag"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -95,5 +97,39 @@ func TestCheckRejectsAnUntrustedServer(t *testing.T) {
 	// httptest shares a static certificate, so use a valid certificate that cannot authenticate this address.
 	if err := check("localhost:"+strings.Split(server.address, ":")[1], server.rootFile); err == nil {
 		t.Fatal("accepted a certificate for a different hostname")
+	}
+}
+
+func TestMainExitsWithTheOutcomeOfTheCheck(t *testing.T) {
+	server := startServer(t, []tls.CurveID{tls.X25519MLKEM768}, tls.VersionTLS13)
+	arguments, flags, previousExit := os.Args, flag.CommandLine, exit
+	t.Cleanup(func() { os.Args, flag.CommandLine, exit = arguments, flags, previousExit })
+	code := -1
+	exit = func(status int) { code = status }
+	flag.CommandLine = flag.NewFlagSet("tlscheck", flag.ExitOnError)
+	os.Args = []string{"tlscheck", "-addr", server.address, "-ca", server.rootFile, "-only"}
+	main()
+	if code != 0 {
+		t.Fatalf("a strict hybrid server: exit %d", code)
+	}
+	var stdout, stderr strings.Builder
+	classical := startServer(t, []tls.CurveID{tls.X25519MLKEM768, tls.X25519})
+	if code = run(classical.address, classical.rootFile, true, &stdout, &stderr); code != 1 ||
+		!strings.Contains(stderr.String(), errClassicalAccepted.Error()) || stdout.Len() != 0 {
+		t.Fatalf("a server with a classical fallback: exit %d, %q", code, stderr.String())
+	}
+}
+
+func TestCheckFailsWithoutAServer(t *testing.T) {
+	t.Parallel()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close()
+	root := startServer(t, []tls.CurveID{tls.X25519MLKEM768}).rootFile
+	if err = check(address, root); err == nil || !strings.Contains(err.Error(), "handshake offering") {
+		t.Fatalf("a closed port: %v", err)
 	}
 }

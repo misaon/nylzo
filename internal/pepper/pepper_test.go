@@ -81,6 +81,9 @@ func TestSecretsAreCheckedBeforeUse(t *testing.T) {
 	if _, err := pepper.NewRing(secret(1)[:31], nil); !errors.Is(err, pepper.ErrSecret) {
 		t.Fatalf("a short secret: %v", err)
 	}
+	if _, err := pepper.NewRing(secret(1), secret(2)[:31]); !errors.Is(err, pepper.ErrSecret) {
+		t.Fatalf("a short previous secret: %v", err)
+	}
 	sequence := make([]byte, pepper.SecretLen)
 	for i := range sequence {
 		sequence[i] = byte(i)
@@ -142,5 +145,21 @@ func TestTheRecordsKeyOfThePreviousPepperCanBeForgotten(t *testing.T) {
 	}
 	if !ring.Verify(pepper.Lease, []byte("lease"), tag.MAC[:], tag.PepperID) {
 		t.Fatal("forgetting the records key must keep the macs of the previous pepper")
+	}
+}
+
+func TestOPAQUEKeysOfAnUnknownPepperComeFromTheCurrentOne(t *testing.T) {
+	ring := newRing(t, secret(1), secret(2))
+	unknown := pepper.ID{0xff}
+	if ring.Holds(unknown) || !ring.Holds(ring.CurrentID()) {
+		t.Fatal("the ring holds only its own peppers")
+	}
+	current, err := ring.OPAQUEKeys([]byte("message"), ring.CurrentID())
+	if err != nil {
+		t.Fatal(err)
+	}
+	stand, err := ring.OPAQUEKeys([]byte("message"), unknown)
+	if err != nil || stand.PublicKey != current.PublicKey || stand.OPRFSeed != current.OPRFSeed {
+		t.Fatalf("an unknown pepper must derive the keys of the current one: %v", err)
 	}
 }

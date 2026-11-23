@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"strings"
 
 	"github.com/misaon/nylzo/internal/core/keys"
@@ -23,21 +24,17 @@ type GeneratedPassphrase struct {
 	Passphrase string `json:"passphrase"`
 }
 
-func (f *File) passphraseWords() error {
+func (f *File) passphraseWords() {
 	for _, language := range keys.PassphraseLanguages {
-		if err := f.wordList(language); err != nil {
-			return err
-		}
+		f.wordList(language)
 	}
 	equalWords := append(bytes.Repeat([]byte{0xff}, 10), deterministic("passphrase/redraw", 10)...)
-	return f.generated("five equal words are drawn again", "en", equalWords)
+	f.generated("five equal words are drawn again", "en", equalWords)
 }
 
-func (f *File) wordList(language string) error {
+func (f *File) wordList(language string) {
 	words, layout, err := keys.PassphraseWordList(language)
-	if err != nil {
-		return err
-	}
+	require(err == nil, fmt.Errorf("vectors: the word list for %s: %w", language, err))
 	sum := sha256.Sum256([]byte(strings.Join(words, "\n") + "\n"))
 	f.WordLists = append(f.WordLists, WordList{
 		Language:  language,
@@ -45,19 +42,15 @@ func (f *File) wordList(language string) error {
 		Separator: layout.Separator,
 		Words:     layout.Words,
 	})
-	return f.generated(language+" words", language, deterministic("passphrase/"+language, 2*layout.Words))
+	f.generated(language+" words", language, deterministic("passphrase/"+language, 2*layout.Words))
 }
 
-func (f *File) generated(name, language string, random []byte) error {
-	passphrase, err := keys.GeneratePassphraseFrom(bytes.NewReader(random), language)
-	if err != nil {
-		return err
-	}
+func (f *File) generated(name, language string, random []byte) {
+	passphrase := must(keys.GeneratePassphraseFrom(bytes.NewReader(random), language))
 	f.Generated = append(f.Generated, GeneratedPassphrase{
 		Name:       name,
 		Language:   language,
 		Random:     hex.EncodeToString(random),
 		Passphrase: passphrase,
 	})
-	return nil
 }

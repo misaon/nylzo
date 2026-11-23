@@ -162,6 +162,8 @@ func TestInstanceRefusesWhatTheSpecForbids(t *testing.T) {
 		"a short share":              {strings.Replace(valid, wrapped, "AAAA", 1), creation, false},
 		"a server without deadlines": {strings.Replace(valid, `"deadline":`, `"skipped":`, 1), creation, false},
 		"no registration":            {strings.Replace(valid, `,"registration":"`+response+`"`, "", 1), creation, false},
+		"an unreadable deadline":     {issued("soon"), creation, false},
+		"no JSON":                    {`{"limits":`, nil, false},
 	} {
 		server := serve(t, func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte(test.body)) })
 		if _, err := server.Instance(t.Context(), test.creation); (err == nil) != test.valid {

@@ -77,6 +77,7 @@ describe('meta decoding (spec 3.1)', () => {
     [String.raw`{"v":1,"text":"\udc00"}`, { text: '\u{FFFD}' }],
     [String.raw`{"v":1,"text":"\ud800\ud800"}`, { text: '\u{FFFD}\u{FFFD}' }],
     [String.raw`{"v":1,"text":"\ud800A"}`, { text: '\u{FFFD}A' }],
+    [String.raw`{"v":1,"text":"\ud83d\ude00"}`, { text: '😀' }],
   ])('decodes %s as the Go core does', (json, meta) => {
     expect(decodeText(json)).toEqual(meta);
   });
@@ -95,6 +96,8 @@ describe('meta decoding (spec 3.1)', () => {
     String.raw`{"v":1,"text":"x\x"}`,
     String.raw`{"v":1,"text":"\u12"}`,
     String.raw`{"v":1,"text":"\u12G4"}`,
+    String.raw`{"v":1,"text":"\ud800\u12G4"}`,
+    '{"v":1,"text":"x\\',
     `{"v":1,"text":'x'}`,
     '{v:1,"text":"x"}',
     '{"v":01,"text":"x"}',
@@ -127,6 +130,11 @@ describe('meta decoding (spec 3.1)', () => {
     '{"v":1,"file":{"name":"a","size":99999999999999999999}}',
   ])('rejects the wrong type or non-integer in %s', (json) => {
     expect(() => decodeText(json)).toThrow(MetaError);
+  });
+
+  it('leaves compressed metadata to the reader that can decode the attachment', () => {
+    const compressed = '{"v":2,"file":{"name":"a","mime":"","size":10,"encoding":"gzip","encoded_size":5}}';
+    expect(() => decodeText(compressed)).toThrow('compressed metadata needs an attachment decoder');
   });
 
   it('rejects invalid UTF-8', () => {

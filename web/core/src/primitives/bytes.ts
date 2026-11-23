@@ -16,6 +16,11 @@ export function concatenate(...parts: readonly Uint8Array[]): Uint8Array<ArrayBu
   return joined;
 }
 
+export function xor(first: Uint8Array, second: Uint8Array): Uint8Array<ArrayBuffer> {
+  const view = new DataView(second.buffer, second.byteOffset, second.byteLength);
+  return Uint8Array.from(first, (byte, index) => byte ^ view.getUint8(index));
+}
+
 export function arrayBufferBacked(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
   const { buffer } = bytes;
   return buffer instanceof ArrayBuffer

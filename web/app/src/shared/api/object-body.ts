@@ -22,11 +22,7 @@ export async function readBody(
     throw tooLarge();
   }
   if (!response.body) {
-    const whole = new Uint8Array(await response.arrayBuffer());
-    if (whole.length > limit) {
-      throw tooLarge();
-    }
-    return whole;
+    return new Uint8Array(0);
   }
   let object = new Uint8Array(total ?? Math.min(INITIAL_BYTES, limit));
   let received = 0;
@@ -49,7 +45,7 @@ export async function readBody(
 }
 
 export function mediaTypeOf(response: Response): string {
-  return (response.headers.get('Content-Type') ?? '').split(';', 1)[0]?.trim().toLowerCase() ?? '';
+  return (response.headers.get('Content-Type') ?? '').replace(/;.*/su, '').trim().toLowerCase();
 }
 
 export async function readObject(response: Response, onProgress?: DownloadProgress): Promise<Uint8Array<ArrayBuffer>> {

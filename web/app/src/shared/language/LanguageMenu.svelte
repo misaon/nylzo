@@ -43,18 +43,16 @@
       choose(language);
       return;
     }
-    const option = event.currentTarget;
-    const options = [...(option.parentElement?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
-    const index = options.indexOf(option);
+    const index = ORDER.indexOf(language);
     const target = new Map([
-      ['ArrowDown', options.at((index + 1) % options.length)],
-      ['ArrowUp', options.at(index - 1)],
-      ['Home', options.at(0)],
-      ['End', options.at(-1)],
+      ['ArrowDown', ORDER.at((index + 1) % ORDER.length)],
+      ['ArrowUp', ORDER.at(index - 1)],
+      ['Home', ORDER.at(0)],
+      ['End', ORDER.at(-1)],
     ]).get(event.key);
     if (target) {
       event.preventDefault();
-      target.focus();
+      event.currentTarget.parentElement?.querySelector<HTMLElement>(`[role="option"][lang="${target}"]`)?.focus();
     }
   }
 

@@ -78,6 +78,15 @@ func TestAProcessUnderATracerIsRefused(t *testing.T) {
 	if err := refuseTracers(filepath.Join(threads, "missing")); !errors.Is(err, errTracerUnknown) {
 		t.Fatalf("without /proc the process must not go on, got %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(threads, "101", "status"), []byte("TracerPid:\t0\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(threads, "102", "status"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := refuseTracers(threads); !errors.Is(err, errTracerUnknown) {
+		t.Fatalf("a thread whose status cannot be read must not go on, got %v", err)
+	}
 }
 
 func mayTrace() bool {

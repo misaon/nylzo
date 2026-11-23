@@ -21,14 +21,18 @@ var errTraced = errors.New("a debugger or tracer is attached to this process, so
 // Protect applies the level before the command reads anything secret. The warning names swap that Linux or macOS
 // reports as unencrypted while the memory is not locked; Windows cannot tell, so it never warns.
 func Protect(level Level) (string, error) {
+	return applyLevel(level, disableDumps, keepFromSwap)
+}
+
+func applyLevel(level Level, disable func() error, keep func() string) (string, error) {
 	if level == Off {
 		return "", nil
 	}
-	if err := disableDumps(); err != nil {
+	if err := disable(); err != nil {
 		return "", err
 	}
 	if level == ProcessOnly {
 		return "", nil
 	}
-	return keepFromSwap(), nil
+	return keep(), nil
 }

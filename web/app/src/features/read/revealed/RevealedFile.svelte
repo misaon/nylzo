@@ -49,7 +49,7 @@
           >
         </span>
         <Button
-          {@attach page.focus.attach('download')}
+          {@attach (element) => page.focus.attach('download')(element)}
           variant="tint"
           disabled={page.download.shown}
           onclick={(event: MouseEvent) => void page.download.ask(event)}
@@ -82,8 +82,8 @@
           <span class="min-w-0">
             <span id="{id}-confirm-title" class="block text-ui text-ink">{translate('revealed.confirm.title')}</span>
             <span id="{id}-confirm" class="block text-micro text-ink-mute"
-              >{#if extension}{translate('revealed.confirm.extension')}
-                <bdi translate="no">.{extension}</bdi>{:else}{translate('revealed.confirm.none')}{/if}</span
+              >{#if extension}{`${translate('revealed.confirm.extension')} `}<bdi translate="no">{`.${extension}`}</bdi
+                >{:else}{translate('revealed.confirm.none')}{/if}</span
             >
           </span>
         </div>
@@ -91,7 +91,7 @@
           class="flex shrink-0 flex-wrap gap-1.5 *:min-w-fit *:flex-1 max-sm:*:h-auto max-sm:*:min-h-11 max-sm:*:py-2 max-sm:*:text-center max-sm:*:whitespace-normal sm:flex-nowrap sm:*:flex-none"
         >
           <Button
-            {@attach page.focus.attach('keepFile')}
+            {@attach (element) => page.focus.attach('keepFile')(element)}
             variant="ghost"
             onclick={(event: MouseEvent) => void page.download.cancel(event)}
           >
@@ -103,8 +103,7 @@
             aria-disabled={page.download.shown && !page.download.ready}
             onclick={(event: MouseEvent) => void page.download.confirm(event, file)}
           >
-            <Icon name="download" class="size-4 shrink-0" animated />
-            {translate('revealed.confirm.download')}
+            <Icon name="download" class="size-4 shrink-0" animated />{translate('revealed.confirm.download')}
           </Button>
         </div>
       </div>

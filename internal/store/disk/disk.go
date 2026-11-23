@@ -113,12 +113,7 @@ func (b *Blobs) Open(ctx context.Context, reference string) (io.ReadSeekCloser, 
 	var info os.FileInfo
 	err = withSlot(ctx, func() error {
 		var openErr error
-		if file, openErr = openBlob(path); openErr != nil {
-			return openErr
-		}
-		if info, openErr = file.Stat(); openErr != nil {
-			file.Close()
-		}
+		file, info, openErr = openSized(path, (*os.File).Stat)
 		return openErr
 	})
 	if errors.Is(err, os.ErrNotExist) {
@@ -128,6 +123,19 @@ func (b *Blobs) Open(ctx context.Context, reference string) (io.ReadSeekCloser, 
 		return nil, 0, err
 	}
 	return &blobReader{file: file, ctx: ctx}, info.Size(), nil
+}
+
+func openSized(path string, stat func(*os.File) (os.FileInfo, error)) (*os.File, os.FileInfo, error) {
+	file, err := openBlob(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := stat(file)
+	if err != nil {
+		file.Close()
+		return nil, nil, err
+	}
+	return file, info, nil
 }
 
 // blobReader reads in a file slot, so the streams of every request cannot all hold a thread in a blocking read.
@@ -182,23 +190,27 @@ func (b *Blobs) List(_ context.Context) ([]store.BlobInfo, error) {
 	}
 	blobs := make([]store.BlobInfo, 0, len(entries))
 	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-		reference, decodeErr := hex.DecodeString(entry.Name())
-		if decodeErr != nil {
-			continue
-		}
-		info, infoErr := entry.Info()
-		if errors.Is(infoErr, os.ErrNotExist) {
-			continue
-		}
+		blob, listed, infoErr := listedBlob(entry)
 		if infoErr != nil {
 			return nil, infoErr
 		}
-		blobs = append(blobs, store.BlobInfo{Reference: string(reference), PurgeAt: info.ModTime()})
+		if listed {
+			blobs = append(blobs, blob)
+		}
 	}
 	return blobs, nil
+}
+
+func listedBlob(entry os.DirEntry) (store.BlobInfo, bool, error) {
+	reference, decodeErr := hex.DecodeString(entry.Name())
+	if named := decodeErr == nil; entry.IsDir() || !named {
+		return store.BlobInfo{}, false, nil
+	}
+	info, err := entry.Info()
+	if err != nil {
+		return store.BlobInfo{}, false, ignoreMissing(err)
+	}
+	return store.BlobInfo{Reference: string(reference), PurgeAt: info.ModTime()}, true, nil
 }
 
 // EraseAll overwrites every stored and temporary blob file in full before it unlinks it, for blobs that predate the
@@ -299,10 +311,10 @@ func (b *Blobs) probe() error {
 	if err == nil {
 		err = os.Remove(link)
 	}
-	if err != nil {
-		return err
+	if err == nil {
+		err = erase.SyncDirectory(b.root)
 	}
-	return erase.SyncDirectory(b.root)
+	return err
 }
 
 func (b *Blobs) path(reference string) (string, error) {
@@ -366,14 +378,15 @@ func withSlot(ctx context.Context, work func() error) error {
 
 func restampFile(path string, entry os.DirEntry) error {
 	info, err := entry.Info()
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
 	if err != nil {
-		return err
+		return ignoreMissing(err)
 	}
 	modified := info.ModTime()
-	if err = os.Chtimes(path, modified, modified); errors.Is(err, os.ErrNotExist) {
+	return ignoreMissing(os.Chtimes(path, modified, modified))
+}
+
+func ignoreMissing(err error) error {
+	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	return err
@@ -402,11 +415,8 @@ func (b *Blobs) remove(reference string) error {
 // removeStale only unlinks a temporary name that still shares its file with a published blob after a crash.
 func removeStale(directory string, entry os.DirEntry, olderThan time.Time) (bool, error) {
 	info, err := entry.Info()
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
-	}
 	if err != nil {
-		return false, err
+		return false, ignoreMissing(err)
 	}
 	if info.ModTime().After(olderThan) {
 		return false, nil

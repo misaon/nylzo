@@ -47,7 +47,7 @@ func runWeb(ctx context.Context, environment *command.Environment, arguments []s
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
-	return local.Serve(ctx, environment, local.Options{
+	return local.Serve(ctx, environment, &local.Options{
 		Instance:    instance,
 		Build:       build,
 		OpenBrowser: !options.noBrowser,
@@ -81,7 +81,7 @@ func runOpen(ctx context.Context, environment *command.Environment, arguments []
 	if err != nil {
 		return command.Failf(environment, "%s", err)
 	}
-	return local.Serve(ctx, environment, local.Options{
+	return local.Serve(ctx, environment, &local.Options{
 		Instance:    instance,
 		Build:       build,
 		OpenBrowser: !options.noBrowser,

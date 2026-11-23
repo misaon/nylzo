@@ -166,20 +166,17 @@ export function validateCreate(input: CreateInput, limits: InstanceLimits): Crea
 
 // A lone surrogate (pasted text, a Windows file name) becomes U+FFFD, as UTF-8 encoding and the length check already count it.
 function metaOf(input: CreateInput): Meta {
-  const text = input.text === '' ? undefined : input.text.toWellFormed();
-  if (input.file !== undefined) {
-    const mime = input.file.mime.toWellFormed();
-    const file = {
-      name: sanitizeFileName(input.file.name.toWellFormed()),
-      mime: utf8(mime).length <= MAX_MIME_BYTES ? mime : '',
-      size: input.file.bytes.length,
-    };
-    return { ...(text !== undefined && { text }), file };
-  }
-  if (text !== undefined) {
+  const text = input.text.toWellFormed();
+  if (input.file === undefined) {
     return { text };
   }
-  throw new CreateError({ kind: 'invalid', problems: [{ field: 'content', code: 'missing' }] });
+  const mime = input.file.mime.toWellFormed();
+  const file = {
+    name: sanitizeFileName(input.file.name.toWellFormed()),
+    mime: utf8(mime).length <= MAX_MIME_BYTES ? mime : '',
+    size: input.file.bytes.length,
+  };
+  return text === '' ? { file } : { text, file };
 }
 
 // Profile 3 stretches the OPRF output in a worker (spec 2.1).
@@ -210,9 +207,6 @@ function startRegistration(
   try {
     password = opaquePassword(salt, kdfId, passphrase);
     return createRegistrationRequest(password);
-  } catch (error) {
-    const code = passphraseErrorCode(error);
-    throw code === undefined ? error : new CreateError({ kind: 'invalid', problems: [{ field: 'passphrase', code }] });
   } finally {
     salt.fill(0);
     password?.fill(0);
@@ -246,6 +240,10 @@ async function prove(
 function failureOf(error: unknown): CreateFailure {
   if (error instanceof CreateError) {
     return error.failure;
+  }
+  const passphraseCode = passphraseErrorCode(error);
+  if (passphraseCode !== undefined) {
+    return { kind: 'invalid', problems: [{ field: 'passphrase', code: passphraseCode }] };
   }
   if (shouldRetryLater(error)) {
     return { kind: error.kind === 'rate_limited' ? 'rate_limited' : 'unavailable', retryAfter: error.retryAfter };

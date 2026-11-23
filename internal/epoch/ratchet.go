@@ -162,10 +162,7 @@ func step(seed *Seed, next func(*Seed) Seed, count uint32) {
 }
 
 func expand(seed *Seed, info string) [SeedLen]byte {
-	derived, err := hkdf.Expand(sha256.New, seed[:], info, SeedLen)
-	if err != nil {
-		panic(err)
-	}
+	derived, _ := hkdf.Expand(sha256.New, seed[:], info, SeedLen)
 	defer clear(derived)
 	return [SeedLen]byte(derived)
 }
@@ -346,11 +343,8 @@ func Inspect(directory string) (State, error) {
 		return StateNoSeed, err
 	}
 	defer file.Close()
-	if lockErr := lockShared(file); lockErr != nil {
-		return StateNoSeed, lockErr
-	}
+	content, err := readLocked(file, lockShared)
 	defer unlock(file)
-	content, err := readContent(file)
 	defer clear(content)
 	if err != nil {
 		return StateNoSeed, err
@@ -625,11 +619,8 @@ func (r *Ratchet) issuerOnDisk() (GenerationID, error) {
 		return GenerationID{}, err
 	}
 	defer file.Close()
-	if lockErr := lockShared(file); lockErr != nil {
-		return GenerationID{}, lockErr
-	}
+	content, err := readLocked(file, lockShared)
 	defer unlock(file)
-	content, err := readContent(file)
 	defer clear(content)
 	if err != nil {
 		return GenerationID{}, err
@@ -711,17 +702,14 @@ func (r *Ratchet) loadLocked(now time.Time, mayReplace bool) error {
 	}
 	defer file.Close()
 	info, err := file.Stat()
+	if err == nil {
+		err = checkSeedInfo(info)
+	}
 	if err != nil {
 		return err
 	}
-	if seedErr := checkSeedInfo(info); seedErr != nil {
-		return seedErr
-	}
-	if lockErr := lock(file); lockErr != nil {
-		return lockErr
-	}
+	content, err := readLocked(file, lock)
 	defer unlock(file)
-	content, err := readContent(file)
 	defer clear(content)
 	if err != nil {
 		return err
@@ -763,16 +751,17 @@ func eraseReleased(path string) error {
 		return err
 	}
 	defer file.Close()
-	if lockErr := lock(file); lockErr != nil {
-		return lockErr
-	}
+	content, err := readLocked(file, lock)
 	defer unlock(file)
-	content, err := readContent(file)
 	found := released(content)
 	clear(content)
 	if err != nil || !found {
 		return err
 	}
+	return eraseWhileNamed(path, file)
+}
+
+func eraseWhileNamed(path string, file fileStat) error {
 	held, err := file.Stat()
 	if err != nil {
 		return err
@@ -785,6 +774,14 @@ func eraseReleased(path string) error {
 		return err
 	}
 	return erase.Remove(path, erase.WholeFile)
+}
+
+// The caller unlocks the file, also when the lock failed.
+func readLocked(file *os.File, take func(*os.File) error) ([]byte, error) {
+	if err := take(file); err != nil {
+		return nil, err
+	}
+	return readContent(file)
 }
 
 // readContent reads a file no longer than a seed file. A read that fails says nothing about the file, so it returns
@@ -940,6 +937,10 @@ func checkSeed(path string) error {
 		return err
 	}
 	return checkSeedInfo(info)
+}
+
+type fileStat interface {
+	Stat() (fs.FileInfo, error)
 }
 
 func checkSeedInfo(info fs.FileInfo) error {

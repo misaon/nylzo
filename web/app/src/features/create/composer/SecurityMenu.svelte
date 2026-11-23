@@ -80,8 +80,7 @@
         />
       </div>
       <Button variant="tint" size="compact" disabled={!composer.protect} onclick={composer.generatePassphrase}>
-        <Icon name="refresh" animated />
-        {translate('compose.passphrase.generate')}
+        <Icon name="refresh" animated />{translate('compose.passphrase.generate')}
       </Button>
     </div>
     <div

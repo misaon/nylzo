@@ -70,7 +70,7 @@
         {#if daily}
           <li class="flex items-center gap-2">
             <span class="h-0 w-4 border-t-[1.5px] border-dashed border-aegis-200" aria-hidden="true"></span>
-            {translate('dashboard.traffic.visitors')}
+            <span>{translate('dashboard.traffic.visitors')}</span>
           </li>
         {/if}
       </ul>

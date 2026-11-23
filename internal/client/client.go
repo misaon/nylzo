@@ -192,10 +192,7 @@ func (c cancelOnClose) Close() error {
 }
 
 func loopbackOnly(_, address string, _ syscall.RawConn) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return err
-	}
+	host, _, _ := net.SplitHostPort(address)
 	if address, parseErr := netip.ParseAddr(host); parseErr != nil || !loopback.Address(address) {
 		return ErrInsecureServer
 	}

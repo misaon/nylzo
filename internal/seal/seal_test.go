@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"errors"
+	"io"
 	"math/bits"
 	"testing"
 
@@ -17,7 +18,7 @@ import (
 
 func TestPaddedSizeFollowsPadme(t *testing.T) {
 	t.Parallel()
-	for size, want := range map[int64]int64{9: 10, 4096: 4096, 4097: 4352, 100000: 100352, 5341184: 5373952} {
+	for size, want := range map[int64]int64{0: 0, 1: 1, 3: 3, 9: 10, 4096: 4096, 4097: 4352, 100000: 100352, 5341184: 5373952} {
 		if got := seal.PaddedSize(size); got != want {
 			t.Errorf("PaddedSize(%d) = %d, want %d", size, got, want)
 		}
@@ -30,6 +31,21 @@ func TestPaddedSizeFollowsPadme(t *testing.T) {
 			bits.Len64(uint64(padded))-bits.TrailingZeros64(uint64(padded)) > significant+1 {
 			t.Fatalf("PaddedSize(%d) = %d leaks more than the top bits or costs more than 12 %%", size, padded)
 		}
+	}
+}
+
+func TestReadEraseBlockGivesTheSaltAndRefusesAnOverwrittenOrShortBlock(t *testing.T) {
+	t.Parallel()
+	salt := seal.NewEraseSalt()
+	block := seal.EraseBlock(salt)
+	if read, err := seal.ReadEraseBlock(bytes.NewReader(block)); err != nil || read != salt {
+		t.Fatalf("the salt of a written block: %v", err)
+	}
+	if _, err := seal.ReadEraseBlock(bytes.NewReader(make([]byte, len(block)))); !errors.Is(err, seal.ErrErased) {
+		t.Fatalf("an overwritten block: %v", err)
+	}
+	if _, err := seal.ReadEraseBlock(bytes.NewReader(block[:len(block)-1])); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("a short block: %v", err)
 	}
 }
 

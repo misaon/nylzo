@@ -46,7 +46,7 @@ func (s *Server) handleRedeem(w http.ResponseWriter, r *http.Request) {
 	payload, ok := s.handoff.take(token, time.Now())
 	if err != nil || !ok {
 		s.notify(HandoffRefused)
-		writeJSON(w, http.StatusNotFound, apiError{Error: "not_found"})
+		writeError(w, http.StatusNotFound, "not_found")
 		return
 	}
 	defer clear(payload)

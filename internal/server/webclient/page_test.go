@@ -388,3 +388,22 @@ func TestEveryPageRejectsThirdPartyScriptsAndAnalyticsConnections(t *testing.T) 
 		}
 	}
 }
+
+func TestOnlyFilesDirectlyInTheAssetsAreAssetDocuments(t *testing.T) {
+	t.Parallel()
+	for path, public := range map[string]bool{
+		"/assets/index-a1.js": true,
+		"/assets/":            false,
+		"/assets/sub/a.js":    false,
+		"/llms.txt":           true,
+		"/r":                  false,
+	} {
+		if webclient.IsPublicDocument(path) != public {
+			t.Errorf("%s: public %v", path, !public)
+		}
+	}
+	if webclient.SecurityHeaders("https://nylzo.example", webclient.AdminPath)["Permissions-Policy"] ==
+		webclient.SecurityHeaders("https://nylzo.example", "/")["Permissions-Policy"] {
+		t.Error("the admin page has the permissions of every other page")
+	}
+}

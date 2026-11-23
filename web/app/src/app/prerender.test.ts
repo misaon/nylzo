@@ -1,7 +1,21 @@
-import { describe, expect, it } from 'vitest';
+import { render } from 'svelte/server';
+import { describe, expect, it, vi } from 'vitest';
 
+import { FAQ_KEYS } from '../features/create/sections/faq-entries.ts';
+import { STATUS_PAGES } from '../features/errors/status-page.ts';
 import { homePath, languageDetails, LANGUAGES } from '../shared/language/language.ts';
-import { homeTemplate } from './prerender.ts';
+import { Translator } from '../shared/language/translator.svelte.ts';
+import App from './App.svelte';
+import { agentsMarkdown, homeTemplate, homeTemplates, llmsText, skeletonIndex, statusTemplates } from './prerender.ts';
+
+const browserOnlyComponent = vi.hoisted(() => (): never => {
+  throw new ReferenceError('document is not defined');
+});
+
+vi.mock('../features/read/Read.svelte', () => ({ default: browserOnlyComponent }));
+vi.mock('../features/sent/Sent.svelte', () => ({ default: browserOnlyComponent }));
+vi.mock('../features/transparency/Transparency.svelte', () => ({ default: browserOnlyComponent }));
+vi.mock('../features/create/created/CreatedPanel.svelte', () => ({ default: browserOnlyComponent }));
 
 const INDEX = `<!doctype html>
 <html lang="cs">
@@ -40,6 +54,7 @@ describe('homeTemplate', () => {
     const home = homePath(language);
     expect(page).toContain(`<html lang="${language}">`);
     expect(count(page, /<title>/u)).toBe(1);
+    expect(page).toContain(`<title>${new Translator(language).translate('seo.title')}</title>`);
     expect(count(page, /<meta name="description"/u)).toBe(1);
     expect(page).not.toContain('<title>Nylzo</title>');
     expect(count(page, /<h1[\s>]/u)).toBe(1);
@@ -94,5 +109,99 @@ describe('homeTemplate', () => {
     );
     expect(() => homeTemplate(INDEX.replace('<title>Nylzo</title>', ''), 'en', ASSETS)).toThrow(/title/u);
     expect(() => homeTemplate(INDEX.replaceAll('-czech-', '-other-'), 'cs', ASSETS)).toThrow(/Czech/u);
+    expect(() => homeTemplate(INDEX.replace(/<link rel="apple-touch-icon"[^>]*>/u, ''), 'en', ASSETS)).toThrow(
+      /apple touch icon/u,
+    );
+  });
+
+  it('renders one home page for every language', () => {
+    const pages = homeTemplates(INDEX, ASSETS);
+    expect([...pages.keys()]).toStrictEqual(LANGUAGES);
+    for (const [language, page] of pages) {
+      expect(page).toBe(homeTemplate(INDEX, language, ASSETS));
+    }
+  });
+});
+
+describe('statusTemplates', () => {
+  it('renders every status page in every language without loading the app', () => {
+    const pages = statusTemplates(INDEX);
+    const names = STATUS_PAGES.flatMap((page) => LANGUAGES.map((language) => `${page}.${language}.html`));
+    expect([...pages.keys()]).toStrictEqual(names);
+    for (const language of LANGUAGES) {
+      const page = pages.get(`error.${language}.html`) ?? '';
+      expect(page).toContain(`<html lang="${language}" data-fonts>`);
+      expect(count(page, /<title>/u)).toBe(1);
+      expect(page).not.toContain('<title>Nylzo</title>');
+      expect(page).not.toContain('<meta name="description"');
+      expect(page).not.toContain('<script type="module"');
+      expect(page).not.toContain('<body></body>');
+      expect(page).toContain('<link rel="stylesheet" crossorigin href="/assets/style-b2.css">');
+      expect(count(page, /-czech-[\w-]+\.woff2" as="font"/u)).toBe(WITH_CZECH_LETTERS.has(language) ? 2 : 0);
+    }
+  });
+
+  it('drops the module preloads along with the module script', () => {
+    const index = INDEX.replace(
+      '</head>',
+      '<link rel="modulepreload" crossorigin href="/assets/chunk-c1.js">\n</head>',
+    );
+    for (const page of statusTemplates(index).values()) {
+      expect(page).not.toContain('modulepreload');
+    }
+  });
+});
+
+describe('skeletonIndex', () => {
+  it('shows the skeleton without waiting for fonts and hides its spinner without script', () => {
+    const page = skeletonIndex(INDEX);
+    expect(page).toContain('<html data-fonts lang="cs">');
+    expect(page).toMatch(/<body>(?:<!--\[-->)?<div[^>]*data-skeleton/u);
+    expect(page.indexOf('<noscript><style>[data-skeleton]')).toBeLessThan(page.indexOf('</head>'));
+    expect(page).toContain('<script type="module" crossorigin src="/assets/index-a1.js"></script>');
+  });
+
+  it('refuses an index that already has a body', () => {
+    expect(() => skeletonIndex(INDEX.replace('<body></body>', '<body><p></p></body>'))).toThrow(/<body><\/body>/u);
+  });
+});
+
+describe('agentsMarkdown', () => {
+  it('writes the agent guide in English, whatever language the build serves first', () => {
+    const { translate } = new Translator('en');
+    const [heading] = agentsMarkdown().split('\n', 1);
+    expect(heading).toBe(`# ${translate('agents.title')}`);
+  });
+});
+
+describe('llmsText', () => {
+  it('lists every English FAQ answer with plain spaces in the llms.txt format', () => {
+    const text = llmsText();
+    const { translate } = new Translator('en');
+    expect(text).toMatch(/^# Nylzo\n\n> /u);
+    expect(text).not.toContain('\u{A0}');
+    for (const key of FAQ_KEYS) {
+      expect(text).toContain(`### ${translate(`${key}.question`).replaceAll('\u{A0}', ' ')}`);
+    }
+  });
+});
+
+describe('the app on the server', () => {
+  const { translate } = new Translator('en');
+
+  it.each([
+    ['/agents', 'agents.title'],
+    ['/terms', 'terms.title'],
+    ['/nothing', 'error.notFound.title'],
+  ] as const)('renders the screen of %s', (path, heading) => {
+    const { body } = render(App, { props: { start: { path, language: 'en' } } });
+    const title = RegExp.escape(translate(heading));
+    expect(body).toMatch(new RegExp(`<h1[^>]*>\\s*${title}\\s*</h1>`, 'u'));
+    expect(body).not.toContain('role="alert"');
+  });
+
+  it.each(['/sent', '/transparency', '/r'])('renders the crash notice for %s, which needs a browser', (path) => {
+    const { body } = render(App, { props: { start: { path, language: 'en' } }, transformError: (error) => error });
+    expect(body).toMatch(/<p role="alert"[^>]*>[^<]+<\/p>/u);
   });
 });

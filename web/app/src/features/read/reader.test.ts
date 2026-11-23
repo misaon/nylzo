@@ -30,6 +30,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ApiError } from '../../shared/api/api-errors.ts';
 import type { MessageState } from '../../shared/api/api-errors.ts';
+import type { Metadata } from '../../shared/api/api.ts';
 import { fakeApi } from '../../shared/api/fake-api.ts';
 import type { FakeApi, FakeOptions } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
@@ -39,6 +40,11 @@ import { createReader } from './reader.ts';
 import type { ReaderDependencies, ReadView, SessionStore } from './reader.ts';
 
 type Stretch = ReaderDependencies['stretch'];
+
+vi.mock(import('@nylzo/core'), async (original) => {
+  const actual = await original();
+  return { ...actual, opaquePassword: vi.fn<typeof actual.opaquePassword>(actual.opaquePassword) };
+});
 
 const stretch: Stretch = (message, onProgress) => Promise.resolve(stretchScrypt(message, onProgress));
 
@@ -107,6 +113,7 @@ interface ReaderOverrides {
   readonly stretch?: Stretch;
   readonly shown?: () => Promise<void>;
   readonly reloaded?: boolean;
+  readonly onView?: (view: ReadView) => void;
 }
 
 function openReader(api: FakeApi, link: string, overrides: ReaderOverrides = {}) {
@@ -135,6 +142,7 @@ function openReader(api: FakeApi, link: string, overrides: ReaderOverrides = {})
     (view) => {
       views.push(view);
       api.calls.push(`view:${view.view}`);
+      overrides.onView?.(view);
     },
   );
   return { ...instance, views, last: () => views.at(-1), dropped: () => dropped, session };
@@ -788,6 +796,28 @@ describe('passphrase handling on the read page', () => {
     expect(derivations).toEqual([]);
     expect(api.calls.some((call) => call === 'handshake' || call.startsWith('claim'))).toBe(false);
     expect(Object.fromEntries(reader.session.map)).toEqual({ [`nylzo:dropped:${PAGE_KEY}`]: '1' });
+    expect(await reader.burn(passphrase)).toEqual({ outcome: 'rejected' });
+    expect(reader.last()).toMatchObject({ view: 'ready', notice: { reason } });
+    expect(api.calls).not.toContain('burn');
+  });
+
+  it('fails instead of asking again when the core refuses a passphrase for a reason the page does not know', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const reader = openReader(api, created.link);
+    await reader.load();
+    vi.mocked(opaquePassword).mockImplementationOnce(() => {
+      throw new RangeError('unexpected');
+    });
+    await reader.reveal();
+    expect(reader.last()).toEqual({ view: 'failed' });
+    const again = openReader(api, created.link);
+    await again.load();
+    vi.mocked(opaquePassword).mockImplementationOnce(() => {
+      throw new RangeError('unexpected');
+    });
+    expect(await again.burn()).toEqual({ outcome: 'failed' });
+    expect(api.calls.some((call) => call === 'burn' || call.startsWith('claim'))).toBe(false);
   });
 
   it('suggests another device when the key derivation worker fails', async () => {
@@ -1196,5 +1226,261 @@ describe('native signing after a PKCS#8 import failure (WebKit on Linux)', () =>
     } finally {
       refuse.mockRestore();
     }
+  });
+});
+
+async function readerWithMetadata(change: (served: Metadata) => Metadata) {
+  const api = fakeApi({ lockAfter: 0 });
+  const created = await createMessage(input({ passphrase: 'correct horse battery staple' }), createDependencies(api));
+  const metadata = api.metadata.bind(api);
+  api.metadata = async (...parameters) => change(await metadata(...parameters));
+  const reader = openReader(api, created.link);
+  await reader.load();
+  return reader;
+}
+
+describe('unusual answers while loading and revealing', () => {
+  it('shows a link opened on the hand-off address as removed, before any request', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const reader = openReader(api, created.link.replace('/r#', '/open#'));
+    await reader.load();
+    expect(reader.last()).toEqual({ view: 'removed' });
+    expect(api.calls).not.toContain('metadata');
+  });
+
+  it('treats a read page opened without a fragment in a fresh tab as an invalid link', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const reader = openReader(api, created.link, { reloaded: true });
+    await reader.load();
+    expect(reader.last()).toEqual({ view: 'invalid' });
+  });
+
+  it('resumes no stored lease when the lease tag cannot be computed', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const session = memorySession();
+    session.setItem(LEASE_KEY, await leaseValue(created.link, 'lease-1'));
+    vi.spyOn(crypto.subtle, 'digest').mockRejectedValueOnce(new DOMException('refused', 'OperationError'));
+    const reader = openReader(api, created.link, { session });
+    await reader.load();
+    expect(reader.last()).toMatchObject({ view: 'ready', resumable: false });
+  });
+
+  it('fails without a request when the read key cannot be imported', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const importKey = crypto.subtle.importKey.bind(crypto.subtle);
+    const refusal = vi
+      .spyOn(crypto.subtle, 'importKey')
+      .mockImplementation((...parameters) =>
+        parameters[0] === 'pkcs8' ? Promise.reject(new TypeError('no Ed25519')) : importKey(...parameters),
+      );
+    try {
+      const reader = openReader(api, created.link);
+      await reader.load();
+      expect(reader.last()).toEqual({ view: 'failed' });
+      expect(api.calls).not.toContain('metadata');
+    } finally {
+      refusal.mockRestore();
+    }
+  });
+
+  it('opens the message after two loads of the link overlapped on the same page', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const views: ReadView[] = [];
+    const reader = createReader(
+      {
+        api,
+        location: { pathname: '/r' },
+        takeFragment: () => new URL(created.link).hash,
+        session: memorySession(),
+        page: { visible: () => true, prerendering: () => false },
+        stretch,
+        now: () => Date.now(),
+      },
+      (view) => {
+        views.push(view);
+      },
+    );
+    await Promise.all([reader.load(), reader.load()]);
+    expect(views.at(-1)).toMatchObject({ view: 'ready' });
+    await reader.reveal();
+    expect(views.at(-1)).toMatchObject({ view: 'revealed', text: 'ahoj' });
+  });
+
+  it('fails on metadata that gives an available message an end time', async () => {
+    const reader = await readerWithMetadata((served) => ({ ...served, endedAt: '2026-10-23T11:00:00Z' }));
+    expect(reader.last()).toEqual({ view: 'failed' });
+  });
+
+  it('does not call a lockout permanent when the metadata gives no expiry', async () => {
+    const reader = await readerWithMetadata(({ state, opensMax, opensRemaining, ttlSeconds, kdfId, size }) => ({
+      state,
+      opensMax,
+      opensRemaining,
+      ttlSeconds,
+      kdfId,
+      size,
+    }));
+    await reader.reveal('correct horse battery staple');
+    expect(reader.last()).toMatchObject({
+      view: 'ready',
+      notice: { reason: 'wrong', attemptsLeft: 0, retryAfter: 3600, locked: false },
+    });
+  });
+
+  it('fails when the metadata answers gone for a message still available', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    api.metadata = () => Promise.reject(new ApiError(410, 'gone', { state: 'available' }));
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(reader.last()).toEqual({ view: 'failed' });
+  });
+
+  it('shows a download of unknown size without a fraction', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const claim = api.claim.bind(api);
+    api.claim = async (id, readKey, options) => {
+      options.onProgress?.(10, undefined);
+      return claim(id, readKey, options);
+    };
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal();
+    expect(reader.views).toContainEqual({ view: 'busy', step: 'downloading', fraction: undefined });
+    expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
+  });
+
+  it('treats a claim answered without the handshake of this page as tampered', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const { id, kdfId, secret } = parseLink(created.link);
+    const keys = await deriveLink(id, secret);
+    const password = opaquePassword(keys.passphraseSalt, kdfId, '');
+    const config = { context: opaqueContext(id, kdfId), stretch: identityStretch };
+    const claim = api.claim.bind(api);
+    api.claim = async (claimId, readKey, options) =>
+      claim(claimId, readKey, {
+        ...options,
+        unlock: async () => {
+          const { ke1, login } = generateKE1(password);
+          const handshake = await api.handshake(claimId, readKey, ke1);
+          const result = await generateKE3(login, handshake.ke2, config);
+          return { challenge: handshake.challenge, ke3: result.ke3 };
+        },
+      });
+    const reader = openReader(api, created.link);
+    await reader.load();
+    await reader.reveal();
+    expect(reader.last()).toEqual({ view: 'tampered' });
+    expect(api.calls).not.toContain('ack');
+  });
+
+  it('keeps the lease and shows nothing when the page is left while the message is decrypted', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    let decrypting = false;
+    let decryptions = 0;
+    const shareThenEnvelope = 2;
+    const reader = openReader(api, created.link, {
+      onView: (view) => {
+        decrypting ||= view.view === 'busy' && view.step === 'decrypting';
+      },
+    });
+    const decrypt = crypto.subtle.decrypt.bind(crypto.subtle);
+    const leaving = vi.spyOn(crypto.subtle, 'decrypt').mockImplementation(async (...parameters) => {
+      if (decrypting) {
+        decryptions += 1;
+      }
+      if (decryptions === shareThenEnvelope) {
+        reader.clear();
+      }
+      return decrypt(...parameters);
+    });
+    try {
+      await reader.load();
+      await reader.reveal();
+    } finally {
+      leaving.mockRestore();
+    }
+    expect(reader.last()).toEqual({ view: 'cleared' });
+    expect(reader.views.some((view) => view.view === 'revealed' || view.view === 'tampered')).toBe(false);
+    expect(api.calls).not.toContain('ack');
+    expect(reader.session.map.get(LEASE_KEY)).toBe(await leaseValue(created.link, 'lease-1'));
+  });
+
+  it('shows no ready card when a stored lease ends after the page was left', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const session = memorySession();
+    session.setItem(LEASE_KEY, await leaseValue(created.link, 'lease-1'));
+    const reader = openReader(api, created.link, { session });
+    api.blob = () => {
+      reader.clear();
+      return Promise.reject(new ApiError(410, 'gone', { state: 'available' }));
+    };
+    await reader.load();
+    await reader.reveal();
+    expect(reader.views.slice(reader.views.findIndex((view) => view.view === 'cleared'))).toEqual([
+      { view: 'cleared' },
+      { view: 'cleared' },
+    ]);
+  });
+
+  it('fails when the page cannot show the revealed message', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const reader = openReader(api, created.link, { shown: () => Promise.reject(new Error('display failed')) });
+    await reader.load();
+    await reader.reveal();
+    expect(reader.last()).toEqual({ view: 'failed' });
+  });
+});
+
+describe('deletion answers', () => {
+  it.each<[string, ApiError, unknown, ReadView['view']]>([
+    [
+      'gone for a message still available',
+      new ApiError(410, 'gone', { state: 'available' }),
+      { outcome: 'failed' },
+      'ready',
+    ],
+    ['not found', new ApiError(404, 'not_found'), { outcome: 'unknown' }, 'unknown'],
+    ['an unexpected error', new ApiError(500, 'unexpected'), { outcome: 'failed' }, 'ready'],
+  ])('reports a deletion answered %s', async (_, failure, outcome, view) => {
+    const api = fakeApi({ failBurn: [failure] });
+    const created = await createMessage(input(), createDependencies(api));
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(await reader.burn()).toEqual(outcome);
+    expect(reader.last()?.view).toBe(view);
+  });
+
+  it('counts a passphrase refusal without attempt details as no attempts left and no wait', async () => {
+    const api = fakeApi({ failBurn: [new ApiError(403, 'passphrase')] });
+    const created = await createMessage(input(), createDependencies(api));
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(await reader.burn()).toEqual({ outcome: 'rejected' });
+    expect(reader.last()).toMatchObject({
+      view: 'ready',
+      notice: { reason: 'wrong', attemptsLeft: 0, retryAfter: 0, locked: false },
+    });
+  });
+
+  it('sends no deletion when the page is left before the deletion starts', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const reader = openReader(api, created.link);
+    await reader.load();
+    const burning = reader.burn();
+    reader.clear();
+    expect(await burning).toEqual({ outcome: 'ignored' });
+    expect(api.calls).not.toContain('burn');
   });
 });

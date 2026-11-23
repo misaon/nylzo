@@ -90,12 +90,14 @@ type layout struct {
 	sdk              uint32
 }
 
+var exit = os.Exit
+
 func main() {
 	flag.Usage = func() { fmt.Fprintln(flag.CommandLine.Output(), errUsage) }
 	flag.Parse()
 	if err := run(flag.Args()); err != nil {
 		fmt.Fprintln(os.Stderr, "codesign:", err)
-		os.Exit(1)
+		exit(1)
 	}
 }
 
@@ -136,10 +138,10 @@ func replace(path string, data []byte, original os.FileInfo) error {
 	if err == nil {
 		err = os.Chtimes(file.Name(), original.ModTime(), original.ModTime())
 	}
-	if err != nil {
-		return err
+	if err == nil {
+		err = os.Rename(file.Name(), path)
 	}
-	return os.Rename(file.Name(), path)
+	return err
 }
 
 func sign(data []byte, identifier string) ([]byte, error) {

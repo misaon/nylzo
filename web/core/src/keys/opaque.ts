@@ -6,7 +6,7 @@ import { sha512 } from '@noble/hashes/sha2.js';
 
 import { EnvelopeRecoveryError, OpaqueMessageError, ServerAuthenticationError } from '../errors.ts';
 import { MAX_OPRF_INPUT_LENGTH } from '../limits.ts';
-import { arrayBufferBacked, concatenate, utf8 } from '../primitives/bytes.ts';
+import { arrayBufferBacked, concatenate, utf8, xor } from '../primitives/bytes.ts';
 
 // OPAQUE-3DH of RFC 9807 with the OPRF ristretto255-SHA512 of RFC 9497, client steps only (spec section 2.1).
 
@@ -374,7 +374,7 @@ async function recoverCredentials(
   const pad = expand(sha512, maskingKey, labelled(maskingNonce, 'CredentialResponsePad'), MASKED_RESPONSE_LENGTH);
   try {
     const masked = response.subarray(ELEMENT_LENGTH + NONCE_LENGTH);
-    const unmasked = pad.map((byte, index) => byte ^ (masked[index] ?? 0));
+    const unmasked = xor(pad, masked);
     const serverPublicKey = unmasked.subarray(0, ELEMENT_LENGTH);
     const envelope = unmasked.subarray(ELEMENT_LENGTH);
     const stored = store(randomized, serverPublicKey, envelope.subarray(0, NONCE_LENGTH));

@@ -3,9 +3,11 @@ package harden
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -80,4 +82,30 @@ func startChild(t *testing.T, mode string) (*exec.Cmd, childReport) {
 		t.Fatalf("the %s child could not protect itself: %s", mode, report.Error)
 	}
 	return child, report
+}
+
+func TestProtectAppliesWhatItsLevelAsks(t *testing.T) {
+	t.Parallel()
+	if warning, err := Protect(Off); warning != "" || err != nil {
+		t.Fatalf("Off protects nothing: %q %v", warning, err)
+	}
+	refused := errors.New("refused")
+	for level, want := range map[Level]string{Off: "", ProcessOnly: "dumps", Full: "dumps swap"} {
+		var applied []string
+		warning, err := applyLevel(
+			level,
+			func() error { applied = append(applied, "dumps"); return nil },
+			func() string { applied = append(applied, "swap"); return "clear swap" },
+		)
+		if got := strings.Join(applied, " "); got != want || err != nil || (level == Full) != (warning != "") {
+			t.Errorf("level %d applied %q, warned %q, %v", level, got, warning, err)
+		}
+	}
+	keptFromSwap := false
+	if _, err := applyLevel(Full, func() error { return refused }, func() string {
+		keptFromSwap = true
+		return ""
+	}); !errors.Is(err, refused) || keptFromSwap {
+		t.Fatalf("a failed protection must stop before swap: %v", err)
+	}
 }

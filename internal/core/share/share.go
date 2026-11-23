@@ -50,10 +50,7 @@ func aead() hpke.AEAD { return hpke.AES256GCM() }
 
 // NewKey draws the one-time key pair a client sends with a request that returns a share.
 func NewKey() hpke.PrivateKey {
-	key, err := kem().GenerateKey()
-	if err != nil {
-		panic(err)
-	}
+	key, _ := kem().GenerateKey()
 	return key
 }
 
@@ -90,11 +87,9 @@ func ParseKey(text string) (hpke.PublicKey, error) {
 	return key, nil
 }
 
+// usableX25519 takes the 32-byte half of a key that DecodeExact has measured.
 func usableX25519(half []byte) bool {
-	key, err := ecdh.X25519().NewPublicKey(half)
-	if err != nil {
-		return false
-	}
+	key, _ := ecdh.X25519().NewPublicKey(half)
 	secret, err := lowOrderProbe.ECDH(key)
 	clear(secret)
 	return err == nil
@@ -109,9 +104,6 @@ func Wrap(share *[core.ShareLen]byte, clientKey hpke.PublicKey) ([WrappedLen]byt
 	sealed, err := hpke.Seal(clientKey, kdf(), aead(), []byte(info), share[:])
 	if err != nil {
 		return wrapped, err
-	}
-	if len(sealed) != WrappedLen {
-		return wrapped, ErrShareKey
 	}
 	copy(wrapped[:], sealed)
 	return wrapped, nil

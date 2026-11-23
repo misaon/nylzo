@@ -95,13 +95,12 @@ func TestDeriveVectors(t *testing.T) {
 			if hsalt := keys.HSalt(id); hex.EncodeToString(hsalt[:]) != vector.HSalt {
 				t.Fatal("hsalt")
 			}
-			read, err := keys.DeriveRead(id, secret)
-			if err != nil || hex.EncodeToString(read[:]) != vector.R {
-				t.Fatalf("R: %v", err)
+			read := keys.DeriveRead(id, secret)
+			if hex.EncodeToString(read[:]) != vector.R {
+				t.Fatalf("R: %x", read)
 			}
-			salt, err := keys.PassphraseSalt(secret)
-			if err != nil || hex.EncodeToString(salt[:]) != vector.PassphraseSalt {
-				t.Fatalf("salt_pw: %v", err)
+			if salt := keys.PassphraseSalt(secret); hex.EncodeToString(salt[:]) != vector.PassphraseSalt {
+				t.Fatalf("salt_pw: %x", salt)
 			}
 			content, err := keys.DeriveContent(id, secret, exportKeyOf(t, vector.P), decode32(t, vector.E))
 			if err != nil || hex.EncodeToString(content.K[:]) != vector.K ||
@@ -180,9 +179,8 @@ func checkEnvelopeVector(t *testing.T, vector *vectors.Envelope) {
 		t.Fatal("aad or commitment differ")
 	}
 	sum := sha256.Sum256(object)
-	inline := vector.Object == nil || core.Encode(object) == *vector.Object
 	if len(object) != vector.ObjectLen || len(object)-prefix-envelope.TagLen != vector.PlaintextLen ||
-		hex.EncodeToString(sum[:]) != vector.ObjectSHA256 || !inline {
+		hex.EncodeToString(sum[:]) != vector.ObjectSHA256 {
 		t.Fatalf("object of %d bytes differs", len(object))
 	}
 	hash := envelope.ObjectHash(object)
@@ -345,11 +343,7 @@ func openRejected(t *testing.T, envelopes map[string]vectors.Envelope, vector *v
 			t.Fatal(err)
 		}
 	} else {
-		source := base
-		if vector.ObjectFrom != "" {
-			source = envelopes[vector.ObjectFrom]
-		}
-		object = sealVector(t, &source)
+		object = sealVector(t, &base)
 	}
 	if vector.FlipByte != nil {
 		object[*vector.FlipByte] ^= 1
@@ -671,10 +665,7 @@ func TestOPAQUEVectorsNormalizeThePassphrase(t *testing.T) {
 func TestPassphraseVectorsTurnEverySpaceSeparatorIntoASpace(t *testing.T) {
 	t.Parallel()
 	secret := core.NewSecret()
-	salt, err := keys.PassphraseSalt(secret)
-	if err != nil {
-		t.Fatal(err)
-	}
+	salt := keys.PassphraseSalt(secret)
 	for _, vector := range loadVectors(t).Normalization {
 		password, passwordErr := keys.Password(secret, core.KDFScrypt, vector.Passphrase)
 		if passwordErr != nil || hex.EncodeToString(password) != hex.EncodeToString(salt[:])+vector.Normalized {

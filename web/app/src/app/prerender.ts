@@ -13,6 +13,7 @@ import PageSkeleton from '../shared/shell/PageSkeleton.svelte';
 import { REPOSITORY_URL } from '../shared/shell/repository.ts';
 import { LONGEST_TTL_DAYS } from '../shared/ttl/ttl-choices.ts';
 import App from './App.svelte';
+import { SCREEN_TITLES } from './pages.ts';
 
 await Promise.all(LANGUAGES.map(async (language) => loadCatalog(language)));
 
@@ -81,6 +82,10 @@ export function llmsText(): string {
 
 function escapeAttribute(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+}
+
+function escapeText(value: string): string {
+  return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;');
 }
 
 function jsonScript(value: unknown): string {
@@ -211,7 +216,8 @@ export function homeTemplate(index: string, language: Language, { image }: HomeA
   if (logo === undefined) {
     throw new Error('prerender: the index has no apple touch icon for the organization logo');
   }
-  page = replaceOnce(page, /<title>[^<]*<\/title>/u, `${head.trim()}\n${seoHead(language, image, logo)}`);
+  const title = `<title>${escapeText(new Translator(language).translate(SCREEN_TITLES.create))}</title>`;
+  page = replaceOnce(page, /<title>[^<]*<\/title>/u, `${head.trim()}${title}\n${seoHead(language, image, logo)}`);
   page = replaceOnce(page, '</head>', `${HIDE_UNTIL_FONTS}\n${REVEAL_WITHOUT_SCRIPT}\n</head>`);
   page = fontPreloads(page, language);
   return replaceOnce(page, '<body></body>', `<body>${body}</body>`);

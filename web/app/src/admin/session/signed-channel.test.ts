@@ -142,6 +142,36 @@ describe('SignedChannel', () => {
     expect(signedChallenge(server.sent[2])).toBe(challengeText(101));
   });
 
+  it('passes on any other refusal over a kept challenge without asking again or ending the session', async () => {
+    const server = fakeServer(() => {
+      throw new ApiError(503, 'unavailable');
+    });
+    const channel = new SignedChannel({
+      key: await newRequestKey(),
+      transport: server.transport,
+      now: () => 0,
+      challenge: challengeText(1),
+    });
+
+    await expect(channel.request('GET', '/api/v1/admin/live')).rejects.toThrow(ApiError);
+    expect(channel.ended).toBe(false);
+    expect(server.sent.map((sent) => sent.path)).toEqual(['/api/v1/admin/live']);
+  });
+
+  it('ignores a malformed challenge and fetches a fresh one instead', async () => {
+    const server = fakeServer();
+    const channel = new SignedChannel({
+      key: await newRequestKey(),
+      transport: server.transport,
+      now: () => 0,
+      challenge: 'not-a-challenge',
+    });
+
+    await channel.request('GET', '/api/v1/admin/live');
+    expect(server.sent.map((sent) => sent.path)).toEqual(['/api/v1/challenge', '/api/v1/admin/live']);
+    expect(signedChallenge(server.sent[1])).toBe(challengeText(101));
+  });
+
   it('ends the session on 401 over a fresh challenge, refuses every later request and lets a queued one fail too', async () => {
     const server = fakeServer(() => {
       throw new ApiError(401, 'unexpected');

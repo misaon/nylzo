@@ -21,9 +21,9 @@ const common = new Set(COMMON_PASSPHRASES);
 function decodeRanges(deltas: string): readonly (readonly [number, number])[] {
   let nextStart = 0;
   return deltas.split(' ').map((delta) => {
-    const [gap = '', length = ''] = delta.split(',', 2);
-    const first = nextStart + Number.parseInt(gap, 16);
-    const last = first + Number.parseInt(length, 16);
+    const separator = delta.indexOf(',');
+    const first = nextStart + Number.parseInt(delta.slice(0, separator), 16);
+    const last = first + Number.parseInt(delta.slice(separator + 1), 16);
     nextStart = last + 1;
     return [first, last] as const;
   });
@@ -35,31 +35,22 @@ export function assignedCodePointRanges(): readonly (readonly [number, number])[
   return assignedRanges;
 }
 
-// Assigned in Unicode 15.1, whatever Unicode version this browser implements.
-function assigned(codePoint: number): boolean {
-  const table = assignedCodePointRanges();
-  let low = 0;
-  let high = table.length - 1;
-  while (low <= high) {
-    const middle = (low + high) >> 1;
-    const [first, last] = table[middle] ?? [0, -1];
-    if (codePoint < first) {
-      high = middle - 1;
-    } else if (codePoint > last) {
-      low = middle + 1;
-    } else {
-      return true;
-    }
-  }
-  return false;
+function codePointEscape(codePoint: number): string {
+  return `\\u{${codePoint.toString(16)}}`;
 }
+
+// Unassigned in Unicode 15.1, whatever Unicode version this browser implements.
+const UNASSIGNED = new RegExp(
+  `[^${assignedRanges.map(([first, last]) => `${codePointEscape(first)}-${codePointEscape(last)}`).join('')}]`,
+  'u',
+);
 
 // Applies spec section 2 in its order, so both cores name the same problem.
 export function passphraseProblem(passphrase: string): PassphraseProblem | 'malformed' | undefined {
   if (!passphrase.isWellFormed()) {
     return 'malformed';
   }
-  if (codePoints(passphrase).some((character) => !assigned(character.codePointAt(0) ?? 0))) {
+  if (UNASSIGNED.test(passphrase)) {
     return 'unassigned';
   }
   return strengthProblem(normalizePassphrase(passphrase));
@@ -127,19 +118,17 @@ function codePoints(text: string): string[] {
 }
 
 function repeatsShorterPart(characters: readonly string[]): boolean {
-  if (characters.length < 2) {
-    return false;
-  }
-  const borders = new Uint32Array(characters.length);
+  const borders = new DataView(new ArrayBuffer(Uint32Array.BYTES_PER_ELEMENT * characters.length));
+  const borderAt = (index: number): number => borders.getUint32(Uint32Array.BYTES_PER_ELEMENT * index);
   let border = 0;
   for (let index = 1; index < characters.length; index++) {
     while (border > 0 && characters[index] !== characters[border]) {
-      border = borders[border - 1] ?? 0;
+      border = borderAt(border - 1);
     }
     if (characters[index] === characters[border]) {
       border++;
     }
-    borders[index] = border;
+    borders.setUint32(Uint32Array.BYTES_PER_ELEMENT * index, border);
   }
   const shortestPeriod = characters.length - border;
   return shortestPeriod <= characters.length / 2;

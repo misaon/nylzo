@@ -189,6 +189,19 @@ func TestLoadRefusesABrokenBuild(t *testing.T) {
 		"quoted font that is not embedded": home(
 			page + `<style>@font-face{src:url("/assets/gone.woff2")}</style>`,
 		),
+		"public URL before a public block": home(
+			`<link href="__NYLZO_PUBLIC_URL__/"><!--nylzo:public--><!--/nylzo:public-->` + page,
+		),
+		"admin page with a missing asset": index(fstest.MapFS{
+			"dist/admin.html": {Data: []byte(`<script src="/assets/gone.js"></script>`)},
+		}),
+		"root file that is a directory": index(fstest.MapFS{"dist/llms.txt/inside": {}}),
+		"assets that are a file":        index(fstest.MapFS{"dist/assets": {Data: []byte("a")}}),
+		"gzip cut short": index(fstest.MapFS{
+			"dist/assets/a.js":    {Data: []byte("aaaaaaaa")},
+			"dist/assets/a.js.gz": {Data: gzipped(t, "aaaaaaaa")[:20]},
+		}),
+		"no build and no placeholder": {},
 	} {
 		if _, err := webclient.Load(files); err == nil || !strings.HasPrefix(err.Error(), "server: ") {
 			t.Errorf("%s: %v", name, err)

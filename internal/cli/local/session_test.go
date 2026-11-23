@@ -2,7 +2,9 @@ package local_test
 
 import (
 	"bytes"
+	"cmp"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -68,7 +70,12 @@ type run struct {
 	cancel context.CancelFunc
 }
 
-func start(t *testing.T, options local.Options) *run {
+func start(t *testing.T, options *local.Options) *run {
+	t.Helper()
+	return startWith(t, options, nil)
+}
+
+func startWith(t *testing.T, options *local.Options, browserErr error) *run {
 	t.Helper()
 	instance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -89,7 +96,7 @@ func start(t *testing.T, options local.Options) *run {
 	if err != nil {
 		t.Fatal(err)
 	}
-	options.Instance, options.Build = instance.URL, build
+	options.Instance, options.Build = cmp.Or(options.Instance, instance.URL), build
 	ctx, cancel := context.WithCancel(t.Context())
 	current := &run{opened: make(chan string, 1), done: make(chan int, 1), cancel: cancel}
 	environment := &command.Environment{
@@ -98,7 +105,7 @@ func start(t *testing.T, options local.Options) *run {
 		Version: "test",
 		Browser: func(target string) error {
 			current.opened <- target
-			return nil
+			return browserErr
 		},
 	}
 	go func() { current.done <- local.Serve(ctx, environment, options) }()
@@ -154,7 +161,7 @@ func redeem(t *testing.T, address string) *http.Response {
 
 func TestWebServesTheComposerForTheInstance(t *testing.T) {
 	t.Parallel()
-	current := start(t, local.Options{OpenBrowser: true})
+	current := start(t, &local.Options{OpenBrowser: true})
 	address := current.target(t)
 	if !regexp.MustCompile(`^`+session+`/$`).MatchString(address) ||
 		current.stdout.String() != address+"\n" {
@@ -180,7 +187,7 @@ func TestWebServesTheComposerForTheInstance(t *testing.T) {
 
 func TestOpenHandsTheLinkOverOnceAndKeepsItOutOfEveryArgument(t *testing.T) {
 	t.Parallel()
-	current := start(t, local.Options{
+	current := start(t, &local.Options{
 		OpenBrowser: true,
 		Link:        &local.Link{Path: linkPath, Fragment: linkFragment, Lifetime: time.Minute},
 	})
@@ -239,7 +246,7 @@ func TestOpenHandsTheLinkOverOnceAndKeepsItOutOfEveryArgument(t *testing.T) {
 
 func TestOpenWithoutABrowserPrintsTheHandoffAddressAndGivesUpInTime(t *testing.T) {
 	t.Parallel()
-	current := start(t, local.Options{
+	current := start(t, &local.Options{
 		Link: &local.Link{Path: linkPath, Fragment: linkFragment, Lifetime: 200 * time.Millisecond},
 	})
 	select {
@@ -263,7 +270,7 @@ func TestOpenWithoutABrowserPrintsTheHandoffAddressAndGivesUpInTime(t *testing.T
 
 func TestOpenGivesTheAddressWhenNoBrowserTakesTheLinkSoon(t *testing.T) {
 	t.Parallel()
-	current := start(t, local.Options{
+	current := start(t, &local.Options{
 		OpenBrowser: true,
 		Link:        &local.Link{Path: linkPath, Fragment: linkFragment, Lifetime: 1200 * time.Millisecond},
 	})
@@ -285,7 +292,7 @@ func TestOpenGivesTheAddressWhenNoBrowserTakesTheLinkSoon(t *testing.T) {
 
 func TestNoBrowserOpensWhereSafariWouldAskTheNetworkForTheName(t *testing.T) {
 	t.Parallel()
-	for name, options := range map[string]local.Options{
+	for name, options := range map[string]*local.Options{
 		"web":  {OpenBrowser: true, ResolvesLocalhost: func() bool { return false }},
 		"open": {OpenBrowser: true, ResolvesLocalhost: func() bool { return false }, Link: &local.Link{Path: linkPath, Fragment: linkFragment, Lifetime: time.Minute}},
 	} {
@@ -302,6 +309,89 @@ func TestNoBrowserOpensWhereSafariWouldAskTheNetworkForTheName(t *testing.T) {
 		if !regexp.MustCompile(`^`+session+`/`).MatchString(current.stdout.String()) ||
 			!strings.Contains(current.stderr.String(), "Chrome, Edge or Firefox") {
 			t.Fatalf("%s: stdout %q, stderr %q", name, current.stdout.String(), current.stderr.String())
+		}
+		current.stop(t)
+	}
+}
+
+func (r *run) ended(t *testing.T) int {
+	t.Helper()
+	select {
+	case code := <-r.done:
+		return code
+	case <-time.After(10 * time.Second):
+		t.Fatal("the verified client did not end")
+		return 0
+	}
+}
+
+func TestTheVerifiedClientEndsWhenItCannotServe(t *testing.T) {
+	t.Parallel()
+	refused := errors.New("no loopback port")
+	for name, test := range map[string]struct {
+		options *local.Options
+		want    string
+	}{
+		"no port": {
+			&local.Options{Listen: func(context.Context) (*localclient.Listeners, error) { return nil, refused }},
+			"could not listen on a loopback port: " + refused.Error(),
+		},
+		"a closed port": {
+			&local.Options{Listen: func(ctx context.Context) (*localclient.Listeners, error) {
+				listeners, err := localclient.Listen(ctx)
+				if err == nil {
+					listeners.Close()
+				}
+				return listeners, err
+			}},
+			"the verified client stopped",
+		},
+		"an address that is no instance": {
+			&local.Options{Instance: "ftp://nylzo.example"},
+			"the pages link no operator contact",
+		},
+	} {
+		current := start(t, test.options)
+		if code := current.ended(t); code != command.ExitError ||
+			!strings.Contains(current.stderr.String(), test.want) {
+			t.Errorf("%s: exit %d, %s", name, code, current.stderr.String())
+		}
+	}
+}
+
+func TestPagesLinkNoContactWhenTheInstanceIsUnreachable(t *testing.T) {
+	t.Parallel()
+	unreachable := httptest.NewServer(http.NotFoundHandler())
+	unreachable.Close()
+	current := start(t, &local.Options{Instance: unreachable.URL})
+	deadline := time.Now().Add(10 * time.Second)
+	for current.stdout.String() == "" && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if code := current.stop(t); code != command.ExitOK ||
+		!strings.Contains(current.stderr.String(), "the pages link no operator contact") {
+		t.Fatalf("exit %d, %s", code, current.stderr.String())
+	}
+}
+
+func TestAFailedBrowserLeavesTheAddressToTheUser(t *testing.T) {
+	t.Parallel()
+	failed := errors.New("no browser")
+	for name, options := range map[string]*local.Options{
+		"web":  {OpenBrowser: true},
+		"open": {OpenBrowser: true, Link: &local.Link{Path: linkPath, Fragment: linkFragment, Lifetime: time.Minute}},
+	} {
+		current := startWith(t, options, failed)
+		page := current.target(t)
+		deadline := time.Now().Add(10 * time.Second)
+		for current.stdout.String() == "" && time.Now().Before(deadline) {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if !regexp.MustCompile(`^` + session + `/`).MatchString(current.stdout.String()) {
+			t.Errorf("%s: stdout %q, stderr %s", name, current.stdout.String(), current.stderr.String())
+		}
+		if _, err := os.Stat(page); options.Link != nil && !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("%s: the handoff page stays after the browser failed: %v", name, err)
 		}
 		current.stop(t)
 	}

@@ -18,11 +18,11 @@ func Hold(directory string) (func(), error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = syscall.Flock(int(held.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err = syscall.Flock(int(held.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); errors.Is(err, syscall.EWOULDBLOCK) {
+		err = ErrServed
+	}
+	if err != nil {
 		held.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, ErrServed
-		}
 		return nil, err
 	}
 	return func() { held.Close() }, nil

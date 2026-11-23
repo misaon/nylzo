@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -24,7 +25,9 @@ import (
 	"github.com/misaon/nylzo/internal/core/signing"
 	"github.com/misaon/nylzo/internal/server/adminstore"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/country"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
+	"github.com/misaon/nylzo/internal/server/statistics"
 	"github.com/misaon/nylzo/internal/server/visits"
 )
 
@@ -620,5 +623,74 @@ func TestDocumentReportsComeOnlyFromWhoeverServedThePage(t *testing.T) {
 	if counted := harness.dailyCounts(); response.StatusCode != http.StatusOK ||
 		counted[visits.RobotPrefix+"search"] != 1 {
 		t.Fatalf("a page the server served itself: %d, %v", response.StatusCode, counted)
+	}
+}
+
+func TestCountriesWithoutTheirTableKnowNoneAndReportItOnce(t *testing.T) {
+	harness := newAdminHarness(t)
+	reports := 0
+	broken := newCountries(
+		func() (*country.Table, error) { return nil, errors.New("the country table is damaged") },
+		func(err error) {
+			reports++
+			harness.server.reportCountryTable(err)
+		},
+	)
+	if broken.Lookup(netip.MustParseAddr("203.0.113.1")).Known() || broken.Source() != (country.Source{}) {
+		t.Fatal("countries without their table named a country or a source")
+	}
+	if reports != 1 {
+		t.Fatalf("the missing table was reported %d times, want once", reports)
+	}
+	harness.server.flushCounts(t.Context())
+	if !strings.Contains(harness.logs.String(), "country-table") {
+		t.Fatalf("the missing table was not logged: %s", harness.logs.String())
+	}
+}
+
+func TestVisitReportsThatAreNotJSONAreRefused(t *testing.T) {
+	harness := newAdminHarness(t)
+	for _, path := range []string{api.VisitsPath, api.DocumentVisitsPath} {
+		response, _ := harness.do(&testRequest{method: http.MethodPost, path: path, body: []byte("{")})
+		if response.StatusCode != http.StatusBadRequest {
+			t.Fatalf("%s answered a malformed report with %d", path, response.StatusCode)
+		}
+	}
+}
+
+func TestANewDayForgetsTheRefusedClients(t *testing.T) {
+	harness := newAdminHarness(t)
+	harness.server.refusals.Note(netip.MustParseAddr("203.0.113.8"), reasonRequests, time.Now())
+	harness.server.keepAdmin(t.Context(), time.Now(), true)
+	if refused := harness.server.refusals.List(); len(refused) != 0 {
+		t.Fatalf("a new day kept the refused clients %v", refused)
+	}
+}
+
+func TestAServerWithoutAnAdminAreaSamplesAndSyncsNothing(t *testing.T) {
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	harness.server.RunUsage(t.Context())
+	harness.server.keepAdmin(t.Context(), time.Now(), false)
+	if history := harness.server.usage.History(); len(history) != 0 {
+		t.Fatalf("a server without an admin area sampled the machine: %v", history)
+	}
+}
+
+func TestTheMinuteWorkLogsAnAdminStoreThatFails(t *testing.T) {
+	harness := newAdminHarness(t)
+	if status := harness.enroll(harness.openEnrollment(), newSoftwarePasskey(t)); status != http.StatusCreated {
+		t.Fatalf("enrollment: %d", status)
+	}
+	harness.server.count(statistics.MetricCreated, 1)
+	if err := harness.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	harness.server.keepAdmin(t.Context(), time.Now().Add(2*time.Hour), false)
+	harness.server.flushCounts(t.Context())
+	logs := harness.logs.String()
+	for _, event := range []string{"admin-store", "admin-counts"} {
+		if !strings.Contains(logs, event) {
+			t.Fatalf("the minute's work did not log %s: %s", event, logs)
+		}
 	}
 }

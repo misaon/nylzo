@@ -188,9 +188,6 @@ func (s *Server) globalGate(ctx context.Context, now time.Time) (globalGate, err
 // client accepts, so each create costs more the fuller the cap gets.
 func (s *Server) workDifficulty(creates int64) int {
 	base, limit := s.settings.PoWDifficulty, s.settings.Rates.GlobalDailyCreates
-	if limit <= 0 {
-		return base
-	}
 	tenthsPastHalf := max(0, (creates*2-limit)*5/limit)
 	return int(min(int64(proofofwork.MaxDifficulty), int64(base)+tenthsPastHalf))
 }

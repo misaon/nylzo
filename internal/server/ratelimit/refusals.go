@@ -42,10 +42,7 @@ func (r *Refusals) Note(address netip.Addr, reason string, now time.Time) {
 	if address.Is4() {
 		bits = int(sourcePrefixIPv4)
 	}
-	client, err := address.Prefix(bits)
-	if err != nil {
-		return
-	}
+	client := netip.PrefixFrom(address, bits).Masked()
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	entry, ok := r.clients[client]
@@ -109,7 +106,5 @@ func (r *Refusals) dropOldest() {
 			oldest = entry
 		}
 	}
-	if oldest != nil {
-		delete(r.clients, oldest.Client)
-	}
+	delete(r.clients, oldest.Client)
 }

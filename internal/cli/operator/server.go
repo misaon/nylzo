@@ -1,6 +1,7 @@
 package operator
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -10,7 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"runtime/debug"
 	"slices"
 	"sync"
@@ -31,9 +31,6 @@ import (
 	"github.com/misaon/nylzo/internal/store/disk"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 )
-
-// The server needs a directory fsync and free space checks, which Windows does not offer.
-const serverSupported = runtime.GOOS != "windows"
 
 const (
 	databaseFile       = "nylzo.db"
@@ -95,7 +92,10 @@ func runServer(
 		return code
 	}
 	logger := logging.New(environment.Stderr)
-	err := run(ctx, logger)
+	err := requireSupportedSystem()
+	if err == nil {
+		err = run(ctx, logger)
+	}
 	switch {
 	case err == nil:
 		return command.ExitOK
@@ -111,21 +111,21 @@ func runServer(
 }
 
 // requireMemoryLock refuses to serve with pages that the kernel may write to swap, unless swap is explicitly allowed.
-func requireMemoryLock(development config.Development, logger *slog.Logger) error {
+func requireMemoryLock(development config.Development, lock func() error, logger *slog.Logger) error {
 	if development.AllowSwap {
 		logger.Warn("memory-not-locked", "reason", "NYLZO_ALLOW_SWAP")
 		return nil
 	}
-	if err := harden.LockMemory(); err != nil {
+	if err := lock(); err != nil {
 		return fmt.Errorf("%w: %w", errMemoryLock, err)
 	}
 	return nil
 }
 
 // requireSecretMode refuses a build whose secret mode erases nothing, unless that is explicitly allowed.
-func requireSecretMode(development config.Development, logger *slog.Logger) error {
+func requireSecretMode(erases bool, development config.Development, logger *slog.Logger) error {
 	switch {
-	case secretmode.Supported():
+	case erases:
 		return nil
 	case development.AllowUnerasedMemory:
 		logger.Warn("memory-not-erased", "reason", "NYLZO_ALLOW_UNERASED_MEMORY")
@@ -138,7 +138,10 @@ func requireSecretMode(development config.Development, logger *slog.Logger) erro
 // requireErasable refuses storage that keeps old blocks, which would undo every deletion: a file system, a mount
 // default or a chattr +j on a directory or file.
 func requireErasable(paths []string, development config.Development, logger *slog.Logger) error {
-	err := erase.RequireInPlace(paths...)
+	return allowUnerasable(erase.RequireInPlace(paths...), development, logger)
+}
+
+func allowUnerasable(err error, development config.Development, logger *slog.Logger) error {
 	switch {
 	case err == nil:
 		return nil
@@ -269,22 +272,22 @@ type storedReports struct {
 func findReports(dataDirectory string, development config.Development, logger *slog.Logger) (storedReports, error) {
 	var reports storedReports
 	legacyFile := filepath.Join(dataDirectory, legacyReportFile)
-	switch legacy, err := os.Lstat(legacyFile); {
-	case errors.Is(err, fs.ErrNotExist):
-	case err != nil:
-		return storedReports{}, err
+	directory := filepath.Join(dataDirectory, reportDirectory)
+	legacy, legacyErr := os.Lstat(legacyFile)
+	info, err := os.Lstat(directory)
+	if statErr := cmp.Or(existingError(legacyErr), existingError(err)); statErr != nil {
+		return storedReports{}, statErr
+	}
+	switch {
+	case legacyErr != nil:
 	case !legacy.Mode().IsRegular():
 		return storedReports{}, fmt.Errorf("%w: %s", errReportDirectory, legacyFile)
 	default:
 		reports = storedReports{files: []string{legacyFile}, found: true}
 	}
-	directory := filepath.Join(dataDirectory, reportDirectory)
-	info, err := os.Lstat(directory)
 	switch {
-	case errors.Is(err, fs.ErrNotExist):
-		return reports, requireErasable(reports.files, development, logger)
 	case err != nil:
-		return storedReports{}, err
+		return reports, requireErasable(reports.files, development, logger)
 	case !info.IsDir():
 		return storedReports{}, fmt.Errorf("%w: %s", errReportDirectory, directory)
 	}
@@ -300,6 +303,13 @@ func findReports(dataDirectory string, development config.Development, logger *s
 	}
 	reports.found = true
 	return reports, requireErasable(append([]string{directory}, reports.files...), development, logger)
+}
+
+func existingError(err error) error {
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	return err
 }
 
 // eraseReports overwrites every stored abuse report in full before it unlinks it, because this build neither reads
@@ -367,12 +377,8 @@ func blobPool(settings *config.Server) disk.Pool {
 
 // requireStore keeps sweep-once and takedown from creating an empty store where none was expected.
 func requireStore(dataDirectory string) error {
-	directory, err := filepath.Abs(dataDirectory)
-	if err != nil {
-		return err
-	}
 	for _, name := range []string{databaseFile, disk.Directory} {
-		if _, statErr := os.Stat(filepath.Join(directory, name)); statErr != nil {
+		if _, statErr := os.Stat(filepath.Join(dataDirectory, name)); statErr != nil {
 			return fmt.Errorf("%w: %s", errNoStore, name)
 		}
 	}
@@ -393,9 +399,6 @@ func serveSettings(environment *command.Environment) (config.Server, error) {
 }
 
 func serve(ctx context.Context, environment *command.Environment, logger *slog.Logger) error {
-	if !serverSupported {
-		return errServerUnsupported
-	}
 	settings, err := serveSettings(environment)
 	if err != nil {
 		return err
@@ -405,7 +408,7 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 		return err
 	}
 	defer release()
-	if prepareErr := prepareProcess(&settings, logger); prepareErr != nil {
+	if prepareErr := prepareProcess(&settings, harden.LockMemory, logger); prepareErr != nil {
 		return prepareErr
 	}
 	database, blobs, err := openStore(
@@ -433,12 +436,8 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	if err != nil {
 		return err
 	}
-	database.OnScrubFailure(func(err error) {
-		instance.Events().ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err))
-	})
-	blobs.OnPoolFailure(func(err error) {
-		instance.Events().ErrorContext(ctx, "upload-pool", "err", logging.ErrorText(err))
-	})
+	database.OnScrubFailure(scrubFailures(ctx, instance.Events()))
+	blobs.OnPoolFailure(poolFailures(ctx, instance.Events()))
 	if !database.LogResetSkipped() {
 		if returnErr := instance.ReturnUnstoredCreates(ctx); returnErr != nil {
 			instance.Close()
@@ -454,24 +453,46 @@ func serve(ctx context.Context, environment *command.Environment, logger *slog.L
 	ctx, stop := context.WithCancel(ctx)
 	defer stop()
 	sweeper := startWorkers(ctx, instance)
-	httpServer := instance.HTTPServer()
-	served := make(chan error, 1)
-	go func() { served <- httpServer.Serve(transport.SecureEarlyErrors(listener)) }()
 	logListening(ctx, logger, listener.Addr(), &settings)
-	select {
-	case err = <-served:
-		stop()
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-	case <-ctx.Done():
-		stop()
-		logger.InfoContext(ctx, "shutdown", "drain", shutdownTimeout.String())
-		err = shutdown(ctx, httpServer, shutdownTimeout, logger)
-	}
+	err = serveUntilStopped(ctx, stop, instance.HTTPServer(), listener, logger)
 	waitFor(ctx, sweeper, shutdownTimeout, logger)
 	instance.Close()
 	return err
+}
+
+func serveUntilStopped(
+	ctx context.Context,
+	stop context.CancelFunc,
+	httpServer *http.Server,
+	listener net.Listener,
+	logger *slog.Logger,
+) error {
+	served := make(chan error, 1)
+	go func() { served <- httpServer.Serve(transport.SecureEarlyErrors(listener)) }()
+	select {
+	case err := <-served:
+		stop()
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	case <-ctx.Done():
+		stop()
+		logger.InfoContext(ctx, "shutdown", "drain", shutdownTimeout.String())
+		return shutdown(ctx, httpServer, shutdownTimeout, logger)
+	}
+}
+
+func scrubFailures(ctx context.Context, events *slog.Logger) func(error) {
+	return func(err error) {
+		events.ErrorContext(ctx, "wal-scrub", "err", logging.ErrorText(err))
+	}
+}
+
+func poolFailures(ctx context.Context, events *slog.Logger) func(error) {
+	return func(err error) {
+		events.ErrorContext(ctx, "upload-pool", "err", logging.ErrorText(err))
+	}
 }
 
 func startWorkers(ctx context.Context, instance *server.Server) *sync.WaitGroup {
@@ -556,11 +577,11 @@ func logListening(ctx context.Context, logger *slog.Logger, address net.Addr, se
 
 // prepareProcess refuses a process that would leave keys in swap or in memory and prepares the epoch directory, all
 // before any store is opened.
-func prepareProcess(settings *config.Server, logger *slog.Logger) error {
-	if err := requireMemoryLock(settings.Development, logger); err != nil {
+func prepareProcess(settings *config.Server, lock func() error, logger *slog.Logger) error {
+	if err := requireMemoryLock(settings.Development, lock, logger); err != nil {
 		return err
 	}
-	if err := requireSecretMode(settings.Development, logger); err != nil {
+	if err := requireSecretMode(secretmode.Supported(), settings.Development, logger); err != nil {
 		return err
 	}
 	return prepareEpoch(settings, logger)
@@ -604,9 +625,6 @@ func shutdown(ctx context.Context, httpServer *http.Server, timeout time.Duratio
 }
 
 func sweepOnce(ctx context.Context, getenv func(string) string, logger *slog.Logger) error {
-	if !serverSupported {
-		return errServerUnsupported
-	}
 	settings, err := config.FromEnvironment(getenv, false)
 	if err != nil {
 		return err

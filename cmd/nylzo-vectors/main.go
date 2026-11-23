@@ -24,16 +24,9 @@ func main() {
 }
 
 func run(out string) error {
-	file, err := generate()
-	if err != nil {
-		return err
-	}
-	data, err := vectors.Marshal(file)
-	if err != nil {
-		return err
-	}
+	data := vectors.Marshal(generate())
 	if out == "" {
-		_, err = os.Stdout.Write(data)
+		_, err := os.Stdout.Write(data)
 		return err
 	}
 	return os.WriteFile(out, data, 0o600)

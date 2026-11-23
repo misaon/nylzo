@@ -11,36 +11,30 @@ import (
 )
 
 func (f *fixture) createLoadConflict() {
-	t, ctx := f.t, f.t.Context()
+	ctx := f.t.Context()
 	created := f.create(1, oneHour, false)
 	record := f.get(created)
-	if record.Message.OpensRemaining != 1 || record.State(baseTime) != store.StateAvailable || !record.HasBlob() {
-		t.Fatalf("unexpected record %+v", record.Message)
-	}
+	f.fatalIf(record.Message.OpensRemaining != 1 || record.State(baseTime) != store.StateAvailable || !record.HasBlob(),
+		"unexpected record %+v", record.Message)
 	duplicate := created.Row
-	if err := f.store.Create(ctx, &duplicate); !errors.Is(err, store.ErrConflict) {
-		t.Fatalf("duplicate create: %v", err)
-	}
+	err := f.store.Create(ctx, &duplicate)
+	f.fatalIf(!errors.Is(err, store.ErrConflict), "duplicate create: %v", err)
 	unknown := core.NewID()
-	if _, err := f.store.Load(ctx, seal.LocatorOf(unknown[:])); !errors.Is(err, store.ErrNotFound) {
-		t.Fatalf("unknown id: %v", err)
-	}
-	if _, err := f.end(created, store.StateCancelled, baseTime, f.blobs); err != nil {
-		t.Fatal(err)
-	}
-	if err := f.store.Create(ctx, &duplicate); !errors.Is(err, store.ErrConflict) {
-		t.Fatalf("create over an ended message: %v", err)
-	}
-	if ended := f.get(created); ended.State(baseTime) != store.StateCancelled ||
-		!ended.Row.PurgeAt.Equal(baseTime.Add(store.TombstoneTTL)) || ended.HasBlob() {
-		t.Fatalf("unexpected ended record %+v %+v", ended.Message, ended.Row)
-	}
+	_, err = f.store.Load(ctx, seal.LocatorOf(unknown[:]))
+	f.fatalIf(!errors.Is(err, store.ErrNotFound), "unknown id: %v", err)
+	_, err = f.end(created, store.StateCancelled, baseTime, f.blobs)
+	f.must(err)
+	err = f.store.Create(ctx, &duplicate)
+	f.fatalIf(!errors.Is(err, store.ErrConflict), "create over an ended message: %v", err)
+	ended := f.get(created)
+	f.fatalIf(ended.State(baseTime) != store.StateCancelled ||
+		!ended.Row.PurgeAt.Equal(baseTime.Add(store.TombstoneTTL)) || ended.HasBlob(),
+		"unexpected ended record %+v %+v", ended.Message, ended.Row)
 }
 
 // onlyThePresentedKeyOpens checks that a row opens with pk_R or pk_M for its own purpose, together with the pepper
 // key, and with nothing else.
 func (f *fixture) onlyThePresentedKeyOpens() {
-	t := f.t
 	created := f.create(1, oneHour, false)
 	row := f.get(created).Row
 	open := func(pepperKey seal.Key, publicKey []byte, purpose seal.Purpose) error {
@@ -55,9 +49,10 @@ func (f *fixture) onlyThePresentedKeyOpens() {
 		_, err = store.OpenRecord(&row, key)
 		return err
 	}
-	if open(recordsKey, created.readKey, seal.Read) != nil || open(recordsKey, created.manageKey, seal.Manage) != nil {
-		t.Fatal("the read and manage keys must open the record")
-	}
+	f.fatalIf(
+		open(recordsKey, created.readKey, seal.Read) != nil || open(recordsKey, created.manageKey, seal.Manage) != nil,
+		"the read and manage keys must open the record",
+	)
 	other := core.NewSecret()[:]
 	for name, failure := range map[string]error{
 		"another public key":            open(recordsKey, other, seal.Read),
@@ -68,15 +63,12 @@ func (f *fixture) onlyThePresentedKeyOpens() {
 		"a random record key":           func() error { _, err := store.OpenRecord(&row, seal.NewKey()); return err }(),
 		"the record of another locator": openElsewhere(&row, created.Key),
 	} {
-		if failure == nil {
-			t.Fatalf("%s opened the record", name)
-		}
+		f.fatalIf(failure == nil, "%s opened the record", name)
 	}
-	if len(row.Record)%seal.RecordBlock != 0 || len(row.ReadWrap) != seal.SealedWrapLen ||
-		len(row.ManageWrap) != seal.SealedWrapLen || len(row.BlobWrap) != seal.BlobWrapLen {
-		t.Fatalf("a sealed row must have fixed lengths: record %d, wraps %d, %d and %d",
-			len(row.Record), len(row.ReadWrap), len(row.ManageWrap), len(row.BlobWrap))
-	}
+	f.fatalIf(len(row.Record)%seal.RecordBlock != 0 || len(row.ReadWrap) != seal.SealedWrapLen ||
+		len(row.ManageWrap) != seal.SealedWrapLen || len(row.BlobWrap) != seal.BlobWrapLen,
+		"a sealed row must have fixed lengths: record %d, wraps %d, %d and %d",
+		len(row.Record), len(row.ReadWrap), len(row.ManageWrap), len(row.BlobWrap))
 }
 
 func openElsewhere(row *store.Row, key seal.Key) error {
@@ -88,24 +80,18 @@ func openElsewhere(row *store.Row, key seal.Key) error {
 }
 
 func (f *fixture) metadataDoesNotConsume() {
-	t := f.t
 	created := f.create(1, oneHour, false)
 	for range 3 {
-		if record := f.get(created); record.Message.OpensRemaining != 1 ||
-			record.State(baseTime) != store.StateAvailable {
-			t.Fatal("reading the metadata changed the message")
-		}
-		if finished, err := f.finish(created, baseTime, f.blobs); err != nil || finished {
-			t.Fatalf("finish on a live message: %v %v", finished, err)
-		}
+		record := f.get(created)
+		f.fatalIf(record.Message.OpensRemaining != 1 || record.State(baseTime) != store.StateAvailable,
+			"reading the metadata changed the message")
+		finished, err := f.finish(created, baseTime, f.blobs)
+		f.fatalIf(err != nil || finished, "finish on a live message: %v %v", finished, err)
 	}
-	if !f.blobExists(created.reference()) {
-		t.Fatal("the blob vanished")
-	}
+	f.fatalIf(!f.blobExists(created.reference()), "the blob vanished")
 }
 
 func (f *fixture) concurrentClaims() {
-	t := f.t
 	for iteration := range 100 {
 		created := f.create(1, oneHour, false)
 		var wait sync.WaitGroup
@@ -116,156 +102,126 @@ func (f *fixture) concurrentClaims() {
 		wait.Wait()
 		opened, gone := 0, 0
 		for _, err := range results {
-			switch {
-			case err == nil:
+			f.fatalIf(
+				err != nil && !endedAs(err, store.StateOpened),
+				"iteration %d: unexpected error %v",
+				iteration,
+				err,
+			)
+			if err == nil {
 				opened++
-			case goneState(err) == store.StateOpened:
+			} else {
 				gone++
-			default:
-				t.Fatalf("iteration %d: unexpected error %v", iteration, err)
 			}
 		}
-		if opened != 1 || gone != 1 {
-			t.Fatalf("iteration %d: %d opened, %d gone", iteration, opened, gone)
-		}
-		if record := f.get(created); record.Message.OpensRemaining != 0 ||
-			record.State(baseTime) != store.StateOpened || record.Message.FirstOpenedAt == nil {
-			t.Fatalf("iteration %d: state after the claims %+v", iteration, record.Message)
-		}
+		f.fatalIf(opened != 1 || gone != 1, "iteration %d: %d opened, %d gone", iteration, opened, gone)
+		record := f.get(created)
+		f.fatalIf(record.Message.OpensRemaining != 0 || record.State(baseTime) != store.StateOpened ||
+			record.Message.FirstOpenedAt == nil,
+			"iteration %d: state after the claims %+v", iteration, record.Message)
 	}
 }
 
 func (f *fixture) passphraseBackoff() {
-	t := f.t
 	created := f.create(2, oneDay, true)
 	now := baseTime
 	for counted := 1; counted <= store.FreeAttempts; counted++ {
 		_, status, err := f.attempt(created, now)
-		if err != nil || status.RetryAfter != 0 || status.AttemptsLeft != store.FreeAttempts-counted {
-			t.Fatalf("handshake %d: %+v %v", counted, status, err)
-		}
+		f.fatalIf(err != nil || status.RetryAfter != 0 || status.AttemptsLeft != store.FreeAttempts-counted,
+			"handshake %d: %+v %v", counted, status, err)
 	}
 	for range 5 {
 		_, status, err := f.attempt(created, now)
-		if err != nil || status.RetryAfter != time.Minute || status.AttemptsLeft != 0 {
-			t.Fatalf("a handshake past the free attempts sets the wait: %+v %v", status, err)
-		}
+		f.fatalIf(err != nil || status.RetryAfter != time.Minute || status.AttemptsLeft != 0,
+			"a handshake past the free attempts sets the wait: %+v %v", status, err)
 		_, _, err = f.attempt(created, now)
-		if refusal, ok := errors.AsType[*store.PassphraseError](err); !ok || refusal.RetryAfter != time.Minute {
-			t.Fatalf("a handshake during the wait is refused and counts nothing: %v", err)
-		}
+		refusal, ok := errors.AsType[*store.PassphraseError](err)
+		f.fatalIf(!ok || refusal.RetryAfter != time.Minute,
+			"a handshake during the wait is refused and counts nothing: %v", err)
 		now = now.Add(time.Minute)
 	}
-	if record := f.get(created); record.Message.FailCountTotal != 10 || record.Message.OpensRemaining != 2 {
-		t.Fatalf("after ten counted handshakes: %+v", record.Message)
-	}
-	if _, err := f.claim(created, now, 1); err != nil || f.get(created).Message.FailCountTotal != 10 {
-		t.Fatalf("a claim counts no attempt; its KE3 has already been checked: %v", err)
-	}
+	record := f.get(created)
+	f.fatalIf(record.Message.FailCountTotal != 10 || record.Message.OpensRemaining != 2,
+		"after ten counted handshakes: %+v", record.Message)
+	_, err := f.claim(created, now, 1)
+	f.fatalIf(err != nil || f.get(created).Message.FailCountTotal != 10,
+		"a claim counts no attempt; its KE3 has already been checked: %v", err)
 }
 
 func (f *fixture) lifetimeCap() {
-	t := f.t
 	created := f.create(1, oneWeek, true)
 	now := baseTime
 	for counted := 1; counted <= store.MaxFailedAttempts; counted++ {
 		_, status, err := f.attempt(created, now)
-		if err != nil || status.RetryAfter > store.MaxBackoff {
-			t.Fatalf("handshake %d: %v", counted, err)
-		}
-		if counted == 17 && status.RetryAfter != store.MaxBackoff {
-			t.Fatalf("the 17th handshake waits %s, want the cap %s", status.RetryAfter, store.MaxBackoff)
-		}
+		f.fatalIf(err != nil || status.RetryAfter > store.MaxBackoff, "handshake %d: %v", counted, err)
+		f.fatalIf(counted == 17 && status.RetryAfter != store.MaxBackoff,
+			"the 17th handshake waits %s, want the cap %s", status.RetryAfter, store.MaxBackoff)
 		now = now.Add(status.RetryAfter)
 	}
 	later := now.Add(24 * time.Hour)
 	_, _, err := f.attempt(created, later)
 	refusal, ok := errors.AsType[*store.PassphraseError](err)
-	if !ok || refusal.RetryAfter != created.Message.ExpiresAt.Sub(later) || refusal.AttemptsLeft != 0 {
-		t.Fatalf("after %d handshakes the message stays locked until it expires: %v", store.MaxFailedAttempts, err)
-	}
-	if record := f.get(created); record.Message.FailCountTotal != store.MaxFailedAttempts ||
-		record.Message.OpensRemaining != 1 {
-		t.Fatalf("lifetime cap counters: %+v", record.Message)
-	}
+	f.fatalIf(!ok || refusal.RetryAfter != created.Message.ExpiresAt.Sub(later) || refusal.AttemptsLeft != 0,
+		"after %d handshakes the message stays locked until it expires: %v", store.MaxFailedAttempts, err)
+	record := f.get(created)
+	f.fatalIf(record.Message.FailCountTotal != store.MaxFailedAttempts || record.Message.OpensRemaining != 1,
+		"lifetime cap counters: %+v", record.Message)
 }
 
 func (f *fixture) takeBackRestoresOnlyItsOwnWait() {
-	t := f.t
 	created := f.create(3, oneDay, false)
 	for range store.FreeAttempts {
-		if _, _, err := f.attempt(created, baseTime); err != nil {
-			t.Fatal(err)
-		}
+		_, _, err := f.attempt(created, baseTime)
+		f.must(err)
 	}
 	honest, status, err := f.attempt(created, baseTime)
-	if err != nil || status.RetryAfter != time.Minute {
-		t.Fatalf("the sixth handshake sets a wait: %+v %v", status, err)
-	}
+	f.fatalIf(err != nil || status.RetryAfter != time.Minute, "the sixth handshake sets a wait: %+v %v", status, err)
 	f.takeBack(created, honest, baseTime)
-	if record := f.get(created); record.Message.FailCountTotal != store.FreeAttempts ||
-		!record.Message.NextAttemptAt.IsZero() {
-		t.Fatalf("a matching KE3 takes its attempt and its wait back: %+v", record.Message)
-	}
+	record := f.get(created)
+	f.fatalIf(record.Message.FailCountTotal != store.FreeAttempts || !record.Message.NextAttemptAt.IsZero(),
+		"a matching KE3 takes its attempt and its wait back: %+v", record.Message)
 	first, _, err := f.attempt(created, baseTime)
-	if err != nil {
-		t.Fatal(err)
-	}
+	f.must(err)
 	later := baseTime.Add(time.Minute)
-	if _, _, err = f.attempt(created, later); err != nil {
-		t.Fatal(err)
-	}
+	_, _, err = f.attempt(created, later)
+	f.must(err)
 	f.takeBack(created, first, later)
-	if record := f.get(created); record.Message.FailCountTotal != store.FreeAttempts+1 ||
-		!record.Message.NextAttemptAt.After(later) {
-		t.Fatalf("a wait that a later handshake set stays: %+v", record.Message)
-	}
+	record = f.get(created)
+	f.fatalIf(record.Message.FailCountTotal != store.FreeAttempts+1 || !record.Message.NextAttemptAt.After(later),
+		"a wait that a later handshake set stays: %+v", record.Message)
 }
 
 // Two handshakes of one reader count the fifth and the sixth attempt; when the fifth one's KE3 matches first, the count
 // is back within the free attempts, so the wait that the sixth set goes.
 func (f *fixture) takeBackDropsAWaitTheCountNoLongerReaches() {
-	t := f.t
 	created := f.create(1, oneDay, false)
 	for range store.FreeAttempts - 1 {
-		if _, _, err := f.attempt(created, baseTime); err != nil {
-			t.Fatal(err)
-		}
+		_, _, err := f.attempt(created, baseTime)
+		f.must(err)
 	}
 	fifth, _, err := f.attempt(created, baseTime)
-	if err != nil {
-		t.Fatal(err)
-	}
+	f.must(err)
 	sixth, status, err := f.attempt(created, baseTime)
-	if err != nil || status.RetryAfter == 0 {
-		t.Fatalf("the sixth handshake sets a wait: %+v %v", status, err)
-	}
+	f.fatalIf(err != nil || status.RetryAfter == 0, "the sixth handshake sets a wait: %+v %v", status, err)
 	f.takeBack(created, fifth, baseTime)
-	if record := f.get(created); record.Message.FailCountTotal != store.FreeAttempts ||
-		!record.Message.NextAttemptAt.IsZero() {
-		t.Fatalf("a wait outlived the count that set it: %+v", record.Message)
-	}
+	record := f.get(created)
+	f.fatalIf(record.Message.FailCountTotal != store.FreeAttempts || !record.Message.NextAttemptAt.IsZero(),
+		"a wait outlived the count that set it: %+v", record.Message)
 	f.takeBack(created, sixth, baseTime)
-	if record := f.get(created); record.Message.FailCountTotal != store.FreeAttempts-1 ||
-		!record.Message.NextAttemptAt.IsZero() {
-		t.Fatalf("after both KE3s: %+v", record.Message)
-	}
+	record = f.get(created)
+	f.fatalIf(record.Message.FailCountTotal != store.FreeAttempts-1 || !record.Message.NextAttemptAt.IsZero(),
+		"after both KE3s: %+v", record.Message)
 }
 
 func (f *fixture) endedMessagesCountNoAttempt() {
-	t := f.t
 	created := f.create(1, oneDay, true)
-	if _, err := f.end(created, store.StateDeleted, baseTime, f.blobs); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := f.attempt(created, baseTime); goneState(err) != store.StateDeleted {
-		t.Fatalf("a handshake on an ended message: %v", err)
-	}
+	_, err := f.end(created, store.StateDeleted, baseTime, f.blobs)
+	f.must(err)
+	_, _, err = f.attempt(created, baseTime)
+	f.fatalIf(!endedAs(err, store.StateDeleted), "a handshake on an ended message: %v", err)
 	expired := f.create(1, oneHour, false)
-	if _, _, err := f.attempt(expired, baseTime.Add(2*time.Hour)); goneState(err) != store.StateExpired {
-		t.Fatalf("a handshake on an expired message: %v", err)
-	}
-	if f.get(created).Message.FailCountTotal != 0 || f.get(expired).Message.FailCountTotal != 0 {
-		t.Fatal("an ended message counts no attempt")
-	}
+	_, _, err = f.attempt(expired, baseTime.Add(2*time.Hour))
+	f.fatalIf(!endedAs(err, store.StateExpired), "a handshake on an expired message: %v", err)
+	f.fatalIf(f.get(created).Message.FailCountTotal != 0 || f.get(expired).Message.FailCountTotal != 0,
+		"an ended message counts no attempt")
 }

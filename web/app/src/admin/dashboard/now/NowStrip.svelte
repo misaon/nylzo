@@ -62,7 +62,7 @@
             <span class="absolute size-4 rounded-full bg-aegis-400/40 motion-safe:animate-halo"></span>
             <span class="relative size-2 rounded-full bg-aegis-300 shadow-glow"></span>
           </span>
-          {translate('dashboard.now.live')}
+          <span>{translate('dashboard.now.live')}</span>
         </span>
       {/if}
     </div>

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { InstanceLimits } from '../api/responses.ts';
-import { ttlChoices } from './ttl-choices.ts';
+import { ttlChoices, ttlKey } from './ttl-choices.ts';
 
 const limits: InstanceLimits = {
   maxFileBytes: 16,
@@ -18,5 +18,10 @@ describe('expiry choices', () => {
     expect(ttlChoices({ ...limits, defaultTtlSeconds: 7200 })).toEqual([3600, 7200, 86_400, 259_200, 604_800]);
     expect(ttlChoices({ ...limits, maxTtlSeconds: 86_400, defaultTtlSeconds: 86_400 })).toEqual([3600, 86_400]);
     expect(ttlChoices({ ...limits, defaultTtlSeconds: 1 })).toEqual([3600, 86_400, 259_200, 604_800]);
+  });
+
+  it('names a message key only for a preset expiry', () => {
+    expect(ttlKey(3600)).toBe('ttl.3600');
+    expect(ttlKey(7200)).toBeUndefined();
   });
 });

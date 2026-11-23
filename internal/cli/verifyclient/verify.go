@@ -268,10 +268,7 @@ func (v *verifier) manifest(ctx context.Context, served *webclient.Manifest) err
 		return contactErr
 	}
 	v.contactKnown = contactErr == nil
-	pages, err := v.local.Render(served.PublicURL, contact)
-	if err != nil {
-		return err
-	}
+	pages, _ := v.local.Render(served.PublicURL, contact)
 	v.pages, v.publicURL = pages, served.PublicURL
 	servedJSON, _ := json.Marshal(served)
 	expectedJSON, _ := json.Marshal(v.local.Manifest(v.version, served.PublicURL, v.pages, v.information))

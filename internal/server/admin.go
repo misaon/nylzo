@@ -45,9 +45,9 @@ type countries struct {
 	load func() *country.Table
 }
 
-func newCountries(report func(error)) *countries {
+func newCountries(load func() (*country.Table, error), report func(error)) *countries {
 	return &countries{load: sync.OnceValue(func() *country.Table {
-		table, err := country.Load()
+		table, err := load()
 		if err != nil {
 			report(err)
 		}
@@ -73,9 +73,7 @@ func (s *Server) setUpAdmin() {
 	s.refusals = ratelimit.NewRefusals()
 	s.documentReports = ratelimit.NewLimiter(api.DocumentReportsPerSecond, api.DocumentReportsBurst)
 	s.usage = hostusage.NewSampler(usageKept)
-	s.countries = newCountries(func(err error) {
-		s.events.Error("country-table", "err", logging.ErrorText(err))
-	})
+	s.countries = newCountries(country.Load, s.reportCountryTable)
 	s.counts = statistics.New(s.adminStore)
 	s.visits = visits.NewTracker(s.counts, s.countries, time.Now())
 	if s.adminStore == nil {
@@ -98,6 +96,10 @@ func (s *Server) setUpAdmin() {
 		Events:        s.events,
 		Refuse:        s.noteRefusal,
 	})
+}
+
+func (s *Server) reportCountryTable(err error) {
+	s.events.Error("country-table", "err", logging.ErrorText(err))
 }
 
 // StartCounting switches the counting on when a passkey can already sign in to see the counts.

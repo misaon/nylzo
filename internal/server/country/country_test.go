@@ -101,6 +101,9 @@ func TestDamagedTableIsRefused(t *testing.T) {
 		"one byte short":  data[:len(data)-1],
 		"trailing byte":   append(bytes.Clone(data), 0),
 		"other version":   append([]byte("NZCC\x02"), data[len(tableHeader):]...),
+		"cut in a start":  append([]byte(tableHeader), 1, 0x80, 0x80, 0x80),
+		"lowercase code":  append([]byte(tableHeader), 1, 0, 'c', 'z'),
+		"repeated start":  append([]byte(tableHeader), 2, 0, 0, 'C', 'Z', 'S', 'K'),
 	}
 	for name, table := range damaged {
 		if _, err = parseTable(table); !errors.Is(err, errTable) {
@@ -110,10 +113,31 @@ func TestDamagedTableIsRefused(t *testing.T) {
 	for name, compressed := range map[string][]byte{
 		"truncated gzip": embeddedTable[:len(embeddedTable)/2],
 		"flipped byte":   flipByte(embeddedTable, len(embeddedTable)/2),
+		"not gzip":       data,
 	} {
 		if _, err = decodeTable(compressed); !errors.Is(err, errTable) {
 			t.Errorf("%s: err = %v, want errTable", name, err)
 		}
+	}
+}
+
+func TestDecodeRefusesADamagedTableOrSource(t *testing.T) {
+	t.Parallel()
+	if _, err := decode(embeddedTable[:10], embeddedSource); !errors.Is(err, errTable) {
+		t.Errorf("a damaged table: %v", err)
+	}
+	if _, err := decode(embeddedTable, []byte("{")); err == nil {
+		t.Error("a source that is not JSON was accepted")
+	}
+	if _, err := decode(embeddedTable, []byte(`{"name":"RIR","month":"2026-11"}`)); !errors.Is(err, errSource) {
+		t.Errorf("a source without its attribution: %v", err)
+	}
+}
+
+func TestAnAddressBeforeTheFirstRangeHasNoCountry(t *testing.T) {
+	t.Parallel()
+	if found := find([]uint32{10, 20}, []Code{{'C', 'Z'}, {'S', 'K'}}, 5); found.Known() {
+		t.Fatalf("an address before the first range: %s", found)
 	}
 }
 

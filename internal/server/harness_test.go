@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -857,6 +858,83 @@ func (h *testHarness) withFaultyBlobs() *storetest.FaultyBlobs {
 	return faulty
 }
 
+type faultyStore struct {
+	store.Store
+
+	fault func(method string) error
+}
+
+func (s *faultyStore) Load(ctx context.Context, locator seal.Locator) (store.Row, error) {
+	if err := s.fault("Load"); err != nil {
+		return store.Row{}, err
+	}
+	return s.Store.Load(ctx, locator)
+}
+
+func (s *faultyStore) Lookup(ctx context.Context, locator seal.Locator) (store.Row, bool, error) {
+	if err := s.fault("Lookup"); err != nil {
+		return store.Row{}, false, err
+	}
+	return s.Store.Lookup(ctx, locator)
+}
+
+func (s *faultyStore) Update(ctx context.Context, locator seal.Locator, change func(row *store.Row) error) error {
+	if err := s.fault("Update"); err != nil {
+		return err
+	}
+	return s.Store.Update(ctx, locator, change)
+}
+
+func (s *faultyStore) RateGet(ctx context.Context, key string, windowStart time.Time) (store.RateCount, error) {
+	if err := s.fault("RateGet"); err != nil {
+		return store.RateCount{}, err
+	}
+	return s.Store.RateGet(ctx, key, windowStart)
+}
+
+func (s *faultyStore) RateHit(ctx context.Context, hits []store.RateHit) ([]store.RateCount, error) {
+	if err := s.fault("RateHit"); err != nil {
+		return nil, err
+	}
+	return s.Store.RateHit(ctx, hits)
+}
+
+func (s *faultyStore) RateReserve(ctx context.Context, hit store.RateHit) (int64, error) {
+	if err := s.fault("RateReserve"); err != nil {
+		return 0, err
+	}
+	return s.Store.RateReserve(ctx, hit)
+}
+
+func (s *faultyStore) RateRelease(ctx context.Context, key string, windowStart time.Time) error {
+	if err := s.fault("RateRelease"); err != nil {
+		return err
+	}
+	return s.Store.RateRelease(ctx, key, windowStart)
+}
+
+func (s *faultyStore) ResealWraps(ctx context.Context, reseal func(row *store.Row) bool) error {
+	if err := s.fault("ResealWraps"); err != nil {
+		return err
+	}
+	return s.Store.ResealWraps(ctx, reseal)
+}
+
+func (h *testHarness) withFaultyStore(fault func(method string) error) {
+	h.store = &faultyStore{Store: h.store, fault: fault}
+	h.reopen(&h.settings)
+}
+
+func failingFrom(method string, passing int32) func(string) error {
+	var calls atomic.Int32
+	return func(called string) error {
+		if called == method && calls.Add(1) > passing {
+			return errInjected
+		}
+		return nil
+	}
+}
+
 type testMessage struct {
 	id            core.ID
 	secret        *[core.SecretLen]byte
@@ -997,10 +1075,7 @@ func buildMessage(
 		text:       text,
 		passphrase: passphrase,
 	}
-	read, err := keys.DeriveRead(id, message.secret)
-	if err != nil {
-		return nil, err
-	}
+	read := keys.DeriveRead(id, message.secret)
 	message.link = testLink{R: read}
 	message.epoch = epoch.Of(deadline)
 	message.policy = envelope.Policy{OpensMax: opens, TTLSeconds: ttl, Deadline: uint32(deadline.Unix())}
@@ -1243,4 +1318,60 @@ func solveWork(t *testing.T, challenge string, id core.ID, difficulty int) strin
 		t.Fatal(err)
 	}
 	return token
+}
+
+func (h *testHarness) logged(event string) bool {
+	h.server.flushCounts(h.t.Context())
+	return strings.Contains(h.logs.String(), `"msg":"`+event+`"`)
+}
+
+type faultSwitch struct {
+	method atomic.Pointer[string]
+	err    atomic.Pointer[error]
+}
+
+func (f *faultSwitch) fail(method string, err error) {
+	f.err.Store(&err)
+	f.method.Store(&method)
+}
+
+func (f *faultSwitch) fault(called string) error {
+	if method := f.method.Load(); method != nil && *method == called {
+		return *f.err.Load()
+	}
+	return nil
+}
+
+type brokenBlobs struct {
+	store.Blobs
+
+	failRead, failSeek atomic.Bool
+}
+
+func (b *brokenBlobs) Open(ctx context.Context, reference string) (io.ReadSeekCloser, int64, error) {
+	blob, size, err := b.Blobs.Open(ctx, reference)
+	if err != nil {
+		return blob, size, err
+	}
+	return &brokenBlob{ReadSeekCloser: blob, failRead: b.failRead.Load(), failSeek: b.failSeek.Load()}, size, nil
+}
+
+type brokenBlob struct {
+	io.ReadSeekCloser
+
+	failRead, failSeek bool
+}
+
+func (b *brokenBlob) Read(buffer []byte) (int, error) {
+	if b.failRead {
+		return 0, errInjected
+	}
+	return b.ReadSeekCloser.Read(buffer)
+}
+
+func (b *brokenBlob) Seek(offset int64, whence int) (int64, error) {
+	if b.failSeek {
+		return 0, errInjected
+	}
+	return b.ReadSeekCloser.Seek(offset, whence)
 }

@@ -96,3 +96,49 @@ func TestAFullFairTableStillAdmitsANewRange(t *testing.T) {
 		t.Fatal("a full table refused a new range whose turn was due")
 	}
 }
+
+func TestADayResetEmptiesEveryAddressTable(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	bucket := Bucket{1, 2, 3}
+	limiter, counters, fair, streams := NewLimiter(10, 20), NewCounters(), NewFair(50, 100), NewStreams(8)
+	limiter.Allow(bucket, now)
+	counters.Count([]Hit{{Kind: "read:h", Bucket: bucket, Window: Hour(now), Limit: 300}}, now)
+	fair.Allow(bucket, now)
+	streams.Take(bucket, bucket)
+	limiter.Reset()
+	counters.Reset()
+	fair.Reset()
+	if len(limiter.buckets) != 0 || len(counters.tables) != 0 || len(fair.ranges) != 0 {
+		t.Fatal("a reset kept an address bucket")
+	}
+	streams.Release(bucket, bucket)
+	streams.Purge()
+	if len(streams.perSource) != 0 || len(streams.perRange) != 0 {
+		t.Fatal("a released stream slot stayed in memory")
+	}
+}
+
+func TestPurgesKeepOnlyWhatStillLimits(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	quiet, busy := Bucket{1}, Bucket{2}
+	fair := NewFair(50, 100)
+	fair.Allow(quiet, now)
+	fair.Purge(now)
+	if _, kept := fair.ranges[quiet]; !kept {
+		t.Fatal("the purge dropped a range seen just now")
+	}
+	fair.Purge(now.Add(activeRangeWindow))
+	if len(fair.ranges) != 0 {
+		t.Fatal("the purge kept a range that no longer counts")
+	}
+	streams := NewStreams(8)
+	streams.Take(quiet, quiet)
+	streams.Take(busy, quiet)
+	streams.Release(quiet, quiet)
+	streams.Purge()
+	if streams.perSource[busy] != 1 || streams.perRange[quiet] != 1 || len(streams.perSource) != 1 {
+		t.Fatalf("after the purge: sources %v, ranges %v", streams.perSource, streams.perRange)
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -27,6 +28,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/misaon/nylzo/internal/buildinfo"
 	"github.com/misaon/nylzo/internal/cli/command"
 	"github.com/misaon/nylzo/internal/cli/console"
 	"github.com/misaon/nylzo/internal/cli/messages"
@@ -328,10 +330,7 @@ func storedEnvelope(t *testing.T, instance *testServer, link string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	read, err := keys.DeriveRead(parsed.ID, &parsed.Secret)
-	if err != nil {
-		t.Fatal(err)
-	}
+	read := keys.DeriveRead(parsed.ID, &parsed.Secret)
 	storage, err := sqlite.Open(t.Context(), filepath.Join(instance.directory, "nylzo.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -1484,5 +1483,33 @@ func TestOpenHandsOverAValidLinkOfItsInstance(t *testing.T) {
 	head, fragment, _ := strings.Cut(link, "#")
 	if !strings.HasSuffix(head, handed.Path) || handed.Fragment != fragment {
 		t.Fatalf("%+v from %s", handed, link)
+	}
+}
+
+type failingWriter struct{}
+
+func (failingWriter) Write([]byte) (int, error) { return 0, io.ErrClosedPipe }
+
+func TestVersionPrintsTheBuildAsTextOrJSON(t *testing.T) {
+	t.Parallel()
+	if flag, named := runWith(t, "", nil, nil, "--version"), runWith(t, "", nil, nil, "version"); flag != named ||
+		strings.TrimSpace(flag.stdout) != "test" {
+		t.Fatalf("--version %+v, version %+v", flag, named)
+	}
+	result := runWith(t, "", nil, nil, "version", "--json")
+	var information buildinfo.Info
+	if err := json.Unmarshal([]byte(result.stdout), &information); err != nil || result.code != command.ExitOK ||
+		information.Version != "test" {
+		t.Fatalf("version --json: exit %d, %q, %v", result.code, result.stdout, err)
+	}
+	var stderr bytes.Buffer
+	exit := Run([]string{"version", "--json"}, &command.Environment{
+		Stdout:  failingWriter{},
+		Stderr:  &stderr,
+		Getenv:  getenvFrom(nil),
+		Version: "test",
+	})
+	if exit.Code != command.ExitError || stderr.Len() == 0 {
+		t.Fatalf("version --json into a closed pipe: exit %d, %q", exit.Code, stderr.String())
 	}
 }

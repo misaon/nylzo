@@ -1,22 +1,25 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import rfcFixture from '../../../../spec/opaque-rfc-vectors.json' with { type: 'json' };
 import { hexToBytes, kdfIdOf, vectors } from '../../test/vectors.ts';
 import type { OpaqueVector } from '../../test/vectors.ts';
 import { EnvelopeRecoveryError, OpaqueMessageError, ServerAuthenticationError } from '../errors.ts';
 import { decodeBase64url } from '../primitives/base64url.ts';
+import { concatenate } from '../primitives/bytes.ts';
 import { parseId } from '../primitives/identifiers.ts';
 import { stretchScrypt } from '../scrypt.ts';
-import { createRegistrationResponse, generateKE2, serverKeysFrom } from '../testing/opaque-server.ts';
+import { createRegistrationResponse, generateKE2, newServerKeys, serverKeysFrom } from '../testing/opaque-server.ts';
 import { derivePassphraseSalt } from './derive.ts';
 import { KDF_SCRYPT, opaqueContext, opaquePassword } from './kdf.ts';
 import {
   createRegistrationRequest,
+  deserializeElement,
   finalizeRegistrationRequest,
   generateKE1,
   generateKE3,
   identityStretch,
   KE2_LENGTH,
+  wipeLogin,
 } from './opaque.ts';
 import type { OpaqueConfig, Stretch } from './opaque.ts';
 
@@ -145,9 +148,90 @@ describe('RFC 9807 OPAQUE-3DH real vector 1, client steps', () => {
   });
 });
 
-function stretchFor(vector: OpaqueVector): Stretch {
-  return kdfIdOf(vector.kdf_id) === KDF_SCRYPT ? (message) => Promise.resolve(stretchScrypt(message)) : identityStretch;
+function stretchFor(vector: OpaqueVector, onProgress?: (fraction: number) => void): Stretch {
+  return kdfIdOf(vector.kdf_id) === KDF_SCRYPT
+    ? (message) => Promise.resolve(stretchScrypt(message, onProgress))
+    : identityStretch;
 }
+
+describe('the OPAQUE client refuses malformed server messages and inputs (RFC 9497, RFC 9807)', () => {
+  const password = hexToBytes(real.password);
+  const element = hexToBytes(real.server_public_key);
+  const nonCanonical = new Uint8Array(32).fill(0xff);
+
+  it.each([
+    ['a short element', element.subarray(1)],
+    ['a non-canonical encoding', nonCanonical],
+    ['the identity', new Uint8Array(32)],
+  ])('refuses %s as an element', (_, bytes) => {
+    expect(() => deserializeElement(bytes)).toThrow(OpaqueMessageError);
+  });
+
+  it('refuses a blind that is not a canonical scalar', () => {
+    expect(() => createRegistrationRequest(password, nonCanonical)).toThrow(OpaqueMessageError);
+  });
+
+  it('refuses a registration response of the wrong length, a bad server key or a short envelope nonce', async () => {
+    const { state } = createRegistrationRequest(password, hexToBytes(real.blind_registration));
+    const response = hexToBytes(real.registration_response);
+    const badServerKey = concatenate(response.subarray(0, 32), nonCanonical);
+    await expect(finalizeRegistrationRequest(state, response.subarray(1), identityStretch)).rejects.toBeInstanceOf(
+      OpaqueMessageError,
+    );
+    await expect(finalizeRegistrationRequest(state, badServerKey, identityStretch)).rejects.toBeInstanceOf(
+      OpaqueMessageError,
+    );
+    await expect(
+      finalizeRegistrationRequest(state, response, identityStretch, new Uint8Array(31)),
+    ).rejects.toBeInstanceOf(OpaqueMessageError);
+  });
+
+  it('refuses a client nonce or a keyshare seed of the wrong length', () => {
+    expect(() => generateKE1(password, undefined, new Uint8Array(31))).toThrow(OpaqueMessageError);
+    expect(() => generateKE1(password, undefined, new Uint8Array(32), new Uint8Array(31))).toThrow(OpaqueMessageError);
+  });
+
+  it('draws the blind again when the random scalar is zero', () => {
+    const random = vi.spyOn(crypto, 'getRandomValues');
+    random.mockImplementationOnce((array) => array);
+    try {
+      const fresh = createRegistrationRequest(password);
+      expect(random).toHaveBeenCalledTimes(2);
+      expect(fresh.state.blind).not.toBe(0n);
+    } finally {
+      random.mockRestore();
+    }
+  });
+});
+
+describe('a login with fresh randomness', () => {
+  it('recovers the export key of the registration and wipes the password copy', async () => {
+    const keys = newServerKeys();
+    const credential = new Uint8Array(16).fill(3);
+    const context = new Uint8Array([1, 2]);
+    const password = new Uint8Array([7, 7, 7]);
+    const { request, state } = createRegistrationRequest(password);
+    const registration = await finalizeRegistrationRequest(
+      state,
+      createRegistrationResponse(request, keys, credential),
+      identityStretch,
+    );
+    const { ke1, login } = generateKE1(password);
+    const { ke2, expectedClientMac } = generateKE2({
+      keys,
+      record: registration.record,
+      credentialIdentifier: credential,
+      ke1,
+      context,
+    });
+    const result = await generateKE3(login, ke2, { context, stretch: identityStretch });
+    expect(result.exportKey).toEqual(registration.exportKey);
+    expect(result.ke3).toEqual(expectedClientMac);
+    wipeLogin(login);
+    wipeLogin(undefined);
+    expect(login.password.every((byte) => byte === 0)).toBe(true);
+  });
+});
 
 describe('OPAQUE runs with the configuration of spec 2.1', () => {
   it.each(vectors.opaque)('$name', { timeout: 120_000 }, async (vector) => {
@@ -158,6 +242,7 @@ describe('OPAQUE runs with the configuration of spec 2.1', () => {
     const password = opaquePassword(salt, kdfId, vector.passphrase ?? '');
     expect(password.toHex()).toBe(vector.password_hex);
     const config = { context: opaqueContext(id, kdfId), stretch: stretchFor(vector) };
+    const progress: number[] = [];
     expect(config.context.toHex()).toBe(vector.context_hex);
 
     const { request, state } = createRegistrationRequest(password, hexToBytes(vector.blind_registration_hex));
@@ -178,8 +263,12 @@ describe('OPAQUE runs with the configuration of spec 2.1', () => {
       hexToBytes(vector.client_keyshare_seed_hex),
     );
     expect(decodeBase64url(vector.ke1)).toEqual(ke1);
-    const result = await generateKE3(login, decodeBase64url(vector.ke2), config);
+    const loginStretch = stretchFor(vector, (fraction) => {
+      progress.push(fraction);
+    });
+    const result = await generateKE3(login, decodeBase64url(vector.ke2), { ...config, stretch: loginStretch });
     expect(decodeBase64url(vector.ke3)).toEqual(result.ke3);
     expect(result.exportKey.toHex()).toBe(vector.p_hex);
+    expect(progress.at(-1)).toBe(kdfId === KDF_SCRYPT ? 1 : undefined);
   });
 });

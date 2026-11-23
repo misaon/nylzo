@@ -9,6 +9,8 @@ import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
 import { startWorker } from '../../shared/kdf/worker-source.ts';
 import { Translator } from '../../shared/language/translator.svelte.ts';
 import { takeFragment } from '../../shared/link/link-handoff.ts';
+import { openedFacts } from './read-facts.ts';
+import { burnText, noticeOf } from './read-notice.ts';
 import { ReadPage, SHOWN_SECONDS } from './read-page.svelte.ts';
 import type { BurnOutcome, ClosedView, ReaderDependencies, ReadView } from './reader.ts';
 import { createReader } from './reader.ts';
@@ -52,24 +54,24 @@ function reducedMotion(matches: boolean): void {
   flushSync();
 }
 
-describe('read page interactions', () => {
-  const reader = {
-    load: vi.fn<() => Promise<void>>(),
-    reveal: vi.fn<(passphrase?: string) => Promise<void>>(),
-    burn: vi.fn<() => Promise<BurnOutcome>>(),
-    clear: vi.fn<(closed?: ClosedView) => void>(),
-  };
-  let notify: (view: ReadView) => void;
-  let dependencies: ReaderDependencies;
-  let destroy: (() => void)[];
+const reader = {
+  load: vi.fn<() => Promise<void>>(),
+  reveal: vi.fn<(passphrase?: string) => Promise<void>>(),
+  burn: vi.fn<() => Promise<BurnOutcome>>(),
+  clear: vi.fn<(closed?: ClosedView) => void>(),
+};
+let notify: (view: ReadView) => void;
+let dependencies: ReaderDependencies;
+let destroy: (() => void)[];
 
-  function ready(overrides: Partial<Metadata> = {}): void {
-    notify({ view: 'ready', metadata: { ...metadata, ...overrides }, resumable: false, deviceFailed: false });
-  }
+function ready(overrides: Partial<Metadata> = {}): void {
+  notify({ view: 'ready', metadata: { ...metadata, ...overrides }, resumable: false, deviceFailed: false });
+}
 
-  const writeText = vi.fn<(text: string) => Promise<void>>();
-  const reload = vi.fn<(...arguments_: unknown[]) => void>();
+const writeText = vi.fn<(text: string) => Promise<void>>();
+const reload = vi.fn<(...arguments_: unknown[]) => void>();
 
+function prepareReadPage(): void {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.resetAllMocks();
@@ -113,6 +115,10 @@ describe('read page interactions', () => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
+}
+
+describe('read page interactions', () => {
+  prepareReadPage();
 
   it('loads once and records whether the secret link was already in browser history', () => {
     const page = new ReadPage(new Translator('en'));
@@ -126,6 +132,9 @@ describe('read page interactions', () => {
     expect(page.linkInHistory).toBe(false);
     page.retry();
     expect(reader.load).toHaveBeenCalledTimes(2);
+    expect(dependencies.page.visible()).toBe(true);
+    expect(dependencies.page.prerendering()).toBe(false);
+    expect(dependencies.now()).toBe(Date.now());
   });
 
   it('keeps the lease of a local client session in memory, never in session storage (Protocol §14.1)', () => {
@@ -206,7 +215,7 @@ describe('read page interactions', () => {
     await vi.advanceTimersByTimeAsync(2000);
     await shown;
     expect(page.phase).toBe('revealed');
-    expect(page.revealText).toBe('Hello 🌍\nworld');
+    expect([page.revealHead, page.revealRest]).toEqual(['Hello 🌍\nworld', '']);
     expect(focused).toHaveBeenCalledOnce();
     expect(page.secondsLeft).toBeGreaterThan(SHOWN_SECONDS - 5);
     expect(vi.getTimerCount()).toBe(1);
@@ -220,7 +229,7 @@ describe('read page interactions', () => {
     notify({ view: 'busy', step: 'deriving' });
     notify({ view: 'revealed', text: 'Private text', burnable: false, opensRemaining: 0 });
     await vi.advanceTimersByTimeAsync(1100);
-    expect(page.revealText).toBe('Private text');
+    expect([page.revealHead, page.revealRest]).toEqual(['Private text', '']);
     expect(page.phase).toBe('revealed');
     expect(page.secondsLeft).toBe(SHOWN_SECONDS);
     expect(vi.getTimerCount()).toBe(1);
@@ -317,6 +326,8 @@ describe('read page interactions', () => {
 
   it('handles clipboard refusal without a false success indication', async () => {
     const page = new ReadPage(new Translator('en'));
+    await page.askCopy();
+    expect(page.confirmingCopy).toBe(false);
     await page.copyText();
     expect(writeText).not.toHaveBeenCalled();
     notify({ view: 'revealed', text: 'hello', burnable: false, opensRemaining: 0 });
@@ -380,6 +391,7 @@ describe('read page interactions', () => {
     expect(page.askingDelete).toBe(false);
     page.passphrase = 'correct horse battery staple';
     await page.askDelete();
+    page.showPassphrase = true;
     const gate = Promise.withResolvers<BurnOutcome>();
     reader.burn.mockReturnValueOnce(gate.promise);
     const burning = page.burn();
@@ -390,6 +402,8 @@ describe('read page interactions', () => {
     await burning;
     expect(reader.burn).toHaveBeenCalledExactlyOnceWith('correct horse battery staple');
     expect(page.passphrase).toBe('');
+    expect(page.showPassphrase).toBe(false);
+    expect(page.deleteIntent).toBe(true);
     expect(page.burnNote).toBe('');
     expect(page.burnFailed).toBe(false);
     expect(focus).toHaveBeenCalledTimes(3);
@@ -421,24 +435,28 @@ describe('read page interactions', () => {
     expect(page.afterFacts[0]).toEqual({ icon: 'timer', text: 'Deleted in 15:00' });
     vi.advanceTimersByTime(61_000);
     expect(page.afterFacts[0]?.text).toBe('Deleted in 13:59');
+    notify({ view: 'revealed', text: 'secret', file, burnable: false, opensRemaining: 0 });
+    expect(page.afterFacts[0]?.text).toBe('Deleted in 13:59');
     expect(reader.clear).not.toHaveBeenCalled();
     vi.advanceTimersByTime((SHOWN_SECONDS - 61) * 1000);
     expect(reader.clear).toHaveBeenCalledExactlyOnceWith({ view: 'timed_out' });
     expect(page.notice).toBe('timed_out');
     expect(page.status).toBe('Time to view is up');
-    expect(page.revealText).toBeUndefined();
+    expect(page.revealHead).toBeUndefined();
     expect(page.secondsLeft).toBeUndefined();
     expect(revokeSavedFiles).toHaveBeenCalledOnce();
   });
 
   it('forgets an opened message when the device slept past the shown time', () => {
     const page = new ReadPage(new Translator('en'));
+    page.checkCountdown();
+    expect(reader.clear).not.toHaveBeenCalled();
     notify({ view: 'revealed', text: 'secret', file, burnable: false, opensRemaining: 0 });
     const shown = Date.now();
     vi.spyOn(Date, 'now').mockReturnValue(shown + (SHOWN_SECONDS + 1) * 1000);
     page.checkCountdown();
     expect(reader.clear).toHaveBeenCalledExactlyOnceWith({ view: 'timed_out' });
-    expect(page.revealText).toBeUndefined();
+    expect(page.revealHead).toBeUndefined();
   });
 
   it('shows metadata and end-state facts in the selected language', () => {
@@ -447,6 +465,14 @@ describe('read page interactions', () => {
     expect(page.readyFacts).toEqual([]);
     ready({ kdfId: KDF_SCRYPT });
     expect(page.readyFacts.map((fact) => fact.icon)).toEqual(['clock', 'eye', 'key']);
+    const { state, opensMax, opensRemaining, ttlSeconds, kdfId, size } = metadata;
+    notify({
+      view: 'ready',
+      metadata: { state, opensMax, opensRemaining, ttlSeconds, kdfId, size },
+      resumable: false,
+      deviceFailed: false,
+    });
+    expect(page.readyFacts.map((fact) => fact.icon)).toEqual(['eye']);
     expect(page.opensLeft(1)).toBe('Zbývá 1 otevření');
     expect(page.opensLeft(2)).toBe('Zbývají 2 otevření');
     expect(page.opensLeft(5)).toBe('Zbývá 5 otevření');
@@ -489,7 +515,7 @@ describe('read page interactions', () => {
     expect(page.confirmingCopy).toBe(false);
     expect(page.download.shown).toBe(false);
     expect(page.askingDelete).toBe(false);
-    expect(page.revealText).toBeUndefined();
+    expect(page.revealHead).toBeUndefined();
     expect(page.marked).toBeUndefined();
     expect(page.opening).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
@@ -535,8 +561,83 @@ describe('read page interactions', () => {
   });
 });
 
+describe('read page edge cases', () => {
+  prepareReadPage();
+
+  it('moves focus to the title when the opening starts from the reveal form', () => {
+    const page = new ReadPage(new Translator('en'));
+    ready();
+    const area = pageDocument.createElement('div');
+    const button = pageDocument.createElement('button');
+    area.append(button);
+    page.focus.attach('readyArea')(area);
+    const title = focusTarget(page, 'readTitle');
+    vi.stubGlobal('document', { activeElement: button, body: {}, visibilityState: 'visible' });
+    notify({ view: 'busy', step: 'claiming' });
+    expect(title).toHaveBeenCalledOnce();
+  });
+
+  it('reserves the bar for the opens a resumed lease leaves and returns to the rest after cancelling', async () => {
+    const page = new ReadPage(new Translator('en'));
+    notify({ view: 'ready', metadata, resumable: true, deviceFailed: false });
+    page.reveal(new SubmitEvent('submit', { cancelable: true }));
+    expect(page.reservedOpens).toBe(metadata.opensRemaining);
+    notify({ view: 'revealed', text: 'secret', burnable: true, opensRemaining: 1 });
+    const rest = focusTarget(page, 'deleteRest');
+    await page.askDelete();
+    expect(page.reservedOpens).toBe(metadata.opensRemaining);
+    await page.cancelDelete();
+    expect(rest).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['ends on a surrogate pair', `${'a'.repeat(1999)}😀tail`, 'tail'],
+    ['ends inside plain text', 'a'.repeat(2100), 'a'.repeat(100)],
+  ])('scrambles only the head of a long text that %s', async (_, text, rest) => {
+    const page = new ReadPage(new Translator('en'));
+    notify({ view: 'revealed', text, burnable: false, opensRemaining: 0 });
+    expect(page.revealRest).toBe(rest);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(`${page.revealHead}${page.revealRest}`).toBe(text);
+  });
+
+  it('keeps the intent to delete while a deletion was not sent and drops it once it was', async () => {
+    const page = new ReadPage(new Translator('en'));
+    ready({ kdfId: KDF_SCRYPT });
+    page.passphrase = 'correct horse battery staple';
+    await page.askDelete();
+    expect(page.deleteIntent).toBe(true);
+    reader.burn.mockResolvedValueOnce({ outcome: 'failed' });
+    await page.burn();
+    expect(page.deleteIntent).toBe(true);
+    expect(page.passphrase).toBe('correct horse battery staple');
+    reader.burn.mockResolvedValueOnce({ outcome: 'waiting', retryAfter: 60, locked: false });
+    await page.burn();
+    expect(page.deleteIntent).toBe(false);
+  });
+});
+
 function focusTarget(page: ReadPage, target: Parameters<typeof page.focus.attach>[0]): ReturnType<typeof vi.fn> {
   const focus = vi.fn<(...arguments_: unknown[]) => void>();
   page.focus.attach(target)(Object.assign(pageDocument.createElement('div'), { focus }));
   return focus;
 }
+
+describe('read notices and facts', () => {
+  const translator = new Translator('en');
+
+  it('treats a view still in progress as loading', () => {
+    expect(noticeOf({ view: 'busy', step: 'claiming' }, undefined)).toBe('loading');
+  });
+
+  it.each<BurnOutcome>([{ outcome: 'ended', state: 'expired' }, { outcome: 'unknown' }])(
+    'adds no note to a deletion before the reveal that answered $outcome',
+    (outcome) => {
+      expect(burnText({ outcome, afterReveal: false }, translator)).toBe('');
+    },
+  );
+
+  it('lists no countdown for an opened message without one', () => {
+    expect(openedFacts(translator, { opensRemaining: 0 }).map((fact) => fact.icon)).toEqual(['check', 'eye']);
+  });
+});

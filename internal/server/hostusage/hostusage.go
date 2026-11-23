@@ -96,7 +96,11 @@ func (s *Sampler) take(now time.Time) {
 }
 
 func processBytes() uint64 {
-	samples := []metrics.Sample{{Name: totalMemoryMetric}, {Name: releasedMemoryMetric}}
+	return heldBytes(totalMemoryMetric, releasedMemoryMetric)
+}
+
+func heldBytes(totalMetric, releasedMetric string) uint64 {
+	samples := []metrics.Sample{{Name: totalMetric}, {Name: releasedMetric}}
 	metrics.Read(samples)
 	if samples[0].Value.Kind() != metrics.KindUint64 || samples[1].Value.Kind() != metrics.KindUint64 {
 		return 0

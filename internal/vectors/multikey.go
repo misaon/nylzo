@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/misaon/nylzo/internal/core"
@@ -11,7 +12,10 @@ import (
 	"github.com/misaon/nylzo/internal/core/keys"
 )
 
-var errSingular = errors.New("vectors: the GHASH system has no solution")
+var (
+	errSingular         = errors.New("vectors: the GHASH system has no solution")
+	errFreeBlockOutside = errors.New("after the end of the ciphertext")
+)
 
 // fieldElement is an element of GF(2^128) in the bit order of GCM (NIST SP 800-38D).
 type fieldElement struct{ high, low uint64 }
@@ -97,14 +101,10 @@ func twoKeyObject(
 	shares [2]*[core.ShareLen]byte,
 	header envelope.Header,
 	policy envelope.Policy,
-) ([]byte, error) {
+) []byte {
 	var contents [2]keys.ContentKeys
 	for i, share := range shares {
-		content, err := keys.DeriveContent(id, secret, exportKey, share)
-		if err != nil {
-			return nil, err
-		}
-		contents[i] = content
+		contents[i] = must(keys.DeriveContent(id, secret, exportKey, share))
 	}
 	commitment := envelope.Commitment(&contents[0].Commitment, header, id, policy)
 	aad := envelope.AAD(header, commitment[:], id, policy)
@@ -119,10 +119,7 @@ func twoKeyObject(
 	var matrix [2][2]fieldElement
 	var targets [2]fieldElement
 	for i := range contents {
-		block, err := aes.NewCipher(contents[i].K[:])
-		if err != nil {
-			return nil, err
-		}
+		block := must(aes.NewCipher(contents[i].K[:]))
 		hashBlock := make([]byte, 16)
 		block.Encrypt(hashBlock, hashBlock)
 		hashKey := elementOf(hashBlock)
@@ -136,16 +133,13 @@ func twoKeyObject(
 			matrix[i][j] = hashKey.power(exponent(totalBlocks - aadBlocks - free))
 		}
 	}
-	solution, err := solve(matrix, targets)
-	if err != nil {
-		return nil, err
-	}
+	solution := must(solve(matrix, targets))
 	for j, free := range freeBlocks {
 		copy(ciphertext[free*16:], solution[j].bytes())
 	}
 	object := append(header.Bytes(), commitment[:]...)
 	object = append(object, ciphertext...)
-	return append(object, tag...), nil
+	return append(object, tag...)
 }
 
 func solve(matrix [2][2]fieldElement, targets [2]fieldElement) ([2]fieldElement, error) {
@@ -160,8 +154,6 @@ func solve(matrix [2][2]fieldElement, targets [2]fieldElement) ([2]fieldElement,
 }
 
 func exponent(blocksAfter int) uint64 {
-	if blocksAfter < 0 {
-		panic("vectors: a free block lies after the end of the ciphertext")
-	}
-	return uint64(blocksAfter)
+	require(blocksAfter >= 0, fmt.Errorf("vectors: a free block lies %w", errFreeBlockOutside))
+	return uint64(max(blocksAfter, 0))
 }

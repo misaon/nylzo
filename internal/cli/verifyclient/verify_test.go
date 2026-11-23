@@ -379,6 +379,18 @@ func TestVerifyClientRefusesAChangedClient(t *testing.T) {
 				next.ServeHTTP(w, r)
 			})
 		}, "redirect"},
+		{"manifest that is no JSON", rewrite(pathIs(webclient.ManifestPath), func(response *served) {
+			response.body = []byte("{")
+			response.header.Del("Content-Encoding")
+		}), "the server's client manifest is not valid JSON"},
+		{"damaged gzip", rewrite(browserAsks("/assets/index-a1.js"), func(response *served) {
+			response.body = []byte("not gzip")
+			response.header.Set("Content-Encoding", "gzip")
+		}), "/assets/index-a1.js (as a browser asks for it): the compressed response is damaged"},
+		{"truncated gzip", rewrite(browserAsks("/assets/index-a1.js"), func(response *served) {
+			response.body = gzipBytes(t, []byte(webJS))[:16]
+			response.header.Set("Content-Encoding", "gzip")
+		}), "/assets/index-a1.js (as a browser asks for it): the compressed response is damaged"},
 		{"gzip bomb", rewrite(browserAsks("/assets/index-a1.js"), func(response *served) {
 			response.body = gzipBytes(t, bytes.Repeat([]byte{'a'}, 16<<20))
 			response.header.Set("Content-Encoding", "gzip")
@@ -422,6 +434,28 @@ func TestVerifyClientNeedsTheSameRelease(t *testing.T) {
 	if result.code != command.ExitError ||
 		!strings.Contains(result.stderr, `the server runs nylzo v9.9.9\u001b[31m and this binary is test`) {
 		t.Fatalf("%+v", result)
+	}
+}
+
+func TestVerifyClientShortensALongServerVersion(t *testing.T) {
+	t.Parallel()
+	files := webFiles(t)
+	result := runVerify(t, newWebTestServer(t, files, strings.Repeat("9", 200), nil), files)
+	if result.code != command.ExitError || !strings.Contains(result.stderr, "…") ||
+		strings.Contains(result.stderr, strings.Repeat("9", 200)) {
+		t.Fatalf("%+v", result)
+	}
+}
+
+func TestVerifyClientFailsWhenTheServerDoesNotAnswer(t *testing.T) {
+	t.Parallel()
+	files := webFiles(t)
+	identity := func(next http.Handler) http.Handler { return next }
+	for _, path := range []string{webclient.ManifestPath, "/assets/style-b2.css"} {
+		result := runVerify(t, newWebTestServer(t, files, "test", unavailable(path, identity)), files)
+		if result.code != command.ExitError || !strings.Contains(result.stderr, path) {
+			t.Errorf("%s unavailable: %+v", path, result)
+		}
 	}
 }
 

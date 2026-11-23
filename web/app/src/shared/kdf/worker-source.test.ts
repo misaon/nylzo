@@ -102,6 +102,17 @@ describe('verified worker source', () => {
     expect(fetchSource).not.toHaveBeenCalled();
   });
 
+  it.each(['null', '{}', '{"integrity":[]}', `{"integrity":{"${kdfWorkerUrl}":5}}`])(
+    'fetches in development without an integrity when the import map %s names no hash',
+    async (importMap) => {
+      vi.stubGlobal('document', { querySelector: () => ({ textContent: importMap }) });
+      const { startWorker } = await import('./worker-source.ts');
+      await startWorker();
+      expect(fetchSource).toHaveBeenCalledOnce();
+      expect(fetchSource.mock.calls[0]?.[1]).not.toHaveProperty('integrity');
+    },
+  );
+
   it('revokes the object URL if constructing the worker fails', async () => {
     construct.mockImplementation(() => {
       throw new Error('CSP refused');

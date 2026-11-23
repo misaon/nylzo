@@ -5,7 +5,7 @@ const MINUTE = 60;
 const MINUTE_STEPS = [1, 2, 5] as const;
 
 export type UsageSeries =
-  | { readonly kind: 'measured'; readonly values: readonly number[] }
+  | { readonly kind: 'measured'; readonly values: readonly number[]; readonly latest: number }
   | { readonly kind: 'unavailable' }
   | { readonly kind: 'waiting' };
 
@@ -28,6 +28,10 @@ export function minuteTicks(usage: readonly UsagePoint[], { width, gap }: TickSp
   return ticks;
 }
 
+export function sampleTime(usage: readonly UsagePoint[], index: number): number {
+  return usage[index]?.at ?? 0;
+}
+
 interface Measurement {
   readonly live: Pick<Live, 'usage' | 'usageSupported'>;
   readonly waiting: boolean;
@@ -37,7 +41,7 @@ interface Measurement {
 export function usageSeries({ live, waiting, read }: Measurement): UsageSeries {
   const values = live.usageSupported ? live.usage.map((point) => read(point)) : [];
   if (values.some((value) => value !== undefined)) {
-    return { kind: 'measured', values: values.map((value) => value ?? 0) };
+    return { kind: 'measured', values: values.map((value) => value ?? 0), latest: values.at(-1) ?? 0 };
   }
   return { kind: waiting ? 'waiting' : 'unavailable' };
 }

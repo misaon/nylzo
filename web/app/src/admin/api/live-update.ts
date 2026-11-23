@@ -1,4 +1,4 @@
-import type { Live, LiveUpdate, UsagePoint } from '../api/types.ts';
+import type { Live, LiveUpdate, UsagePoint } from './types.ts';
 
 // The server keeps five minutes of samples, one every five seconds.
 const USAGE_SHOWN = 60;

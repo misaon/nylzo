@@ -38,10 +38,6 @@ export class Spring {
     this.#apply = apply;
   }
 
-  get moving(): boolean {
-    return this.#frame !== undefined;
-  }
-
   set(value: number): void {
     this.stop();
     this.value = value;

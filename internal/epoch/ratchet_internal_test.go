@@ -307,8 +307,9 @@ func TestDecodeRefusesADamagedSlot(t *testing.T) {
 			second[0] ^= 1
 			resum(second)
 		},
-		"no generation":  func(content []byte) { clear(content[slotLen:]) },
-		"another format": func(content []byte) { content[0] ^= 1 },
+		"no generation":          func(content []byte) { clear(content[slotLen:]) },
+		"another format":         func(content []byte) { content[0] ^= 1 },
+		"bytes after the format": func(content []byte) { content[len(fileFormat)] = 1 },
 	} {
 		damaged := bytes.Clone(content)
 		damage(damaged)

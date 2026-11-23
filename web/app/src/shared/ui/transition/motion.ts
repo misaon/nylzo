@@ -10,5 +10,8 @@ export function motionMs(milliseconds: number): number {
 export function collapse(node: Element, params?: SlideParams): TransitionConfig {
   const sliding = slide(node, params);
   const opacity = Number(getComputedStyle(node).opacity);
-  return { ...sliding, css: (t, u) => `${(sliding.css?.(t, u) ?? '').replace(/;+$/u, '')};opacity:${t * opacity}` };
+  return {
+    ...sliding,
+    css: (t, u) => [sliding.css?.(t, u).replace(/;+$/u, ''), `opacity:${t * opacity}`].join(';'),
+  };
 }

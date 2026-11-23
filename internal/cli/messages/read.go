@@ -139,10 +139,7 @@ func parseOpenLink(raw string) (openLink, error) {
 		objectHash: parsed.ObjectHash,
 	}
 	parsed.Wipe()
-	if link.readSeed, err = keys.DeriveRead(link.id, &link.secret); err != nil {
-		link.wipe()
-		return openLink{}, err
-	}
+	link.readSeed = keys.DeriveRead(link.id, &link.secret)
 	return link, nil
 }
 
@@ -169,10 +166,7 @@ func HandOver(raw, instance string) (HandedOver, error) {
 		return HandedOver{}, errLinkOtherInstance
 	}
 	head, fragment, _ := strings.Cut(raw, "#")
-	address, err := url.Parse(head)
-	if err != nil {
-		return HandedOver{}, errLinkDamaged
-	}
+	address, _ := url.Parse(head)
 	return HandedOver{Path: address.EscapedPath(), Fragment: fragment}, nil
 }
 
@@ -209,7 +203,7 @@ func RunRead(ctx context.Context, environment *command.Environment, arguments []
 	watched := *environment
 	watched.Stdout = &lossWatch{writer: environment.Stdout, loss: &loss}
 	watched.Stderr = &lossWatch{writer: environment.Stderr, loss: &loss}
-	guard := &claimGuard{environment: &watched}
+	guard := &claimGuard{environment: &watched, end: stopsignal.Exit}
 	code := read(ctx, &watched, arguments, &loss, guard)
 	guard.release()
 	if code == command.ExitOK && loss.lost() != nil {
@@ -415,11 +409,8 @@ func claimMessage(
 		return openedMessage{}, nil, err
 	}
 	fetched, lease, err := fetchEnvelope(claimCtx, server, link, &login, unlocked.metadata.Size)
-	if err != nil && errors.Is(context.Cause(claimCtx), errStopTimedOut) {
-		return openedMessage{}, nil, errStopTimedOut
-	}
 	if err != nil {
-		return openedMessage{}, nil, err
+		return openedMessage{}, nil, claimError(claimCtx, err)
 	}
 	defer clear(fetched.Object)
 	if !headerMatches(&fetched, link, &unlocked.metadata) {
@@ -443,12 +434,20 @@ func claimMessage(
 	return openedMessage{payload: payload, lease: lease}, claimCtx, nil
 }
 
+func claimError(claimCtx context.Context, err error) error {
+	if errors.Is(context.Cause(claimCtx), errStopTimedOut) {
+		return errStopTimedOut
+	}
+	return err
+}
+
 // claimGuard keeps read running from the claim, which spends the open, until read returns: a hangup or a termination
 // request (Go's SIGTERM for a closed Windows console) waits, the first Ctrl-C only warns and the second ends the
 // process by it. After a stop request the claim and the Ack have one transfer time left; then further stop requests
 // take effect at once. Held stop requests go to Environment.Stop, so the process ends by one after read.
 type claimGuard struct {
 	environment *command.Environment
+	end         func(os.Signal)
 	out         string
 	hangup      bool
 	held        chan os.Signal
@@ -525,7 +524,7 @@ func (g *claimGuard) watch() {
 
 func (g *claimGuard) ctrlC(received os.Signal) {
 	if g.interrupted {
-		stopsignal.Exit(received)
+		g.end(received)
 	}
 	g.interrupted = true
 	g.stop(received)

@@ -177,6 +177,26 @@ describe('the sent page', () => {
     expect(tracked.last()).toMatchObject({ view: 'list', storageFailed: true });
   });
 
+  it('stops a running load between two status requests and asks for no further status', async () => {
+    const { api, sent } = await setup({}, 3);
+    api.calls.length = 0;
+    const gate = Promise.withResolvers<undefined>();
+    const asked = Promise.withResolvers<undefined>();
+    const status = api.status.bind(api);
+    api.status = async (messageId, key) => {
+      asked.resolve(undefined);
+      await gate.promise;
+      return status(messageId, key);
+    };
+    const loading = sent.load();
+    await asked.promise;
+    sent.stop();
+    gate.resolve(undefined);
+    await loading;
+    expect(api.calls).toEqual(['status']);
+    expect(sent.last()).toEqual({ view: 'loading' });
+  });
+
   it('stops a running load and clears what it showed', async () => {
     const { api, sent } = await setup({}, 3);
     api.calls.length = 0;
@@ -212,10 +232,17 @@ describe('the sent page', () => {
     expect(api.calls.filter((call) => call === 'cancel')).toHaveLength(1);
   });
 
-  it('reports a rate limited cancel and leaves the message as it was', async () => {
-    const { record, sent } = await setup({ failCancel: [new ApiError(503, 'unavailable', { retryAfter: 5 })] }, 1);
+  it.each([
+    {
+      name: 'rate limited',
+      failure: new ApiError(503, 'unavailable', { retryAfter: 5 }),
+      outcome: { outcome: 'retry_later', retryAfter: 5 },
+    },
+    { name: 'failed', failure: new ApiError(500, 'internal'), outcome: { outcome: 'failed' } },
+  ])('reports a $name cancel and leaves the message as it was', async ({ failure, outcome }) => {
+    const { record, sent } = await setup({ failCancel: [failure] }, 1);
     await sent.load();
-    expect(await sent.cancel(record(0).id)).toEqual({ outcome: 'retry_later', retryAfter: 5 });
+    expect(await sent.cancel(record(0).id)).toEqual(outcome);
     expect(sent.items()[0]?.state).toMatchObject({ kind: 'loaded', status: { state: 'available' } });
   });
 
@@ -318,10 +345,41 @@ describe('the sent page', () => {
     const { id } = record(0);
     store.records.delete(id);
     api.calls.length = 0;
-    expect(await sent.cancel(id)).toEqual({ outcome: 'ignored' });
     await sent.refresh(id);
     expect(api.calls).toEqual([]);
     expect(sent.items().map((item) => item.id)).toEqual([record(1).id]);
+    expect(await sent.cancel(id)).toEqual({ outcome: 'ignored' });
+    await sent.refresh(id);
+    expect(api.calls).toEqual([]);
+  });
+
+  it('refreshes the status of one message and shows a failure to read its key from storage', async () => {
+    const { api, record, store, sent } = await setup({}, 1);
+    await sent.load();
+    const { id, manageKey } = record(0);
+    await api.cancel(parseId(id), manageKey);
+    api.calls.length = 0;
+    await sent.refresh(id);
+    expect(api.calls).toEqual(['status']);
+    expect(sent.items()[0]).toMatchObject({ state: { kind: 'loaded', status: { state: 'cancelled' } }, ended: true });
+    store.records.set(id, record(0));
+    store.get = vi.fn<typeof store.get>().mockRejectedValue(new Error('storage denied'));
+    await sent.refresh(id);
+    expect(sent.items()[0]?.state).toEqual({ kind: 'failed' });
+  });
+
+  it('lists the messages of this tab alone when the browser offers no store or this tab cannot read its own', async () => {
+    const api = fakeApi();
+    const tracked = await remembered(api, NOW);
+    const withoutBrowser = page(api, undefined, memoryStore([tracked]));
+    await withoutBrowser.load();
+    expect(withoutBrowser.items()).toMatchObject([{ id: tracked.id, session: true, state: { kind: 'loaded' } }]);
+    await withoutBrowser.forgetAll();
+    expect(withoutBrowser.items()).toEqual([]);
+    const kept = await remembered(api, NOW);
+    const brokenSession = page(api, memoryStore([kept]), memoryStore([], true));
+    await brokenSession.load();
+    expect(brokenSession.items()).toMatchObject([{ id: kept.id, session: false, state: { kind: 'loaded' } }]);
   });
 
   it('removes an ended message from storage once it shows the outcome, and keeps an unseen one a day past expiry', async () => {

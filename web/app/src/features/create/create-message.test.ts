@@ -1,6 +1,7 @@
 import {
   encodeBase64url,
   HEADER_LENGTH,
+  MAX_MIME_BYTES,
   objectHash,
   parseLink,
   PowTimeoutError,
@@ -11,11 +12,14 @@ import { stretchScrypt } from '@nylzo/core/scrypt';
 import { describe, expect, it } from 'vitest';
 
 import { ApiError } from '../../shared/api/api-errors.ts';
+import type { Creation, Instance, IssuingInstance } from '../../shared/api/api.ts';
 import { fakeApi } from '../../shared/api/fake-api.ts';
 import type { FakeApi } from '../../shared/api/fake-api.ts';
 import { KdfWorkerError } from '../../shared/kdf/kdf-protocol.ts';
+import { createReader } from '../read/reader.ts';
+import type { ReadView } from '../read/reader.ts';
 import { CreateError, createMessage, passphraseIsWeak, POW_BUDGET_MS, validateCreate } from './create-message.ts';
-import type { CreateDependencies, CreateInput } from './create-message.ts';
+import type { CreateDependencies, CreateInput, CreateProgress } from './create-message.ts';
 
 type Stretch = CreateDependencies['stretch'];
 
@@ -51,6 +55,53 @@ function input(overrides: Partial<CreateInput> = {}): CreateInput {
   return { text: 'ahoj', ttlSeconds: 3600, opensMax: 1, passphrase: '', ...overrides };
 }
 
+function limitObjects(api: FakeApi, maxObjectBytes: number): void {
+  const { instance } = api;
+  function limited(creation: Creation): Promise<IssuingInstance>;
+  function limited(): Promise<Instance>;
+  async function limited(creation?: Creation): Promise<Instance> {
+    const described = await (creation === undefined ? instance() : instance(creation));
+    return { ...described, limits: { ...described.limits, maxObjectBytes } };
+  }
+  api.instance = limited;
+}
+
+async function readBack(api: FakeApi, link: string): Promise<ReadView | undefined> {
+  const url = new URL(link);
+  const views: ReadView[] = [];
+  let fragment = url.hash;
+  const session = new Map<string, string>();
+  const reader = createReader(
+    {
+      api,
+      location: { pathname: url.pathname },
+      takeFragment: () => {
+        const taken = fragment;
+        fragment = '';
+        return taken;
+      },
+      session: {
+        getItem: (key) => session.get(key) ?? null,
+        setItem: (key, value) => {
+          session.set(key, value);
+        },
+        removeItem: (key) => {
+          session.delete(key);
+        },
+      },
+      page: { visible: () => true, prerendering: () => false },
+      stretch,
+      now: () => Date.now(),
+    },
+    (view) => {
+      views.push(view);
+    },
+  );
+  await reader.load();
+  await reader.reveal();
+  return views.at(-1);
+}
+
 describe('creating a message', () => {
   it('never compresses an attachment, which only a sender of the CLI may choose', async () => {
     const api = fakeApi();
@@ -66,6 +117,15 @@ describe('creating a message', () => {
     const file = { name: 'a\uD800.txt', mime: 'text/plain', bytes: new Uint8Array([1]) };
     const created = await createMessage(input({ text: 'x\uDC00', file }), createDependencies(api));
     expect(created.link).toMatch(/\/r#3\./u);
+  });
+
+  it('stores a file without text and drops a media type longer than the format allows', async () => {
+    const api = fakeApi();
+    const file = { name: 'notes.bin', mime: `application/${'x'.repeat(MAX_MIME_BYTES)}`, bytes: new Uint8Array([7]) };
+    const created = await createMessage(input({ text: '', file }), createDependencies(api));
+    const revealed = await readBack(api, created.link);
+    expect(revealed).toMatchObject({ view: 'revealed', file: { name: 'notes.bin', mime: '', bytes: file.bytes } });
+    expect(revealed?.view === 'revealed' && revealed.text).toBeUndefined();
   });
 
   it('pins the object in the link and registers with OPAQUE also without a passphrase', async () => {
@@ -116,6 +176,43 @@ describe('creating a message', () => {
     expect(stuck.calls).not.toContain('create');
   });
 
+  it('reports the progress of the proof of work and skips it once the instance stops asking for one', async () => {
+    const options = { pow: { required: true, difficulty: 1 } };
+    const api = fakeApi(options);
+    const progress: CreateProgress[] = [];
+    const reporting = {
+      ...createDependencies(api),
+      solvePow: (_request: unknown, onProgress: (fraction: number) => void) => {
+        onProgress(0.5);
+        return Promise.resolve('proof');
+      },
+    };
+    await createMessage(input(), reporting, (step) => {
+      progress.push(step);
+    });
+    expect(progress).toContainEqual({ step: 'proving', fraction: 0.5 });
+    expect([...api.stored.values()].at(-1)?.request.powToken).toBe('proof');
+    const relaxing = {
+      ...createDependencies(api),
+      stretch: (message: Uint8Array<ArrayBuffer>, onProgress: (fraction: number) => void) => {
+        options.pow.required = false;
+        return stretch(message, onProgress);
+      },
+    };
+    options.pow.required = true;
+    await createMessage(input({ passphrase: 'correct horse battery staple' }), relaxing);
+    expect([...api.stored.values()].at(-1)?.request.powToken).toBeUndefined();
+  });
+
+  it('refuses a message whose sealed object outgrows the instance limit', async () => {
+    const api = fakeApi();
+    limitObjects(api, 1000);
+    await expect(createMessage(input(), createDependencies(api))).rejects.toMatchObject({
+      failure: { kind: 'too_large' },
+    });
+    expect(api.calls).not.toContain('create');
+  });
+
   it('retries with a new id and a new challenge when the server refuses the proof of work', async () => {
     const api = fakeApi({ pow: { required: true, difficulty: 1 }, failCreate: [new ApiError(403, 'pow')] });
     const dependencies = createDependencies(api);
@@ -140,6 +237,10 @@ describe('creating a message', () => {
     await expect(createMessage(input(), createDependencies(limited))).rejects.toMatchObject({
       failure: { kind: 'rate_limited', retryAfter: 30 },
     });
+    const down = fakeApi({ failCreate: [new ApiError(503, 'unavailable', { retryAfter: 5 })] });
+    await expect(createMessage(input(), createDependencies(down))).rejects.toMatchObject({
+      failure: { kind: 'unavailable', retryAfter: 5 },
+    });
     const api = fakeApi();
     const creating = createMessage(
       input({ text: '', passphrase: 'short', opensMax: 0, ttlSeconds: 30 }),
@@ -154,6 +255,12 @@ describe('creating a message', () => {
         { field: 'opens', code: 'out_of_range' },
         { field: 'passphrase', code: 'too_short' },
       ],
+    });
+    expect(api.calls).toEqual(['instance+id']);
+    const malformed = createMessage(input({ passphrase: '\u{D800} twelve chars' }), createDependencies(api));
+    await expect(malformed).rejects.toHaveProperty('failure', {
+      kind: 'invalid',
+      problems: [{ field: 'passphrase', code: 'malformed' }],
     });
     expect(api.calls).toEqual(['instance+id']);
     const words = Array.from({ length: 16_000 }, (_, index) => `w${index.toString(36)}`).join(' ');
@@ -190,6 +297,8 @@ describe('creating a message', () => {
       { field: 'opens', code: 'out_of_range' },
     ]);
     expect(validateCreate(input({ passphrase: 'correct horse battery staple' }), limits)).toEqual([]);
+    const file = { name: 'large.bin', mime: '', bytes: new Uint8Array(limits.maxFileBytes + 1) };
+    expect(validateCreate(input({ file }), limits)).toEqual([{ field: 'file', code: 'too_large' }]);
     expect(validateCreate(input({ passphrase: '\u{D800} twelve chars' }), limits)).toEqual([
       { field: 'passphrase', code: 'malformed' },
     ]);
@@ -206,6 +315,7 @@ describe('creating a message', () => {
   });
 
   it('warns unless the passphrase has 16 characters and 4 words', () => {
+    expect(passphraseIsWeak('')).toBe(true);
     expect(passphraseIsWeak('twelve chars')).toBe(true);
     expect(passphraseIsWeak('sixteencharacter')).toBe(true);
     expect(passphraseIsWeak('one two three four')).toBe(false);

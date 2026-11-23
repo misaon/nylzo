@@ -42,47 +42,34 @@ var powCases = []powCase{
 	{name: "first solution at difficulty 6", solveTo: new(6)},
 }
 
-func (f *File) pow() error {
+func (f *File) pow() {
 	f.PoW = make([]PoW, len(powCases))
-	errs := make([]error, len(powCases))
 	var wait sync.WaitGroup
 	for i, vector := range powCases {
-		wait.Go(func() { f.PoW[i], errs[i] = powVector(vector) })
+		wait.Go(func() { f.PoW[i] = powVector(vector) })
 	}
 	wait.Wait()
-	return errors.Join(errs...)
 }
 
-func powVector(vector powCase) (PoW, error) {
+func powVector(vector powCase) PoW {
 	rawChallenge := deterministic("pow-challenge/"+vector.name, proofofwork.ChallengeLen)
 	challenge := core.Encode(rawChallenge)
 	id := deterministicID("pow/" + vector.name)
 	counter := vector.counter
 	if vector.solveTo != nil {
-		solved, err := proofofwork.FirstSolution(
+		counter = must(proofofwork.FirstSolution(
 			context.Background(),
 			(*[proofofwork.ChallengeLen]byte)(rawChallenge),
 			id,
 			*vector.solveTo,
-		)
-		if err != nil {
-			return PoW{}, err
-		}
-		counter = solved
+		))
 	}
-	digest, err := proofofwork.Digest((*[proofofwork.ChallengeLen]byte)(rawChallenge), id, counter)
-	if err != nil {
-		return PoW{}, err
-	}
+	digest := must(proofofwork.Digest((*[proofofwork.ChallengeLen]byte)(rawChallenge), id, counter))
 	zeroBits := proofofwork.LeadingZeroBits(digest[:])
-	if zeroBits < vector.minZeroBits {
-		return PoW{}, fmt.Errorf(
-			"%w %q has fewer than %d zero bits",
-			errTooFewZeroBits,
-			vector.name,
-			vector.minZeroBits,
-		)
-	}
+	require(
+		zeroBits >= vector.minZeroBits,
+		fmt.Errorf("%w %q has fewer than %d zero bits", errTooFewZeroBits, vector.name, vector.minZeroBits),
+	)
 	return PoW{
 		Name:       vector.name,
 		Challenge:  challenge,
@@ -92,5 +79,5 @@ func powVector(vector powCase) (PoW, error) {
 		ZeroBits:   zeroBits,
 		Token:      proofofwork.Token(challenge, counter),
 		Difficulty: vector.solveTo,
-	}, nil
+	}
 }

@@ -28,10 +28,12 @@ type terminalFiles struct {
 type System struct {
 	stdin  *os.File
 	stdout *os.File
+	open   func() (terminalFiles, error)
+	end    func(os.Signal)
 }
 
 func NewSystem(stdin, stdout *os.File) *System {
-	return &System{stdin: stdin, stdout: stdout}
+	return &System{stdin: stdin, stdout: stdout, open: openTerminal, end: stopsignal.Exit}
 }
 
 func (s *System) StdinIsTerminal() bool {
@@ -44,8 +46,8 @@ func (s *System) StdoutIsTerminal() bool {
 
 // ReadSecret reads from the controlling terminal without echo, and on a stop signal restores the echo before the
 // process ends by that signal.
-func (*System) ReadSecret(prompt string) ([]byte, error) {
-	files, err := openTerminal()
+func (s *System) ReadSecret(prompt string) ([]byte, error) {
+	files, err := s.open()
 	if err != nil {
 		return nil, ErrNoTerminal
 	}
@@ -69,7 +71,7 @@ func (*System) ReadSecret(prompt string) ([]byte, error) {
 		case received := <-interrupted:
 			_ = term.Restore(descriptor, state)
 			fmt.Fprintln(output)
-			stopsignal.Exit(received)
+			s.end(received)
 		case <-done:
 		}
 	}()

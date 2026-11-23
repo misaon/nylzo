@@ -97,6 +97,15 @@ describe('worker lifecycle', () => {
     await expect(result).resolves.toBe('challenge.0000000000000001');
   });
 
+  it('ignores a worker error that follows the key', async () => {
+    const result = stretchInWorker(oprfOutput, progress);
+    await Promise.resolve();
+    reply({ kind: 'key', key: new Uint8Array(64) });
+    worker.dispatchEvent(new Event('error'));
+    await expect(result).resolves.toEqual(new Uint8Array(64));
+    expect(stop).toHaveBeenCalledOnce();
+  });
+
   it.each(['error', 'messageerror'])('cleans up on a worker %s event', async (type) => {
     const result = stretchInWorker(oprfOutput, progress);
     const failed = settled(result);

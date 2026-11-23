@@ -27,4 +27,10 @@ describe('takeEnrollmentToken', () => {
     expect(takeEnrollmentToken(link)).toBeUndefined();
     expect(link.replaced).toEqual(['/admin']);
   });
+
+  it('leaves an address without a fragment alone', () => {
+    const link = address('');
+    expect(takeEnrollmentToken(link)).toBeUndefined();
+    expect(link.replaced).toEqual([]);
+  });
 });

@@ -148,3 +148,52 @@ func see(challenges *Challenges, challenge [signing.ChallengeLen]byte, now time.
 	accepted, _ := challenges.Take(challenge, now)
 	return accepted
 }
+
+func filledLogin() *Login {
+	login := &Login{}
+	for i := range login.Server.ExpectedClientMAC {
+		login.Server.ExpectedClientMAC[i] = 0xff
+	}
+	return login
+}
+
+func wiped(login *Login) bool {
+	return login.Server.ExpectedClientMAC == [len(login.Server.ExpectedClientMAC)]byte{}
+}
+
+func TestEveryWayAChallengeEndsWipesItsLogin(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	challenges := NewChallenges(testRing(t), MinCapacity)
+	attached := func() ([signing.ChallengeLen]byte, *Login) {
+		challenge, _, _ := challenges.IssueLogin(now)
+		login := filledLogin()
+		if !challenges.Attach(challenge, login) {
+			t.Fatal("a login did not attach to its challenge")
+		}
+		return challenge, login
+	}
+	late, lateLogin := attached()
+	if accepted, handed := challenges.Take(late, now.Add(time.Hour)); accepted || handed != nil || !wiped(lateLogin) {
+		t.Error("a challenge taken after its window kept or handed over its login")
+	}
+	forgotten, forgottenLogin := attached()
+	challenges.Forget(forgotten)
+	if !wiped(forgottenLogin) {
+		t.Error("a forgotten challenge kept its login")
+	}
+	_, purgedLogin := attached()
+	challenges.Purge(now.Add(time.Hour))
+	if !wiped(purgedLogin) {
+		t.Error("a purged challenge kept its login")
+	}
+}
+
+func TestTimesOutsideTheProtocolFieldAreZero(t *testing.T) {
+	t.Parallel()
+	for _, moment := range []time.Time{time.Unix(-1, 0), time.Unix(math.MaxUint32+1, 0)} {
+		if seconds := unixSeconds(moment); seconds != 0 {
+			t.Errorf("%v: %d", moment, seconds)
+		}
+	}
+}

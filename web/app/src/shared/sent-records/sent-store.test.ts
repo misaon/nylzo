@@ -15,6 +15,7 @@ import {
 } from './sent-record.ts';
 import type { SentRecord } from './sent-record.ts';
 import { purgeSentRecords, rememberSent, retainedRecords } from './sent-store.ts';
+import { sessionSentStore } from './session-sent-store.ts';
 
 const NOW = Date.parse('2026-10-23T12:00:00Z');
 const ID = 'AAAAAAAAAAAAAAAAAAAAAA';
@@ -92,6 +93,7 @@ describe('stored records of sent messages', () => {
       { ...good, privateKey: 'key' },
       { ...good, publicKey: good.publicKey.slice(1) },
       { ...good, id: 'not an id' },
+      { ...good, id: 42 },
       { ...good, id: `${ID.slice(0, 21)}B` },
       { ...good, createdAt: Number.NaN },
       { ...good, expiresAt: '2026-10-23' },
@@ -111,6 +113,15 @@ describe('stored records of sent messages', () => {
     const [listed] = await store.list();
     expect(listed).toBeDefined();
     expect(listed).not.toHaveProperty('label');
+    await store.put({ ...(await newRecord()), label: 'Pro Petra' });
+    expect(await store.get(ID)).toMatchObject({ label: 'Pro Petra' });
+  });
+
+  it('holds records of this tab in memory until the tab closes', async () => {
+    const store = sessionSentStore();
+    expect(store.held()).toBe(false);
+    await store.put(await newRecord());
+    expect(store.held()).toBe(true);
   });
 
   it('keeps a short label the sender typed and drops one that is not plain text', async () => {
@@ -187,5 +198,22 @@ describe('remembering a new message', () => {
     gate.resolve(undefined);
     await landed.promise;
     await vi.waitFor(() => expect(store.records.has(ID)).toBe(false));
+  });
+
+  it('removes nothing when a late save fails after all', async () => {
+    const store = memoryStore();
+    const gate = Promise.withResolvers<undefined>();
+    const failed = Promise.withResolvers<undefined>();
+    const remove = vi.spyOn(store, 'remove');
+    store.put = async () => {
+      await gate.promise;
+      failed.resolve(undefined);
+      throw new Error('quota exceeded');
+    };
+    expect(await rememberSent(store, await newRecord(), 10)).toBe(false);
+    gate.resolve(undefined);
+    await failed.promise;
+    await Promise.resolve();
+    expect(remove).not.toHaveBeenCalled();
   });
 });

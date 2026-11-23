@@ -1,8 +1,8 @@
 import { ResponseError } from '../../shared/api/api-errors.ts';
 import { integer, isObject, text } from '../../shared/api/responses.ts';
 import type { Json } from '../../shared/api/responses.ts';
-import { byTimelineMetric, RANGES, TIMELINE_METRICS } from '../api/types.ts';
-import type { LiveUpdate, Overview, Range, RefusedClient, Share, TimelineMetric, UsagePoint } from '../api/types.ts';
+import { byTimelineMetric, RANGES, TIMELINE_METRICS } from './types.ts';
+import type { LiveUpdate, Overview, Range, RefusedClient, Share, TimelineMetric, UsagePoint } from './types.ts';
 
 function objectAt(json: Json, key: string): Json {
   const value = json[key];

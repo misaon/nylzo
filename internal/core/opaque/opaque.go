@@ -93,10 +93,7 @@ func (k *ServerKeys) Wipe() {
 
 // DeriveServerKeys derives the AKE key pair from a seed of SeedLen bytes (DeriveDiffieHellmanKeyPair).
 func DeriveServerKeys(akeSeed []byte, oprfSeed *[OPRFSeedLen]byte) (ServerKeys, error) {
-	private, public, err := deriveKeyPair(akeSeed, infoDiffieHellman)
-	if err != nil {
-		return ServerKeys{}, err
-	}
+	private, public := deriveKeyPair(akeSeed, infoDiffieHellman)
 	return ServerKeys{PrivateKey: private, PublicKey: [ElementLen]byte(public.Bytes()), OPRFSeed: *oprfSeed}, nil
 }
 
@@ -138,15 +135,11 @@ func CreateRegistrationRequestWith(
 	return [RegistrationRequestLen]byte(blinded), state, nil
 }
 
-func oprfKey(seed *[OPRFSeedLen]byte, credentialIdentifier []byte) (*ristretto255.Scalar, error) {
-	info := append(append([]byte(nil), credentialIdentifier...), labelOPRFKey...)
-	derived, err := hkdf.Expand(sha512.New, seed[:], string(info), ScalarLen)
-	if err != nil {
-		return nil, err
-	}
+func oprfKey(seed *[OPRFSeedLen]byte, credentialIdentifier []byte) *ristretto255.Scalar {
+	derived := expand(seed[:], append(append([]byte(nil), credentialIdentifier...), labelOPRFKey...), ScalarLen)
 	defer clear(derived)
-	key, _, err := deriveKeyPair(derived, infoDeriveKeyPair)
-	return key, err
+	key, _ := deriveKeyPair(derived, infoDeriveKeyPair)
+	return key
 }
 
 // CreateRegistrationResponse is RFC 9807 section 5.2.2.
@@ -156,10 +149,7 @@ func CreateRegistrationResponse(
 	credentialIdentifier []byte,
 ) ([RegistrationResponseLen]byte, error) {
 	var response [RegistrationResponseLen]byte
-	key, err := oprfKey(&keys.OPRFSeed, credentialIdentifier)
-	if err != nil {
-		return response, err
-	}
+	key := oprfKey(&keys.OPRFSeed, credentialIdentifier)
 	defer key.Zero()
 	evaluated, err := blindEvaluate(key, request)
 	if err != nil {
@@ -207,10 +197,7 @@ func FinalizeRegistrationRequestWith(
 		return finished, err
 	}
 	defer clear(randomized)
-	stored, err := store(randomized, serverPublicKey, nonce)
-	if err != nil {
-		return finished, err
-	}
+	stored := store(randomized, serverPublicKey, nonce)
 	defer stored.wipe()
 	copy(finished.Record[:ElementLen], stored.clientPublicKey)
 	copy(finished.Record[ElementLen:ElementLen+HashLen], stored.maskingKey)
@@ -237,7 +224,8 @@ func randomizedPassword(
 	defer clear(stretched)
 	ikm := append(append(make([]byte, 0, len(output)+len(stretched)), output...), stretched...)
 	defer clear(ikm)
-	return hkdf.Extract(sha512.New, ikm, nil)
+	randomized, _ := hkdf.Extract(sha512.New, ikm, nil)
+	return randomized, nil
 }
 
 type stored struct {
@@ -258,8 +246,9 @@ func (s *stored) wipe() {
 	}
 }
 
-func expand(secret, info []byte, length int) ([]byte, error) {
-	return hkdf.Expand(sha512.New, secret, string(info), length)
+func expand(secret, info []byte, length int) []byte {
+	expanded, _ := hkdf.Expand(sha512.New, secret, string(info), length)
+	return expanded
 }
 
 func withNonce(nonce []byte, label string) []byte {
@@ -267,33 +256,21 @@ func withNonce(nonce []byte, label string) []byte {
 }
 
 // store is Store of RFC 9807 section 4.1.2 and, with the stored nonce, Recover of section 4.1.3.
-func store(randomized, serverPublicKey []byte, nonce *[NonceLen]byte) (*stored, error) {
-	result := &stored{}
-	var err error
-	if result.maskingKey, err = expand(randomized, []byte(labelMaskingKey), HashLen); err != nil {
-		return nil, err
+func store(randomized, serverPublicKey []byte, nonce *[NonceLen]byte) *stored {
+	result := &stored{
+		maskingKey: expand(randomized, []byte(labelMaskingKey), HashLen),
+		authKey:    expand(randomized, withNonce(nonce[:], labelAuthKey), HashLen),
+		exportKey:  expand(randomized, withNonce(nonce[:], labelExportKey), HashLen),
 	}
-	if result.authKey, err = expand(randomized, withNonce(nonce[:], labelAuthKey), HashLen); err != nil {
-		return nil, err
-	}
-	if result.exportKey, err = expand(randomized, withNonce(nonce[:], labelExportKey), HashLen); err != nil {
-		return nil, err
-	}
-	seed, err := expand(randomized, withNonce(nonce[:], labelPrivateKey), SeedLen)
-	if err != nil {
-		return nil, err
-	}
+	seed := expand(randomized, withNonce(nonce[:], labelPrivateKey), SeedLen)
 	defer clear(seed)
-	private, public, err := deriveKeyPair(seed, infoDiffieHellman)
-	if err != nil {
-		return nil, err
-	}
+	private, public := deriveKeyPair(seed, infoDiffieHellman)
 	result.clientPrivate, result.clientPublicKey = private, public.Bytes()
 	tag := hmac.New(sha512.New, result.authKey)
 	tag.Write(nonce[:])
 	tag.Write(cleartextCredentials(serverPublicKey, result.clientPublicKey))
 	result.envelope = append(append(make([]byte, 0, EnvelopeLen), nonce[:]...), tag.Sum(nil)...)
-	return result, nil
+	return result
 }
 
 // cleartextCredentials serializes CleartextCredentials with both identities set to the public keys.
@@ -354,10 +331,7 @@ func GenerateKE1With(
 	if err != nil {
 		return ke1, ClientLogin{}, err
 	}
-	secret, keyshare, err := deriveKeyPair(keyshareSeed[:], infoDiffieHellman)
-	if err != nil {
-		return ke1, ClientLogin{}, err
-	}
+	secret, keyshare := deriveKeyPair(keyshareSeed[:], infoDiffieHellman)
 	copy(ke1[:ElementLen], blinded)
 	copy(ke1[ElementLen:ElementLen+NonceLen], nonce[:])
 	copy(ke1[ElementLen+NonceLen:], keyshare.Bytes())
@@ -406,10 +380,7 @@ func (c *ClientLogin) GenerateKE3(ke2 []byte, config *Config) (ClientResult, err
 	preamble := buildPreamble(
 		config.Context, recovered.clientPublicKey, c.ke1[:], serverPublicKey, response, serverNonce, serverKeyshare,
 	)
-	keys, err := deriveKeys(ikm, preamble)
-	if err != nil {
-		return result, err
-	}
+	keys := deriveKeys(ikm, preamble)
 	defer keys.wipe()
 	expectedServerMAC := mac(keys.serverMAC, preambleHash(preamble))
 	if !hmac.Equal(serverMAC, expectedServerMAC) {
@@ -426,26 +397,17 @@ func (c *ClientLogin) recoverCredentials(response []byte, stretch Stretch) (*sto
 		return nil, nil, err
 	}
 	defer clear(randomized)
-	maskingKey, err := expand(randomized, []byte(labelMaskingKey), HashLen)
-	if err != nil {
-		return nil, nil, err
-	}
+	maskingKey := expand(randomized, []byte(labelMaskingKey), HashLen)
 	defer clear(maskingKey)
 	maskingNonce := response[ElementLen : ElementLen+NonceLen]
-	pad, err := expand(maskingKey, withNonce(maskingNonce, labelResponsePad), maskedResponseLen)
-	if err != nil {
-		return nil, nil, err
-	}
+	pad := expand(maskingKey, withNonce(maskingNonce, labelResponsePad), maskedResponseLen)
 	defer clear(pad)
 	unmasked := make([]byte, maskedResponseLen)
 	subtle.XORBytes(unmasked, pad, response[ElementLen+NonceLen:])
 	serverPublicKey := unmasked[:ElementLen]
 	envelope := unmasked[ElementLen:]
 	nonce := [NonceLen]byte(envelope[:NonceLen])
-	recovered, err := store(randomized, serverPublicKey, &nonce)
-	if err != nil {
-		return nil, nil, err
-	}
+	recovered := store(randomized, serverPublicKey, &nonce)
 	if !hmac.Equal(recovered.envelope, envelope) {
 		recovered.wipe()
 		return nil, nil, ErrEnvelopeRecovery
@@ -528,10 +490,7 @@ func GenerateKE2With(
 	if err != nil {
 		return ke2, ServerLogin{}, err
 	}
-	secret, keyshare, err := deriveKeyPair(random.KeyshareSeed[:], infoDiffieHellman)
-	if err != nil {
-		return ke2, ServerLogin{}, err
-	}
+	secret, keyshare := deriveKeyPair(random.KeyshareSeed[:], infoDiffieHellman)
 	defer secret.Zero()
 	keyshareBytes := keyshare.Bytes()
 	preamble := buildPreamble(
@@ -542,10 +501,7 @@ func GenerateKE2With(
 		[]*ristretto255.Element{clientKeyshare, clientKeyshare, clientPublicElement},
 	)
 	defer clear(ikm)
-	derived, err := deriveKeys(ikm, preamble)
-	if err != nil {
-		return ke2, ServerLogin{}, err
-	}
+	derived := deriveKeys(ikm, preamble)
 	defer derived.wipe()
 	serverMAC := mac(derived.serverMAC, preambleHash(preamble))
 	var login ServerLogin
@@ -563,20 +519,14 @@ func createCredentialResponse(
 	blinded []byte,
 	maskingNonce *[NonceLen]byte,
 ) ([]byte, error) {
-	key, err := oprfKey(&keys.OPRFSeed, credentialIdentifier)
-	if err != nil {
-		return nil, err
-	}
+	key := oprfKey(&keys.OPRFSeed, credentialIdentifier)
 	defer key.Zero()
 	evaluated, err := blindEvaluate(key, blinded)
 	if err != nil {
 		return nil, err
 	}
 	maskingKey := record[ElementLen : ElementLen+HashLen]
-	pad, err := expand(maskingKey, withNonce(maskingNonce[:], labelResponsePad), maskedResponseLen)
-	if err != nil {
-		return nil, err
-	}
+	pad := expand(maskingKey, withNonce(maskingNonce[:], labelResponsePad), maskedResponseLen)
 	defer clear(pad)
 	plain := append(append(make([]byte, 0, maskedResponseLen), keys.PublicKey[:]...), record[ElementLen+HashLen:]...)
 	masked := make([]byte, maskedResponseLen)
@@ -631,30 +581,19 @@ func (k *akeKeys) wipe() {
 }
 
 // deriveKeys is DeriveKeys of RFC 9807 section 6.4.2.2 without session_key, which Nylzo does not use.
-func deriveKeys(ikm, preamble []byte) (*akeKeys, error) {
-	prk, err := hkdf.Extract(sha512.New, ikm, nil)
-	if err != nil {
-		return nil, err
-	}
+func deriveKeys(ikm, preamble []byte) *akeKeys {
+	prk, _ := hkdf.Extract(sha512.New, ikm, nil)
 	defer clear(prk)
-	transcript := preambleHash(preamble)
-	handshake, err := expandLabel(prk, labelHandshake, transcript)
-	if err != nil {
-		return nil, err
-	}
+	handshake := expandLabel(prk, labelHandshake, preambleHash(preamble))
 	defer clear(handshake)
-	keys := &akeKeys{}
-	if keys.serverMAC, err = expandLabel(handshake, labelServerMAC, nil); err != nil {
-		return nil, err
+	return &akeKeys{
+		serverMAC: expandLabel(handshake, labelServerMAC, nil),
+		clientMAC: expandLabel(handshake, labelClientMAC, nil),
 	}
-	if keys.clientMAC, err = expandLabel(handshake, labelClientMAC, nil); err != nil {
-		return nil, err
-	}
-	return keys, nil
 }
 
 // expandLabel is Derive-Secret of RFC 9807 section 6.4.2.1: Expand-Label with Nx bytes of output.
-func expandLabel(secret []byte, label string, context []byte) ([]byte, error) {
+func expandLabel(secret []byte, label string, context []byte) []byte {
 	full := labelPrefix + label
 	info := appendLength16(nil, HashLen)
 	info = append(info, lengthByte(len(full)))
