@@ -468,9 +468,9 @@ export const messages: Catalog = {
   'hero.title.accent': 'qu’une fois',
   'hero.lead':
     'Envoyez en toute sécurité un mot de passe, une clé API ou un fichier par un lien qui ne s’ouvre qu’une fois.',
-  'seo.title': 'Envoyer un mot de passe en sécurité\u{A0}: lien à usage unique | Nylzo',
+  'seo.title': 'Envoyer un mot de passe en sécurité | Nylzo',
   'seo.description':
-    'Envoyez un mot de passe, une clé API ou un fichier par un lien qui ne s’ouvre qu’une fois. Le chiffrement se fait dès votre navigateur. Gratuit et sans inscription.',
+    'Envoyez un mot de passe, une clé API ou un fichier par un lien qui ne s’ouvre qu’une fois. Chiffré dès votre navigateur. Gratuit et sans inscription.',
   'seo.image': 'Le logo Nylzo sur un ciel étoilé',
 
   'compose.placeholder': 'Ce qui ne doit pas rester dans une messagerie a sa place ici…',
