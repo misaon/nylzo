@@ -67,7 +67,9 @@
       </Button>
     {:else}
       <Button variant="primary" href="/" class="max-sm:flex-1">
-        <Icon name="pen" class="size-3.5 shrink-0 opacity-70" animated />{translate('nav.write')}
+        <Icon name="pen" class="size-3.5 shrink-0 opacity-70" animated />
+        <span class="sm:hidden" aria-hidden="true">{translate('nav.write.short')}</span>
+        <span class="max-sm:sr-only">{translate('nav.write')}</span>
       </Button>
     {/if}
   </div>
@@ -146,7 +148,7 @@
           {translate('read.delete.confirm')}
         </p>
       </div>
-      <div class="grid grid-cols-2 gap-1.5 sm:flex sm:items-center">
+      <div class="flex flex-wrap gap-1.5 *:min-w-fit *:flex-1 sm:flex-nowrap sm:items-center sm:*:flex-none">
         <Button
           {@attach (element) => page.focus.attach('keepMessage')(element)}
           variant="ghost"

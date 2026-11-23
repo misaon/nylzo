@@ -41,8 +41,8 @@
           <Icon name="file" class="size-5.5" />
         </span>
         <span class="min-w-0 flex-1">
-          <bdi translate="no" class="flex min-w-0 text-title-sm text-ink"
-            ><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi
+          <bdi translate="no" class="block text-title-sm text-ink wrap-anywhere"
+            >{parts.stem}<span class="whitespace-nowrap">{parts.extension}</span></bdi
           >
           <span translate="no" class="mt-1 block text-caption text-ink-mute tabular-nums"
             >{kind ? `${kind} · ${size}` : size}</span

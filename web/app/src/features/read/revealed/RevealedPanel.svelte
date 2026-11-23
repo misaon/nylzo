@@ -49,7 +49,7 @@
           >
             {translate('revealed.title')}
           </h3>
-          <p class="truncate text-caption text-ink-mute">{translate('open.revealed.sub')}</p>
+          <p class="text-caption text-pretty text-ink-mute">{translate('open.revealed.sub')}</p>
         </div>
       </div>
       {#if page.revealed.text !== undefined}
