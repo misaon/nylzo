@@ -58,6 +58,7 @@ interface Navigation {
   readonly downloadRequest?: string | null;
   readonly formData?: FormData | null;
   readonly info?: unknown;
+  readonly cancelable?: boolean;
 }
 
 type Intercept = (options: NavigationInterceptOptions) => void;
@@ -115,9 +116,9 @@ describe('app shell', () => {
     flushSync();
   }
 
-  function navigate(options: Navigation): ReturnType<typeof vi.fn<Intercept>> {
+  function navigate({ cancelable = true, ...options }: Navigation): ReturnType<typeof vi.fn<Intercept>> {
     const intercept = vi.fn<Intercept>();
-    const event = Object.assign(new Event('navigate', { cancelable: true }), {
+    const event = Object.assign(new Event('navigate', { cancelable }), {
       canIntercept: true,
       hashChange: false,
       downloadRequest: null,
@@ -283,6 +284,17 @@ describe('app shell', () => {
         expect(document.title).toBe(translated('en', 'title.agents'));
       },
     );
+
+    it('drops the question when the browser leaves without letting the page ask', async () => {
+      show('/terms');
+      holdMessages();
+      screenWork().guard(() => 'draft');
+      navigate({ url: '/agents' });
+      expect(document.querySelector('dialog')).not.toBeNull();
+      await intercepted(navigate({ url: '/agents', cancelable: false }));
+      expect(document.querySelector('dialog')).toBeNull();
+      expect(document.title).toBe(translated('en', 'title.agents'));
+    });
 
     it('leaves a navigation to the browser while this tab tracks no message', () => {
       show('/terms');

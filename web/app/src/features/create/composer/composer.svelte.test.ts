@@ -347,10 +347,9 @@ describe('message composer interactions', () => {
     const form = composer();
     form.text = '  ';
     expect(leaving(form)).toEqual([undefined, false]);
-    form.file = new File(['ok'], 'notes.txt');
-    expect(leaving(form)).toEqual(['draft', true]);
-    form.file = undefined;
     form.text = 'draft';
+    form.passphrase = 'correct horse battery staple';
+    expect([...leaving(form), form.passphrase]).toEqual(['draft', true, '']);
     await submit(form);
     vi.advanceTimersByTime(5100);
     expect(leaving(form)).toEqual(['link', true]);
@@ -361,7 +360,7 @@ describe('message composer interactions', () => {
     await form.remember('');
     expect(leaving(form)).toEqual(['link', true]);
     await form.remember('');
-    expect(leaving(form)).toEqual([undefined, false]);
+    expect([form.kept, ...leaving(form)]).toEqual([false, undefined, true]);
   });
 
   it('keeps a message only in this tab when the page cannot keep it in the browser', async () => {

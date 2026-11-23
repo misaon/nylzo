@@ -147,15 +147,7 @@ export class Composer {
   readonly sealingWithPassphrase = $derived(this.#state.phase === 'encrypting' && this.#state.withPassphrase);
   readonly busy = $derived(this.phase !== 'compose');
 
-  readonly unsaved = $derived.by((): UnsavedWork | undefined => {
-    const state = this.#state;
-    const linkCreated = state.phase === 'done' || (state.phase === 'encrypting' && state.pending !== undefined);
-    if (!linkCreated) {
-      return this.text.trim() !== '' || this.file !== undefined ? 'draft' : undefined;
-    }
-    const tracked = this.remembered === 'saving' || this.remembered === 'remembered';
-    return this.linkCopied || tracked ? undefined : 'link';
-  });
+  readonly unsaved = $derived(this.#unsavedWork({ leavingTab: false }));
 
   // A link of the final length lets the created panel take its size at the click, so nothing moves when it arrives.
   readonly placeholder = $derived(
@@ -321,10 +313,10 @@ export class Composer {
     this.focus.focus(trigger);
   };
 
+  // The passphrase goes even when the sender may stay, so a browser saving fields on unload never sees it.
   readonly guardLeaving = (event: Event): void => {
-    if (this.unsaved) {
+    if (this.#unsavedWork({ leavingTab: true })) {
       event.preventDefault();
-      return;
     }
     this.forgetPassphrase();
   };
@@ -483,6 +475,17 @@ export class Composer {
     this.timeline.stop();
     this.#state = { phase: 'done', sealed: result };
     this.#forgetTracking();
+  }
+
+  // A record kept only in this tab survives a switch between screens but not a new document.
+  #unsavedWork({ leavingTab }: { readonly leavingTab: boolean }): UnsavedWork | undefined {
+    const state = this.#state;
+    const linkCreated = state.phase === 'done' || (state.phase === 'encrypting' && state.pending !== undefined);
+    if (!linkCreated) {
+      return this.text.trim() !== '' || this.file !== undefined ? 'draft' : undefined;
+    }
+    const tracked = (this.remembered === 'saving' || this.remembered === 'remembered') && (this.kept || !leavingTab);
+    return this.linkCopied || tracked ? undefined : 'link';
   }
 
   #forgetTracking(): void {

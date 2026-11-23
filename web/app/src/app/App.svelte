@@ -99,6 +99,7 @@
 
   // Messages tracked only in this tab live in its memory: moving between screens keeps the document, leaving Nylzo forgets them.
   function keepTrackedMessages(event: NavigateEvent) {
+    leaving = undefined;
     // A screen still sending a message keeps the old behaviour: a new document cancels the request.
     if (
       replacingUrl ||
