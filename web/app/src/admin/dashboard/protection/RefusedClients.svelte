@@ -54,48 +54,57 @@
         <span class={i === 3 ? 'text-right' : undefined}>{column}</span>
       {/each}
     </div>
-    <ul role="list" class="mt-2 md:mt-0 md:max-h-[30rem] md:overflow-y-auto">
-      {#each clients as client (client.client)}
-        <li
-          class={[COLUMNS, 'grid gap-2 border-b border-white/6 py-3.5 last:border-b-0 md:items-center']}
-          animate:flip={{ duration: motionMs(REORDER_MS) }}
-        >
-          <div class="flex items-baseline justify-between gap-3 md:block">
-            <span class="sr-only md:hidden">{columns[0]}</span>
-            <span class="text-ui font-medium wrap-anywhere text-ink tabular-nums" translate="no">{client.client}</span>
-            <span class="text-ui font-medium text-ink tabular-nums md:hidden">{format.count(client.count)}</span>
-          </div>
-          <p class="text-caption text-ink-soft md:text-ui">
-            <span class="sr-only">{`${columns[1]}:`}</span>
-            {countryName(translate, format, client.country)}
-          </p>
-          <ul role="list" class="flex flex-wrap gap-1.5" aria-label={columns[2]}>
-            {#each reasons(client) as reason (reason.key)}
-              <li
-                class="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 py-0.5 pr-2 pl-2.5 text-micro text-rose-100 ring-1 ring-rose-300/25"
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <div
+      class="mt-2 md:mt-0 md:max-h-[30rem] md:overflow-y-auto"
+      role="region"
+      aria-label={translate('dashboard.protection.clients')}
+      tabindex="0"
+    >
+      <ul role="list">
+        {#each clients as client (client.client)}
+          <li
+            class={[COLUMNS, 'grid gap-2 border-b border-white/6 py-3.5 last:border-b-0 md:items-center']}
+            animate:flip={{ duration: motionMs(REORDER_MS) }}
+          >
+            <div class="flex items-baseline justify-between gap-3 md:block">
+              <span class="sr-only md:hidden">{columns[0]}</span>
+              <span class="text-ui font-medium wrap-anywhere text-ink tabular-nums" translate="no">{client.client}</span
               >
-                <span>{reason.label}</span>
-                <span class="font-medium text-ink tabular-nums">{format.count(reason.count)}</span>
-              </li>
-            {/each}
-          </ul>
-          <p class="hidden text-right text-ui font-medium text-ink tabular-nums md:block">
-            <span class="sr-only">{`${columns[3]}:`}</span>
-            {format.count(client.count)}
-          </p>
-          <p class="text-caption text-ink-mute tabular-nums">
-            <span class="sr-only">{`${columns[4]}:`}</span>
-            <time datetime={new Date(client.first * 1000).toISOString()}>
-              {format.relative(Math.min(client.first, now), now)}
-            </time>
-            →
-            <time class="text-ink-soft" datetime={new Date(client.last * 1000).toISOString()}>
-              {format.relative(Math.min(client.last, now), now)}
-            </time>
-          </p>
-        </li>
-      {/each}
-    </ul>
+              <span class="text-ui font-medium text-ink tabular-nums md:hidden">{format.count(client.count)}</span>
+            </div>
+            <p class="text-caption text-ink-soft md:text-ui">
+              <span class="sr-only">{`${columns[1]}:`}</span>
+              {countryName(translate, format, client.country)}
+            </p>
+            <ul role="list" class="flex flex-wrap gap-1.5" aria-label={columns[2]}>
+              {#each reasons(client) as reason (reason.key)}
+                <li
+                  class="inline-flex items-center gap-1.5 rounded-full bg-rose-500/10 py-0.5 pr-2 pl-2.5 text-micro text-rose-100 ring-1 ring-rose-300/25"
+                >
+                  <span>{reason.label}</span>
+                  <span class="font-medium text-ink tabular-nums">{format.count(reason.count)}</span>
+                </li>
+              {/each}
+            </ul>
+            <p class="hidden text-right text-ui font-medium text-ink tabular-nums md:block">
+              <span class="sr-only">{`${columns[3]}:`}</span>
+              {format.count(client.count)}
+            </p>
+            <p class="text-caption text-ink-mute tabular-nums">
+              <span class="sr-only">{`${columns[4]}:`}</span>
+              <time datetime={new Date(client.first * 1000).toISOString()}>
+                {format.relative(Math.min(client.first, now), now)}
+              </time>
+              →
+              <time class="text-ink-soft" datetime={new Date(client.last * 1000).toISOString()}>
+                {format.relative(Math.min(client.last, now), now)}
+              </time>
+            </p>
+          </li>
+        {/each}
+      </ul>
+    </div>
   {/if}
   <p class={[NOTE, 'mt-4 flex items-start gap-2']}>
     <Icon name="lock" class="mt-0.5 size-3.5 shrink-0" />
