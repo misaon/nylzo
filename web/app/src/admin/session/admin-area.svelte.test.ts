@@ -204,6 +204,7 @@ describe('AdminArea', () => {
       ['a rate limit', new ApiError(429, 'rate_limited'), 'busy'],
       ['a server that is unavailable', new ApiError(503, 'unavailable'), 'busy'],
       ['a refused passkey', new ApiError(401, 'unexpected'), 'refused'],
+      ['a path no admin area answers', new ApiError(404, 'not_found'), 'missing'],
       ['another server error', new ApiError(500, 'internal'), 'failed'],
       ['an unreachable server', new UnreachableError(new TypeError('offline')), 'offline'],
       ['a cancelled ceremony', new DOMException('no', 'NotAllowedError'), 'cancelled'],

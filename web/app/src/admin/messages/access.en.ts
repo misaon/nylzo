@@ -54,5 +54,8 @@ export const english: Readonly<Record<keyof typeof czech, string>> = {
     'The server does not know this passkey. Use another one or add a new one with nylzo admin-enroll.',
   'access.problem.busy': 'The server is busy right now. Try again in a moment.',
   'access.problem.offline': 'The server does not answer. Check the connection and try again.',
-  'access.problem.failed': 'Something went wrong. Try again.',
+  'access.problem.missing':
+    'The server offers no admin area at /api/v1/admin. Check that it runs a Nylzo version with the admin area and that the proxy passes this path on.',
+  'access.problem.failed':
+    'The server sent an unexpected answer. Try again, and if it keeps failing, check the server log.',
 };

@@ -50,5 +50,8 @@ export const czech = {
   'access.problem.refused': 'Server tento passkey nezná. Použijte jiný nebo přidejte nový přes nylzo admin-enroll.',
   'access.problem.busy': 'Server je teď vytížený. Zkuste to za chvíli.',
   'access.problem.offline': 'Server neodpovídá. Zkontrolujte připojení a\u{A0}zkuste to znovu.',
-  'access.problem.failed': 'Něco se nepovedlo. Zkuste to znovu.',
+  'access.problem.missing':
+    'Server na adrese /api/v1/admin správu nenabízí. Zkontrolujte, že běží verze Nylzo se správou a\u{A0}že proxy tuto cestu předává.',
+  'access.problem.failed':
+    'Server vrátil nečekanou odpověď. Zkuste to znovu, a\u{A0}když chyba trvá, podívejte se do logu serveru.',
 };

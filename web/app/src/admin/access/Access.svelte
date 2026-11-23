@@ -61,6 +61,7 @@
     'key-type': 'access.problem.key-type',
     'already-enrolled': 'access.problem.already-enrolled',
     link: 'access.problem.link',
+    missing: 'access.problem.missing',
     refused: 'access.problem.refused',
     busy: 'access.problem.busy',
     offline: 'access.problem.offline',
