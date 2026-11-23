@@ -397,13 +397,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype i\u{A0}golangci-lint, testy protokołu i\u{A0}tego, co obiecujemy, oraz test danych ze skradzionego serwera. Każdy commit w\u{A0}gałęzi głównej jest podpisany.',
   'transparency.checks.ai.title': 'Kontrole z\u{A0}udziałem agentów AI',
   'transparency.checks.ai':
-    'Agenci AI sprawdzili kod w\u{A0}pięciu dogłębnych kontrolach bezpieczeństwa: 25\u{A0}października, 1\u{A0}listopada, 7\u{A0}listopada (klient webowy i\u{A0}serwer) oraz 8\u{A0}listopada 2026\u{A0}r. (repozytorium). Znalezione problemy zostały naprawione i\u{A0}opisane na GitHubie.',
+    'Agenci AI sprawdzili kod w\u{A0}pięciu dogłębnych kontrolach bezpieczeństwa: 25\u{A0}października, 1\u{A0}listopada, 7\u{A0}listopada (klient webowy i\u{A0}serwer) oraz 8\u{A0}listopada 2026\u{A0}r. (repozytorium). Znalezione problemy zostały naprawione w\u{A0}publicznych pull requestach na {link}.',
+  'transparency.checks.ai.link': 'GitHubie',
   'transparency.checks.watch.title': 'Monitorowanie nylzo.com',
   'transparency.checks.watch':
     'Co 30\u{A0}minut porównanie kodu strony z\u{A0}podpisanym wydaniem. Przy rozbieżności automatyczny tryb prac technicznych, odcięcie przez firewall w\u{A0}chmurze i\u{A0}zgłoszenie incydentu. Co godzinę automatyczne zadanie tworzy wiadomość testową, odczytuje ją i\u{A0}zleca jej usunięcie.',
   'transparency.checks.ratings.title': 'Oceny projektu',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (ocena automatyczna), OpenSSF Best Practices (samoocena) oraz A+ na securityheaders.com i\u{A0}w\u{A0}Mozilla Observatory. Linki są w\u{A0}README.',
+    'OpenSSF Scorecard (ocena automatyczna), OpenSSF Best Practices (samoocena) oraz A+ na securityheaders.com i\u{A0}w\u{A0}Mozilla Observatory. Linki są w\u{A0}{link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'Co widzą inni',
   'transparency.others.hosting.title': 'Hosting i\u{A0}proxy',
   'transparency.others.hosting':
@@ -433,7 +435,12 @@ export const messages: Catalog = {
   'transparency.limits.create': 'Nowe wiadomości z\u{A0}jednego adresu',
   'transparency.limits.create.value': '{hour} na godzinę, {day} na dzień',
   'transparency.limits.read': 'Odczyty z\u{A0}jednego adresu',
-  'transparency.limits.read.value': 'do {hour} żądań na godzinę',
+  'transparency.limits.read.value': {
+    one: 'do {count}\u{A0}żądania na godzinę',
+    few: 'do {count}\u{A0}żądań na godzinę',
+    many: 'do {count}\u{A0}żądań na godzinę',
+    other: 'do {count}\u{A0}żądania na godzinę',
+  },
   'transparency.limits.global': 'Nowe wiadomości łącznie na dzień',
   'transparency.limits.global.value':
     '{max}, od połowy limitu z\u{A0}obliczeniem chroniącym przed przeciążeniem usługi, które trwa tym dłużej, im bardziej limit się zapełnia',

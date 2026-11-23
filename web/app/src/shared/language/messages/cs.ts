@@ -355,13 +355,15 @@ export const messages = {
     'CodeQL, govulncheck, OSV-Scanner, Grype a\u{A0}golangci-lint, testy protokolu a\u{A0}toho, co slibujeme, a\u{A0}test dat z\u{A0}ukradeného serveru. Každý commit v\u{A0}hlavní větvi je podepsaný.',
   'transparency.checks.ai.title': 'Kontroly s\u{A0}agenty AI',
   'transparency.checks.ai':
-    'Agenti AI prověřili kód v\u{A0}pěti hloubkových bezpečnostních kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web i\u{A0}server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitář). Nálezy jsou opravené a\u{A0}popsané na GitHubu.',
+    'Agenti AI prověřili kód v\u{A0}pěti hloubkových bezpečnostních kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web i\u{A0}server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitář). Nálezy jsou opravené ve veřejných pull requestech na\u{A0}{link}.',
+  'transparency.checks.ai.link': 'GitHubu',
   'transparency.checks.watch.title': 'Hlídání nylzo.com',
   'transparency.checks.watch':
     'Každých 30\u{A0}minut porovnání kódu webu s\u{A0}podepsaným vydáním. Při odchylce automatická údržba, odpojení cloudovým firewallem a\u{A0}hlášení incidentu. Každou hodinu zkušební zpráva, kterou automat vytvoří, přečte a\u{A0}nechá smazat.',
   'transparency.checks.ratings.title': 'Hodnocení projektu',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (automatické hodnocení), OpenSSF Best Practices (vlastní hodnocení) a\u{A0}A+ na securityheaders.com i\u{A0}v\u{A0}Mozilla Observatory. Odkazy jsou v\u{A0}README.',
+    'OpenSSF Scorecard (automatické hodnocení), OpenSSF Best Practices (vlastní hodnocení) a\u{A0}A+ na securityheaders.com i\u{A0}v\u{A0}Mozilla Observatory. Odkazy jsou v\u{A0}{link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'Co vidí ostatní',
   'transparency.others.hosting.title': 'Hosting a\u{A0}proxy',
   'transparency.others.hosting':
@@ -391,7 +393,11 @@ export const messages = {
   'transparency.limits.create': 'Nové zprávy z\u{A0}jedné adresy',
   'transparency.limits.create.value': '{hour} za hodinu, {day} za den',
   'transparency.limits.read': 'Čtení z\u{A0}jedné adresy',
-  'transparency.limits.read.value': '{hour} požadavků za hodinu',
+  'transparency.limits.read.value': {
+    one: '{count}\u{A0}požadavek za hodinu',
+    few: '{count}\u{A0}požadavky za hodinu',
+    other: '{count}\u{A0}požadavků za hodinu',
+  },
   'transparency.limits.global': 'Nové zprávy celkem za den',
   'transparency.limits.global.value':
     '{max}, od poloviny s\u{A0}výpočtem proti zahlcení služby, který se prodlužuje, jak se limit plní',

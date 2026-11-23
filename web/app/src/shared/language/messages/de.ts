@@ -375,13 +375,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype und golangci-lint, Tests des Protokolls und dessen, was wir versprechen, sowie ein Test der Daten eines gestohlenen Servers. Jeder Commit im Hauptzweig ist signiert.',
   'transparency.checks.ai.title': 'Prüfungen mit KI-Agenten',
   'transparency.checks.ai':
-    'KI-Agenten haben den Code in fünf eingehenden Sicherheitsprüfungen untersucht: am 25.\u{A0}Oktober, 1.\u{A0}November, 7.\u{A0}November (Web und Server) und 8.\u{A0}November 2026 (Repository). Die Befunde sind behoben und auf GitHub beschrieben.',
+    'KI-Agenten haben den Code in fünf eingehenden Sicherheitsprüfungen untersucht: am 25.\u{A0}Oktober, 1.\u{A0}November, 7.\u{A0}November (Web und Server) und 8.\u{A0}November 2026 (Repository). Die Befunde sind in öffentlichen Pull Requests auf {link} behoben.',
+  'transparency.checks.ai.link': 'GitHub',
   'transparency.checks.watch.title': 'Überwachung von nylzo.com',
   'transparency.checks.watch':
     'Alle 30\u{A0}Minuten ein Abgleich des Website-Codes mit dem signierten Release. Bei einer Abweichung automatische Wartung, Trennung durch die Cloud-Firewall und eine Meldung des Vorfalls. Jede Stunde eine Testnachricht, die ein automatischer Job erstellt, liest und löschen lässt.',
   'transparency.checks.ratings.title': 'Bewertungen des Projekts',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (automatische Bewertung), OpenSSF Best Practices (Selbstbewertung) und A+ auf securityheaders.com und im Mozilla Observatory. Die Links stehen im README.',
+    'OpenSSF Scorecard (automatische Bewertung), OpenSSF Best Practices (Selbstbewertung) und A+ auf securityheaders.com und im Mozilla Observatory. Die Links stehen im {link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'Was andere sehen',
   'transparency.others.hosting.title': 'Hosting und Proxy',
   'transparency.others.hosting':
@@ -411,7 +413,10 @@ export const messages: Catalog = {
   'transparency.limits.create': 'Neue Nachrichten von einer Adresse',
   'transparency.limits.create.value': '{hour} pro Stunde, {day} pro Tag',
   'transparency.limits.read': 'Lesezugriffe von einer Adresse',
-  'transparency.limits.read.value': '{hour} Anfragen pro Stunde',
+  'transparency.limits.read.value': {
+    one: '{count}\u{A0}Anfrage pro Stunde',
+    other: '{count}\u{A0}Anfragen pro Stunde',
+  },
   'transparency.limits.global': 'Neue Nachrichten insgesamt pro Tag',
   'transparency.limits.global.value':
     '{max}, ab der Hälfte mit einer Rechenaufgabe gegen Überlastung des Dienstes, die länger dauert, je voller das Limit ist',

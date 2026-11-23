@@ -72,6 +72,10 @@ export function formatBytes(bytes: number, language: Language): string {
   return numberFormat(language, { style: 'unit', unit, unitDisplay: 'short', maximumFractionDigits: 1 }).format(value);
 }
 
+export function formatCount(value: number, language: Language): string {
+  return numberFormat(language).format(value);
+}
+
 export function formatSize(bytes: number, language: Language): string {
-  return bytes < 1024 ? `${numberFormat(language).format(bytes)}\u{A0}B` : formatBytes(bytes, language);
+  return bytes < 1024 ? `${formatCount(bytes, language)}\u{A0}B` : formatBytes(bytes, language);
 }

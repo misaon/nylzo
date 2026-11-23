@@ -339,13 +339,15 @@ export const messages: Catalog = {
     'CodeQL、govulncheck、OSV-Scanner、Grype 和 golangci-lint，协议及各项承诺的测试，以及被盗服务器数据测试。主分支上的每个 commit 都经过签名。',
   'transparency.checks.ai.title': '借助 AI 智能体的检查',
   'transparency.checks.ai':
-    'AI 智能体在 5 次深度安全检查中审查了代码：2026 年 10 月 25 日、11 月 1 日、11 月 7 日（网页端和服务器）以及 11 月 8 日（代码库）。发现的问题已修复，并在 GitHub 上说明。',
+    'AI 智能体在 5 次深度安全检查中审查了代码：2026 年 10 月 25 日、11 月 1 日、11 月 7 日（网页端和服务器）以及 11 月 8 日（代码库）。发现的问题已修复，修复记录在 {link} 的公开拉取请求中。',
+  'transparency.checks.ai.link': 'GitHub',
   'transparency.checks.watch.title': '监控 nylzo.com',
   'transparency.checks.watch':
     '每 30 分钟将网站代码与已签名发行版比对一次。一旦出现偏差，自动进入维护状态，由云防火墙切断服务，并上报事件。每小时由自动任务创建、读取并删除一条测试消息。',
   'transparency.checks.ratings.title': '项目评级',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard（自动评级）、OpenSSF Best Practices（自我评估），以及 securityheaders.com 和 Mozilla Observatory 的 A+ 评级。链接见 README。',
+    'OpenSSF Scorecard（自动评级）、OpenSSF Best Practices（自我评估），以及 securityheaders.com 和 Mozilla Observatory 的 A+ 评级。链接见 {link}。',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': '其他方能看到什么',
   'transparency.others.hosting.title': '托管服务商和代理',
   'transparency.others.hosting':
@@ -374,7 +376,7 @@ export const messages: Catalog = {
   'transparency.limits.create': '来自单个地址的新消息',
   'transparency.limits.create.value': '每小时 {hour} 条，每天 {day} 条',
   'transparency.limits.read': '来自单个地址的读取',
-  'transparency.limits.read.value': '每小时 {hour} 个请求',
+  'transparency.limits.read.value': { other: '每小时 {count} 个请求' },
   'transparency.limits.global': '每天新消息总数',
   'transparency.limits.global.value': '{max} 条，达到一半后需进行防过载计算，越接近上限，计算耗时越长',
   'transparency.limits.none': '无限制',

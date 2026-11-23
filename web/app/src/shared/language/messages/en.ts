@@ -359,13 +359,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype and golangci-lint, tests of the protocol and of what we promise, and a stolen-server data test. Every commit on the main branch is signed.',
   'transparency.checks.ai.title': 'Reviews with AI agents',
   'transparency.checks.ai':
-    'AI agents examined the code in five in-depth security reviews: 25 October, 1 November, 7 November (web and server) and 8 November 2026 (repository). The findings are fixed and documented on GitHub.',
+    'AI agents examined the code in five in-depth security reviews: 25 October, 1 November, 7 November (web and server) and 8 November 2026 (repository). The findings are fixed in public pull requests on {link}.',
+  'transparency.checks.ai.link': 'GitHub',
   'transparency.checks.watch.title': 'Watching nylzo.com',
   'transparency.checks.watch':
     'Every 30 minutes the site code is compared with the signed release. On a difference: automatic maintenance, a cloud firewall cut-off and an incident report. Every hour a job creates, reads and spends a test message.',
   'transparency.checks.ratings.title': 'Project ratings',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (automated rating), OpenSSF Best Practices (self-assessment) and A+ on securityheaders.com and in Mozilla Observatory. The links are in the README.',
+    'OpenSSF Scorecard (automated rating), OpenSSF Best Practices (self-assessment) and A+ on securityheaders.com and in Mozilla Observatory. The links are in the {link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'What others see',
   'transparency.others.hosting.title': 'Hosting and proxy',
   'transparency.others.hosting':
@@ -394,7 +396,7 @@ export const messages: Catalog = {
   'transparency.limits.create': 'New messages from one address',
   'transparency.limits.create.value': '{hour} per hour, {day} per day',
   'transparency.limits.read': 'Reads from one address',
-  'transparency.limits.read.value': '{hour} requests per hour',
+  'transparency.limits.read.value': { one: '{count}\u{A0}request per hour', other: '{count}\u{A0}requests per hour' },
   'transparency.limits.global': 'New messages in total per day',
   'transparency.limits.global.value':
     '{max}, from half of that with an anti-flooding check in the browser that takes longer as the cap fills',

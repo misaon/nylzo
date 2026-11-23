@@ -5,7 +5,8 @@
   import type { Transparency } from '../../shared/api/api.ts';
   import { BUILD_INFO } from '../../shared/build-info.ts';
   import type { MessageKey } from '../../shared/language/catalog.ts';
-  import { formatBytes, formatDuration } from '../../shared/language/format.ts';
+  import { formatBytes, formatCount, formatDuration } from '../../shared/language/format.ts';
+  import Interpolated from '../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import { instanceOrigin, OFFICIAL_ORIGIN } from '../../shared/local-client/instance-origin.ts';
   import GithubMark from '../../shared/shell/GithubMark.svelte';
@@ -75,6 +76,10 @@
   const CHECKS = official
     ? (['changes', 'ai', 'watch', 'ratings', 'audit'] as const)
     : (['changes', 'ai', 'ratings', 'audit'] as const);
+  const PROOF_LINKS = {
+    ai: { href: `${REPOSITORY_URL}/pulls?q=is%3Apr+is%3Amerged`, label: 'transparency.checks.ai.link' },
+    ratings: { href: `${REPOSITORY_URL}#readme`, label: 'transparency.checks.ratings.link' },
+  } as const satisfies Partial<Record<(typeof CHECKS)[number], { href: string; label: MessageKey }>>;
   const OTHERS = official ? (['hosting', 'client', 'analytics'] as const) : (['hosting', 'client'] as const);
   const PERSONAL = official
     ? (['controller', 'basis', 'processor', 'browser'] as const)
@@ -91,7 +96,8 @@
   const days = (seconds: number) => translator.plural('count.day', Math.round(seconds / SECONDS_PER_DAY));
   const period = (seconds: number) =>
     seconds % SECONDS_PER_DAY === 0 ? days(seconds) : formatDuration(seconds, translator.language);
-  const limit = (value: number) => (value === 0 ? translate('transparency.limits.none') : String(value));
+  const count = (value: number) => formatCount(value, translator.language);
+  const limit = (value: number) => (value === 0 ? translate('transparency.limits.none') : count(value));
 
   function stored({ retention, visits }: Transparency): readonly Entry[] {
     const entry = (
@@ -118,7 +124,7 @@
     return [
       { key: 'transparency.limits.file', value: formatBytes(limits.maxFileBytes, translator.language) },
       { key: 'transparency.limits.ttl', value: period(limits.maxTtlSeconds) },
-      { key: 'transparency.limits.opens', value: String(limits.maxOpens) },
+      { key: 'transparency.limits.opens', value: count(limits.maxOpens) },
     ];
   }
 
@@ -126,21 +132,27 @@
     return [
       {
         key: 'transparency.limits.create',
-        value: translate('transparency.limits.create.value', {
-          hour: limit(per.createPerHour),
-          day: limit(per.createPerDay),
-        }),
+        value:
+          per.createPerHour === 0 && per.createPerDay === 0
+            ? translate('transparency.limits.none')
+            : translate('transparency.limits.create.value', {
+                hour: limit(per.createPerHour),
+                day: limit(per.createPerDay),
+              }),
       },
       {
         key: 'transparency.limits.read',
-        value: translate('transparency.limits.read.value', { hour: limit(per.readPerHour) }),
+        value:
+          per.readPerHour === 0
+            ? translate('transparency.limits.none')
+            : translator.plural('transparency.limits.read.value', per.readPerHour),
       },
       {
         key: 'transparency.limits.global',
         value:
           per.globalDailyCreates === 0
             ? translate('transparency.limits.none')
-            : translate('transparency.limits.global.value', { max: per.globalDailyCreates }),
+            : translate('transparency.limits.global.value', { max: count(per.globalDailyCreates) }),
       },
     ];
   }
@@ -355,7 +367,17 @@
             <dt class="w-56 shrink-0 text-body-sm font-medium text-ink">
               {translate(`transparency.checks.${check}.title`)}
             </dt>
-            <dd class="text-body-sm text-pretty text-ink-soft">{translate(`transparency.checks.${check}`)}</dd>
+            <dd class="text-body-sm text-pretty text-ink-soft">
+              {#if check === 'ai' || check === 'ratings'}
+                {const proof = $derived(PROOF_LINKS[check])}
+                <Interpolated text={translate(`transparency.checks.${check}`)} placeholder="link"
+                  ><a href={proof.href} rel="noreferrer" class={[TEXT_LINK, INLINE_TARGET]}>{translate(proof.label)}</a
+                  ></Interpolated
+                >
+              {:else}
+                {translate(`transparency.checks.${check}`)}
+              {/if}
+            </dd>
           </div>
         {/each}
       </dl>
@@ -387,7 +409,7 @@
 
     <section aria-labelledby="transparency-limits" class="animate-appear border-t border-white/8 pt-8">
       {@render heading({ id: 'transparency-limits', icon: 'gauge', title: translate('transparency.limits.title') })}
-      <dl class="mt-6 grid grid-cols-3 gap-2 sm:gap-3">
+      <dl class="mt-6 grid gap-2 sm:grid-cols-3 sm:gap-3">
         {#each stats(view.data) as stat (stat.key)}
           <div class={[CARD, 'px-3 py-3 sm:px-4 sm:py-3.5']}>
             <dt class="text-micro text-ink-mute">{translate(stat.key)}</dt>

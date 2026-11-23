@@ -359,13 +359,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype a\u{A0}golangci-lint, testy protokolu a\u{A0}toho, čo sľubujeme, a\u{A0}test dát z\u{A0}ukradnutého servera. Každý commit v\u{A0}hlavnej vetve je podpísaný.',
   'transparency.checks.ai.title': 'Kontroly s\u{A0}agentmi AI',
   'transparency.checks.ai':
-    'Agenti AI preverili kód v\u{A0}piatich hĺbkových bezpečnostných kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web aj server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitár). Nálezy sú opravené a\u{A0}opísané na GitHube.',
+    'Agenti AI preverili kód v\u{A0}piatich hĺbkových bezpečnostných kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web aj server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitár). Nálezy sú opravené vo verejných pull requestoch na\u{A0}{link}.',
+  'transparency.checks.ai.link': 'GitHube',
   'transparency.checks.watch.title': 'Dohľad nad nylzo.com',
   'transparency.checks.watch':
     'Každých 30\u{A0}minút porovnanie kódu webu s\u{A0}podpísaným vydaním. Pri odchýlke automatická údržba, odpojenie cloudovým firewallom a\u{A0}hlásenie incidentu. Každú hodinu skúšobná správa, ktorú automat vytvorí, prečíta a\u{A0}nechá vymazať.',
   'transparency.checks.ratings.title': 'Hodnotenie projektu',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (automatické hodnotenie), OpenSSF Best Practices (vlastné hodnotenie) a\u{A0}A+ na securityheaders.com aj v\u{A0}Mozilla Observatory. Odkazy sú v\u{A0}README.',
+    'OpenSSF Scorecard (automatické hodnotenie), OpenSSF Best Practices (vlastné hodnotenie) a\u{A0}A+ na securityheaders.com aj v\u{A0}Mozilla Observatory. Odkazy sú v\u{A0}{link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'Čo vidia ostatní',
   'transparency.others.hosting.title': 'Hosting a\u{A0}proxy',
   'transparency.others.hosting':
@@ -396,7 +398,11 @@ export const messages: Catalog = {
   'transparency.limits.create': 'Nové správy z\u{A0}jednej adresy',
   'transparency.limits.create.value': '{hour} za hodinu, {day} za deň',
   'transparency.limits.read': 'Čítanie z\u{A0}jednej adresy',
-  'transparency.limits.read.value': '{hour} požiadaviek za hodinu',
+  'transparency.limits.read.value': {
+    one: '{count}\u{A0}požiadavka za hodinu',
+    few: '{count}\u{A0}požiadavky za hodinu',
+    other: '{count}\u{A0}požiadaviek za hodinu',
+  },
   'transparency.limits.global': 'Nové správy celkom za deň',
   'transparency.limits.global.value':
     '{max}, od polovice s\u{A0}výpočtom proti zahlteniu služby, ktorý sa predlžuje s\u{A0}napĺňaním limitu',

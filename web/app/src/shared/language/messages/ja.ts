@@ -363,13 +363,15 @@ export const messages: Catalog = {
     'CodeQL、govulncheck、OSV-Scanner、Grype、golangci-lint、プロトコルと約束内容のテスト、そして盗まれたサーバーのデータを調べるテスト。メインブランチのコミットはすべて署名されています。',
   'transparency.checks.ai.title': 'AIエージェントによるチェック',
   'transparency.checks.ai':
-    'AIエージェントが、5回の詳細なセキュリティチェックでコードを調べました。実施日は2026年10月25日、11月1日、11月7日（Webとサーバー）、11月8日（リポジトリ）です。見つかった問題は修正済みで、GitHubに記載しています。',
+    'AIエージェントが、5回の詳細なセキュリティチェックでコードを調べました。実施日は2026年10月25日、11月1日、11月7日（Webとサーバー）、11月8日（リポジトリ）です。見つかった問題は修正済みで、修正は{link}の公開プルリクエストにあります。',
+  'transparency.checks.ai.link': 'GitHub',
   'transparency.checks.watch.title': 'nylzo.comの監視',
   'transparency.checks.watch':
     '30分ごとに、サイトのコードを署名されたリリースと比較します。違いがあれば、自動でメンテナンスに切り替え、クラウドファイアウォールで遮断し、インシデントを報告します。1時間ごとに、自動ジョブがテスト用のメッセージを作成して読み取り、削除させます。',
   'transparency.checks.ratings.title': 'プロジェクトの評価',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard（自動評価）、OpenSSF Best Practices（自己評価）、securityheaders.comとMozilla ObservatoryでのA+。リンクはREADMEにあります。',
+    'OpenSSF Scorecard（自動評価）、OpenSSF Best Practices（自己評価）、securityheaders.comとMozilla ObservatoryでのA+。リンクは{link}にあります。',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': '他者から見えるもの',
   'transparency.others.hosting.title': 'ホスティングとプロキシ',
   'transparency.others.hosting':
@@ -399,7 +401,7 @@ export const messages: Catalog = {
   'transparency.limits.create': '1つのアドレスからの新規メッセージ',
   'transparency.limits.create.value': '1時間あたり{hour}件、1日あたり{day}件',
   'transparency.limits.read': '1つのアドレスからの読み取り',
-  'transparency.limits.read.value': '1時間あたり{hour}件のリクエスト',
+  'transparency.limits.read.value': { other: '1時間あたり{count}件のリクエスト' },
   'transparency.limits.global': '1日あたりの新規メッセージの総数',
   'transparency.limits.global.value':
     '{max}件（半分を超えると、サービスの過負荷を防ぐ計算が必要になり、上限に近づくほど時間がかかります）',

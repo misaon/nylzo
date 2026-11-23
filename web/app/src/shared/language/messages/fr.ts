@@ -374,13 +374,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype et golangci-lint, des tests du protocole et de ce que nous promettons, et un test des données d’un serveur volé. Chaque commit de la branche principale est signé.',
   'transparency.checks.ai.title': 'Contrôles avec des agents IA',
   'transparency.checks.ai':
-    'Des agents IA ont examiné le code lors de cinq contrôles de sécurité approfondis\u{A0}: les 25\u{A0}octobre, 1er\u{A0}novembre, 7\u{A0}novembre (web et serveur) et 8\u{A0}novembre 2026 (dépôt). Les problèmes relevés sont corrigés et décrits sur GitHub.',
+    'Des agents IA ont examiné le code lors de cinq contrôles de sécurité approfondis\u{A0}: les 25\u{A0}octobre, 1er\u{A0}novembre, 7\u{A0}novembre (web et serveur) et 8\u{A0}novembre 2026 (dépôt). Les problèmes relevés sont corrigés dans des pull requests publiques sur {link}.',
+  'transparency.checks.ai.link': 'GitHub',
   'transparency.checks.watch.title': 'Surveillance de nylzo.com',
   'transparency.checks.watch':
     'Toutes les 30\u{A0}minutes, comparaison du code du site avec la version signée. En cas d’écart\u{A0}: maintenance automatique, mise hors ligne par le pare-feu cloud et signalement d’incident. Toutes les heures, une tâche automatique crée un message de test, le lit et le fait supprimer.',
   'transparency.checks.ratings.title': 'Évaluations du projet',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (évaluation automatique), OpenSSF Best Practices (auto-évaluation) et A+ sur securityheaders.com et dans Mozilla Observatory. Les liens sont dans le README.',
+    'OpenSSF Scorecard (évaluation automatique), OpenSSF Best Practices (auto-évaluation) et A+ sur securityheaders.com et dans Mozilla Observatory. Les liens sont dans le {link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'Ce que voient les autres',
   'transparency.others.hosting.title': 'Hébergement et proxy',
   'transparency.others.hosting':
@@ -410,7 +412,7 @@ export const messages: Catalog = {
   'transparency.limits.create': 'Nouveaux messages depuis une même adresse',
   'transparency.limits.create.value': '{hour} par heure, {day} par jour',
   'transparency.limits.read': 'Lectures depuis une même adresse',
-  'transparency.limits.read.value': '{hour} requêtes par heure',
+  'transparency.limits.read.value': { one: '{count}\u{A0}requête par heure', other: '{count}\u{A0}requêtes par heure' },
   'transparency.limits.global': 'Nouveaux messages au total par jour',
   'transparency.limits.global.value':
     '{max}, avec, à partir de la moitié, un calcul anti-saturation qui s’allonge à mesure que la limite se remplit',

@@ -368,13 +368,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype y golangci-lint, pruebas del protocolo y de lo que prometemos, y una prueba con los datos de un servidor robado. Cada commit de la rama principal está firmado.',
   'transparency.checks.ai.title': 'Revisiones con agentes de IA',
   'transparency.checks.ai':
-    'Agentes de IA examinaron el código en cinco revisiones de seguridad en profundidad: el 25 de octubre, el 1 de noviembre, el 7 de noviembre (web y servidor) y el 8 de noviembre de 2026 (repositorio). Los hallazgos están corregidos y descritos en GitHub.',
+    'Agentes de IA examinaron el código en cinco revisiones de seguridad en profundidad: el 25 de octubre, el 1 de noviembre, el 7 de noviembre (web y servidor) y el 8 de noviembre de 2026 (repositorio). Los hallazgos están corregidos en pull requests públicos en {link}.',
+  'transparency.checks.ai.link': 'GitHub',
   'transparency.checks.watch.title': 'Vigilancia de nylzo.com',
   'transparency.checks.watch':
     'Cada 30\u{A0}minutos se compara el código de la web con la versión firmada. Si hay una diferencia: mantenimiento automático, desconexión mediante el firewall en la nube y aviso de incidente. Cada hora, un proceso automático crea un mensaje de prueba, lo lee y deja que se borre.',
   'transparency.checks.ratings.title': 'Valoraciones del proyecto',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (valoración automática), OpenSSF Best Practices (autoevaluación) y A+ en securityheaders.com y en Mozilla Observatory. Los enlaces están en el README.',
+    'OpenSSF Scorecard (valoración automática), OpenSSF Best Practices (autoevaluación) y A+ en securityheaders.com y en Mozilla Observatory. Los enlaces están en el {link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'Qué ven los demás',
   'transparency.others.hosting.title': 'Hosting y proxy',
   'transparency.others.hosting':
@@ -405,7 +407,10 @@ export const messages: Catalog = {
   'transparency.limits.create': 'Mensajes nuevos desde una dirección',
   'transparency.limits.create.value': '{hour} por hora, {day} por día',
   'transparency.limits.read': 'Lecturas desde una dirección',
-  'transparency.limits.read.value': '{hour} solicitudes por hora',
+  'transparency.limits.read.value': {
+    one: '{count}\u{A0}solicitud por hora',
+    other: '{count}\u{A0}solicitudes por hora',
+  },
   'transparency.limits.global': 'Mensajes nuevos en total por día',
   'transparency.limits.global.value':
     '{max}; a partir de la mitad, con un cálculo contra la saturación del servicio que se alarga a medida que se llena el límite',
