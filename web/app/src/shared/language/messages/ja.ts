@@ -86,7 +86,7 @@ export const messages: Catalog = {
   'agents.missing.text':
     'MCPサーバーです。計画はできていますが、コードはまだありません。MCPサーバーが必要な場合は、GitHubのDiscussionsに書き込んでください。',
   'agents.missing.link': 'Discussions',
-  'agents.markdown': '同じ内容はMarkdown形式でも/agents.mdにあるため、エージェントはブラウザなしで読むことができます。',
+  'agents.markdown': '同じ内容はMarkdown形式でも{link}にあるため、エージェントはブラウザなしで読むことができます。',
   'action.copy': 'コピー',
   'count.day': { other: '{count}日' },
   'count.attempt': { other: '{count}回' },

@@ -81,7 +81,7 @@ export const messages: Catalog = {
   'agents.missing.text':
     'MCP 服务器。方案已经确定，代码还没有写。如果你需要 MCP 服务器，请在 GitHub 的 Discussions 中留言。',
   'agents.missing.link': 'Discussions',
-  'agents.markdown': '同样的内容也以 Markdown 格式发布在 /agents.md，智能体无需浏览器即可读取。',
+  'agents.markdown': '同样的内容也以 Markdown 格式发布在 {link}，智能体无需浏览器即可读取。',
   'action.copy': '复制',
   'count.day': { other: '{count}\u{A0}天' },
   'count.attempt': { other: '{count}\u{A0}次' },

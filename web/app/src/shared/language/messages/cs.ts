@@ -85,7 +85,7 @@ export const messages = {
     'MCP server. Plán je hotový, kód zatím ne. Pokud MCP server potřebujete, napište do Diskuzí na GitHubu.',
   'agents.missing.link': 'Diskuze',
   'agents.markdown':
-    'Stejný obsah je k\u{A0}dispozici i\u{A0}v\u{A0}Markdownu na /agents.md, aby ho agenti přečetli bez prohlížeče.',
+    'Stejný obsah je k\u{A0}dispozici i\u{A0}v\u{A0}Markdownu na {link}, aby ho agenti přečetli bez prohlížeče.',
   'action.copy': 'Zkopírovat',
   'count.day': { one: '{count}\u{A0}den', few: '{count}\u{A0}dny', other: '{count}\u{A0}dní' },
   'count.attempt': { one: '{count}\u{A0}pokus', few: '{count}\u{A0}pokusy', other: '{count}\u{A0}pokusů' },

@@ -94,7 +94,7 @@ export const messages: Catalog = {
     'Un serveur MCP. Le plan est prêt, le code pas encore. Si vous avez besoin d’un serveur MCP, écrivez dans les Discussions sur GitHub.',
   'agents.missing.link': 'Discussions',
   'agents.markdown':
-    'Le même contenu est aussi disponible en Markdown sur /agents.md, pour que les agents puissent le lire sans navigateur.',
+    'Le même contenu est aussi disponible en Markdown sur {link}, pour que les agents puissent le lire sans navigateur.',
   'action.copy': 'Copier',
   'count.day': { one: '{count}\u{A0}jour', other: '{count}\u{A0}jours' },
   'count.attempt': { one: '{count}\u{A0}tentative', other: '{count}\u{A0}tentatives' },

@@ -1,6 +1,7 @@
 <script lang="ts">
+  import Interpolated from '../../shared/language/Interpolated.svelte';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import { TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
+  import { INLINE_TARGET, TEXT_LINK } from '../../shared/ui/link/link-classes.ts';
   import CheckList from '../../shared/ui/list/CheckList.svelte';
   import { AGENT_RULES, AGENT_STEPS, DISCUSSIONS } from './agents-content.ts';
   import type { AgentLink } from './agents-content.ts';
@@ -29,7 +30,7 @@
         >
           {index + 1}
         </span>
-        <p class="mt-4 text-title-sm text-ink">{translate(step.title)}</p>
+        <h2 class="mt-4 text-title-sm text-ink">{translate(step.title)}</h2>
         <p class="mt-1.5 flex-1 text-body-sm text-pretty text-ink-soft">{translate(step.text)}</p>
         {#if step.link}
           {@render link({ ...step.link, placement: 'mt-3 self-start' })}
@@ -48,5 +49,9 @@
       {@render link({ ...DISCUSSIONS, placement: 'mt-3 inline-block' })}
     </section>
   </div>
-  <p class="mt-6 text-caption text-ink-mute">{translate('agents.markdown')}</p>
+  <p class="mt-6 text-caption text-ink-mute">
+    <Interpolated text={translate('agents.markdown')} placeholder="link"
+      ><a href="/agents.md" class={[TEXT_LINK, INLINE_TARGET]}>/agents.md</a></Interpolated
+    >
+  </p>
 </div>

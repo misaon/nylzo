@@ -89,7 +89,7 @@ export const messages: Catalog = {
     'Serwera MCP. Plan jest gotowy, kod jeszcze nie. Jeśli potrzebujesz serwera MCP, napisz w\u{A0}Discussions na GitHubie.',
   'agents.missing.link': 'Discussions',
   'agents.markdown':
-    'Ta sama treść jest dostępna także jako Markdown pod adresem /agents.md, aby agenci mogli ją przeczytać bez przeglądarki.',
+    'Ta sama treść jest dostępna także jako Markdown pod adresem {link}, aby agenci mogli ją przeczytać bez przeglądarki.',
   'action.copy': 'Skopiuj',
   'count.day': {
     one: '{count}\u{A0}dzień',

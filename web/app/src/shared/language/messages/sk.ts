@@ -86,7 +86,7 @@ export const messages: Catalog = {
     'MCP server. Plán je hotový, kód zatiaľ nie. Ak MCP server potrebujete, napíšte do Discussions na GitHube.',
   'agents.missing.link': 'Discussions',
   'agents.markdown':
-    'Rovnaký obsah je k\u{A0}dispozícii aj v\u{A0}Markdowne na /agents.md, aby ho agenti prečítali bez prehliadača.',
+    'Rovnaký obsah je k\u{A0}dispozícii aj v\u{A0}Markdowne na {link}, aby ho agenti prečítali bez prehliadača.',
   'action.copy': 'Skopírovať',
   'count.day': { one: '{count}\u{A0}deň', few: '{count}\u{A0}dni', other: '{count}\u{A0}dní' },
   'count.attempt': { one: '{count}\u{A0}pokus', few: '{count}\u{A0}pokusy', other: '{count}\u{A0}pokusov' },

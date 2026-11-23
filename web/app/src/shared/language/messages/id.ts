@@ -92,7 +92,7 @@ export const messages: Catalog = {
     'Server MCP. Rencananya sudah siap, kodenya belum. Jika Anda membutuhkan server MCP, tulis di GitHub Discussions.',
   'agents.missing.link': 'Discussions',
   'agents.markdown':
-    'Isi yang sama juga tersedia dalam format Markdown di /agents.md, sehingga agen dapat membacanya tanpa browser.',
+    'Isi yang sama juga tersedia dalam format Markdown di {link}, sehingga agen dapat membacanya tanpa browser.',
   'action.copy': 'Salin',
   'count.day': { other: '{count}\u{A0}hari' },
   'count.attempt': { other: '{count}\u{A0}percobaan' },
