@@ -282,6 +282,9 @@ describe('the sent page', () => {
     expect(browser.records.has(kept.id)).toBe(true);
     session.records.set(tracked.id, tracked);
     await sent.load();
+    await sent.forget(kept.id);
+    expect(browser.records.size).toBe(0);
+    expect(sent.items().map((item) => item.id)).toEqual([tracked.id]);
     await sent.forgetAll();
     expect([session.records.size, browser.records.size]).toEqual([0, 0]);
     expect(sent.items()).toEqual([]);
