@@ -88,14 +88,16 @@ describe('AdminArea', () => {
       expect(client.enrolled).not.toHaveBeenCalled();
     });
 
-    it('asks for HTTPS on an insecure address, where no browser offers passkeys', async () => {
+    it('asks for HTTPS on an insecure address and keeps the enrollment link for it', async () => {
       vi.stubGlobal('isSecureContext', false);
+      history.replaceState(null, '', `/admin#enroll=${TOKEN}`);
       const area = newArea();
 
       await area.start();
 
       expect(area.stage).toBe('insecure');
       expect(passkeysSupported).not.toHaveBeenCalled();
+      expect(location.hash).toBe(`#enroll=${TOKEN}`);
     });
 
     it('offers sign-in once a passkey is enrolled and the setup commands before', async () => {

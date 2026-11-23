@@ -72,14 +72,15 @@ export class AdminArea {
     this.#environment = environment;
   }
 
+  // An insecure page leaves the enrollment link in the address bar, so switching it to https keeps the token.
   async start(): Promise<void> {
-    this.#token ??= takeEnrollmentToken({ location, history });
     this.stage = 'loading';
     this.problem = undefined;
     if (!globalThis.isSecureContext) {
       this.stage = 'insecure';
       return;
     }
+    this.#token ??= takeEnrollmentToken({ location, history });
     if (!(await passkeysSupported())) {
       this.stage = 'unsupported';
       return;
