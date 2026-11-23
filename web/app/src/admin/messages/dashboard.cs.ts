@@ -10,7 +10,7 @@ export const czech = {
   'dashboard.now.title': 'Právě teď',
   'dashboard.now.live': 'Živě',
   'dashboard.now.paused': 'Pozastaveno',
-  'dashboard.now.stale': 'Naposledy v {time}',
+  'dashboard.now.stale': 'Naposledy {time}',
   'dashboard.now.online': 'Lidé online',
   'dashboard.now.online.note': 'Projevili se za posledních 5 minut.',
   'dashboard.now.minutes': 'Zobrazení za posledních 30 minut',

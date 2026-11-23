@@ -146,7 +146,7 @@ describe('now strip', () => {
       loading: false,
       stale: true,
     });
-    expect(badge()).toBe(translate('dashboard.now.stale', { time: format.clock(NOW) }));
+    expect(badge()).toBe(translate('dashboard.now.stale', { time: format.clockAt(NOW) }));
   });
 
   it('shows the live figures as paused before any sample arrived', () => {

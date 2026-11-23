@@ -51,7 +51,7 @@
         >
           <span class="size-2 rounded-full bg-solar-300" aria-hidden="true"></span>
           {latest
-            ? translate('dashboard.now.stale', { time: format.clock(latest.at) })
+            ? translate('dashboard.now.stale', { time: format.clockAt(latest.at) })
             : translate('dashboard.now.paused')}
         </span>
       {:else}
