@@ -37,7 +37,7 @@ describe('where people come from', () => {
   function caption(): string {
     return (
       target
-        .querySelector('[aria-live="polite"]')
+        .querySelector('[role="img"] + p')
         ?.textContent.replaceAll(/[\t\n ]+/gu, ' ')
         .trim() ?? ''
     );

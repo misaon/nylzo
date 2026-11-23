@@ -69,7 +69,6 @@
     <p class="mt-5 mb-2 text-caption text-ink-soft">{translate('dashboard.now.online')}</p>
     <p
       class="font-display text-[4rem] leading-none font-light text-ink tabular-nums drop-shadow-[0_0_28px_oklch(0.56_0.19_258/0.75)] sm:text-[4.5rem]"
-      aria-live="polite"
     >
       {#if waiting}
         <span class="inline-block h-12 w-20 animate-pulse rounded-control bg-white/8 align-middle"></span>
