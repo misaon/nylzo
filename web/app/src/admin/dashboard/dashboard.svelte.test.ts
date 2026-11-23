@@ -106,11 +106,14 @@ describe('dashboard', () => {
     props.overview = emptyOverview('30d', NOW);
     flushSync();
     expect(status()).toBe(translate('dashboard.failed'));
-    target.querySelector<HTMLButtonElement>('[role="status"] button')?.click();
+    const retry = target.querySelector<HTMLButtonElement>('[role="status"] button');
+    retry?.focus();
+    retry?.click();
     expect(onretry).toHaveBeenCalledOnce();
 
     props.failed = false;
     flushSync();
+    expect(document.activeElement).toBe(target.querySelector('h1'));
     expect(status()).toBeUndefined();
   });
 

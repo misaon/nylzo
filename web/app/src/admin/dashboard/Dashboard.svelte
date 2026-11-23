@@ -41,11 +41,18 @@
   const data = $derived(overview ?? emptyOverview(range, now));
   const current = $derived(live ?? EMPTY_LIVE);
   const switching = $derived(overview !== undefined && overview.range !== range);
+
+  // A refresh that works removes the retry button, so focus waits on the heading, right before it.
+  function retry(): void {
+    document.querySelector<HTMLElement>('#dashboard-title')?.focus({ preventScroll: true });
+    onretry();
+  }
 </script>
 
 <div class="grid gap-10 pb-16 md:gap-12">
   <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
     <h1
+      id="dashboard-title"
       class="font-display text-page font-light text-ink outline-none md:text-page-lg"
       tabindex="-1"
       {@attach (heading) => heading.focus({ preventScroll: true })}
@@ -59,7 +66,7 @@
         >
           <Icon name="caution" class="size-4 shrink-0 text-solar-300" />
           <p>{translate(loading ? 'dashboard.failed.first' : 'dashboard.failed')}</p>
-          <Button variant="tint" size="compact" class="shrink-0" onclick={onretry}>
+          <Button variant="tint" size="compact" class="shrink-0" onclick={retry}>
             <Icon name="refresh" />{translate('access.retry')}
           </Button>
         </div>
