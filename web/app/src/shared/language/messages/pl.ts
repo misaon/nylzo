@@ -490,7 +490,7 @@ export const messages: Catalog = {
   'hero.title': 'Sekret na {accent}',
   'hero.title.accent': 'jedno otwarcie',
   'hero.lead': 'Bezpiecznie wyślij hasło, klucz API lub plik linkiem, który otworzy się tylko raz.',
-  'seo.title': 'Jak bezpiecznie wysłać hasło: jednorazowy szyfrowany link | Nylzo',
+  'seo.title': 'Jak bezpiecznie wysłać hasło: jednorazowy link | Nylzo',
   'seo.description':
     'Wyślij hasło, klucz API lub plik linkiem, który otworzy się tylko raz. Szyfrowanie odbywa się już w\u{A0}twojej przeglądarce. Bezpłatnie i\u{A0}bez rejestracji.',
   'seo.image': 'Logo Nylzo na tle gwiaździstego nieba',
