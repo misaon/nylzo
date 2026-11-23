@@ -88,7 +88,7 @@
                       active ? 'opacity-100' : 'opacity-75 group-hover:opacity-100',
                     ]}
                   >
-                    {part.text}
+                    <span class="sr-only">{translate(part.title)}: </span>{part.text}
                   </span>
                   <span
                     class={[
@@ -102,7 +102,8 @@
                   class={[
                     'mt-3 reveal-focus text-body transition-colors duration-500 [--reveal-blur:4px] [--reveal-delay:480ms] [--reveal-y:6px]',
                     active ? 'text-ink' : 'text-ink-soft',
-                  ]}>{translate(part.title)}</span
+                  ]}
+                  aria-hidden="true">{translate(part.title)}</span
                 >
                 <span
                   class="mt-0.5 reveal-focus text-caption text-ink-mute [--reveal-blur:4px] [--reveal-delay:540ms] [--reveal-y:6px]"
