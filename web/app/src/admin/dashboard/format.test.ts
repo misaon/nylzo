@@ -40,7 +40,9 @@ describe('dashboard format', () => {
 
   it('labels ticks by hours, weekdays, days or months as the timeline grows', () => {
     expect(english.tick(timeline(3600, 24), 2)).toMatch(/^\d{1,2}:00\s[AP]M$/u);
-    expect(english.tick(timeline(3600, 168), 2)).toMatch(/^[A-Z][a-z]{2} \d{1,2}$/u);
+    expect(english.tick(timeline(3600, 168), 2)).toMatch(
+      /^(?:(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat) \d{1,2}|\d{1,2} (?:Sun|Mon|Tue|Wed|Thu|Fri|Sat))$/u,
+    );
     expect(english.tick(timeline(86_400, 30), 2)).toBe('11/3');
     expect(english.tick(timeline(86_400, 365), 2)).toBe('Nov');
   });
