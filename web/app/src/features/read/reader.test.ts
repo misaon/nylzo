@@ -1311,6 +1311,24 @@ describe('unusual answers while loading and revealing', () => {
     expect(views.at(-1)).toMatchObject({ view: 'revealed', text: 'ahoj' });
   });
 
+  it('opens the message on a retry after a failed load, with the fragment it took the first time', async () => {
+    const api = fakeApi();
+    const created = await createMessage(input(), createDependencies(api));
+    const metadata = api.metadata.bind(api);
+    api.metadata = () => Promise.reject(new TypeError('network error'));
+    const reader = openReader(api, created.link);
+    await reader.load();
+    expect(reader.last()).toEqual({ view: 'failed' });
+    api.metadata = metadata;
+    await reader.load();
+    expect(reader.last()).toMatchObject({ view: 'ready' });
+    expect(reader.dropped()).toBe(1);
+    await reader.reveal();
+    expect(reader.last()).toMatchObject({ view: 'revealed', text: 'ahoj' });
+    const secret = new URL(created.link).hash.slice(1).split('.').at(-1) ?? '';
+    expect(reader.session.writes.flat().join(' ')).not.toContain(secret);
+  });
+
   it('fails on metadata that gives an available message an end time', async () => {
     const reader = await readerWithMetadata((served) => ({ ...served, endedAt: '2026-10-23T11:00:00Z' }));
     expect(reader.last()).toEqual({ view: 'failed' });
