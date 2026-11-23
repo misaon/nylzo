@@ -39,6 +39,7 @@
       title: 'access.unsupported.title',
       text: 'access.unsupported.text',
     },
+    insecure: { icon: 'caution', tone: 'warning', title: 'access.insecure.title', text: 'access.insecure.text' },
     unavailable: { icon: 'caution', tone: 'warning', title: 'access.unavailable.title' },
   } as const satisfies Record<AccessStage, Screen>;
 

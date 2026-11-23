@@ -62,6 +62,7 @@ describe('AdminArea', () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: 1_000_000 });
     vi.resetAllMocks();
+    vi.stubGlobal('isSecureContext', true);
     hidden = false;
     session = fakeSession();
     vi.mocked(passkeysSupported).mockResolvedValue(true);
@@ -73,6 +74,7 @@ describe('AdminArea', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   describe('start', () => {
@@ -84,6 +86,16 @@ describe('AdminArea', () => {
 
       expect(area.stage).toBe('unsupported');
       expect(client.enrolled).not.toHaveBeenCalled();
+    });
+
+    it('asks for HTTPS on an insecure address, where no browser offers passkeys', async () => {
+      vi.stubGlobal('isSecureContext', false);
+      const area = newArea();
+
+      await area.start();
+
+      expect(area.stage).toBe('insecure');
+      expect(passkeysSupported).not.toHaveBeenCalled();
     });
 
     it('offers sign-in once a passkey is enrolled and the setup commands before', async () => {

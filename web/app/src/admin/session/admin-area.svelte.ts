@@ -5,7 +5,15 @@ import { passkeysSupported } from './passkey.ts';
 import { problemOf, SessionEndedError } from './problems.ts';
 import type { Problem } from './problems.ts';
 
-export type Stage = 'enroll' | 'loading' | 'signedIn' | 'signIn' | 'unavailable' | 'unconfigured' | 'unsupported';
+export type Stage =
+  | 'enroll'
+  | 'insecure'
+  | 'loading'
+  | 'signedIn'
+  | 'signIn'
+  | 'unavailable'
+  | 'unconfigured'
+  | 'unsupported';
 
 export type Notice = 'ended' | 'enrolled' | 'signedOut';
 
@@ -68,6 +76,10 @@ export class AdminArea {
     this.#token ??= takeEnrollmentToken({ location, history });
     this.stage = 'loading';
     this.problem = undefined;
+    if (!globalThis.isSecureContext) {
+      this.stage = 'insecure';
+      return;
+    }
     if (!(await passkeysSupported())) {
       this.stage = 'unsupported';
       return;

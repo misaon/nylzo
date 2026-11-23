@@ -30,6 +30,9 @@ export const czech = {
   'access.unsupported.title': 'Tento prohlížeč passkey neumí',
   'access.unsupported.text':
     'Správa potřebuje passkey a\u{A0}podpisy Ed25519 v\u{A0}prohlížeči. Otevřete ji v\u{A0}aktuální verzi svého prohlížeče.',
+  'access.insecure.title': 'Správa potřebuje HTTPS',
+  'access.insecure.text':
+    'Prohlížeč dovolí passkey jen na zabezpečené adrese. Otevřete správu přes https:// na veřejné adrese serveru.',
   'access.unavailable.title': 'Správa se nenačetla',
 
   'access.notice.enrolled': 'Passkey je vytvořený. Přihlaste se jím.',

@@ -75,6 +75,7 @@ describe('access screens', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubGlobal('isSecureContext', true);
     vi.mocked(getAdminTranslator).mockReturnValue(adminTranslator('en'));
     vi.mocked(passkeysSupported).mockResolvedValue(true);
     client.enrolled.mockResolvedValue(true);
@@ -86,6 +87,7 @@ describe('access screens', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     if (component) {
       await unmount(component);
     }

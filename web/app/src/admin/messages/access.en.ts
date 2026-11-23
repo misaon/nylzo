@@ -32,6 +32,9 @@ export const english: Readonly<Record<keyof typeof czech, string>> = {
   'access.unsupported.title': 'This browser cannot use passkeys here',
   'access.unsupported.text':
     'The admin area needs passkeys and Ed25519 signatures in the browser. Open it in the current version of your browser.',
+  'access.insecure.title': 'The admin area needs HTTPS',
+  'access.insecure.text':
+    'Browsers allow passkeys only on a secure address. Open the admin area over https:// at the public address of the server.',
   'access.unavailable.title': 'The admin area did not load',
 
   'access.notice.enrolled': 'The passkey is ready. Sign in with it.',
