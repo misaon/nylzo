@@ -131,6 +131,31 @@ func TestTheDummyRowGetsTheBlobWrapLengthOfALiveRow(t *testing.T) {
 	}
 }
 
+func TestABusyRetryStopsWhenItsCallerIsDone(t *testing.T) {
+	t.Parallel()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	attempts := 0
+	err := retryBusy(ctx, func(context.Context) error {
+		attempts++
+		return ErrCheckpointBusy
+	})
+	if !errors.Is(err, context.Canceled) || attempts != 1 {
+		t.Fatalf("a busy retry after its caller ended: %d attempts, %v", attempts, err)
+	}
+}
+
+func TestDueBlobsFailWhenTheQueryCannotRun(t *testing.T) {
+	t.Parallel()
+	storage := openTest(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	page, err := storage.DueBlobs(ctx, time.Now(), seal.Locator{}, store.SweepBatch)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("due blobs on a cancelled context: %+v %v", page, err)
+	}
+}
+
 func TestACorruptRowLeavesTheRestOfItsPageToTheSweep(t *testing.T) {
 	t.Parallel()
 	storage, ctx := openTest(t), t.Context()

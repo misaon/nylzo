@@ -23,6 +23,11 @@ type failingMessages struct {
 	shred  error
 	forget error
 	known  error
+	due    error
+}
+
+func (m *failingMessages) DueBlobs(context.Context, time.Time, seal.Locator, int) ([]DueBlob, error) {
+	return nil, m.due
 }
 
 func (m *failingMessages) Update(_ context.Context, _ seal.Locator, change func(row *Row) error) error {
@@ -133,6 +138,15 @@ func TestAFailedForgetCountsNoDeletedBlob(t *testing.T) {
 	if deleted, err := deleteBlobPage(t.Context(), messages, &listedBlobs{}, page); deleted != 0 ||
 		!errors.Is(err, errStorage) {
 		t.Fatalf("a failed forget: %d %v", deleted, err)
+	}
+}
+
+func TestASweepThatCannotListDueBlobsReportsIt(t *testing.T) {
+	t.Parallel()
+	messages := &failingMessages{due: errStorage}
+	if deleted, err := deleteDueBlobs(t.Context(), messages, &listedBlobs{}, testMoment); deleted != 0 ||
+		!errors.Is(err, errStorage) {
+		t.Fatalf("a failed due blob list: %d %v", deleted, err)
 	}
 }
 

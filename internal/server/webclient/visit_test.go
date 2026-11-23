@@ -4,6 +4,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core/api"
@@ -93,5 +94,19 @@ func TestABrokenLanguageTableStopsTheStart(t *testing.T) {
 			}()
 			mustParseLanguages([]byte(table))
 		}()
+	}
+}
+
+func TestPreviewPagesShowTheOpenGraphImageOnlyUnderAPublicURL(t *testing.T) {
+	t.Parallel()
+	assets := map[string]Asset{"index.js": {}, "og-image-a1.jpg": {}}
+	for publicURL, want := range map[string]bool{"https://nylzo.example": true, "": false} {
+		for _, page := range previewPages(publicURL, assets) {
+			shown := strings.Contains(string(page), `content="https://nylzo.example/assets/og-image-a1.jpg"`) &&
+				strings.Contains(string(page), `content="summary_large_image"`)
+			if shown != want {
+				t.Fatalf("public URL %q: image shown %v: %s", publicURL, shown, page)
+			}
+		}
 	}
 }
