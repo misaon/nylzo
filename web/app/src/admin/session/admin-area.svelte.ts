@@ -5,7 +5,15 @@ import { passkeysSupported } from './passkey.ts';
 import { problemOf, SessionEndedError } from './problems.ts';
 import type { Problem } from './problems.ts';
 
-export type Stage = 'enroll' | 'loading' | 'signedIn' | 'signIn' | 'unavailable' | 'unconfigured' | 'unsupported';
+export type Stage =
+  | 'enroll'
+  | 'insecure'
+  | 'loading'
+  | 'signedIn'
+  | 'signIn'
+  | 'unavailable'
+  | 'unconfigured'
+  | 'unsupported';
 
 export type Notice = 'ended' | 'enrolled' | 'signedOut';
 
@@ -64,10 +72,15 @@ export class AdminArea {
     this.#environment = environment;
   }
 
+  // An insecure page leaves the enrollment link in the address bar, so switching it to https keeps the token.
   async start(): Promise<void> {
-    this.#token ??= takeEnrollmentToken({ location, history });
     this.stage = 'loading';
     this.problem = undefined;
+    if (!globalThis.isSecureContext) {
+      this.stage = 'insecure';
+      return;
+    }
+    this.#token ??= takeEnrollmentToken({ location, history });
     if (!(await passkeysSupported())) {
       this.stage = 'unsupported';
       return;
@@ -143,6 +156,12 @@ export class AdminArea {
     }
     this.range = range;
     this.#overviewRetryAt = 0;
+    this.wake();
+  }
+
+  retry(): void {
+    this.#overviewRetryAt = 0;
+    this.#interval = LIVE_INTERVAL_MS;
     this.wake();
   }
 

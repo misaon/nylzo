@@ -62,6 +62,7 @@ describe('AdminArea', () => {
   beforeEach(() => {
     vi.useFakeTimers({ now: 1_000_000 });
     vi.resetAllMocks();
+    vi.stubGlobal('isSecureContext', true);
     hidden = false;
     session = fakeSession();
     vi.mocked(passkeysSupported).mockResolvedValue(true);
@@ -73,6 +74,7 @@ describe('AdminArea', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   describe('start', () => {
@@ -84,6 +86,18 @@ describe('AdminArea', () => {
 
       expect(area.stage).toBe('unsupported');
       expect(client.enrolled).not.toHaveBeenCalled();
+    });
+
+    it('asks for HTTPS on an insecure address and keeps the enrollment link for it', async () => {
+      vi.stubGlobal('isSecureContext', false);
+      history.replaceState(null, '', `/admin#enroll=${TOKEN}`);
+      const area = newArea();
+
+      await area.start();
+
+      expect(area.stage).toBe('insecure');
+      expect(passkeysSupported).not.toHaveBeenCalled();
+      expect(location.hash).toBe(`#enroll=${TOKEN}`);
     });
 
     it('offers sign-in once a passkey is enrolled and the setup commands before', async () => {
@@ -192,6 +206,7 @@ describe('AdminArea', () => {
       ['a rate limit', new ApiError(429, 'rate_limited'), 'busy'],
       ['a server that is unavailable', new ApiError(503, 'unavailable'), 'busy'],
       ['a refused passkey', new ApiError(401, 'unexpected'), 'refused'],
+      ['a path no admin area answers', new ApiError(404, 'not_found'), 'missing'],
       ['another server error', new ApiError(500, 'internal'), 'failed'],
       ['an unreachable server', new UnreachableError(new TypeError('offline')), 'offline'],
       ['a cancelled ceremony', new DOMException('no', 'NotAllowedError'), 'cancelled'],
@@ -299,6 +314,20 @@ describe('AdminArea', () => {
       expect(session.overview).toHaveBeenCalledTimes(3);
       expect(area.overview?.range).toBe('7d');
       expect(area.failed).toBe(false);
+    });
+
+    it('asks again at once when the admin retries, without waiting out the backoff', async () => {
+      session.overview.mockRejectedValueOnce(new ApiError(500, 'internal'));
+      session.live.mockRejectedValueOnce(new ApiError(500, 'internal'));
+      const area = await signedIn();
+      expect(area.failed).toBe(true);
+
+      area.retry();
+      await settle();
+      expect(session.overview).toHaveBeenCalledTimes(2);
+      expect(session.live).toHaveBeenCalledTimes(2);
+      expect(area.failed).toBe(false);
+      expect(area.stale).toBe(false);
     });
 
     it('asks for the overview of a new range at once and ignores the old range answer that arrives late', async () => {

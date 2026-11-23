@@ -83,7 +83,7 @@
     form={formId}
     disabled={!revealable}
     class={[
-      'transition-[opacity,filter] duration-500',
+      'transition-opacity duration-500',
       className,
       revealable ? 'opacity-100' : 'pointer-events-none opacity-40',
     ]}

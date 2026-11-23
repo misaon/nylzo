@@ -48,7 +48,7 @@
         {highlighted}
         onhighlight={(country) => (highlighted = country)}
       />
-      <p class="mt-4 flex min-h-12 flex-wrap items-baseline gap-x-2 text-ui sm:min-h-6" aria-live="polite">
+      <p class="mt-4 flex min-h-12 flex-wrap items-baseline gap-x-2 text-ui sm:min-h-6">
         {#if focused}
           <span class="font-medium text-ink">{focused.label}</span>
           <span class="text-ink tabular-nums">{format.count(focused.value)}</span>

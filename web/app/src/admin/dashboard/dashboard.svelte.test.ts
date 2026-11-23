@@ -24,6 +24,7 @@ interface DashboardProps {
 describe('dashboard', () => {
   const { translate } = adminTranslator('en');
   const onrange = vi.fn<(range: Range) => void>();
+  const onretry = vi.fn<() => void>();
   const props = $state<DashboardProps>({
     overview: undefined,
     live: undefined,
@@ -35,7 +36,7 @@ describe('dashboard', () => {
   let component: ReturnType<typeof mount>;
 
   function status(): string | undefined {
-    return target.querySelector('[role="status"]')?.textContent.trim();
+    return target.querySelector('[role="status"] p')?.textContent.trim();
   }
 
   function busy(): string | null | undefined {
@@ -56,6 +57,7 @@ describe('dashboard', () => {
     vi.useFakeTimers({ now: NOW * 1000, toFake: ['Date'] });
     vi.mocked(getAdminTranslator).mockReturnValue(adminTranslator('en'));
     onrange.mockReset();
+    onretry.mockReset();
     Object.assign(props, { overview: undefined, live: undefined, range: '30d', failed: false, stale: false });
     target = document.createElement('div');
     document.body.append(target);
@@ -78,6 +80,7 @@ describe('dashboard', () => {
           return props.stale;
         },
         onrange,
+        onretry,
       },
     });
     flushSync();
@@ -95,7 +98,7 @@ describe('dashboard', () => {
     expect(target.textContent).toContain(translate('dashboard.range.long.30d'));
   });
 
-  it('tells apart a first load that failed from a refresh that failed', () => {
+  it('tells apart a first load that failed from a refresh that failed and offers a retry', () => {
     props.failed = true;
     flushSync();
     expect(status()).toBe(translate('dashboard.failed.first'));
@@ -103,9 +106,14 @@ describe('dashboard', () => {
     props.overview = emptyOverview('30d', NOW);
     flushSync();
     expect(status()).toBe(translate('dashboard.failed'));
+    const retry = target.querySelector<HTMLButtonElement>('[role="status"] button');
+    retry?.focus();
+    retry?.click();
+    expect(onretry).toHaveBeenCalledOnce();
 
     props.failed = false;
     flushSync();
+    expect(document.activeElement).toBe(target.querySelector('h1'));
     expect(status()).toBeUndefined();
   });
 

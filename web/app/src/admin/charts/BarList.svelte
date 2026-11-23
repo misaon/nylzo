@@ -35,7 +35,7 @@
     <li animate:flip={{ duration: motionMs(REORDER_MS) }}>
       {#snippet row()}
         <span class="flex items-baseline gap-3">
-          <span class="min-w-0 flex-1 truncate text-ui text-ink-soft">{item.label}</span>
+          <span class="min-w-0 flex-1 text-ui text-pretty wrap-break-word text-ink-soft">{item.label}</span>
           <span class="text-ui font-medium text-ink tabular-nums">{formatValue(item.value)}</span>
           <span class="w-12 text-right text-caption text-ink-mute tabular-nums">
             {formatShare(total > 0 ? item.value / total : 0)}

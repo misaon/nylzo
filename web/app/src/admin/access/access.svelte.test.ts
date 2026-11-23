@@ -75,6 +75,7 @@ describe('access screens', () => {
 
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubGlobal('isSecureContext', true);
     vi.mocked(getAdminTranslator).mockReturnValue(adminTranslator('en'));
     vi.mocked(passkeysSupported).mockResolvedValue(true);
     client.enrolled.mockResolvedValue(true);
@@ -86,6 +87,7 @@ describe('access screens', () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     if (component) {
       await unmount(component);
     }
@@ -124,11 +126,12 @@ describe('access screens', () => {
     expect(heading()).toBe(translate('access.enroll.title'));
 
     const action = button('access.enroll.action');
+    action.focus();
     action.click();
     flushSync();
     expect(client.enroll).toHaveBeenCalledWith(TOKEN);
-    expect(action.disabled).toBe(true);
-    expect(action.getAttribute('aria-busy')).toBe('true');
+    expect(action.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(action);
     expect(statuses()).toContain(translate('access.waiting'));
 
     enrollment.resolve(undefined);
@@ -138,7 +141,7 @@ describe('access screens', () => {
     });
     expect(statuses()).toContain(translate('access.notice.enrolled'));
     expect(alert()).toBeUndefined();
-    expect(button('access.signIn.action').disabled).toBe(false);
+    expect(button('access.signIn.action').getAttribute('aria-disabled')).toBe('false');
   });
 
   it('signs in with the passkey and shows why a sign-in failed', async () => {
@@ -155,12 +158,13 @@ describe('access screens', () => {
     expect(client.signIn).toHaveBeenCalledOnce();
   });
 
-  it('confirms a sign-out on the sign-in screen only', async () => {
+  it('confirms a sign-out on the sign-in screen only and moves focus to it', async () => {
     show();
     await started();
     await area.signOut();
     flushSync();
     expect(statuses()).toContain(translate('access.notice.signedOut'));
+    expect(document.activeElement).toBe(target.querySelector('h1'));
 
     client.enrolled.mockRejectedValue(new ApiError(500, 'internal'));
     await started();

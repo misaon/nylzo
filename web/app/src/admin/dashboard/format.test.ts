@@ -56,6 +56,7 @@ describe('dashboard format', () => {
 
   it('formats moments with and without seconds and with the date', () => {
     expect(english.clock(MIDNIGHT)).toMatch(/^\d{1,2}:00\s[AP]M$/u);
+    expect(dashboardFormat('cs').clockAt(new Date(2026, 9, 23, 14, 41).getTime() / 1000)).toBe(`ve${SPACE}14:41`);
     expect(english.time(MIDNIGHT)).toMatch(/^\d{1,2}:00:00\s[AP]M$/u);
     expect(english.moment(MIDNIGHT)).toMatch(/^(?:Oct 31|Nov 1|Nov 2), 2026/u);
   });

@@ -29,13 +29,15 @@ describe('where people come from', () => {
   }
 
   function rows(): string[] {
-    return [...target.querySelectorAll('[role="region"] li .truncate')].map((label) => label.textContent.trim());
+    return [...target.querySelectorAll('[role="region"] li span.flex > span:first-child')].map((label) =>
+      label.textContent.trim(),
+    );
   }
 
   function caption(): string {
     return (
       target
-        .querySelector('[aria-live="polite"]')
+        .querySelector('[role="img"] + p')
         ?.textContent.replaceAll(/[\t\n ]+/gu, ' ')
         .trim() ?? ''
     );

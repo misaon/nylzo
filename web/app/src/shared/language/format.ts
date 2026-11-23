@@ -20,6 +20,10 @@ function durationParts(seconds: number): readonly [value: number, unit: Duration
 
 const CZECH_HOURS_WITH_VE = new Set([2, 3, 4, 12, 13, 14, 20, 21, 22, 23]);
 
+export function atCzechTime(moment: Date, time: string): string {
+  return `${CZECH_HOURS_WITH_VE.has(moment.getHours()) ? 've' : 'v'}\u{A0}${time}`;
+}
+
 const dateFormats = new Map<string, Intl.DateTimeFormat>();
 const numberFormats = new Map<string, Intl.NumberFormat>();
 
@@ -47,8 +51,7 @@ export function formatMoment(timestamp: number | string, language: Language): st
   }
   const date = dateFormat('cs', { day: 'numeric', month: 'numeric' }).format(moment);
   const time = dateFormat('cs', { hour: 'numeric', minute: '2-digit' }).format(moment);
-  const preposition = CZECH_HOURS_WITH_VE.has(moment.getHours()) ? 've' : 'v';
-  return `${date.replaceAll(' ', '\u{A0}')} ${preposition}\u{A0}${time}`;
+  return `${date.replaceAll(' ', '\u{A0}')} ${atCzechTime(moment, time)}`;
 }
 
 export function formatDuration(seconds: number, language: Language): string {

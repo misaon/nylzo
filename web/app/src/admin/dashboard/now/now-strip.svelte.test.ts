@@ -56,6 +56,12 @@ describe('now strip', () => {
     );
   }
 
+  function online(): Element | null | undefined {
+    return [...target.querySelectorAll('p')].find(
+      (element) => element.textContent.trim() === translate('dashboard.now.online'),
+    )?.nextElementSibling;
+  }
+
   function badge(): string {
     return target.querySelector('h2 + span')?.textContent.trim() ?? '';
   }
@@ -94,7 +100,7 @@ describe('now strip', () => {
     expect(badge()).toBe(translate('dashboard.now.live'));
     expect(target.textContent).toContain(`${translate('dashboard.now.people')} ${format.count(6)}`);
     expect(target.textContent).toContain(`${translate('dashboard.now.robots')} ${format.count(9)}`);
-    expect(target.querySelector('[aria-live] .sr-only')?.textContent).toBe(format.count(7));
+    expect(online()?.querySelector('.sr-only')?.textContent).toBe(format.count(7));
     expect(tile(translate('dashboard.now.processor'))).toContain(format.percent(0.42));
     expect(tile(translate('dashboard.now.processor'))).toContain(translate('dashboard.now.five'));
     expect(tile(translate('dashboard.now.memory'))).toContain(format.percent(0.25));
@@ -111,7 +117,7 @@ describe('now strip', () => {
   it('holds placeholders while the first figures load', () => {
     show({ live: EMPTY_LIVE, overview: emptyOverview('30d', NOW), waiting: true, loading: true, stale: false });
 
-    expect(target.querySelector('[aria-live]')?.textContent.trim()).toBe('');
+    expect(online()?.textContent.trim()).toBe('');
     expect(target.textContent).toContain(`${translate('dashboard.now.people')} –`);
     for (const label of ['dashboard.now.processor', 'dashboard.now.memory', 'dashboard.now.disk'] as const) {
       expect(tile(translate(label))).toContain(`– ${translate('dashboard.now.waiting')}`);
@@ -140,7 +146,7 @@ describe('now strip', () => {
       loading: false,
       stale: true,
     });
-    expect(badge()).toBe(translate('dashboard.now.stale', { time: format.clock(NOW) }));
+    expect(badge()).toBe(translate('dashboard.now.stale', { time: format.clockAt(NOW) }));
   });
 
   it('shows the live figures as paused before any sample arrived', () => {

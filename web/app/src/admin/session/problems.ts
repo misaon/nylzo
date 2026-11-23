@@ -7,6 +7,7 @@ export type Problem =
   | 'failed'
   | 'key-type'
   | 'link'
+  | 'missing'
   | 'not-allowed'
   | 'offline'
   | 'refused'
@@ -51,6 +52,9 @@ export function problemOf(error: unknown, refusal: Problem): Problem {
   if (error instanceof ApiError) {
     if (error.status === 429 || error.status === 503) {
       return 'busy';
+    }
+    if (error.status === 404) {
+      return 'missing';
     }
     return error.status === 401 ? refusal : 'failed';
   }

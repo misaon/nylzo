@@ -39,6 +39,7 @@
       title: 'access.unsupported.title',
       text: 'access.unsupported.text',
     },
+    insecure: { icon: 'caution', tone: 'warning', title: 'access.insecure.title', text: 'access.insecure.text' },
     unavailable: { icon: 'caution', tone: 'warning', title: 'access.unavailable.title' },
   } as const satisfies Record<AccessStage, Screen>;
 
@@ -60,6 +61,7 @@
     'key-type': 'access.problem.key-type',
     'already-enrolled': 'access.problem.already-enrolled',
     link: 'access.problem.link',
+    missing: 'access.problem.missing',
     refused: 'access.problem.refused',
     busy: 'access.problem.busy',
     offline: 'access.problem.offline',
@@ -82,14 +84,24 @@
     <StateCard loading={translate('access.loading')} />
   {:else}
     <IconTile icon={screen.icon} tone={screen.tone} />
-    <h1 id="access-title" class="mt-5 font-display text-page font-light text-balance text-ink md:text-page-lg">
+    <h1
+      id="access-title"
+      tabindex="-1"
+      aria-describedby={area.notice && area.stage === 'signIn' ? 'access-notice' : undefined}
+      class="mt-5 font-display text-page font-light text-balance text-ink outline-none md:text-page-lg"
+      {@attach (heading) => {
+        if (area.notice === 'ended' || area.notice === 'signedOut') {
+          heading.focus({ preventScroll: true });
+        }
+      }}
+    >
       {translate(screen.title)}
     </h1>
     {#if screen.text}
       <p class="mt-2 text-body text-pretty text-ink-soft">{translate(screen.text)}</p>
     {/if}
     {#if area.notice && area.stage === 'signIn'}
-      <p role="status" class="mt-5 flex animate-appear items-center gap-2.5 text-body-sm text-ink">
+      <p id="access-notice" role="status" class="mt-5 flex animate-appear items-center gap-2.5 text-body-sm text-ink">
         <Icon name="check" class="size-4 shrink-0 text-aegis-300" stroke={2} />
         <span>{translate(NOTICES[area.notice])}</span>
       </p>
@@ -109,8 +121,7 @@
         <Button
           variant="primary"
           size="large"
-          disabled={area.busy}
-          aria-busy={area.busy}
+          aria-disabled={area.busy}
           onclick={() => void (area.stage === 'enroll' ? area.enroll() : area.signIn())}
         >
           <Icon name="key" class="size-4.5" />

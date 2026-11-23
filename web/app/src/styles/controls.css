@@ -77,7 +77,15 @@
   &:disabled,
   &[aria-disabled='true'] {
     cursor: not-allowed;
-    filter: saturate(0.35) brightness(0.8);
+    color: oklch(0.99 0.004 255 / 0.62);
+    background: linear-gradient(180deg, oklch(0.44 0.06 258 / 0.55), oklch(0.31 0.05 266 / 0.65));
+    text-shadow: none;
+    &::before {
+      opacity: 0.4;
+    }
+    &::after {
+      opacity: 0.12;
+    }
   }
 }
 
@@ -330,7 +338,7 @@
     inset 0 1px 0 oklch(1 0 0 / 0.26),
     inset 0 -10px 18px -12px oklch(0.8 0.1 330 / 0.45);
   text-shadow: 0 1px 8px oklch(0.3 0.1 15 / 0.6);
-  transition-property: scale, filter, outline-color, outline-offset;
+  transition-property: scale, outline-color, outline-offset;
   transition-duration: 0.45s;
   transition-timing-function: var(--ease-silk);
   @apply gradient-edge;
@@ -364,7 +372,15 @@
   &:disabled,
   &[aria-disabled='true'] {
     cursor: not-allowed;
-    filter: saturate(0.35) brightness(0.8);
+    color: oklch(0.99 0.008 15 / 0.62);
+    background: linear-gradient(180deg, oklch(0.47 0.06 18 / 0.55), oklch(0.33 0.04 8 / 0.65));
+    text-shadow: none;
+    &::before {
+      opacity: 0.4;
+    }
+    &::after {
+      opacity: 0.12;
+    }
   }
 }
 

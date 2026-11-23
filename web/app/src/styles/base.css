@@ -160,6 +160,10 @@
   .button-tint,
   .button-tint-soft {
     backdrop-filter: none;
+  }
+  .button-ghost:not(:focus-visible),
+  .button-tint:not(:focus-visible),
+  .button-tint-soft:not(:focus-visible) {
     outline: 1px solid oklch(1 0 0 / 0.55);
     outline-offset: -1px;
   }

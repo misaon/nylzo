@@ -40,8 +40,8 @@
       >
         <div class="flex min-w-0 items-center gap-3">
           <Logo class="h-7 w-[105px] shrink-0" label="Nylzo" />
-          <span class="h-5 w-px bg-white/12" aria-hidden="true"></span>
-          <span class="truncate text-ui text-ink-soft">{translate('access.area')}</span>
+          <span class="h-5 w-px bg-white/12 max-sm:hidden" aria-hidden="true"></span>
+          <span class="truncate text-ui text-ink-soft max-sm:hidden">{translate('access.area')}</span>
         </div>
         {#if area.stage === 'signedIn'}
           <div class="flex shrink-0 items-center gap-3">
@@ -67,6 +67,7 @@
             failed={area.failed}
             stale={area.stale}
             onrange={(range: Range) => area.chooseRange(range)}
+            onretry={() => area.retry()}
           />
         </div>
       {:else}

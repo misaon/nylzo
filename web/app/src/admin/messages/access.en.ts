@@ -32,6 +32,9 @@ export const english: Readonly<Record<keyof typeof czech, string>> = {
   'access.unsupported.title': 'This browser cannot use passkeys here',
   'access.unsupported.text':
     'The admin area needs passkeys and Ed25519 signatures in the browser. Open it in the current version of your browser.',
+  'access.insecure.title': 'The admin area needs HTTPS',
+  'access.insecure.text':
+    'Browsers allow passkeys only on a secure address. Open the admin area over https:// at the public address of the server.',
   'access.unavailable.title': 'The admin area did not load',
 
   'access.notice.enrolled': 'The passkey is ready. Sign in with it.',
@@ -51,5 +54,8 @@ export const english: Readonly<Record<keyof typeof czech, string>> = {
     'The server does not know this passkey. Use another one or add a new one with nylzo admin-enroll.',
   'access.problem.busy': 'The server is busy right now. Try again in a moment.',
   'access.problem.offline': 'The server does not answer. Check the connection and try again.',
-  'access.problem.failed': 'Something went wrong. Try again.',
+  'access.problem.missing':
+    'The server offers no admin area at /api/v1/admin. Check the server log, the Nylzo version and that the proxy passes this path on.',
+  'access.problem.failed':
+    'Something unexpected went wrong. Try again. If it keeps failing, try another browser or check the server log.',
 };

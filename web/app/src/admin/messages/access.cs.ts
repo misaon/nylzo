@@ -30,6 +30,9 @@ export const czech = {
   'access.unsupported.title': 'Tento prohlížeč passkey neumí',
   'access.unsupported.text':
     'Správa potřebuje passkey a\u{A0}podpisy Ed25519 v\u{A0}prohlížeči. Otevřete ji v\u{A0}aktuální verzi svého prohlížeče.',
+  'access.insecure.title': 'Správa potřebuje HTTPS',
+  'access.insecure.text':
+    'Prohlížeč dovolí passkey jen na zabezpečené adrese. Otevřete správu přes https:// na veřejné adrese serveru.',
   'access.unavailable.title': 'Správa se nenačetla',
 
   'access.notice.enrolled': 'Passkey je vytvořený. Přihlaste se jím.',
@@ -47,5 +50,8 @@ export const czech = {
   'access.problem.refused': 'Server tento passkey nezná. Použijte jiný nebo přidejte nový přes nylzo admin-enroll.',
   'access.problem.busy': 'Server je teď vytížený. Zkuste to za chvíli.',
   'access.problem.offline': 'Server neodpovídá. Zkontrolujte připojení a\u{A0}zkuste to znovu.',
-  'access.problem.failed': 'Něco se nepovedlo. Zkuste to znovu.',
+  'access.problem.missing':
+    'Server na adrese /api/v1/admin správu nenabízí. Zkontrolujte log serveru, verzi Nylzo a\u{A0}to, že proxy tuto cestu předává.',
+  'access.problem.failed':
+    'Nastala nečekaná chyba. Zkuste to znovu. Když chyba trvá, zkuste jiný prohlížeč nebo se podívejte do logu serveru.',
 };

@@ -1,3 +1,4 @@
+import { atCzechTime } from '../../shared/language/format.ts';
 import { LONG_HOURLY, periodStart, SECONDS_PER_DAY } from '../charts/geometry/time.ts';
 import type { Timeline } from '../charts/geometry/time.ts';
 import type { AdminLanguage } from '../messages/catalog.ts';
@@ -23,6 +24,7 @@ export interface DashboardFormat {
   readonly tick: (timeline: Timeline, index: number) => string;
   readonly period: (timeline: Timeline, first: number, last?: number) => string;
   readonly clock: (seconds: number) => string;
+  readonly clockAt: (seconds: number) => string;
   readonly time: (seconds: number) => string;
   readonly moment: (seconds: number) => string;
   readonly relative: (seconds: number, now: number) => string;
@@ -115,6 +117,10 @@ export function dashboardFormat(language: AdminLanguage): DashboardFormat {
         : `${day.format(start)} – ${day.format(date(periodStart(timeline, last)))}`;
     },
     clock: (value) => hour.format(date(value)),
+    clockAt: (value) => {
+      const instant = date(value);
+      return language === 'cs' ? atCzechTime(instant, hour.format(instant)) : hour.format(instant);
+    },
     time: (value) => withSeconds.format(date(value)),
     moment: (seconds) => moment.format(date(seconds)),
     relative: (seconds, now) => relative(seconds - now, ago),
