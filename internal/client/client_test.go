@@ -61,15 +61,21 @@ func TestMutationRequestMarkers(t *testing.T) {
 func TestOriginAllowsHTTPSAndLoopbackOnly(t *testing.T) {
 	t.Parallel()
 	for server, want := range map[string]string{
-		"https://Nylzo.Example":      "https://nylzo.example",
-		"https://nylzo.example/":     "https://nylzo.example",
-		"https://nylzo.example:8443": "https://nylzo.example:8443",
-		"http://localhost:8080":      "http://localhost:8080",
-		"http://127.0.0.1:9000":      "http://127.0.0.1:9000",
-		"http://[::1]:9000":          "http://[::1]:9000",
+		"https://Nylzo.Example":        "https://nylzo.example",
+		"https://nylzo.example/":       "https://nylzo.example",
+		"https://nylzo.example:8443":   "https://nylzo.example:8443",
+		"http://localhost:8080":        "http://localhost:8080",
+		"http://127.0.0.1:9000":        "http://127.0.0.1:9000",
+		"http://[::1]:9000":            "http://[::1]:9000",
+		"https://[FE80::1%25En0]:8443": "https://[fe80::1%25En0]:8443",
+		"https://a%2541.example":       "https://a%2541.example",
 	} {
-		if origin, err := Origin(server); err != nil || origin != want {
+		origin, err := Origin(server)
+		if err != nil || origin != want {
 			t.Fatalf("%s: %q %v, want %q", server, origin, err, want)
+		}
+		if again, againErr := Origin(origin); againErr != nil || again != origin {
+			t.Fatalf("%s: the origin %q gives %q %v when parsed again", server, origin, again, againErr)
 		}
 	}
 	for server, want := range map[string]error{
