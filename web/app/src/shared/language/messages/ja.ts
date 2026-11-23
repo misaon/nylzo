@@ -520,6 +520,13 @@ export const messages: Catalog = {
   'created.copy.short': 'コピー',
   'created.copy_failed': 'コピーできませんでした。リンクを選択状態にしたので、手動でコピーしてください。',
   'created.once': 'リンクが表示されるのは今だけです。ご自身では開かないでください。開封回数を消費してしまいます。',
+  'leave.draft.title': '書きかけのメッセージを残して移動しますか？',
+  'leave.draft.message': 'テキストと添付ファイルはどこにも保存されません。移動すると失われます。',
+  'leave.link.title': 'リンクをコピーせずに移動しますか？',
+  'leave.link.message':
+    'リンクが表示されるのは今だけです。リンクがないと誰もメッセージを開けず、取り消すこともできません。',
+  'leave.confirm': '移動する',
+  'leave.stay': 'とどまる',
   'created.passphrase.show': 'パスワードを表示',
   'created.passphrase.hide': 'パスワードを隠す',
   'created.passphrase.copy': 'パスワードをコピー',

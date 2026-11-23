@@ -27,6 +27,7 @@
     readonly onremember: (label: string) => void;
     readonly ontrackingleft: () => void;
     readonly onanother: () => void;
+    readonly oncopied: () => void;
     readonly sizing?: boolean;
   }
 
@@ -40,6 +41,7 @@
     onremember,
     ontrackingleft,
     onanother,
+    oncopied,
     sizing = false,
   }: Props = $props();
   const translator = getTranslator();
@@ -78,6 +80,7 @@
       await navigator.clipboard.writeText(created.link);
       copyFailed = false;
       copied.show();
+      oncopied();
     } catch {
       copyFailed = true;
       focus.focus('link');
@@ -96,6 +99,7 @@
   async function share() {
     try {
       await navigator.share({ url: created.link });
+      oncopied();
     } catch {}
   }
 </script>
@@ -217,6 +221,7 @@
                 event.currentTarget.select();
               }}
               onblur={() => (editing = false)}
+              oncopy={oncopied}
               class={[
                 'absolute inset-0 h-full w-full bg-transparent text-ui tabular-nums caret-transparent outline-none md:text-body',
                 editing ? 'text-ink-soft' : 'text-transparent',

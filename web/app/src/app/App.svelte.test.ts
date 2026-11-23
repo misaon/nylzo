@@ -57,6 +57,7 @@ interface Navigation {
   readonly hashChange?: boolean;
   readonly downloadRequest?: string | null;
   readonly formData?: FormData | null;
+  readonly info?: unknown;
 }
 
 type Intercept = (options: NavigationInterceptOptions) => void;
@@ -116,14 +117,14 @@ describe('app shell', () => {
 
   function navigate(options: Navigation): ReturnType<typeof vi.fn<Intercept>> {
     const intercept = vi.fn<Intercept>();
-    const event = Object.assign(new Event('navigate'), {
+    const event = Object.assign(new Event('navigate', { cancelable: true }), {
       canIntercept: true,
       hashChange: false,
       downloadRequest: null,
       formData: null,
       navigationType: 'push',
       ...options,
-      destination: { url: new URL(options.url, location.origin).href },
+      destination: { url: new URL(options.url, location.origin).href, key: 'destination' },
       intercept,
     });
     navigation.dispatchEvent(event);
@@ -247,6 +248,41 @@ describe('app shell', () => {
       expect(navigate(options)).not.toHaveBeenCalled();
       expect(document.title).toBe(title);
     });
+
+    it.each([
+      { unsaved: 'draft', navigationType: 'push' },
+      { unsaved: 'link', navigationType: 'traverse' },
+    ] as const)(
+      'asks before a switch drops an unsaved $unsaved and goes on only once confirmed',
+      async ({ unsaved, navigationType }) => {
+        const navigateAgain = vi.fn<(url: string, options: NavigationNavigateOptions) => void>();
+        const traverseAgain = vi.fn<(key: string, options: NavigationOptions) => void>();
+        Object.assign(navigation, { navigate: navigateAgain, traverseTo: traverseAgain });
+        show('/terms');
+        holdMessages();
+        screenWork().guard(() => unsaved);
+        const answer = async (index: number) => {
+          const dialog = document.querySelector('dialog');
+          expect(dialog?.textContent).toContain(translated('en', `leave.${unsaved}.title`));
+          dialog?.querySelectorAll('button')[index]?.click();
+          await tick();
+          flushSync();
+        };
+
+        expect(navigate({ url: '/agents', navigationType })).not.toHaveBeenCalled();
+        await answer(0);
+        expect(document.querySelector('dialog')).toBeNull();
+        expect([navigateAgain, traverseAgain].flatMap((repeat) => repeat.mock.calls)).toEqual([]);
+
+        expect(navigate({ url: '/agents', navigationType })).not.toHaveBeenCalled();
+        await answer(1);
+        const repeated = navigationType === 'push' ? navigateAgain : traverseAgain;
+        expect(repeated).toHaveBeenCalledOnce();
+        const info: unknown = repeated.mock.calls[0]?.[1].info;
+        await intercepted(navigate({ url: '/agents', navigationType, info }));
+        expect(document.title).toBe(translated('en', 'title.agents'));
+      },
+    );
 
     it('leaves a navigation to the browser while this tab tracks no message', () => {
       show('/terms');

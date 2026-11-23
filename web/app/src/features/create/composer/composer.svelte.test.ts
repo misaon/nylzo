@@ -343,6 +343,27 @@ describe('message composer interactions', () => {
     },
   );
 
+  it('warns before leaving a draft, or a link that was neither copied nor tracked', async () => {
+    const form = composer();
+    form.text = '  ';
+    expect(leaving(form)).toEqual([undefined, false]);
+    form.file = new File(['ok'], 'notes.txt');
+    expect(leaving(form)).toEqual(['draft', true]);
+    form.file = undefined;
+    form.text = 'draft';
+    await submit(form);
+    vi.advanceTimersByTime(5100);
+    expect(leaving(form)).toEqual(['link', true]);
+    form.linkCopied = true;
+    expect(leaving(form)).toEqual([undefined, false]);
+    form.linkCopied = false;
+    vi.mocked(rememberSent).mockResolvedValueOnce(false);
+    await form.remember('');
+    expect(leaving(form)).toEqual(['link', true]);
+    await form.remember('');
+    expect(leaving(form)).toEqual([undefined, false]);
+  });
+
   it('keeps a message only in this tab when the page cannot keep it in the browser', async () => {
     const form = composer();
     form.canKeep = false;
@@ -567,6 +588,12 @@ describe('message composer interactions', () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 });
+
+function leaving(form: Composer): readonly [Composer['unsaved'], boolean] {
+  const event = new Event('beforeunload', { cancelable: true });
+  form.guardLeaving(event);
+  return [form.unsaved, event.defaultPrevented];
+}
 
 function submit(form: Composer): Promise<void> {
   return form.submit(new SubmitEvent('submit', { cancelable: true }));

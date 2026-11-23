@@ -16,12 +16,14 @@
   import type { Language } from '../shared/language/language.ts';
   import { setTranslator, Translator } from '../shared/language/translator.svelte.ts';
   import { ScreenWork, setScreenWork } from '../shared/navigation/screen-work.ts';
+  import type { UnsavedWork } from '../shared/navigation/screen-work.ts';
   import { sessionSentStore, setSessionSentStore } from '../shared/sent-records/session-sent-store.ts';
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
   import Button from '../shared/ui/button/Button.svelte';
   import Icon from '../shared/ui/icon/Icon.svelte';
+  import ConfirmDialog from '../shared/ui/dialog/ConfirmDialog.svelte';
   import { SCREEN_TITLES, screenOf } from './pages.ts';
   import type { Screen } from './pages.ts';
 
@@ -49,6 +51,7 @@
   } as const satisfies Record<Screen, Component | undefined>;
   // Screens that hold no message secret, so the page can switch between them without loading a new document.
   const SWITCHABLE: ReadonlySet<Screen> = new Set(['agents', 'create', 'sent', 'terms', 'transparency']);
+  const LEAVE_CONFIRMED = Symbol('leave confirmed');
 
   const { start }: Props = $props();
   const { path: startPath, language: startLanguage } = untrack(() => start);
@@ -56,6 +59,7 @@
   let visit = $state(0);
   let replacingUrl = false;
   let main: HTMLElement | undefined;
+  let leaving = $state<{ readonly unsaved: UnsavedWork; readonly proceed: () => void }>();
   const screen = $derived(screenOf(path));
   const translator = setTranslator(new Translator(startLanguage));
   const tracked = setSessionSentStore(sessionSentStore());
@@ -122,6 +126,12 @@
       });
       return;
     }
+    const { unsaved } = work;
+    if (unsaved && event.cancelable && event.info !== LEAVE_CONFIRMED) {
+      event.preventDefault();
+      leaving = { unsaved, proceed: repeatNavigation(event) };
+      return;
+    }
     // A home page keeps the language shown, as a reload would through the saved choice.
     path = destination.pathname;
     visit++;
@@ -140,6 +150,26 @@
       main = undefined;
     };
   };
+
+  function repeatNavigation(event: NavigateEvent): () => void {
+    const { navigationType, destination } = event;
+    const options = { info: LEAVE_CONFIRMED };
+    if (navigationType === 'traverse') {
+      return () => {
+        navigation.traverseTo(destination.key, options);
+      };
+    }
+    const history = navigationType === 'replace' ? 'replace' : 'push';
+    return () => {
+      navigation.navigate(destination.url, { ...options, history });
+    };
+  }
+
+  function leave() {
+    const proceed = leaving?.proceed;
+    leaving = undefined;
+    proceed?.();
+  }
 
   const listenForNavigation: Attachment = () => {
     if (typeof navigation === 'undefined') {
@@ -248,3 +278,17 @@
     <SiteFooter compact={screen === 'read'} current={screen} {onlanguage} />
   </div>
 </div>
+
+{#if leaving}
+  <ConfirmDialog
+    id="leave-confirm"
+    tone="warning"
+    icon="warning"
+    title={translate(leaving.unsaved === 'draft' ? 'leave.draft.title' : 'leave.link.title')}
+    message={translate(leaving.unsaved === 'draft' ? 'leave.draft.message' : 'leave.link.message')}
+    confirmLabel={translate('leave.confirm')}
+    dismissLabel={translate('leave.stay')}
+    onconfirm={leave}
+    onclose={() => (leaving = undefined)}
+  />
+{/if}

@@ -532,6 +532,13 @@ export const messages: Catalog = {
   'created.copy.short': 'Copier',
   'created.copy_failed': 'La copie a échoué. Le lien est sélectionné, copiez-le manuellement.',
   'created.once': 'Vous ne voyez le lien que maintenant. Ne l’ouvrez pas vous-même, vous consommeriez une ouverture.',
+  'leave.draft.title': 'Partir sans terminer le message\u{A0}?',
+  'leave.draft.message': 'Nous n’enregistrons ni le texte ni la pièce jointe. Si vous partez, ils seront perdus.',
+  'leave.link.title': 'Partir sans copier le lien\u{A0}?',
+  'leave.link.message':
+    'Vous ne voyez le lien que maintenant. Sans lui, personne ne pourra ouvrir le message et vous ne pourrez pas l’annuler.',
+  'leave.confirm': 'Partir',
+  'leave.stay': 'Rester',
   'created.passphrase.show': 'Afficher le mot de passe',
   'created.passphrase.hide': 'Masquer le mot de passe',
   'created.passphrase.copy': 'Copier le mot de passe',

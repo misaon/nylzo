@@ -565,6 +565,13 @@ export const messages: Catalog = {
   'created.copy.short': 'Skopiuj',
   'created.copy_failed': 'Nie udało się skopiować. Link jest zaznaczony, skopiuj go ręcznie.',
   'created.once': 'Link widzisz tylko teraz. Nie otwieraj go samodzielnie, bo zużyjesz otwarcie.',
+  'leave.draft.title': 'Wyjść bez dokończenia wiadomości?',
+  'leave.draft.message': 'Nigdzie nie zapisujemy tekstu ani załącznika. Jeśli wyjdziesz, przepadną.',
+  'leave.link.title': 'Wyjść bez kopiowania linku?',
+  'leave.link.message':
+    'Link widzisz tylko teraz. Bez niego nikt nie otworzy wiadomości i\u{A0}nie da się jej anulować.',
+  'leave.confirm': 'Wyjdź',
+  'leave.stay': 'Zostań',
   'created.passphrase.show': 'Pokaż hasło',
   'created.passphrase.hide': 'Ukryj hasło',
   'created.passphrase.copy': 'Skopiuj hasło',

@@ -526,6 +526,13 @@ export const messages: Catalog = {
   'created.copy_failed': 'Gagal menyalin. Tautan sudah dipilih, salin secara manual.',
   'created.once':
     'Tautan ini hanya ditampilkan sekarang. Jangan membukanya sendiri, karena itu akan dihitung sebagai satu kali dibuka.',
+  'leave.draft.title': 'Keluar sebelum pesan selesai?',
+  'leave.draft.message': 'Kami tidak menyimpan teks atau lampiran di mana pun. Jika Anda keluar, semuanya hilang.',
+  'leave.link.title': 'Keluar tanpa menyalin tautan?',
+  'leave.link.message':
+    'Tautan ini hanya ditampilkan sekarang. Tanpanya, tidak ada yang bisa membuka pesan, dan Anda tidak bisa membatalkannya.',
+  'leave.confirm': 'Keluar',
+  'leave.stay': 'Tetap di sini',
   'created.passphrase.show': 'Tampilkan kata sandi',
   'created.passphrase.hide': 'Sembunyikan kata sandi',
   'created.passphrase.copy': 'Salin kata sandi',

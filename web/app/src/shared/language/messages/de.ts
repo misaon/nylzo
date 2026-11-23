@@ -537,6 +537,13 @@ export const messages: Catalog = {
   'created.copy.short': 'Kopieren',
   'created.copy_failed': 'Kopieren hat nicht geklappt. Der Link ist markiert, kopieren Sie ihn von Hand.',
   'created.once': 'Sie sehen den Link nur jetzt. Öffnen Sie ihn nicht selbst, sonst verbrauchen Sie einen Aufruf.',
+  'leave.draft.title': 'Seite mit angefangener Nachricht verlassen?',
+  'leave.draft.message': 'Wir speichern Text und Anhang nirgends. Wenn Sie gehen, sind sie verloren.',
+  'leave.link.title': 'Seite verlassen, ohne den Link zu kopieren?',
+  'leave.link.message':
+    'Sie sehen den Link nur jetzt. Ohne ihn kann niemand die Nachricht öffnen, und Sie können sie nicht widerrufen.',
+  'leave.confirm': 'Verlassen',
+  'leave.stay': 'Bleiben',
   'created.passphrase.show': 'Passwort anzeigen',
   'created.passphrase.hide': 'Passwort ausblenden',
   'created.passphrase.copy': 'Passwort kopieren',
