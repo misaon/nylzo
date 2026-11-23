@@ -33,7 +33,7 @@
   });
 </script>
 
-<div class="relative mt-4 grid text-caption">
+<div class="mt-4 grid text-caption">
   <p
     class={[
       'col-start-1 row-start-1 overflow-y-clip text-center text-balance text-ink-mute transition-[opacity,height] duration-500 [interpolate-size:allow-keywords]',
@@ -66,7 +66,7 @@
   </div>
   <div
     class={[
-      'absolute inset-x-0 top-1/2 z-30 flex -translate-y-1/2 items-center justify-center text-left fade-swap',
+      'z-30 col-start-1 row-start-1 flex items-center justify-center text-left fade-swap',
       composer.problemNotice === '' ? 'pointer-events-none invisible opacity-0' : 'opacity-100',
     ]}
   >
@@ -74,7 +74,7 @@
   </div>
   <div
     class={[
-      'absolute inset-x-0 top-1/2 flex -translate-y-1/2 flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center fade-swap',
+      'col-start-1 row-start-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center fade-swap',
       rememberedShown ? 'opacity-100' : 'pointer-events-none opacity-0',
     ]}
   >
