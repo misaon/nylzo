@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Try again',
   'app.crashed': 'The page ran into an error. Reload it.',
+  'app.crashed.reopen': 'The page ran into an error. Open the message link again.',
   'start.failed': 'The page could not start. Check your connection and try again.',
   'start.failed.reopen': 'The page could not start. Check your connection and open the link again.',
 

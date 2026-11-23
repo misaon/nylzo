@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': '重试',
   'app.crashed': '页面出错了。请重新加载。',
+  'app.crashed.reopen': '页面出错了。请重新打开消息链接。',
   'start.failed': '页面无法启动。请检查网络连接后重试。',
   'start.failed.reopen': '页面无法启动。请检查网络连接后重新打开链接。',
 

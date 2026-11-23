@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Skúsiť znova',
   'app.crashed': 'Na stránke nastala chyba. Načítajte ju znova.',
+  'app.crashed.reopen': 'Na stránke nastala chyba. Otvorte odkaz na správu znova.',
   'start.failed': 'Stránku sa nepodarilo spustiť. Skontrolujte pripojenie a\u{A0}skúste to znova.',
   'start.failed.reopen': 'Stránku sa nepodarilo spustiť. Skontrolujte pripojenie a\u{A0}otvorte odkaz znova.',
 

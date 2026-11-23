@@ -202,6 +202,6 @@ describe('the app on the server', () => {
 
   it.each(['/sent', '/transparency', '/r'])('renders the crash notice for %s, which needs a browser', (path) => {
     const { body } = render(App, { props: { start: { path, language: 'en' } }, transformError: (error) => error });
-    expect(body).toMatch(/<p role="alert"[^>]*>[^<]+<\/p>/u);
+    expect(body).toMatch(/<div role="alert"[^>]*><p[^>]*>[^<]+<\/p>/u);
   });
 });

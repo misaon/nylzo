@@ -27,15 +27,28 @@
   const { translate } = translator;
   const id = $props.id();
   let open = $state(false);
+  let trigger: HTMLElement | undefined;
   const current = $derived(translator.language);
   const currentName = $derived(languageDetails(current).name);
   const currentCode = $derived(current.split('-', 1)[0]?.toUpperCase());
   const currentLabel = $derived(translate('language.current', { language: currentName }));
 
-  function choose(language: Language) {
+  function close() {
     open = false;
+    trigger?.focus();
+  }
+
+  function choose(language: Language) {
+    close();
     onlanguage(language);
   }
+
+  const holdTrigger: Attachment<HTMLElement> = (element) => {
+    trigger = element;
+    return () => {
+      trigger = undefined;
+    };
+  };
 
   function onkeydown(event: KeyboardEvent & { readonly currentTarget: HTMLElement }, language: Language) {
     if (event.key === 'Enter' || event.key === ' ') {
@@ -77,6 +90,7 @@
     aria-controls={id}
     aria-label={placement === 'footer' ? currentLabel : `${currentCode}, ${currentLabel}`}
     onclick={() => (open = !open)}
+    {@attach holdTrigger}
   >
     {#if placement === 'footer'}
       <Icon name="globe" class="size-4 shrink-0 text-aegis-300" animated />
@@ -92,7 +106,7 @@
     label={translate('language.label')}
     {open}
     from={placement === 'footer' ? 'below' : 'above'}
-    onclose={() => (open = false)}
+    onclose={close}
     ondismiss={() => (open = false)}
     class={[
       'w-max max-w-[calc(100vw-2rem)] p-1.5',

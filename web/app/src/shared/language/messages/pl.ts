@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Spróbuj ponownie',
   'app.crashed': 'Na stronie wystąpił błąd. Wczytaj ją ponownie.',
+  'app.crashed.reopen': 'Na stronie wystąpił błąd. Otwórz ponownie link do wiadomości.',
   'start.failed': 'Nie udało się uruchomić strony. Sprawdź połączenie i\u{A0}spróbuj ponownie.',
   'start.failed.reopen': 'Nie udało się uruchomić strony. Sprawdź połączenie i\u{A0}otwórz link ponownie.',
 

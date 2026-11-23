@@ -101,7 +101,7 @@ describe('language menu', () => {
     expect(expanded(trigger)).toBe('false');
   });
 
-  it('chooses a language by click, Enter or Space and closes', () => {
+  it('chooses a language by click, Enter or Space, closes and returns focus to its trigger', () => {
     const trigger = openMenu();
     const [first, second, third] = LANGUAGES.filter((language) => language !== 'en');
     if (!first || !second || !third) {
@@ -118,6 +118,7 @@ describe('language menu', () => {
     expect(press(option(second), 'Enter').defaultPrevented).toBe(true);
     expect(onlanguage).toHaveBeenLastCalledWith(second);
     expect(expanded(trigger)).toBe('false');
+    expect(document.activeElement).toBe(trigger);
 
     trigger.click();
     flushSync();
@@ -175,11 +176,13 @@ describe('language menu', () => {
     expect(expanded(trigger)).toBe('false');
   });
 
-  it('closes on Escape and when focus leaves the menu', () => {
+  it('focuses the current language on open, closes on Escape back to its trigger and when focus leaves the menu', () => {
     const trigger = openMenu();
+    expect(document.activeElement).toBe(option('en'));
 
     press(option('en'), 'Escape');
     expect(expanded(trigger)).toBe('false');
+    expect(document.activeElement).toBe(trigger);
 
     trigger.click();
     flushSync();

@@ -172,7 +172,7 @@ describe('app shell', () => {
   it('shows a notice in place of a screen that fails to render', () => {
     shell.agentsFail = true;
     show('/agents');
-    expect(target.querySelector('main [role="alert"]')?.textContent).toBe(translated('en', 'app.crashed'));
+    expect(target.querySelector('main [role="alert"] p')?.textContent).toBe(translated('en', 'app.crashed'));
   });
 
   it('forgets the messages tracked in this tab when the page goes away', () => {
@@ -213,12 +213,14 @@ describe('app shell', () => {
       vi.stubGlobal('navigation', navigation);
     });
 
-    it('switches between screens inside the document while this tab tracks messages', async () => {
+    it('switches between screens inside the document while this tab tracks messages and focuses the new page', async () => {
       show('/terms');
       holdMessages();
       const intercept = navigate({ url: '/agents' });
       await intercepted(intercept);
       expect(document.title).toBe(translated('en', 'title.agents'));
+      expect(intercept.mock.calls[0]?.[0].focusReset).toBe('manual');
+      expect(document.activeElement).toBe(target.querySelector('main'));
       expect(component).toBeDefined();
     });
 
