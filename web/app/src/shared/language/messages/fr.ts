@@ -845,7 +845,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Exploitation',
   'operations.title': 'Nous surveillons aussi le serveur nylzo.com',
   'operations.sub':
-    'Le chiffrement protège le contenu du message. Nous surveillons séparément le serveur, la connexion et le code du site, et si quelque chose ne correspond pas, le service passe en maintenance.',
+    'Le chiffrement protège le contenu du message. Nous surveillons séparément le serveur, la connexion et le code du site, et si le code du site ne correspond pas à la version publiée, le service passe en maintenance.',
   'operations.diagram':
     'Toutes les 30\u{A0}minutes, nous comparons le code de nylzo.com avec la version signée. S’il diffère, le service passe en maintenance.',
   'operations.release': 'Version sur GitHub',

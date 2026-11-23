@@ -830,7 +830,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Operação',
   'operations.title': 'Também monitoramos o servidor do nylzo.com',
   'operations.sub':
-    'A criptografia protege o conteúdo da mensagem. Monitoramos à parte o servidor, a conexão e o código do site e, se algo não bater, o serviço entra em manutenção.',
+    'A criptografia protege o conteúdo da mensagem. Monitoramos à parte o servidor, a conexão e o código do site e, se o código do site não corresponder à versão publicada, o serviço entra em manutenção.',
   'operations.diagram':
     'A cada 30\u{A0}minutos, comparamos o código no nylzo.com com a versão assinada. Se houver diferença, o serviço entra em manutenção.',
   'operations.release': 'Versão no GitHub',

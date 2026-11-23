@@ -843,7 +843,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Betrieb',
   'operations.title': 'Wir überwachen auch den Server von nylzo.com',
   'operations.sub':
-    'Die Verschlüsselung schützt den Inhalt einer Nachricht. Server, Verbindung und den Code der Website überwachen wir gesondert, und wenn etwas nicht stimmt, geht der Dienst in den Wartungsmodus.',
+    'Die Verschlüsselung schützt den Inhalt einer Nachricht. Server, Verbindung und den Code der Website überwachen wir gesondert, und wenn der Code der Website nicht dem Release entspricht, geht der Dienst in den Wartungsmodus.',
   'operations.diagram':
     'Alle 30\u{A0}Minuten vergleichen wir den Code auf nylzo.com mit dem signierten Release. Weicht er ab, geht der Dienst in den Wartungsmodus.',
   'operations.release': 'Release auf GitHub',

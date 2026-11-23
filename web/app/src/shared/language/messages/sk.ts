@@ -827,7 +827,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Prevádzka',
   'operations.title': 'Strážime aj server nylzo.com',
   'operations.sub':
-    'Šifrovanie chráni obsah správy. Server, spojenie aj kód webu strážime zvlášť, a\u{A0}keď niečo nesedí, služba prejde do údržby.',
+    'Šifrovanie chráni obsah správy. Server, spojenie aj kód webu strážime zvlášť, a\u{A0}keď kód webu nezodpovedá vydaniu, služba prejde do údržby.',
   'operations.diagram':
     'Každých 30\u{A0}minút porovnávame kód na nylzo.com s\u{A0}podpísaným vydaním. Keď sa líši, služba prejde do údržby.',
   'operations.release': 'Vydanie na GitHube',

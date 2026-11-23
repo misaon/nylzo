@@ -835,7 +835,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Operasional',
   'operations.title': 'Kami juga mengawasi server nylzo.com',
   'operations.sub':
-    'Enkripsi melindungi isi pesan. Server, koneksi, dan kode situs kami awasi secara terpisah, dan jika ada yang tidak beres, layanan beralih ke mode pemeliharaan.',
+    'Enkripsi melindungi isi pesan. Server, koneksi, dan kode situs kami awasi secara terpisah, dan jika kode situs tidak sesuai dengan rilis, layanan beralih ke mode pemeliharaan.',
   'operations.diagram':
     'Setiap 30\u{A0}menit kami membandingkan kode di nylzo.com dengan rilis yang ditandatangani. Jika berbeda, layanan beralih ke mode pemeliharaan.',
   'operations.release': 'Rilis di GitHub',

@@ -821,7 +821,7 @@ export const messages = {
   'operations.eyebrow': 'Provoz',
   'operations.title': 'Hlídáme i\u{A0}server nylzo.com',
   'operations.sub':
-    'Šifrování chrání obsah zprávy. Server, spojení i\u{A0}kód webu hlídáme zvlášť, a\u{A0}když něco nesedí, služba přejde do údržby.',
+    'Šifrování chrání obsah zprávy. Server, spojení i\u{A0}kód webu hlídáme zvlášť, a\u{A0}když kód webu neodpovídá vydání, služba přejde do údržby.',
   'operations.diagram':
     'Každých 30\u{A0}minut porovnáváme kód na nylzo.com s\u{A0}podepsaným vydáním. Když se liší, služba přejde do údržby.',
   'operations.release': 'Vydání na GitHubu',

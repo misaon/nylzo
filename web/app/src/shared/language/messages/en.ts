@@ -818,7 +818,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Operations',
   'operations.title': 'We watch the nylzo.com server too',
   'operations.sub':
-    'Encryption protects the content of a message. We watch the server, the connection and the site code separately, and when something is off, the service switches to maintenance.',
+    'Encryption protects the content of a message. We watch the server, the connection and the site code separately, and when the site code does not match the release, the service switches to maintenance.',
   'operations.diagram':
     'Every 30 minutes we compare the code on nylzo.com with the signed release. If it differs, the service switches to maintenance.',
   'operations.release': 'Release on GitHub',

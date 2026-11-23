@@ -777,7 +777,8 @@ export const messages: Catalog = {
   'compare.note.every30': '每 30 分钟',
   'operations.eyebrow': '运维',
   'operations.title': '我们也监控 nylzo.com 服务器',
-  'operations.sub': '加密保护的是消息内容。服务器、连接和网站代码由我们另外监控，一旦出现异常，服务会切换到维护状态。',
+  'operations.sub':
+    '加密保护的是消息内容。服务器、连接和网站代码由我们另外监控，一旦网站代码与发行版不一致，服务会切换到维护状态。',
   'operations.diagram': '我们每 30 分钟将 nylzo.com 上的代码与已签名发行版比对一次。如有不同，服务会切换到维护状态。',
   'operations.release': 'GitHub 上的发行版',
   'operations.instance': 'nylzo.com',

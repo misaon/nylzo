@@ -872,7 +872,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Działanie usługi',
   'operations.title': 'Pilnujemy też serwera nylzo.com',
   'operations.sub':
-    'Szyfrowanie chroni treść wiadomości. Serwera, połączenia i\u{A0}kodu strony pilnujemy osobno, a\u{A0}gdy coś się nie zgadza, usługa przechodzi w\u{A0}tryb prac technicznych.',
+    'Szyfrowanie chroni treść wiadomości. Serwera, połączenia i\u{A0}kodu strony pilnujemy osobno, a\u{A0}gdy kod strony nie zgadza się z\u{A0}wydaniem, usługa przechodzi w\u{A0}tryb prac technicznych.',
   'operations.diagram':
     'Co 30\u{A0}minut porównujemy kod na nylzo.com z\u{A0}podpisanym wydaniem. Jeśli się różni, usługa przechodzi w\u{A0}tryb prac technicznych.',
   'operations.release': 'Wydanie na GitHubie',

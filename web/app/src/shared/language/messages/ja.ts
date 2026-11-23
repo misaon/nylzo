@@ -827,7 +827,7 @@ export const messages: Catalog = {
   'operations.eyebrow': '運用',
   'operations.title': 'nylzo.comのサーバーも監視しています',
   'operations.sub':
-    '暗号化はメッセージの内容を守ります。サーバー、通信、サイトのコードは別に監視しており、異常があればサービスはメンテナンスに切り替わります。',
+    '暗号化はメッセージの内容を守ります。サーバー、通信、サイトのコードは別に監視しており、サイトのコードがリリースと一致しなければ、サービスはメンテナンスに切り替わります。',
   'operations.diagram':
     '30分ごとに、nylzo.comのコードを署名されたリリースと比較します。違いがあれば、サービスはメンテナンスに切り替わります。',
   'operations.release': 'GitHubのリリース',
