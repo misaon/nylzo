@@ -79,8 +79,13 @@
           {translate(`dashboard.range.long.${data.range}`)}
         </h2>
         <p class="mt-1.5 flex items-center gap-2 text-caption text-ink-mute">
-          <Icon name="clock" class="size-3.5 shrink-0" />
-          {translate('dashboard.time')}
+          {#if switching}
+            <Icon name="refresh" class="size-3.5 shrink-0 motion-safe:animate-spin" />
+            {translate('dashboard.loading')}
+          {:else}
+            <Icon name="clock" class="size-3.5 shrink-0" />
+            {translate('dashboard.time')}
+          {/if}
         </p>
       </div>
       <RangeSwitch {range} {onrange} />
