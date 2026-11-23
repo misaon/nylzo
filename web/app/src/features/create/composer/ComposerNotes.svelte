@@ -81,7 +81,10 @@
     <p role="status" class={['text-balance', composer.remembered === 'failed' ? 'text-rose-300' : 'text-ink-mute']}>
       <Icon
         name={composer.remembered === 'failed' ? 'alert' : 'check'}
-        class="mr-2 inline-block size-4 shrink-0 align-[-3px] text-aegis-300"
+        class={[
+          'mr-2 inline-block size-4 shrink-0 align-[-3px]',
+          composer.remembered === 'failed' ? 'text-rose-300' : 'text-aegis-300',
+        ]}
       />{rememberedText}
     </p>
     <a href="/sent" class={ARROW_LINK} inert={!rememberedShown}>

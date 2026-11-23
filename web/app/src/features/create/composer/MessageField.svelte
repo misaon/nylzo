@@ -66,7 +66,7 @@
       class={[
         'flex h-9 min-w-0 origin-left items-center gap-2.5 rounded-control pr-1 pl-1.5 text-caption transition-[opacity,translate,scale,background-color,box-shadow] duration-500',
         composer.problemOf.file
-          ? 'bg-[rgb(244_63_94/0.14)] shadow-[inset_0_0_0_1px_rgb(251_113_133/0.65),0_4px_14px_-6px_rgb(0_0_0/0.5)]'
+          ? 'chip-danger'
           : 'bg-nebula-400/10 shadow-[inset_0_1px_0_rgb(255_255_255/0.06),0_4px_14px_-6px_rgb(0_0_0/0.5)] ring-1 ring-nebula-300/30',
         composer.file && composer.phase === 'compose'
           ? 'pointer-events-auto translate-y-0 scale-100 opacity-100'
@@ -81,13 +81,13 @@
       {/if}
       <span
         translate="no"
-        class={['truncate font-medium md:max-w-[220px]', composer.problemOf.file ? 'text-[#ffe4e6]' : 'text-ink']}
+        class={['truncate font-medium md:max-w-[220px]', composer.problemOf.file ? 'text-rose-100' : 'text-ink']}
         >{fileName}</span
       >
       <span
         class={[
           'shrink-0 pl-0.5 text-micro tabular-nums',
-          composer.problemOf.file ? 'font-medium text-[#fda4af]' : 'text-ink-mute',
+          composer.problemOf.file ? 'font-medium text-rose-300' : 'text-ink-mute',
         ]}>{fileSize}</span
       >
       <button
