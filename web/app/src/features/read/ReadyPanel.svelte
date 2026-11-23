@@ -156,7 +156,7 @@
               class="h-11 min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-mute md:h-10"
             />
             <Button
-              variant="plain"
+              variant="ghost"
               size="icon"
               onclick={() => (page.showPassphrase = !page.showPassphrase)}
               aria-label={translate(page.showPassphrase ? 'open.passphrase.hide' : 'open.passphrase.show')}
