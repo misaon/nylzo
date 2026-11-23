@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from '../../shared/ui/button/Button.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import type { Live, Overview, Range } from '../api/types.ts';
   import { getAdminTranslator } from '../messages/translator-context.ts';
@@ -22,9 +23,10 @@
     readonly failed: boolean;
     readonly stale: boolean;
     readonly onrange: (range: Range) => void;
+    readonly onretry: () => void;
   }
 
-  const { overview, live, range, failed, stale, onrange }: Props = $props();
+  const { overview, live, range, failed, stale, onrange, onretry }: Props = $props();
   const translator = getAdminTranslator();
   const { translate } = translator;
   setDashboardTools({ translate, format: dashboardFormat(translator.language) });
@@ -50,17 +52,21 @@
     >
       {translate('dashboard.title')}
     </h1>
-    {#if failed}
-      <p
-        role="status"
-        class="fixed bottom-4 left-1/2 z-50 flex w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-2 rounded-card bg-void-950 py-2 pr-4 pl-3 text-caption text-ink-soft ring-1 ring-solar-300/40"
-      >
-        <Icon name="caution" class="size-4 shrink-0 text-solar-300" />
-        {translate(loading ? 'dashboard.failed.first' : 'dashboard.failed')}
-      </p>
-    {:else if loading}
-      <p role="status" class="sr-only">{translate('dashboard.loading')}</p>
-    {/if}
+    <div role="status">
+      {#if failed}
+        <div
+          class="fixed bottom-4 left-1/2 z-50 flex w-max max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-card bg-void-950 py-2 pr-2 pl-3 text-caption text-ink-soft ring-1 ring-solar-300/40"
+        >
+          <Icon name="caution" class="size-4 shrink-0 text-solar-300" />
+          <p>{translate(loading ? 'dashboard.failed.first' : 'dashboard.failed')}</p>
+          <Button variant="tint" size="compact" class="shrink-0" onclick={onretry}>
+            <Icon name="refresh" />{translate('access.retry')}
+          </Button>
+        </div>
+      {:else if loading}
+        <p class="sr-only">{translate('dashboard.loading')}</p>
+      {/if}
+    </div>
   </div>
 
   <NowStrip live={current} overview={data} {waiting} {loading} {stale} />

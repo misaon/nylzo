@@ -158,6 +158,12 @@ export class AdminArea {
     this.wake();
   }
 
+  retry(): void {
+    this.#overviewRetryAt = 0;
+    this.#interval = LIVE_INTERVAL_MS;
+    this.wake();
+  }
+
   readonly wake = (): void => {
     clearTimeout(this.#timer);
     this.#timer = undefined;

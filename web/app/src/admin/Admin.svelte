@@ -67,6 +67,7 @@
             failed={area.failed}
             stale={area.stale}
             onrange={(range: Range) => area.chooseRange(range)}
+            onretry={() => area.retry()}
           />
         </div>
       {:else}

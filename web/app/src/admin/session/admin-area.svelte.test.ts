@@ -314,6 +314,20 @@ describe('AdminArea', () => {
       expect(area.failed).toBe(false);
     });
 
+    it('asks again at once when the admin retries, without waiting out the backoff', async () => {
+      session.overview.mockRejectedValueOnce(new ApiError(500, 'internal'));
+      session.live.mockRejectedValueOnce(new ApiError(500, 'internal'));
+      const area = await signedIn();
+      expect(area.failed).toBe(true);
+
+      area.retry();
+      await settle();
+      expect(session.overview).toHaveBeenCalledTimes(2);
+      expect(session.live).toHaveBeenCalledTimes(2);
+      expect(area.failed).toBe(false);
+      expect(area.stale).toBe(false);
+    });
+
     it('asks for the overview of a new range at once and ignores the old range answer that arrives late', async () => {
       const area = await signedIn();
       const late = Promise.withResolvers<Overview>();
