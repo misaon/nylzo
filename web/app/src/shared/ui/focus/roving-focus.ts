@@ -8,7 +8,7 @@ interface Position {
   readonly count: number;
 }
 
-export function arrowTarget(key: string, { index, count }: Position): number | undefined {
+export function rovingTarget(key: string, { index, count }: Position): number | undefined {
   if (key === 'Home') {
     return 0;
   }

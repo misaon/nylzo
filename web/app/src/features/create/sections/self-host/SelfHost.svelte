@@ -4,7 +4,7 @@
   import Button from '../../../../shared/ui/button/Button.svelte';
   import CopyButton from '../../../../shared/ui/button/CopyButton.svelte';
   import { FocusTargets } from '../../../../shared/ui/focus/focus.ts';
-  import { arrowTarget } from '../../../../shared/ui/focus/roving-focus.ts';
+  import { rovingTarget } from '../../../../shared/ui/focus/roving-focus.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
   import { pauseOffscreen } from '../../../../shared/ui/reveal/offscreen.ts';
   import { reveal, REVEAL_INDEXES } from '../../../../shared/ui/reveal/reveal.ts';
@@ -25,7 +25,7 @@
   const domain = $derived(translate('host.domain'));
 
   function onkeydown(event: KeyboardEvent) {
-    const next = arrowTarget(event.key, { index, count: tabs.length });
+    const next = rovingTarget(event.key, { index, count: tabs.length });
     const target = next === undefined ? undefined : tabs[next];
     if (target === undefined) {
       return;

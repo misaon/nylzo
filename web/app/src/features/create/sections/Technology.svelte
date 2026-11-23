@@ -7,7 +7,6 @@
 
   const translator = getTranslator();
   const { translate } = translator;
-  // Published Scorecard result of 23 November 2026; update it when the report changes.
   const SCORECARD_SCORE = 7.9;
 
   const PLATE_TILT = '[transform:rotateX(60deg)_rotateZ(-45deg)]';
