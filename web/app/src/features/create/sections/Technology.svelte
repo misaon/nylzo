@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import { REPOSITORY_URL } from '../../../shared/shell/repository.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import { pauseOffscreen } from '../../../shared/ui/reveal/offscreen.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
@@ -34,31 +35,12 @@
       depth: 'z-10 [--reveal-index:3]',
     },
   ] as const;
+  const TEST_REPORTS_URL = `${REPOSITORY_URL}#security`;
   const tests = [
-    {
-      grade: 'A+',
-      name: 'securityheaders.com',
-      subject: 'tech.tests.site',
-      report: 'https://securityheaders.com/?q=https%3A%2F%2Fnylzo.com%2F&followRedirects=on',
-    },
-    {
-      grade: 'A+',
-      name: 'Mozilla Observatory',
-      subject: 'tech.tests.site',
-      report: 'https://developer.mozilla.org/en-US/observatory/analyze?host=nylzo.com',
-    },
-    {
-      grade: '100',
-      name: 'PageSpeed Insights',
-      subject: 'tech.tests.site',
-      report: 'https://pagespeed.web.dev/analysis?url=https%3A%2F%2Fnylzo.com%2F',
-    },
-    {
-      grade: undefined,
-      name: 'OpenSSF Scorecard',
-      subject: 'tech.tests.repository',
-      report: 'https://scorecard.dev/viewer/?uri=github.com/misaon/nylzo',
-    },
+    { grade: 'A+', name: 'securityheaders.com', subject: 'tech.tests.site' },
+    { grade: 'A+', name: 'Mozilla Observatory', subject: 'tech.tests.site' },
+    { grade: '100', name: 'PageSpeed Insights', subject: 'tech.tests.site' },
+    { grade: undefined, name: 'OpenSSF Scorecard', subject: 'tech.tests.repository' },
   ] as const;
 </script>
 
@@ -131,7 +113,7 @@
         {#each tests as test (test.name)}
           <li class="border-white/8 odd:border-r nth-[-n+2]:border-b">
             <a
-              href={test.report}
+              href={TEST_REPORTS_URL}
               rel="noreferrer"
               class="group flex h-full flex-col gap-2 px-5 py-4 transition hover:bg-white/4 focus-visible:-outline-offset-2"
             >

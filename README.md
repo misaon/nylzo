@@ -89,7 +89,7 @@ The [CLI guide](https://github.com/misaon/nylzo/wiki/CLI) covers passphrases, at
 - Renovate looks for dependency updates every six hours. It merges a security fix once every check passes, and nylzo.com installs the signed patch release within ten minutes.
 - Releases are signed and reproducible, with build provenance.
 
-Independent tests of nylzo.com: [securityheaders.com](https://securityheaders.com/?q=https%3A%2F%2Fnylzo.com%2F&followRedirects=on) and [Mozilla Observatory](https://developer.mozilla.org/en-US/observatory/analyze?host=nylzo.com) rate it A+, and [PageSpeed Insights](https://pagespeed.web.dev/analysis?url=https%3A%2F%2Fnylzo.com%2F) gives it 100 for accessibility, best practices and SEO.
+Independent tests of nylzo.com: [securityheaders.com](https://securityheaders.com/?q=https%3A%2F%2Fnylzo.com%2F&followRedirects=on) and [Mozilla Observatory](https://developer.mozilla.org/en-US/observatory/analyze?host=nylzo.com) rate it A+, and [PageSpeed Insights](https://pagespeed.web.dev/analysis?url=https%3A%2F%2Fnylzo.com%2F) gives it 100 for accessibility, best practices and SEO. [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/misaon/nylzo) rates the repository.
 
 The [security model](https://github.com/misaon/nylzo/wiki/Security-model) describes each layer and the threat model behind it. Report vulnerabilities [privately](https://github.com/misaon/nylzo/security/advisories/new), as [SECURITY.md](SECURITY.md) describes.
 
