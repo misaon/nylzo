@@ -121,8 +121,7 @@
         <Button
           variant="primary"
           size="large"
-          disabled={area.busy}
-          aria-busy={area.busy}
+          aria-disabled={area.busy}
           onclick={() => void (area.stage === 'enroll' ? area.enroll() : area.signIn())}
         >
           <Icon name="key" class="size-4.5" />

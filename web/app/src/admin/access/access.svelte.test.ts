@@ -126,11 +126,12 @@ describe('access screens', () => {
     expect(heading()).toBe(translate('access.enroll.title'));
 
     const action = button('access.enroll.action');
+    action.focus();
     action.click();
     flushSync();
     expect(client.enroll).toHaveBeenCalledWith(TOKEN);
-    expect(action.disabled).toBe(true);
-    expect(action.getAttribute('aria-busy')).toBe('true');
+    expect(action.getAttribute('aria-disabled')).toBe('true');
+    expect(document.activeElement).toBe(action);
     expect(statuses()).toContain(translate('access.waiting'));
 
     enrollment.resolve(undefined);
@@ -140,7 +141,7 @@ describe('access screens', () => {
     });
     expect(statuses()).toContain(translate('access.notice.enrolled'));
     expect(alert()).toBeUndefined();
-    expect(button('access.signIn.action').disabled).toBe(false);
+    expect(button('access.signIn.action').getAttribute('aria-disabled')).toBe('false');
   });
 
   it('signs in with the passkey and shows why a sign-in failed', async () => {
