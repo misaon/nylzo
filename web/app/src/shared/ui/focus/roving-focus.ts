@@ -9,6 +9,12 @@ interface Position {
 }
 
 export function arrowTarget(key: string, { index, count }: Position): number | undefined {
+  if (key === 'Home') {
+    return 0;
+  }
+  if (key === 'End') {
+    return count - 1;
+  }
   const step = ARROW_STEPS.get(key);
   return step === undefined ? undefined : (index + step + count) % count;
 }
