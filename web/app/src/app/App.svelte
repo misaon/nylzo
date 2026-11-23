@@ -22,8 +22,8 @@
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
   import Button from '../shared/ui/button/Button.svelte';
-  import Icon from '../shared/ui/icon/Icon.svelte';
   import ConfirmDialog from '../shared/ui/dialog/ConfirmDialog.svelte';
+  import Icon from '../shared/ui/icon/Icon.svelte';
   import { SCREEN_TITLES, screenOf } from './pages.ts';
   import type { Screen } from './pages.ts';
 
