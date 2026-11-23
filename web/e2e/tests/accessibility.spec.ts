@@ -151,7 +151,7 @@ test('the read page in every state, with its delete and download confirmations, 
   await expect(page.getByRole('button', { name: 'Download anyway' })).toBeVisible();
   await expectAccessible(page, 'download confirmation');
   await openFresh(page, risky.link);
-  await expect(page.getByText('The message has already been opened')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'The message has already been opened' })).toBeVisible();
   await expectAccessible(page, 'opened');
 
   const guarded = await createMessageThroughApi({ passphrase: 'four random words here' });
@@ -160,7 +160,7 @@ test('the read page in every state, with its delete and download confirmations, 
   await expectAccessible(page, 'rejected');
 
   await openFresh(page, `${BASE_URL}/r#0.0.${message.id}.${message.secret}`);
-  await expect(page.getByText(/The link is incomplete or damaged/u)).toBeVisible();
+  await expect(page.getByRole('heading', { name: /The link is incomplete or damaged/u })).toBeVisible();
   await expectAccessible(page, 'damaged link');
 });
 

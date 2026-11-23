@@ -83,7 +83,9 @@ for (const problem of ['checksum', 'expansion', 'trailing', 'multiple frames'] a
       const plaintext = malformedCompressedAttachment(problem);
       const message = await createMessageThroughApi({ plaintext });
       await showMessage(page, message.link);
-      await expect(page.getByText('The message cannot be opened safely', { exact: true })).toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: 'The message cannot be opened safely', exact: true }),
+      ).toBeVisible();
       await expect(page.locator('pre')).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'Download attachment' })).toHaveCount(0);
     },

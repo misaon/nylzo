@@ -2,7 +2,14 @@ import type { Page } from '@playwright/test';
 
 import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
-import { chooseLanguage, expectMessageShown, leavePage, notInert, showMessage } from '../support/pages.ts';
+import {
+  chooseLanguage,
+  deleteRestButton,
+  expectMessageShown,
+  leavePage,
+  notInert,
+  showMessage,
+} from '../support/pages.ts';
 import { holdRoute } from '../support/routes.ts';
 import { watchViolations } from '../support/watchers.ts';
 
@@ -40,18 +47,18 @@ test('the recipient deletes a message without showing it, and a dismissed confir
 
   const deletion = await holdRoute(page, DELETION);
   await remove.click();
-  await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
+  await confirmation(page).getByRole('button', { name: 'Delete message' }).click();
   await deletion.requested;
   await expect(show).toBeDisabled();
   await expect(remove).toBeDisabled();
   deletion.release();
-  await expect(page.getByText('You deleted the message')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'You deleted the message' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'One-time message' })).toBeFocused();
   expect(await violations()).toEqual([]);
 
   const late = await newPage();
   await late.goto(message.link);
-  await expect(late.getByText('The message was deleted')).toBeVisible();
+  await expect(late.getByRole('heading', { name: 'The message was deleted' })).toBeVisible();
 });
 
 test('the recipient deletes the remaining opens, keeps reading and keeps the message while the language changes', async ({
@@ -62,7 +69,7 @@ test('the recipient deletes the remaining opens, keeps reading and keeps the mes
   await showMessage(page, message.link);
   await expectMessageShown(page);
   await page.evaluate(() => Object.assign(globalThis, { nylzoSamePage: true }));
-  const rest = page.getByRole('button', { name: 'Delete message' });
+  const rest = deleteRestButton(page);
   await rest.click();
   await expect(confirmation(page)).toBeVisible();
   await page.keyboard.press('Escape');
@@ -75,7 +82,7 @@ test('the recipient deletes the remaining opens, keeps reading and keeps the mes
   expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
 
   await rest.click();
-  await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
+  await confirmation(page).getByRole('button', { name: 'Delete message' }).click();
   await expect(page.getByRole('status').first()).toHaveText('The remaining opens are deleted.');
   await expect(page.locator('pre')).toHaveText('three opens');
   await chooseLanguage(page, 'Čeština');
@@ -89,7 +96,7 @@ test('the recipient deletes the remaining opens, keeps reading and keeps the mes
 
   const late = await newPage();
   await late.goto(message.link);
-  await expect(late.getByText('The message was deleted')).toBeVisible();
+  await expect(late.getByRole('heading', { name: 'The message was deleted' })).toBeVisible();
 });
 
 test('the recipient needs the passphrase to delete a message that has one, before and after showing it', async ({
@@ -108,15 +115,15 @@ test('the recipient needs the passphrase to delete a message that has one, befor
   await field.fill('four wrong words here');
   await field.press('Enter');
   await expect(confirmation(page)).toBeVisible();
-  await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
+  await confirmation(page).getByRole('button', { name: 'Delete message' }).click();
   await expect(page.getByRole('alert').filter({ hasText: 'Wrong passphrase.' })).toBeVisible({ timeout: 45_000 });
   await expect(field).toBeFocused();
   expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 0, failedPassphraseAttempts: 1 });
 
   await showMessage(page, message.link, { passphrase });
   await expectMessageShown(page);
-  await page.getByRole('button', { name: 'Delete message' }).click();
-  await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
+  await deleteRestButton(page).click();
+  await confirmation(page).getByRole('button', { name: 'Delete message' }).click();
   await expect(page.getByRole('status').first()).toHaveText('The remaining opens are deleted.');
   expect(await message.status()).toMatchObject({ state: 'deleted' });
 });
@@ -127,7 +134,7 @@ test('a refused deletion says so where the reader can see it and lets them try a
   await page.goto(message.link);
   const remove = page.getByRole('button', { name: 'Delete without opening' });
   await remove.click();
-  await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
+  await confirmation(page).getByRole('button', { name: 'Delete message' }).click();
   const note = page.getByRole('paragraph').filter({ hasText: 'The message could not be deleted. Try again.' });
   await expect(note).toBeVisible();
   await expect(note).toHaveCSS('opacity', '1');
@@ -154,8 +161,8 @@ test('a deletion that answers after the page was left never shows the message ag
   await showMessage(page, message.link);
   await expectMessageShown(page);
   const deletion = await holdRoute(page, DELETION);
-  await page.getByRole('button', { name: 'Delete message' }).click();
-  await confirmation(page).getByRole('button', { name: 'Yes, delete' }).click();
+  await deleteRestButton(page).click();
+  await confirmation(page).getByRole('button', { name: 'Delete message' }).click();
   await deletion.requested;
   await leavePage(page);
   await expect(page.getByText(LEFT)).toBeVisible();

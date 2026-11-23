@@ -141,7 +141,7 @@ test(
       await route.fulfill({ response, body: `fetch('/worker-ran');\n${await response.text()}` });
     });
     await showMessage(page, message.link, { passphrase });
-    await expect(page.getByText('Something went wrong')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'The message could not be loaded' })).toBeVisible();
     const worker = order.findIndex((path) => path.startsWith('/assets/kdf-worker-'));
     const firstNamingRequest = order.findIndex((path) => path.startsWith('/api/v1/messages/'));
     expect(worker).toBeGreaterThan(-1);
