@@ -46,6 +46,11 @@ export function encodeMeta(meta: Meta): Uint8Array<ArrayBuffer> {
   return bytes;
 }
 
+// Escaping can make a text within its limit produce a meta over MAX_META_BYTES (spec 3).
+export function metaFits(meta: Meta): boolean {
+  return utf8(canonicalJson(meta)).length <= MAX_META_BYTES;
+}
+
 export function decodeMeta(bytes: Uint8Array): Meta {
   const stored = decodeStoredMeta(bytes);
   if (stored.compressedSize !== undefined) {

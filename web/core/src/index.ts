@@ -1,6 +1,6 @@
 export { objectHash, open, seal } from './envelope/envelope.ts';
 export { type Header, newHeader, type Policy } from './envelope/header.ts';
-export type { Meta } from './envelope/meta.ts';
+export { type Meta, metaFits } from './envelope/meta.ts';
 export {
   EnvelopeRecoveryError,
   IntegrityError,

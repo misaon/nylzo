@@ -2,6 +2,7 @@ import {
   encodeBase64url,
   HEADER_LENGTH,
   MAX_MIME_BYTES,
+  MAX_TEXT_BYTES,
   objectHash,
   parseLink,
   PowTimeoutError,
@@ -292,6 +293,8 @@ describe('creating a message', () => {
     const { limits } = await fakeApi().instance();
     const tooLong = 'x'.repeat(102_401);
     expect(validateCreate(input({ text: tooLong }), limits)).toEqual([{ field: 'text', code: 'too_large' }]);
+    const escapedTooLong = '"'.repeat(MAX_TEXT_BYTES);
+    expect(validateCreate(input({ text: escapedTooLong }), limits)).toEqual([{ field: 'text', code: 'too_large' }]);
     expect(validateCreate(input({ opensMax: 11, ttlSeconds: 604_801 }), limits)).toEqual([
       { field: 'ttl', code: 'out_of_range' },
       { field: 'opens', code: 'out_of_range' },
