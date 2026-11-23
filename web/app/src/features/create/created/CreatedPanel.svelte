@@ -267,7 +267,7 @@
               ]}>{passphraseShown ? passphrase : PASSPHRASE_MASK}</span
             >
             <Button
-              variant="plain"
+              variant="ghost"
               size="icon"
               aria-label={translate(passphraseShown ? 'created.passphrase.hide' : 'created.passphrase.show')}
               onclick={() => (passphraseShown = !passphraseShown)}
