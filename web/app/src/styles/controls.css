@@ -303,6 +303,9 @@
     opacity: 1;
     transition-duration: var(--duration-press);
   }
+  &[aria-current='page']::after {
+    opacity: 1;
+  }
 }
 
 @utility button-tint-soft {
@@ -315,6 +318,10 @@
     --edge-from: oklch(0.86 0.06 246 / 0.4);
     --edge-via: oklch(0.67 0.16 252 / 0.12);
     --edge-to: oklch(0.8 0.1 305 / 0.24);
+  }
+  &[aria-current='page']::before {
+    --edge-from: oklch(0.86 0.06 246 / 0.7);
+    --edge-via: oklch(0.67 0.16 252 / 0.3);
   }
 }
 
