@@ -54,6 +54,7 @@
         <span class={i === 3 ? 'text-right' : undefined}>{column}</span>
       {/each}
     </div>
+    <!-- The list scrolls, so keyboard users must be able to focus it. -->
     <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
     <div
       class="mt-2 md:mt-0 md:max-h-[30rem] md:overflow-y-auto"

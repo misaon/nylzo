@@ -55,7 +55,7 @@ export const english: Readonly<Record<keyof typeof czech, string>> = {
   'access.problem.busy': 'The server is busy right now. Try again in a moment.',
   'access.problem.offline': 'The server does not answer. Check the connection and try again.',
   'access.problem.missing':
-    'The server offers no admin area at /api/v1/admin. Check that it runs a Nylzo version with the admin area and that the proxy passes this path on.',
+    'The server offers no admin area at /api/v1/admin. Check the server log, the Nylzo version and that the proxy passes this path on.',
   'access.problem.failed':
-    'The server sent an unexpected answer. Try again, and if it keeps failing, check the server log.',
+    'Something unexpected went wrong. Try again. If it keeps failing, try another browser or check the server log.',
 };

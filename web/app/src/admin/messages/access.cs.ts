@@ -51,7 +51,7 @@ export const czech = {
   'access.problem.busy': 'Server je teď vytížený. Zkuste to za chvíli.',
   'access.problem.offline': 'Server neodpovídá. Zkontrolujte připojení a\u{A0}zkuste to znovu.',
   'access.problem.missing':
-    'Server na adrese /api/v1/admin správu nenabízí. Zkontrolujte, že běží verze Nylzo se správou a\u{A0}že proxy tuto cestu předává.',
+    'Server na adrese /api/v1/admin správu nenabízí. Zkontrolujte log serveru, verzi Nylzo a\u{A0}to, že proxy tuto cestu předává.',
   'access.problem.failed':
-    'Server vrátil nečekanou odpověď. Zkuste to znovu, a\u{A0}když chyba trvá, podívejte se do logu serveru.',
+    'Nastala nečekaná chyba. Zkuste to znovu. Když chyba trvá, zkuste jiný prohlížeč nebo se podívejte do logu serveru.',
 };
