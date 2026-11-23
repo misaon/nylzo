@@ -4,7 +4,7 @@ import { vectors } from '../../test/vectors.ts';
 import { MetaError } from '../errors.ts';
 import { MAX_FILE_BYTES, MAX_META_BYTES, MAX_TEXT_BYTES } from '../limits.ts';
 import { concatenate, utf8 } from '../primitives/bytes.ts';
-import { decodeMeta, encodeMeta } from './meta.ts';
+import { decodeMeta, encodeMeta, metaFits } from './meta.ts';
 import type { Meta } from './meta.ts';
 
 function decodeText(json: string): Meta {
@@ -146,5 +146,12 @@ describe('meta decoding (spec 3.1)', () => {
     const overhead = padded(0).length;
     expect(() => decodeText(padded(MAX_META_BYTES - overhead))).not.toThrow();
     expect(() => decodeText(padded(MAX_META_BYTES - overhead + 1))).toThrow(MetaError);
+  });
+
+  it('says a text within its limit does not fit once its escapes outgrow the meta', () => {
+    const quotes = '"'.repeat(MAX_TEXT_BYTES);
+    expect(metaFits({ text: quotes })).toBe(false);
+    expect(() => encodeMeta({ text: quotes })).toThrow(MetaError);
+    expect(metaFits({ text: 'x'.repeat(MAX_TEXT_BYTES) })).toBe(true);
   });
 });

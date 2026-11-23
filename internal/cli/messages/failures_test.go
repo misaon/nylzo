@@ -532,7 +532,11 @@ func TestCreateRefusesWhatOPAQUEOrTheMetaCannotCarry(t *testing.T) {
 			[]string{"--ask-passphrase"},
 			"the passphrase is longer than",
 		},
-		"text whose escapes outgrow the meta": {messageRun{stdin: strings.Repeat(`"`, envelope.MaxTextBytes)}, nil, ""},
+		"text whose escapes outgrow the meta": {
+			messageRun{stdin: strings.Repeat(`"`, envelope.MaxTextBytes)},
+			nil,
+			"the text is too long once its quotes and control characters are escaped",
+		},
 	} {
 		result := runMessage(t, RunCreate, test.input, append([]string{"--server", instance.url}, test.arguments...)...)
 		if result.code != command.ExitError || !strings.Contains(result.stderr, test.want) {

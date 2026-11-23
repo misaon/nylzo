@@ -13,6 +13,7 @@ import {
   MalformedPassphraseError,
   MAX_MIME_BYTES,
   MAX_TEXT_BYTES,
+  metaFits,
   MIN_TTL_SECONDS,
   newHeader,
   newRequestKey,
@@ -144,7 +145,7 @@ export function validateCreate(input: CreateInput, limits: InstanceLimits): Crea
   if (input.text === '' && input.file === undefined) {
     problems.push({ field: 'content', code: 'missing' });
   }
-  if (utf8(input.text).length > Math.min(limits.maxTextBytes, MAX_TEXT_BYTES)) {
+  if (utf8(input.text).length > Math.min(limits.maxTextBytes, MAX_TEXT_BYTES) || !metaFits(metaOf(input))) {
     problems.push({ field: 'text', code: 'too_large' });
   }
   if (input.file && input.file.bytes.length > limits.maxFileBytes) {

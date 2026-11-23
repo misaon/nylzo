@@ -31,7 +31,8 @@ func TestDecodeMetaRefusesFieldsOfTheWrongType(t *testing.T) {
 func TestEncodeMetaRefusesATextWhoseEscapesExceedTheLimit(t *testing.T) {
 	t.Parallel()
 	quotes := strings.Repeat(`"`, envelope.MaxTextBytes)
-	if _, err := envelope.EncodeMeta(envelope.Meta{Text: &quotes}); !errors.Is(err, envelope.ErrMeta) {
+	if _, err := envelope.EncodeMeta(envelope.Meta{Text: &quotes}); !errors.Is(err, envelope.ErrMetaTooLarge) ||
+		!errors.Is(err, envelope.ErrMeta) {
 		t.Fatalf("a text that escapes to twice its length: want ErrMeta, got %v", err)
 	}
 }

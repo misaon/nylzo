@@ -555,6 +555,12 @@ func createPolicy(
 	if message.Meta.Text != nil && int64(len(*message.Meta.Text)) > maxText {
 		return envelope.Policy{}, fmt.Errorf("%w: the text is longer than %d bytes", errPolicy, maxText)
 	}
+	if _, err := envelope.EncodeMeta(message.Meta); errors.Is(err, envelope.ErrMetaTooLarge) {
+		return envelope.Policy{}, fmt.Errorf(
+			"%w: the text is too long once its quotes and control characters are escaped",
+			errPolicy,
+		)
+	}
 	if message.Meta.File != nil && message.Meta.File.Size > limits.MaxFileBytes {
 		return envelope.Policy{}, fmt.Errorf("%w: the file is larger than %d bytes", errPolicy, limits.MaxFileBytes)
 	}

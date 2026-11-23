@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	jsonv2 "encoding/json/v2"
 	"errors"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 )
@@ -14,7 +15,10 @@ const (
 	MaxJSONDepth = 32
 )
 
-var ErrMeta = errors.New("core: invalid meta")
+var (
+	ErrMeta         = errors.New("core: invalid meta")
+	ErrMetaTooLarge = fmt.Errorf("%w: longer than %d bytes once encoded", ErrMeta, MaxMetaBytes)
+)
 
 type FileMeta struct {
 	Name string
@@ -89,7 +93,7 @@ func encodeStoredMeta(meta Meta, compressedSize int64) ([]byte, error) {
 	}
 	encoded, _ := jsonv2.Marshal(object)
 	if len(encoded) > MaxMetaBytes {
-		return nil, ErrMeta
+		return nil, ErrMetaTooLarge
 	}
 	return encoded, nil
 }
