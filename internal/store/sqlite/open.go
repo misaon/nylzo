@@ -104,10 +104,9 @@ func (s *Store) transaction(ctx context.Context, body func(tx *sql.Tx) error) er
 		return err
 	}
 	defer connection.Close()
-	if _, err = writtenPages(connection); err != nil {
-		return err
+	if _, err = writtenPages(connection); err == nil {
+		err = commit(ctx, connection, body)
 	}
-	err = commit(ctx, connection, body)
 	if s.noteFrames(ctx, connection, err == nil) && err == nil {
 		s.changedSinceBuild.Store(true)
 	}
@@ -278,25 +277,18 @@ func busy(err error) bool {
 }
 
 func connect(ctx context.Context, path string, prepareSchema func(context.Context, *sql.DB) error) (*Store, error) {
-	writer, err := openPersistent(path, true)
-	if err != nil {
-		return nil, err
-	}
+	writer := openPersistent(path, true)
 	writer.SetMaxOpenConns(1)
-	if err = prepareSchema(ctx, writer); err != nil {
+	if err := prepareSchema(ctx, writer); err != nil {
 		writer.Close()
 		return nil, fmt.Errorf("sqlite: schema: %w", err)
 	}
-	reader, err := openPersistent(path, false)
-	if err != nil {
-		writer.Close()
-		return nil, err
-	}
+	reader := openPersistent(path, false)
 	reader.SetMaxOpenConns(readerConnections)
 	reader.SetMaxIdleConns(readerConnections)
 	opened := &Store{path: path, writer: writer, reader: reader, scrubs: make(chan struct{}, 1)}
 	opened.changedSinceBuild.Store(true)
-	err = reader.QueryRowContext(ctx, `PRAGMA page_size`).Scan(&opened.pageSize)
+	err := reader.QueryRowContext(ctx, `PRAGMA page_size`).Scan(&opened.pageSize)
 	if err == nil {
 		opened.statements, err = prepare(ctx, writer, reader)
 	}
@@ -312,12 +304,14 @@ func connect(ctx context.Context, path string, prepareSchema func(context.Contex
 }
 
 // openPersistent keeps the log file when a connection closes, so its blocks are overwritten and never freed.
-func openPersistent(path string, write bool) (*sql.DB, error) {
-	connector, err := driver.NewConnector(dataSourceName(path, write))
-	if err != nil {
-		return nil, err
-	}
-	return sql.OpenDB(persistentLog{Connector: connector}), nil
+func openPersistent(path string, write bool) *sql.DB {
+	return sql.OpenDB(persistentLog{Connector: newConnector(dataSourceName(path, write))})
+}
+
+// The driver refuses only an unparsable query or two VFSs, which our data source names never hold.
+func newConnector(dataSource string) sqldriver.Connector {
+	connector, _ := driver.NewConnector(dataSource)
+	return connector
 }
 
 type persistentLog struct {

@@ -117,9 +117,7 @@ func (b Build) Render(publicURL, contact string) (Pages, error) {
 		if name == adminTemplate {
 			headers.allowlist = adminAllowlist(contact)
 		}
-		if pages[name], err = newPage(html, headers); err != nil {
-			return nil, err
-		}
+		pages[name] = newPage(html, headers)
 	}
 	return pages, nil
 }
@@ -172,19 +170,14 @@ type pageHeaders struct {
 	allowlist string
 }
 
-func newPage(html string, headers *pageHeaders) (Page, error) {
+func newPage(html string, headers *pageHeaders) Page {
 	page := Page{body: []byte(html), headers: headers}
 	var buffer bytes.Buffer
-	writer, err := gzip.NewWriterLevel(&buffer, gzip.BestCompression)
-	if err != nil {
-		return Page{}, err
-	}
-	_, writeErr := writer.Write(page.body)
-	if closeErr := errors.Join(writeErr, writer.Close()); closeErr != nil {
-		return Page{}, fmt.Errorf("server: page compression: %w", closeErr)
-	}
+	writer, _ := gzip.NewWriterLevel(&buffer, gzip.BestCompression)
+	_, _ = writer.Write(page.body)
+	_ = writer.Close()
 	page.gzip = buffer.Bytes()
-	return page, nil
+	return page
 }
 
 func (p Page) Body() []byte {

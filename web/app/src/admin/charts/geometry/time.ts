@@ -34,7 +34,7 @@ interface LabelSpace extends Pick<TickSpace, 'gap'> {
 }
 
 function fitting(steps: readonly number[], { spacing, gap }: LabelSpace): number {
-  return steps.find((step) => step * spacing >= gap) ?? steps.at(-1) ?? 1;
+  return steps.find((step) => step * spacing >= gap) ?? Math.max(...steps);
 }
 
 function indexes(count: number, keep: (index: number) => boolean): number[] {

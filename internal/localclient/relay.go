@@ -19,7 +19,6 @@ const (
 var (
 	relayedRequestHeaders  = []string{"Authorization", "Content-Type", "Accept", "X-Requested-With"}
 	relayedResponseHeaders = []string{"Content-Length", "Retry-After"}
-	errUnavailable         = apiError{Error: "unavailable"}
 )
 
 // relay sends an API call as a native client would, and passes back only a final answer whose headers cannot make
@@ -31,12 +30,12 @@ type relay struct {
 
 func (rl relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.RawPath != "" || r.URL.RawQuery != "" || r.URL.ForceQuery || strings.Contains(r.URL.Path, "..") {
-		writeJSON(w, http.StatusNotFound, apiError{Error: "not_found"})
+		writeError(w, http.StatusNotFound, "not_found")
 		return
 	}
 	response, ok := rl.forward(r)
 	if !ok {
-		writeJSON(w, http.StatusBadGateway, errUnavailable)
+		writeError(w, http.StatusBadGateway, "unavailable")
 		return
 	}
 	defer response.Body.Close()

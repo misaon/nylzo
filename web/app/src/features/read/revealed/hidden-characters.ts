@@ -12,26 +12,24 @@ export interface MarkedText {
 
 const SUSPECT = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u{2028}\u{2029}]/u;
 const PICTOGRAPHIC = /^[\p{Extended_Pictographic}\p{Regional_Indicator}]/u;
-const EMOJI_JOINERS = new Set([0x20_0d, 0xfe_0e, 0xfe_0f]);
-const BLACK_FLAG = 0x1_f3_f4;
-const TAG_FIRST = 0xe_00_20;
-const TAG_CANCEL = 0xe_00_7f;
+const EMOJI_JOINERS = new Set(['\u{200D}', '\u{FE0E}', '\u{FE0F}']);
+const BLACK_FLAG = '\u{1F3F4}';
+const TAG_CANCEL = '\u{E007F}';
+const TAG = /^[\u{E0020}-\u{E007F}]$/u;
 const LINE_BREAKS = new Set(['\n', '\t', '\r\n']);
 
 const segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
 
-function codeLabel(codePoint: number): string {
-  return `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
+function codeLabel(character: string): string {
+  return `U+${Number(character.codePointAt(0)).toString(16).toUpperCase().padStart(4, '0')}`;
 }
 
-function isFlagTag(codePoints: readonly number[], index: number): boolean {
-  const codePoint = codePoints[index] ?? 0;
-  const terminated = codePoints.at(-1) === TAG_CANCEL;
-  return codePoints[0] === BLACK_FLAG && terminated && codePoint >= TAG_FIRST && codePoint <= TAG_CANCEL;
+function isFlagTag(characters: readonly string[], character: string): boolean {
+  return characters[0] === BLACK_FLAG && characters.at(-1) === TAG_CANCEL && TAG.test(character);
 }
 
-function allowedInEmoji(codePoints: readonly number[], index: number): boolean {
-  return EMOJI_JOINERS.has(codePoints[index] ?? 0) || isFlagTag(codePoints, index);
+function allowedInEmoji(characters: readonly string[], character: string): boolean {
+  return EMOJI_JOINERS.has(character) || isFlagTag(characters, character);
 }
 
 function splitGrapheme(grapheme: string, add: (text: string, hidden: boolean) => void): void {
@@ -39,11 +37,10 @@ function splitGrapheme(grapheme: string, add: (text: string, hidden: boolean) =>
     add(grapheme, false);
     return;
   }
-  const characters = grapheme.match(/./gsu) ?? [];
-  const codePoints = characters.map((character) => character.codePointAt(0) ?? 0);
+  const characters = characterList(grapheme);
   const emoji = PICTOGRAPHIC.test(grapheme);
-  for (const [index, character] of characters.entries()) {
-    const hidden = SUSPECT.test(character) && !(emoji && allowedInEmoji(codePoints, index));
+  for (const character of characters) {
+    const hidden = SUSPECT.test(character) && !(emoji && allowedInEmoji(characters, character));
     add(character, hidden);
   }
 }
@@ -64,7 +61,7 @@ export function markHiddenCharacters(text: string): MarkedText {
       return;
     }
     flush();
-    pieces.push({ key: pieces.length, text: codeLabel(piece.codePointAt(0) ?? 0), hidden: true, original: piece });
+    pieces.push({ key: pieces.length, text: codeLabel(piece), hidden: true, original: piece });
   };
   for (const { segment } of segmenter.segment(text)) {
     splitGrapheme(segment, appendPiece);
@@ -75,44 +72,45 @@ export function markHiddenCharacters(text: string): MarkedText {
 }
 
 function characterList(text: string): readonly string[] {
-  return text.match(/./gsu) ?? [];
+  return Array.from(text.matchAll(/./gsu), ([character]) => character);
 }
 
 function shownText(piece: TextPiece): string {
   return piece.hidden ? `⟨${piece.text}⟩` : piece.text;
 }
 
-const PIECE_ENDS = new WeakMap<MarkedText, readonly number[]>();
-
-function pieceEnds(marked: MarkedText): readonly number[] {
-  let ends = PIECE_ENDS.get(marked);
-  if (ends === undefined) {
-    let total = 0;
-    ends = marked.pieces.map((piece) => (total += characterList(shownText(piece)).length));
-    PIECE_ENDS.set(marked, ends);
-  }
-  return ends;
+interface PieceSpan {
+  readonly piece: TextPiece;
+  readonly index: number;
+  readonly start: number;
+  readonly end: number;
 }
 
-function afterCharacters(text: string, count: number): string {
-  let offset = 0;
-  for (let index = 0; index < count; index += 1) {
-    offset += (text.codePointAt(offset) ?? 0) > 0xff_ff ? 2 : 1;
+const PIECE_SPANS = new WeakMap<MarkedText, readonly PieceSpan[]>();
+
+function pieceSpans(marked: MarkedText): readonly PieceSpan[] {
+  let spans = PIECE_SPANS.get(marked);
+  if (spans === undefined) {
+    let total = 0;
+    spans = marked.pieces.map((piece, index) => {
+      const start = total;
+      total += characterList(shownText(piece)).length;
+      return { piece, index, start, end: total };
+    });
+    PIECE_SPANS.set(marked, spans);
   }
-  return text.slice(offset);
+  return spans;
 }
 
 // The scramble keeps every character of the head in place and leaves the rest alone, so only head pieces change.
 export function piecesOf(head: string, marked: MarkedText): readonly TextPiece[] {
   const scrambled = characterList(head);
-  const ends = pieceEnds(marked);
-  if (scrambled.length > (ends.at(-1) ?? 0)) {
+  const spans = pieceSpans(marked);
+  if (scrambled.length > (spans.at(-1)?.end ?? 0)) {
     return marked.pieces;
   }
   const pieces: TextPiece[] = [];
-  let start = 0;
-  for (const [index, piece] of marked.pieces.entries()) {
-    const end = ends[index] ?? start;
+  for (const { piece, index, start, end } of spans) {
     if (start >= scrambled.length) {
       return [...pieces, ...marked.pieces.slice(index)];
     }
@@ -123,10 +121,15 @@ export function piecesOf(head: string, marked: MarkedText): readonly TextPiece[]
     } else {
       pieces.push(
         { ...piece, text: scrambled.slice(start).join('') },
-        { key: -1 - piece.key, text: afterCharacters(piece.text, scrambled.length - start), hidden: false },
+        {
+          key: -1 - piece.key,
+          text: characterList(piece.text)
+            .slice(scrambled.length - start)
+            .join(''),
+          hidden: false,
+        },
       );
     }
-    start = end;
   }
   return pieces;
 }
@@ -169,7 +172,7 @@ export const copyOriginals: Attachment<HTMLElement> = (message) => {
       let replaced = false;
       for (const mark of copied.querySelectorAll<HTMLElement>('mark[data-original]')) {
         const touched = mark.textContent !== '';
-        mark.replaceWith(touched ? (mark.dataset['original'] ?? '') : '');
+        mark.replaceWith(touched ? String(mark.dataset['original']) : '');
         replaced ||= touched;
       }
       if (replaced) {

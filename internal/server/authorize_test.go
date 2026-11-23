@@ -1152,3 +1152,65 @@ func TestSecurityHeaderTamperingFailsBeforeSideEffects(t *testing.T) {
 		}
 	})
 }
+
+func TestALookupThatFailsAnswers500(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "x")
+		harness.mustCreate(message)
+		harness.withFaultyStore(failingFrom("Lookup", 0))
+		if response, _ := harness.metadata(message); response.StatusCode != http.StatusInternalServerError {
+			t.Fatalf("metadata with a failing lookup: %d", response.StatusCode)
+		}
+	})
+}
+
+func TestARefusalWhoseClientLeftWaitsNoFloor(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		cancel()
+		arrived := time.Now()
+		waitForTheFloor(httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil), arrived)
+		if waited := time.Since(arrived); waited != 0 {
+			t.Fatalf("a refusal whose client left waited %v", waited)
+		}
+	})
+}
+
+func TestARequestRefusedForLoadThatCannotBeCheckedKeepsItsAttempt(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		ke3          string
+		failedLookup bool
+	}{
+		"a malformed KE3":     {ke3: "not a KE3"},
+		"a lookup that fails": {failedLookup: true},
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			settings := baseSettings(pepperA, nil)
+			settings.Rates.ReadPerHour = 1
+			harness := newHarness(t, settings)
+			inner := harness.store
+			faults := &faultSwitch{}
+			harness.withFaultyStore(faults.fault)
+			message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "refused for load")
+			harness.mustCreate(message)
+			login, _, _ := harness.handshake(message, message.passphrase, "")
+			request := login.request(message, api.ClaimAction, "")
+			if test.ke3 != "" {
+				request.headers[api.KE3HeaderName] = test.ke3
+			}
+			if test.failedLookup {
+				faults.fail("Lookup", errInjected)
+			}
+			response, _ := harness.do(request)
+			record, err := harness.recordFrom(inner, message)
+			if response.StatusCode != http.StatusTooManyRequests || err != nil || record.Message.FailCountTotal != 1 ||
+				test.failedLookup != harness.logged("take-back") {
+				t.Fatalf("%s: %d, %d failures, %v", name, response.StatusCode, record.Message.FailCountTotal, err)
+			}
+		})
+	}
+}

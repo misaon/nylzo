@@ -1,12 +1,12 @@
 package sqlite
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"slices"
-	"time"
 )
 
 // releasedSchemas are the schemas of protocol v1 (nylzo 0.1 and 0.2) and protocol v2; serve upgrades either by
@@ -22,10 +22,7 @@ var errUpgradeRaced = errors.New("sqlite: another process changed the schema dur
 // UpgradeFromReleased changes the version last, after the blobs, the rows and the log, so an interrupted upgrade
 // runs again in full.
 func UpgradeFromReleased(ctx context.Context, path string, eraseBlobs func() error) (bool, error) {
-	writer, err := openPersistent(path, true)
-	if err != nil {
-		return false, err
-	}
+	writer := openPersistent(path, true)
 	writer.SetMaxOpenConns(1)
 	version, err := userVersion(ctx, writer)
 	if err != nil || !isReleased(version) {
@@ -48,12 +45,8 @@ func deleteReleasedMessages(ctx context.Context, database *sql.DB) error {
 		return err
 	}
 	defer tx.Rollback()
-	version, err := userVersion(ctx, tx)
-	if err != nil {
-		return err
-	}
-	if !isReleased(version) {
-		return errUpgradeRaced
+	if version, versionErr := userVersion(ctx, tx); versionErr != nil || !isReleased(version) {
+		return cmp.Or(versionErr, errUpgradeRaced)
 	}
 	for _, statement := range []string{
 		`DROP TRIGGER IF EXISTS rate_counters_guard_insert`,
@@ -92,16 +85,5 @@ func finishUpgrade(ctx context.Context, path string) error {
 }
 
 func (s *Store) checkpointWithRetries(ctx context.Context) error {
-	var err error
-	for range scrubRetries {
-		if err = s.Checkpoint(ctx); !errors.Is(err, ErrCheckpointBusy) {
-			return err
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(scrubRetryDelay):
-		}
-	}
-	return err
+	return retryBusy(ctx, s.Checkpoint)
 }

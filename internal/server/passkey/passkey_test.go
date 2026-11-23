@@ -2,6 +2,9 @@ package passkey
 
 import (
 	"bytes"
+	"crypto/ecdh"
+	"crypto/rand"
+	"crypto/x509"
 	"errors"
 	"strconv"
 	"strings"
@@ -62,7 +65,18 @@ func TestRegistrationRefusesEveryBrokenRule(t *testing.T) {
 		"empty credential id": {
 			prepare: func(attempt *ceremony) { attempt.credentialID, attempt.attestedID = nil, nil },
 		},
-		"no public key bytes": {prepare: func(attempt *ceremony) { attempt.coseKey = nil }},
+		"no public key bytes":     {prepare: func(attempt *ceremony) { attempt.coseKey = nil }},
+		"attested data cut short": {prepare: func(attempt *ceremony) { attempt.attestedData = false }},
+		"oversized attested id": {
+			prepare: func(attempt *ceremony) { attempt.attestedID = make([]byte, maximumCredentialIDSize+1) },
+		},
+		"relying party not configured": {prepare: func(attempt *ceremony) { attempt.relyingParty = RelyingParty{} }},
+		"public key not a subject public key info": {
+			tamper: func(registration *Registration) { registration.PublicKey = []byte("not a key") },
+		},
+		"key exchange public key": {
+			tamper: func(registration *Registration) { registration.PublicKey = keyExchangePublicKeyInfo(t) },
+		},
 		"key of another algorithm": {
 			tamper: func(registration *Registration) { registration.Algorithm = MLDSA65 },
 		},
@@ -91,6 +105,64 @@ func TestRegistrationRefusesEveryBrokenRule(t *testing.T) {
 				t.Fatalf("broken registration was accepted: %v", err)
 			}
 		})
+	}
+}
+
+func keyExchangePublicKeyInfo(t *testing.T) []byte {
+	t.Helper()
+	key, err := ecdh.X25519().GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := x509.MarshalPKIXPublicKey(key.PublicKey())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return encoded
+}
+
+func TestCeremoniesWithoutTheirDataAreRefused(t *testing.T) {
+	credential := newCeremony(t, ES256, ceremonyGet).credential(t)
+	if _, err := testRelyingParty.VerifyRegistration(nil, []byte(rand.Text())); !errors.Is(err, ErrRefused) {
+		t.Errorf("no registration: %v", err)
+	}
+	if _, err := testRelyingParty.VerifyAssertion(nil, []byte(rand.Text()), credential); !errors.Is(err, ErrRefused) {
+		t.Errorf("no assertion: %v", err)
+	}
+}
+
+func TestKeysAndSignaturesOfAnotherKindAreRefused(t *testing.T) {
+	for _, algorithm := range []Algorithm{ES256, EdDSA, -257} {
+		if _, ok := mldsaParameters(algorithm); ok {
+			t.Errorf("algorithm %d has ML-DSA parameters", algorithm)
+		}
+	}
+	mldsaKey := generateKey(t, MLDSA44).Public()
+	if keyMatchesAlgorithm(mldsaKey, ES256) {
+		t.Error("an ML-DSA key matched ES256")
+	}
+	keyExchange, err := x509.ParsePKIXPublicKey(keyExchangePublicKeyInfo(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = verifySignature(
+		keyExchange,
+		[]byte("data"),
+		[]byte("{}"),
+		[]byte("signature"),
+	); !errors.Is(
+		err,
+		ErrRefused,
+	) {
+		t.Errorf("a key that cannot sign verified a signature: %v", err)
+	}
+}
+
+func TestChallengeOfRefusesBrokenClientData(t *testing.T) {
+	for _, clientDataJSON := range []string{"not json", `{"challenge":"not base64url!"}`} {
+		if challenge, err := ChallengeOf([]byte(clientDataJSON)); !errors.Is(err, ErrRefused) || challenge != nil {
+			t.Errorf("%s gave %x, %v", clientDataJSON, challenge, err)
+		}
 	}
 }
 

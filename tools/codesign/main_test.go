@@ -6,10 +6,13 @@ import (
 	"debug/macho"
 	"encoding/binary"
 	"errors"
+	"flag"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -283,5 +286,86 @@ func TestRunSignsInPlaceAndKeepsModeAndTime(t *testing.T) {
 	}
 	if err = run(nil); !errors.Is(err, errUsage) {
 		t.Fatalf("no argument gave %v", err)
+	}
+}
+
+func TestMainSignsTheFileOrExitsWithAnError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nylzo")
+	if err := os.WriteFile(path, goExecutable(macho.CpuArm64).build(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	arguments, flags, usage, previousExit := os.Args, flag.CommandLine, flag.Usage, exit
+	t.Cleanup(func() { os.Args, flag.CommandLine, flag.Usage, exit = arguments, flags, usage, previousExit })
+	for name, testCase := range map[string]struct {
+		arguments []string
+		code      int
+	}{
+		"a file":   {[]string{"codesign", path}, 0},
+		"help":     {[]string{"codesign", "-h"}, 1},
+		"no files": {[]string{"codesign"}, 1},
+	} {
+		code := 0
+		exit = func(status int) { code = status }
+		flag.CommandLine = flag.NewFlagSet("codesign", flag.ContinueOnError)
+		flag.CommandLine.SetOutput(io.Discard)
+		flag.CommandLine.Usage = func() { flag.Usage() }
+		os.Args = testCase.arguments
+		main()
+		if code != testCase.code {
+			t.Errorf("%s: exit %d, want %d", name, code, testCase.code)
+		}
+	}
+}
+
+func TestRunRefusesWhatItCannotSign(t *testing.T) {
+	directory := t.TempDir()
+	script := filepath.Join(directory, "script")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{filepath.Join(directory, "missing"), directory, script} {
+		if err := run([]string{path}); err == nil {
+			t.Errorf("%s was signed", path)
+		}
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root writes into a read-only directory")
+	}
+	readOnly := t.TempDir()
+	path := filepath.Join(readOnly, "nylzo")
+	if err := os.WriteFile(path, goExecutable(macho.CpuArm64).build(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(readOnly, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(readOnly, 0o700) })
+	if err := run([]string{path}); !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("a file in a read-only directory: %v", err)
+	}
+}
+
+// The limit keeps every offset in 32 bits; the oversized inputs are allocated but never written.
+func TestSignRefusesInputsPastTheSizeLimit(t *testing.T) {
+	oversized := make([]byte, maxFileSize+1)
+	copy(oversized, goExecutable(macho.CpuArm64).build())
+	if _, err := sign(oversized, "nylzo"); !errors.Is(err, errTooLarge) {
+		t.Fatalf("a file past the limit: %v", err)
+	}
+	unused := make([]byte, maxFileSize+1)
+	identifier := unsafe.String(unsafe.SliceData(unused), len(unused))
+	if _, err := sign(goExecutable(macho.CpuArm64).build(), identifier); !errors.Is(err, errTooLarge) {
+		t.Fatalf("an identifier past the limit: %v", err)
+	}
+}
+
+func TestSignRefusesLoadCommandsThatDoNotAddUp(t *testing.T) {
+	data := goExecutable(macho.CpuAmd64).build()
+	binary.LittleEndian.PutUint32(data[commandSizesOffset:], binary.LittleEndian.Uint32(data[commandSizesOffset:])+8)
+	if _, err := sign(data, "nylzo"); !errors.Is(err, errLayout) {
+		t.Fatalf("load commands shorter than sizeofcmds: %v", err)
+	}
+	if _, err := codePageBits(macho.Cpu(0x1234)); !errors.Is(err, errArchitecture) {
+		t.Fatalf("an unknown architecture: %v", err)
 	}
 }

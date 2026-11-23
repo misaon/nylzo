@@ -30,6 +30,22 @@ var (
 	errNoMount = errors.New("no mount matches the device")
 )
 
+type kernel struct {
+	mountInfo    string
+	swaps        string
+	ext4         string
+	blockDevices string
+	journalsData func(path string) (bool, error)
+}
+
+var thisKernel = kernel{
+	mountInfo:    mountInfoPath,
+	swaps:        swapsPath,
+	ext4:         procExt4,
+	blockDevices: sysBlock,
+	journalsData: journalsData,
+}
+
 var fileSystemNames = map[int64]string{
 	unix.XFS_SUPER_MAGIC:       "xfs",
 	unix.TMPFS_MAGIC:           tmpfsName,
@@ -52,7 +68,7 @@ var fileSystemNames = map[int64]string{
 func RequireInPlace(paths ...string) error {
 	checked := map[uint64]mount{}
 	for _, path := range paths {
-		if err := requirePathInPlace(path, checked); err != nil {
+		if err := thisKernel.requirePathInPlace(path, checked); err != nil {
 			return err
 		}
 	}
@@ -60,7 +76,7 @@ func RequireInPlace(paths ...string) error {
 }
 
 // requirePathInPlace skips a path that vanished meanwhile, since a running server renames and removes files.
-func requirePathInPlace(path string, checked map[uint64]mount) error {
+func (k *kernel) requirePathInPlace(path string, checked map[uint64]mount) error {
 	var stat unix.Stat_t
 	statErr := unix.Stat(path, &stat)
 	if errors.Is(statErr, unix.ENOENT) {
@@ -72,13 +88,13 @@ func requirePathInPlace(path string, checked map[uint64]mount) error {
 	found, seen := checked[stat.Dev]
 	if !seen {
 		var err error
-		if found, err = describeMount(path, stat.Dev); err != nil {
+		if found, err = k.describeMount(path, stat.Dev); err != nil {
 			return fmt.Errorf("erase: %s: %w", path, err)
 		}
 		checked[stat.Dev] = found
 	}
 	if found.fileSystem == ext4Name {
-		journaled, err := journalsData(path)
+		journaled, err := k.journalsData(path)
 		if errors.Is(err, unix.ENOENT) {
 			return nil
 		}
@@ -99,17 +115,17 @@ func OnTmpfs(path string) (bool, error) {
 	return stat.Type == unix.TMPFS_MAGIC, nil
 }
 
-func describeMount(path string, device uint64) (mount, error) {
+func (k *kernel) describeMount(path string, device uint64) (mount, error) {
 	var stat unix.Statfs_t
 	if err := unix.Statfs(path, &stat); err != nil {
 		return mount{}, err
 	}
 	switch stat.Type {
 	case unix.EXT4_SUPER_MAGIC:
-		options, err := ext4Options(device)
+		options, err := k.ext4Options(device)
 		return mount{fileSystem: ext4Name, dataOptions: options}, err
 	case unix.TMPFS_MAGIC:
-		return describeTmpfs(device)
+		return k.describeTmpfs(device)
 	default:
 		name, known := fileSystemNames[stat.Type]
 		if !known {
@@ -121,12 +137,12 @@ func describeMount(path string, device uint64) (mount, error) {
 
 // describeTmpfs reads the mount options only while swap is active: a tmpfs mounted with noswap (Linux 6.4 or later)
 // never writes its pages to swap.
-func describeTmpfs(device uint64) (mount, error) {
-	active, err := swapActive()
+func (k *kernel) describeTmpfs(device uint64) (mount, error) {
+	active, err := k.swapActive()
 	if err != nil || !active {
 		return mount{fileSystem: tmpfsName, swapActive: active}, err
 	}
-	found, err := mountOf(device)
+	found, err := k.mountOf(device)
 	if err != nil {
 		return mount{}, err
 	}
@@ -136,30 +152,30 @@ func describeTmpfs(device uint64) (mount, error) {
 
 // ext4Options joins the effective options with the super options of the mount table and refuses to guess without
 // the effective ones, since only they show a data mode that the superblock sets.
-func ext4Options(device uint64) ([]string, error) {
-	found, err := mountOf(device)
+func (k *kernel) ext4Options(device uint64) ([]string, error) {
+	found, err := k.mountOf(device)
 	if err != nil {
 		return nil, err
 	}
 	options := strings.Split(found.superOptions, ",")
-	effective, err := os.ReadFile(filepath.Join(procExt4, kernelDeviceName(device, found.source), "options"))
+	effective, err := os.ReadFile(filepath.Join(k.ext4, k.deviceName(device, found.source), "options"))
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errNoProc, err)
 	}
 	return append(options, strings.Split(string(effective), "\n")...), nil
 }
 
-// kernelDeviceName is the name the kernel gives /proc/fs/ext4/<name>: the block device behind /sys/dev/block, or the
+// deviceName is the name the kernel gives /proc/fs/ext4/<name>: the block device behind /sys/dev/block, or the
 // last element of the mount source when sysfs is not mounted.
-func kernelDeviceName(device uint64, source string) string {
-	if target, err := os.Readlink(filepath.Join(sysBlock, majorMinor(device))); err == nil {
+func (k *kernel) deviceName(device uint64, source string) string {
+	if target, err := os.Readlink(filepath.Join(k.blockDevices, majorMinor(device))); err == nil {
 		return filepath.Base(target)
 	}
 	return filepath.Base(source)
 }
 
-func swapActive() (bool, error) {
-	swaps, err := os.ReadFile(swapsPath)
+func (k *kernel) swapActive() (bool, error) {
+	swaps, err := os.ReadFile(k.swaps)
 	if err != nil {
 		return false, err
 	}
@@ -172,8 +188,8 @@ type mountLine struct {
 	superOptions string
 }
 
-func mountOf(device uint64) (mountLine, error) {
-	file, err := os.Open(mountInfoPath)
+func (k *kernel) mountOf(device uint64) (mountLine, error) {
+	file, err := os.Open(k.mountInfo)
 	if err != nil {
 		return mountLine{}, err
 	}

@@ -98,23 +98,17 @@ var metaCases = []MetaCase{
 	{Name: "mime-256-bytes", Input: `{"v":1,"file":{"name":"a","mime":"` + strings.Repeat("m", 256) + `","size":1}}`},
 }
 
-func (f *File) meta() error {
+func (f *File) meta() {
 	for _, vector := range metaCases {
 		meta, err := envelope.DecodeMeta([]byte(vector.Input))
 		if !vector.Valid {
-			if err == nil {
-				return fmt.Errorf("vectors: meta %q %w", vector.Name, errMetaAccepted)
-			}
+			require(err != nil, fmt.Errorf("vectors: meta %q %w", vector.Name, errMetaAccepted))
 			f.Meta = append(f.Meta, vector)
 			continue
 		}
-		if err != nil {
-			return fmt.Errorf("vectors: meta %q must decode: %w", vector.Name, err)
-		}
+		require(err == nil, fmt.Errorf("vectors: meta %q must decode: %w", vector.Name, err))
 		canonical, err := envelope.EncodeMeta(meta)
-		if err != nil {
-			return fmt.Errorf("vectors: meta %q must encode: %w", vector.Name, err)
-		}
+		require(err == nil, fmt.Errorf("vectors: meta %q must encode: %w", vector.Name, err))
 		vector.Canonical = new(string(canonical))
 		vector.Text = meta.Text
 		if meta.File != nil {
@@ -124,5 +118,4 @@ func (f *File) meta() error {
 		}
 		f.Meta = append(f.Meta, vector)
 	}
-	return nil
 }

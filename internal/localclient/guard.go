@@ -11,7 +11,7 @@ var fetchMetadata = []string{"Sec-Fetch-Site", "Sec-Fetch-Mode", "Sec-Fetch-Dest
 func (s *Server) onlyThisHost(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != s.host {
-			writeJSON(w, http.StatusMisdirectedRequest, apiError{Error: "wrong_host"})
+			writeError(w, http.StatusMisdirectedRequest, "wrong_host")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -22,7 +22,7 @@ func (s *Server) onlyThisHost(next http.Handler) http.Handler {
 func (s *Server) fromThisPage(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.sameOriginFetch(r) {
-			writeJSON(w, http.StatusForbidden, apiError{Error: "cross_origin"})
+			writeError(w, http.StatusForbidden, "cross_origin")
 			return
 		}
 		next.ServeHTTP(w, r)

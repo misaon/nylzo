@@ -23,6 +23,5 @@
     name={page.burnFailed ? 'alert' : page.deleting ? 'key' : 'check'}
     stroke={1.7}
     class="size-4 shrink-0 max-sm:mr-1.5 max-sm:inline-block max-sm:align-[-3px]"
-  />
-  {burnNote}
+  />{` ${burnNote}`}
 </p>

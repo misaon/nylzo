@@ -227,6 +227,7 @@ func TestMalformedCompressedAttachments(t *testing.T) {
 		"unknown codec":   {compressed, len(file), "zstd"},
 		"over limit":      {compressed, envelope.MaxFileBytes + 1, "gzip"},
 		"negative size":   {compressed, -1, "gzip"},
+		"no gzip header":  {make([]byte, 64), len(file), "gzip"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

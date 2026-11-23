@@ -106,21 +106,22 @@ var strengthCases = []Strength{
 	{"four words", fourWordPassphrase, true, ""},
 }
 
-func (f *File) strength() error {
+func (f *File) strength() {
 	for _, vector := range strengthCases {
 		err := keys.CheckPassphraseStrength(vector.Passphrase)
-		if (err == nil) != vector.Accepted {
-			return fmt.Errorf("vectors: strength case %q disagrees with the core: %w", vector.Name, err)
+		require(
+			(err == nil) == vector.Accepted,
+			fmt.Errorf("vectors: strength case %q disagrees with the core: %w", vector.Name, err),
+		)
+		var problem keys.PassphraseProblem
+		weak, ok := errors.AsType[*keys.WeakPassphraseError](err)
+		if ok {
+			problem = weak.Problem
 		}
-		if weak, ok := errors.AsType[*keys.WeakPassphraseError](err); ok && weak.Problem != vector.Problem {
-			return fmt.Errorf(
-				"%w %q names problem %q, the core %q",
-				errProblemDiffers,
-				vector.Name,
-				vector.Problem,
-				weak.Problem,
-			)
-		}
+		require(
+			!ok || problem == vector.Problem,
+			fmt.Errorf("%w %q names problem %q, the core %q", errProblemDiffers, vector.Name, vector.Problem, problem),
+		)
 		f.Strength = append(f.Strength, vector)
 	}
 	sum := sha256.Sum256([]byte(keys.CommonPassphraseList))
@@ -128,20 +129,19 @@ func (f *File) strength() error {
 	assigned := sha256.Sum256([]byte(keys.AssignedCodePointList))
 	f.AssignedHash = hex.EncodeToString(assigned[:])
 	f.AssignedVersion = keys.AssignedUnicodeVersion
-	return nil
 }
 
-func (f *File) normalization() error {
+func (f *File) normalization() {
 	for _, vector := range normalizationCases {
 		normalized := keys.NormalizePassphrase(vector.passphrase)
-		if string(normalized) != vector.normalized {
-			return fmt.Errorf("%w %q gives %q", errNormalizedDiffers, vector.name, normalized)
-		}
+		require(
+			string(normalized) == vector.normalized,
+			fmt.Errorf("%w %q gives %q", errNormalizedDiffers, vector.name, normalized),
+		)
 		f.Normalization = append(f.Normalization, Normalization{
 			Name:       vector.name,
 			Passphrase: vector.passphrase,
 			Normalized: hex.EncodeToString(normalized),
 		})
 	}
-	return nil
 }

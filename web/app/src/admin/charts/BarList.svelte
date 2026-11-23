@@ -30,20 +30,19 @@
   const largest = $derived(Math.max(0, ...items.map((item) => item.value)));
 </script>
 
-{#snippet row(item: BarItem)}
-  <span class="flex items-baseline gap-3">
-    <span class="min-w-0 flex-1 truncate text-ui text-ink-soft">{item.label}</span>
-    <span class="text-ui font-medium text-ink tabular-nums">{formatValue(item.value)}</span>
-    <span class="w-12 text-right text-caption text-ink-mute tabular-nums">
-      {formatShare(total > 0 ? item.value / total : 0)}
-    </span>
-  </span>
-  <Track class={compact ? 'mt-1.5' : 'mt-2'} value={largest > 0 ? item.value / largest : 0} {tone} />
-{/snippet}
-
 <ul role="list" aria-label={label} class={compact ? 'grid' : 'grid gap-1'}>
   {#each items as item (item.key)}
     <li animate:flip={{ duration: motionMs(REORDER_MS) }}>
+      {#snippet row()}
+        <span class="flex items-baseline gap-3">
+          <span class="min-w-0 flex-1 truncate text-ui text-ink-soft">{item.label}</span>
+          <span class="text-ui font-medium text-ink tabular-nums">{formatValue(item.value)}</span>
+          <span class="w-12 text-right text-caption text-ink-mute tabular-nums">
+            {formatShare(total > 0 ? item.value / total : 0)}
+          </span>
+        </span>
+        <Track class={compact ? 'mt-1.5' : 'mt-2'} value={largest > 0 ? item.value / largest : 0} {tone} />
+      {/snippet}
       {#if onhighlight}
         <button
           type="button"
@@ -62,10 +61,10 @@
           onfocus={() => onhighlight(item.key)}
           onblur={() => onhighlight(undefined)}
         >
-          {@render row(item)}
+          {@render row()}
         </button>
       {:else}
-        <div class={padding}>{@render row(item)}</div>
+        <div class={padding}>{@render row()}</div>
       {/if}
     </li>
   {/each}

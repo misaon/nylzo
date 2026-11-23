@@ -76,8 +76,12 @@ export function assertProfile(fragmentKdfId: KdfId, serverKdfId: number): void {
   }
 }
 
+function fieldAt(parts: readonly string[], index: number): string {
+  return parts[index] ?? '';
+}
+
 function assertKnownVersion(body: string): void {
-  const [label = ''] = body.split('.', 1);
+  const label = fieldAt(body.split('.', 1), 0);
   if (VERSION_LABEL.test(label) && Number(label) > FRAGMENT_VERSION) {
     throw new LinkVersionError();
   }
@@ -86,17 +90,18 @@ function assertKnownVersion(body: string): void {
 // A link of protocol version 1 or 2 is recognised only to say that the upgrade erased its message.
 function releasedLink(path: string, body: string): boolean {
   const parts = body.split('.');
-  const [label, kdfText = '', ...fields] = parts;
+  const [label] = parts;
+  const kdfText = fieldAt(parts, 1);
   try {
     if (label === '1' && parts.length === 3 && path.startsWith(RELEASED_PATH_PREFIX) && V1_PROFILES.has(kdfText)) {
       parseId(path.slice(RELEASED_PATH_PREFIX.length));
-      decodeBase64urlExact(fields[0] ?? '', SECRET_LENGTH).fill(0);
+      decodeBase64urlExact(fieldAt(parts, 2), SECRET_LENGTH).fill(0);
       return true;
     }
     if (label === '2' && parts.length === 5 && path === LINK_PATH && V2_PROFILES.has(kdfText)) {
-      parseId(fields[0] ?? '');
-      decodeBase64urlExact(fields[1] ?? '', SECRET_LENGTH).fill(0);
-      decodeBase64urlExact(fields[2] ?? '', OBJECT_HASH_LENGTH);
+      parseId(fieldAt(parts, 2));
+      decodeBase64urlExact(fieldAt(parts, 3), SECRET_LENGTH).fill(0);
+      decodeBase64urlExact(fieldAt(parts, 4), OBJECT_HASH_LENGTH);
       return true;
     }
   } catch {
@@ -110,17 +115,16 @@ function parseCurrentFragment(body: string): Link {
   if (parts.length !== 5) {
     throw new LinkError();
   }
-  const [, kdfText = '', idText = '', secretText = '', hashText = ''] = parts;
-  const id = orLinkError(() => parseId(idText));
-  const secret = decodeField(secretText, SECRET_LENGTH);
+  const id = orLinkError(() => parseId(fieldAt(parts, 2)));
+  const secret = decodeField(fieldAt(parts, 3), SECRET_LENGTH);
   let objectHash: Uint8Array<ArrayBuffer>;
   try {
-    objectHash = decodeField(hashText, OBJECT_HASH_LENGTH);
+    objectHash = decodeField(fieldAt(parts, 4), OBJECT_HASH_LENGTH);
   } catch (error) {
     secret.fill(0);
     throw error;
   }
-  return { kdfId: profile(kdfText, secret), id, secret, objectHash };
+  return { kdfId: profile(fieldAt(parts, 1), secret), id, secret, objectHash };
 }
 
 function profile(text: string, secret: Uint8Array): KdfId {

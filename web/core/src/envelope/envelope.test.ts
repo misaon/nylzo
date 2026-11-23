@@ -22,15 +22,17 @@ import {
   MAX_FILE_BYTES,
   MAX_OBJECT_BYTES,
   MAX_TEXT_BYTES,
+  META_LENGTH_PREFIX,
   PAD,
   PREFIX_LENGTH,
   TAG_LENGTH,
 } from '../limits.ts';
 import { decodeBase64url, encodeBase64url } from '../primitives/base64url.ts';
+import { concatenate } from '../primitives/bytes.ts';
 import { newSecret, parseId } from '../primitives/identifiers.ts';
-import { objectHash, open, seal } from './envelope.ts';
+import { commitment, objectHash, open, seal } from './envelope.ts';
 import type { Expected, Payload } from './envelope.ts';
-import { aad, newHeader } from './header.ts';
+import { aad, headerBytes, newHeader } from './header.ts';
 import type { Header, Policy } from './header.ts';
 import { encodeMeta } from './meta.ts';
 import type { Meta } from './meta.ts';
@@ -340,6 +342,31 @@ describe('seal rejects what the spec forbids (spec 3 and 3.1)', () => {
     const opened = await open(message.keys, await expectedFor(message.object, message.id, KDF_NONE), message.object);
     expect(opened.payload.meta.text).toBe(text);
     expect(await sha256Hex(opened.payload.file ?? new Uint8Array(0))).toBe(await sha256Hex(file));
+  });
+});
+
+async function sealPlaintext(
+  keys: ContentKeys,
+  id: Uint8Array,
+  plaintext: Uint8Array<ArrayBuffer>,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const header = newHeader(KDF_NONE);
+  const committed = await commitment(keys.commitmentKey, header, id, policy);
+  const parameters = { name: 'AES-GCM', iv: header.iv, additionalData: aad(header, committed, id, policy) };
+  const ciphertext = await crypto.subtle.encrypt(parameters, keys.contentKey, plaintext);
+  return concatenate(headerBytes(header), committed, new Uint8Array(ciphertext));
+}
+
+describe('open checks the plaintext against its meta (spec 3.1)', () => {
+  it('refuses a file shorter than meta.file.size', async () => {
+    const id = randomId();
+    const keys = await keysOf(id, newSecret(), exportKey, newSecret());
+    const meta = encodeMeta({ file: { name: 'f', mime: '', size: PAD } });
+    const plaintext = new Uint8Array(PAD - PREFIX_LENGTH - TAG_LENGTH);
+    new DataView(plaintext.buffer).setUint32(0, meta.length);
+    plaintext.set(meta, META_LENGTH_PREFIX);
+    const object = await sealPlaintext(keys, id, plaintext);
+    await expect(open(keys, await expectedFor(object, id, KDF_NONE), object)).rejects.toBeInstanceOf(PlaintextError);
   });
 });
 

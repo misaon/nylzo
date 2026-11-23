@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"time"
@@ -17,24 +18,30 @@ const dialTimeout = 10 * time.Second
 var (
 	errNoRootCertificate = errors.New("no certificate in the root file")
 	errClassicalAccepted = errors.New("the server accepted a handshake with")
-	errNotTLS            = errors.New("the dialer returned a connection without TLS")
 	errWrongCurve        = errors.New("instead of X25519MLKEM768")
 )
+
+var exit = os.Exit
 
 func main() {
 	address := flag.String("addr", "localhost:443", "host:port of the TLS server")
 	rootFile := flag.String("ca", "", "PEM file with the root certificate to trust")
 	only := flag.Bool("only", false, "also require that TLS 1.2 and classical key exchanges are refused")
 	flag.Parse()
-	err := check(*address, *rootFile)
-	if err == nil && *only {
-		err = refusesClassical(*address, *rootFile)
+	exit(run(*address, *rootFile, *only, os.Stdout, os.Stderr))
+}
+
+func run(address, rootFile string, only bool, stdout, stderr io.Writer) int {
+	err := check(address, rootFile)
+	if err == nil && only {
+		err = refusesClassical(address, rootFile)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "tlscheck:", err)
-		os.Exit(1)
+		fmt.Fprintln(stderr, "tlscheck:", err)
+		return 1
 	}
-	fmt.Fprintln(os.Stdout, "tlscheck: TLS 1.3 with X25519MLKEM768")
+	fmt.Fprintln(stdout, "tlscheck: TLS 1.3 with X25519MLKEM768")
+	return 0
 }
 
 func refusesClassical(address, rootFile string) error {
@@ -83,22 +90,21 @@ func check(address, rootFile string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
 	defer cancel()
-	dialer := &tls.Dialer{Config: &tls.Config{
+	raw, err := new(net.Dialer).DialContext(ctx, "tcp", address)
+	if err != nil {
+		return fmt.Errorf("handshake offering X25519MLKEM768 and X25519: %w", err)
+	}
+	connection := tls.Client(raw, &tls.Config{
 		RootCAs:          roots,
 		ServerName:       host,
 		MinVersion:       tls.VersionTLS13,
 		CurvePreferences: []tls.CurveID{tls.X25519MLKEM768, tls.X25519},
-	}}
-	connection, err := dialer.DialContext(ctx, "tcp", address)
-	if err != nil {
+	})
+	defer connection.Close()
+	if err = connection.HandshakeContext(ctx); err != nil {
 		return fmt.Errorf("handshake offering X25519MLKEM768 and X25519: %w", err)
 	}
-	defer connection.Close()
-	tlsConnection, ok := connection.(*tls.Conn)
-	if !ok {
-		return errNotTLS
-	}
-	if curve := tlsConnection.ConnectionState().CurveID; curve != tls.X25519MLKEM768 {
+	if curve := connection.ConnectionState().CurveID; curve != tls.X25519MLKEM768 {
 		return fmt.Errorf("negotiated %s %w", curve, errWrongCurve)
 	}
 	return nil

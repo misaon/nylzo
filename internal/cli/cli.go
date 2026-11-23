@@ -159,10 +159,7 @@ func operatorCommands() []subcommand {
 // Main runs a command and then ends the process as the command stopped.
 func Main(arguments []string, environment *command.Environment) {
 	exit := Run(arguments, environment)
-	if exit.Signal != nil {
-		stopsignal.Exit(exit.Signal)
-	}
-	os.Exit(exit.Code)
+	stopsignal.End(exit.Signal, exit.Code)
 }
 
 // Run refuses a link with its key anywhere in the arguments, where other processes could read it.
@@ -224,27 +221,20 @@ func stopOnSignal(pending *stopsignal.Pending, cancel context.CancelCauseFunc) f
 	received := make(chan os.Signal, 1)
 	stopsignal.Notify(received, os.Interrupt, syscall.SIGTERM)
 	listened := make(chan struct{})
-	stopped := make(chan struct{})
 	go func() {
 		defer close(listened)
-		select {
-		case stop := <-received:
+		for stop := range received {
 			signal.Stop(received)
 			pending.Keep(stop)
 			cancel(stopsignal.StopError{Signal: stop})
-		case <-stopped:
 		}
 	}()
 	return func() {
 		signal.Stop(received)
 		cancel(nil)
-		close(stopped)
+		// signal.Stop guarantees that the signal package sends nothing more on received.
+		close(received)
 		<-listened
-		select {
-		case stop := <-received:
-			pending.Keep(stop)
-		default:
-		}
 	}
 }
 

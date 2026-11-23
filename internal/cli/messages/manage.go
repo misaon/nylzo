@@ -131,10 +131,6 @@ func linkClient(environment *command.Environment, linkFile string) (*openLink, *
 	if err != nil {
 		return nil, nil, fmt.Errorf("link: %w", command.Explained(err))
 	}
-	server, err := client.New(link.origin)
-	if err != nil {
-		link.wipe()
-		return nil, nil, command.Explained(err)
-	}
+	server, _ := client.New(link.origin)
 	return &link, server, nil
 }

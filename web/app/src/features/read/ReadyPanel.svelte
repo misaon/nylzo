@@ -75,7 +75,7 @@
   });
 </script>
 
-{#snippet revealButton(className: string)}
+{#snippet revealButton({ className }: { readonly className: string })}
   <Button
     variant="primary"
     size="large"
@@ -164,7 +164,7 @@
               <SwapIcon from="eye" to="eyeOff" swapped={page.showPassphrase} size="size-[18px]" animated />
             </Button>
           </div>
-          {@render revealButton('w-full sm:w-auto')}
+          {@render revealButton({ className: 'w-full sm:w-auto' })}
         </div>
         <!-- Holds the alert's height from the start, so a rejected passphrase moves nothing on the page. -->
         <div class="mt-2 -mb-3 flex min-h-[2lh] items-start justify-center px-2 text-left text-caption sm:min-h-[1lh]">
@@ -176,7 +176,7 @@
         </div>
       </div>
     {:else}
-      {@render revealButton('-mt-1 w-full max-w-[360px] sm:w-auto sm:min-w-[260px]')}
+      {@render revealButton({ className: '-mt-1 w-full max-w-[360px] sm:w-auto sm:min-w-[260px]' })}
       {#if alert}
         <ErrorNote message={alert} class="max-w-[440px] text-left" />
       {/if}

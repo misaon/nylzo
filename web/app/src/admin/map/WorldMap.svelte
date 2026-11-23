@@ -26,7 +26,14 @@
   const largest = $derived(Math.max(0, ...Object.values(visitors)));
 
   function tone(country: string): string {
-    return LEVELS[level(visitors[country] ?? 0, largest, LEVELS.length - 1)] ?? LEVELS[0];
+    const shade = level(visitors[country] ?? 0, largest, LEVELS.length - 1);
+    let fill: string = LEVELS[0];
+    for (const [index, candidate] of LEVELS.entries()) {
+      if (index === shade) {
+        fill = candidate;
+      }
+    }
+    return fill;
   }
 
   function point(event: PointerEvent): void {
@@ -42,7 +49,7 @@
   {#await map then world}
     <svg
       class="absolute inset-0 size-full animate-appear overflow-visible"
-      viewBox="0 0 {world.width} {world.height}"
+      viewBox={`0 0 ${world.width} ${world.height}`}
       aria-hidden="true"
       focusable="false"
     >

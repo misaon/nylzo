@@ -27,22 +27,18 @@ var rfc7914Cases = []Scrypt{
 	{Name: "rfc7914-4", Password: "pleaseletmein", Salt: "SodiumChloride", N: 1048576, R: 8, P: 1, Heavy: true},
 }
 
-func (f *File) scrypt() error {
+func (f *File) scrypt() {
 	for _, vector := range rfc7914Cases {
-		derived, err := scrypt.Key(
+		derived := must(scrypt.Key(
 			[]byte(vector.Password),
 			[]byte(vector.Salt),
 			vector.N,
 			vector.R,
 			vector.P,
 			rfc7914KeyLen,
-		)
-		if err != nil {
-			return err
-		}
+		))
 		vector.DKLen = rfc7914KeyLen
 		vector.DK = hex.EncodeToString(derived)
 		f.Scrypt = append(f.Scrypt, vector)
 	}
-	return nil
 }

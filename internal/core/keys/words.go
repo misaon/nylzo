@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"io/fs"
 	"slices"
 	"strings"
 	"sync"
@@ -30,10 +31,12 @@ type PassphraseLayout struct {
 //go:embed words/*.txt
 var wordFiles embed.FS
 
-var wordLists = sync.OnceValue(func() map[string][]string {
+var wordLists = sync.OnceValue(func() map[string][]string { return loadWordLists(wordFiles) })
+
+func loadWordLists(files fs.FS) map[string][]string {
 	lists := make(map[string][]string, len(PassphraseLanguages))
 	for _, language := range PassphraseLanguages {
-		text, err := wordFiles.ReadFile("words/" + strings.ToLower(language) + ".txt")
+		text, err := fs.ReadFile(files, "words/"+strings.ToLower(language)+".txt")
 		if err != nil {
 			panic("keys: no word list for " + language)
 		}
@@ -45,7 +48,7 @@ var wordLists = sync.OnceValue(func() map[string][]string {
 		lists[language] = words
 	}
 	return lists
-})
+}
 
 func malformedWord(word string) bool {
 	return word == "" || strings.ContainsFunc(word, func(character rune) bool {

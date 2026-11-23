@@ -82,8 +82,28 @@ func TestOverwriteNeverFollowsALink(t *testing.T) {
 	if err := erase.Overwrite(symlink, erase.WholeFile); err == nil {
 		t.Fatal("a symbolic link must not be followed")
 	}
+	if err := erase.Remove(symlink, erase.WholeFile); err == nil {
+		t.Fatal("a symbolic link must not be shredded")
+	}
+	if _, err := os.Lstat(symlink); err != nil {
+		t.Fatalf("a refused shred removed the link: %v", err)
+	}
 	if kept, _ := os.ReadFile(target); string(kept) != "keep" {
 		t.Fatal("the link target was overwritten")
+	}
+}
+
+func TestOverwriteRefusesAnythingButARegularFile(t *testing.T) {
+	t.Parallel()
+	if err := erase.Overwrite(os.DevNull, erase.BlockLen); !errors.Is(err, erase.ErrNotRegular) {
+		t.Fatalf("a device: %v", err)
+	}
+}
+
+func TestSyncDirectoryReportsAMissingDirectory(t *testing.T) {
+	t.Parallel()
+	if err := erase.SyncDirectory(filepath.Join(t.TempDir(), "missing")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a missing directory: %v", err)
 	}
 }
 
@@ -101,5 +121,24 @@ func TestReplaceWritesOverTheWholeFile(t *testing.T) {
 	}
 	if content, _ := os.ReadFile(path); string(content) != "later" {
 		t.Fatalf("content %q", content)
+	}
+}
+
+func TestShredReportsAFileItCannotUnlink(t *testing.T) {
+	t.Parallel()
+	if os.Geteuid() == 0 {
+		t.Skip("root unlinks in a read-only directory")
+	}
+	directory := t.TempDir()
+	path := filepath.Join(directory, "blob")
+	if err := os.WriteFile(path, make([]byte, erase.BlockLen), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(directory, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(directory, 0o700) })
+	if err := erase.Shred(path, erase.BlockLen); !errors.Is(err, os.ErrPermission) {
+		t.Fatalf("an unlink the directory refuses: %v", err)
 	}
 }

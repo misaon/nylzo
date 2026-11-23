@@ -27,35 +27,21 @@ type Derive struct {
 
 var deriveCases = []string{"first", "second"}
 
-func (f *File) derive() error {
+func (f *File) derive() {
 	for _, name := range deriveCases {
-		derived, err := deriveVector(name)
-		if err != nil {
-			return err
-		}
-		f.Derive = append(f.Derive, derived)
+		f.Derive = append(f.Derive, deriveVector(name))
 	}
-	return nil
 }
 
-func deriveVector(name string) (Derive, error) {
+func deriveVector(name string) Derive {
 	id := deterministicID(name)
 	secret := deterministic32("s/" + name)
 	manageSeed := deterministic32("m/" + name)
 	share := deterministic32("e/" + name)
 	exportKey := deterministicExportKey("p/" + name)
-	read, err := keys.DeriveRead(id, secret)
-	if err != nil {
-		return Derive{}, err
-	}
-	salt, err := keys.PassphraseSalt(secret)
-	if err != nil {
-		return Derive{}, err
-	}
-	content, err := keys.DeriveContent(id, secret, exportKey, share)
-	if err != nil {
-		return Derive{}, err
-	}
+	read := keys.DeriveRead(id, secret)
+	salt := keys.PassphraseSalt(secret)
+	content := must(keys.DeriveContent(id, secret, exportKey, share))
 	hsalt := keys.HSalt(id)
 	readKey, manageKey := signing.PublicKey(&read), signing.PublicKey(manageSeed)
 	return Derive{
@@ -72,5 +58,5 @@ func deriveVector(name string) (Derive, error) {
 		M:              hex.EncodeToString(manageSeed[:]),
 		ReadKey:        core.Encode(readKey[:]),
 		ManageKey:      core.Encode(manageKey[:]),
-	}, nil
+	}
 }

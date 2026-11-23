@@ -366,30 +366,27 @@
       class="flex flex-wrap items-center justify-start gap-x-5 gap-y-1.5 px-3 py-2 text-caption text-ink-soft max-sm:w-full sm:gap-x-4 sm:px-2 sm:py-0"
     >
       <li class="flex items-center gap-1.5 whitespace-nowrap max-sm:min-h-6 max-sm:text-ui">
-        <Icon name="clock" class="size-4 shrink-0 text-ink-mute" />
-        {translate('created.expires', { time: formatMoment(created.expiresAt, translator.language) })}
+        <Icon name="clock" class="size-4 shrink-0 text-ink-mute" />{translate('created.expires', {
+          time: formatMoment(created.expiresAt, translator.language),
+        })}
       </li>
       <li class="flex items-center gap-1.5 whitespace-nowrap max-sm:min-h-6 max-sm:text-ui">
-        <Icon name="eye" class="size-4 shrink-0 text-ink-mute" />
-        {translator.plural('compose.opens', opensMax)}
+        <Icon name="eye" class="size-4 shrink-0 text-ink-mute" />{translator.plural('compose.opens', opensMax)}
       </li>
       {#if passphrase !== ''}
         <li class="flex items-center gap-1.5 whitespace-nowrap text-nebula-300 max-sm:min-h-6 max-sm:text-ui">
-          <Icon name="key" class="size-4 shrink-0" />
-          {translate('create.passphrase')}
+          <Icon name="key" class="size-4 shrink-0" />{translate('create.passphrase')}
         </li>
       {/if}
     </ul>
     <div class="flex items-center gap-1.5 max-sm:flex-col max-sm:items-stretch">
       {#if trackingOffered}
         <Button variant="tint-soft" size="compact" onclick={() => (tracking = true)}>
-          <Icon name="eye" class="size-4 shrink-0 text-aegis-300" animated />
-          {translate('created.track.title')}
+          <Icon name="eye" class="size-4 shrink-0 text-aegis-300" animated />{translate('created.track.title')}
         </Button>
       {/if}
       <Button variant="ghost" size="compact" onclick={onanother} class="w-full sm:w-auto">
-        <Icon name="plus" class="size-4 shrink-0" animated />
-        {translate('created.another')}
+        <Icon name="plus" class="size-4 shrink-0" animated />{translate('created.another')}
       </Button>
     </div>
   </div>

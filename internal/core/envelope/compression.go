@@ -79,11 +79,8 @@ func CompressedLength(original, needed int) int {
 	}
 }
 
-// Authenticate the envelope before calling this. The claimed size never grants more than the protocol limit.
+// Authenticate the envelope and validate its meta before calling this, so size stays within the protocol limit.
 func decompressAttachment(compressed []byte, size int64) ([]byte, error) {
-	if size < 0 || size > MaxFileBytes {
-		return nil, ErrPlaintext
-	}
 	if len(compressed) < gzipHeaderLen || compressed[gzipFlagsOffset]&gzipReservedFlags != 0 {
 		return nil, ErrPlaintext
 	}

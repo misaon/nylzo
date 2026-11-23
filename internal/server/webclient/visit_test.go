@@ -4,6 +4,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/misaon/nylzo/internal/core/api"
@@ -72,6 +73,40 @@ func TestDocumentVisitReportsOnlyCountedPages(t *testing.T) {
 		}
 		if counted && visit.Signal != api.VisitDocument {
 			t.Errorf("%s: signal %q", test.name, visit.Signal)
+		}
+	}
+}
+
+func TestABrokenLanguageTableStopsTheStart(t *testing.T) {
+	t.Parallel()
+	for name, table := range map[string]string{
+		"not JSON":     `{`,
+		"invalid tag":  `{"languages":[{"tag":"Czech"}]}`,
+		"repeated tag": `{"languages":[{"tag":"en"},{"tag":"EN"}],"previews":{"en":{"title":"t","description":"d"}}}`,
+		"no preview":   `{"languages":[{"tag":"en"}]}`,
+		"no default":   `{"languages":[{"tag":"cs"}],"previews":{"cs":{"title":"t","description":"d"}}}`,
+	} {
+		func() {
+			defer func() {
+				if recover() == nil {
+					t.Errorf("%s: the table was accepted", name)
+				}
+			}()
+			mustParseLanguages([]byte(table))
+		}()
+	}
+}
+
+func TestPreviewPagesShowTheOpenGraphImageOnlyUnderAPublicURL(t *testing.T) {
+	t.Parallel()
+	assets := map[string]Asset{"index.js": {}, "og-image-a1.jpg": {}}
+	for publicURL, want := range map[string]bool{"https://nylzo.example": true, "": false} {
+		for _, page := range previewPages(publicURL, assets) {
+			shown := strings.Contains(string(page), `content="https://nylzo.example/assets/og-image-a1.jpg"`) &&
+				strings.Contains(string(page), `content="summary_large_image"`)
+			if shown != want {
+				t.Fatalf("public URL %q: image shown %v: %s", publicURL, shown, page)
+			}
 		}
 	}
 }

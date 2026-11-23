@@ -164,18 +164,14 @@
   void load();
 </script>
 
-<svelte:head>
-  <title>{translate('title.transparency')}</title>
-</svelte:head>
-
-{#snippet heading(id: string, icon: IconName, title: string)}
+{#snippet heading({ id, icon, title }: { readonly id: string; readonly icon: IconName; readonly title: string })}
   <div class="flex items-center gap-3">
     <IconTile {icon} tone="current" size="medium" />
     <h2 {id} class="text-title text-ink">{title}</h2>
   </div>
 {/snippet}
 
-{#snippet entries(list: readonly Entry[])}
+{#snippet entries({ list }: { readonly list: readonly Entry[] })}
   <ul role="list" class="mt-6">
     {#each list as entry (entry.title)}
       <li class="border-t border-white/8 py-4 first:border-t-0 first:pt-0 last:pb-0">
@@ -186,19 +182,36 @@
   </ul>
 {/snippet}
 
-{#snippet chips(title: string, list: readonly MessageKey[], icon: IconName, tone: string)}
+{#snippet chips({
+  title,
+  list,
+  icon,
+  tone,
+}: {
+  readonly title: string;
+  readonly list: readonly MessageKey[];
+  readonly icon: IconName;
+  readonly tone: string;
+})}
   <h3 class="text-title-sm text-ink">{title}</h3>
   <ul role="list" class="mt-3 flex flex-wrap gap-1.5">
     {#each list as chip (chip)}
       <li class={CHIP}>
-        <Icon name={icon} class={['size-3.5 shrink-0', tone]} stroke={2} />
-        {translate(chip)}
+        <Icon name={icon} class={['size-3.5 shrink-0', tone]} stroke={2} />{translate(chip)}
       </li>
     {/each}
   </ul>
 {/snippet}
 
-{#snippet detail(term: MessageKey, value: string, href?: string)}
+{#snippet detail({
+  term,
+  value,
+  href,
+}: {
+  readonly term: MessageKey;
+  readonly value: string;
+  readonly href?: string | undefined;
+})}
   <div class={[CARD, 'px-4 py-3']}>
     <dt class="text-micro text-ink-mute">{translate(term)}</dt>
     <dd class="mt-1 text-body wrap-anywhere text-ink">
@@ -280,20 +293,24 @@
         <span class="relative">{translate('action.retry')}</span>
       </Button>
     </StateCard>
-  {:else if data}
-    {const operator = $derived(data.operator)}
+  {:else}
+    {const operator = $derived(view.data.operator)}
     <section aria-labelledby="transparency-operator" class="animate-appear border-t border-white/8 pt-8">
-      {@render heading('transparency-operator', 'rack', translate('transparency.operator.title'))}
+      {@render heading({ id: 'transparency-operator', icon: 'rack', title: translate('transparency.operator.title') })}
       {#if operator && (operator.name || operator.contact || operator.hosting)}
         <dl class="mt-5 grid gap-3 sm:auto-cols-fr sm:grid-flow-col">
           {#if operator.name}
-            {@render detail('transparency.operator.name', operator.name)}
+            {@render detail({ term: 'transparency.operator.name', value: operator.name })}
           {/if}
           {#if operator.contact}
-            {@render detail('transparency.operator.contact', operator.contact, contactHref(operator.contact))}
+            {@render detail({
+              term: 'transparency.operator.contact',
+              value: operator.contact,
+              href: contactHref(operator.contact),
+            })}
           {/if}
           {#if operator.hosting}
-            {@render detail('transparency.operator.hosting', operator.hosting)}
+            {@render detail({ term: 'transparency.operator.hosting', value: operator.hosting })}
           {/if}
         </dl>
       {:else}
@@ -302,25 +319,35 @@
     </section>
 
     <section aria-labelledby="transparency-stores" class="animate-appear border-t border-white/8 pt-8">
-      {@render heading('transparency-stores', 'storage', translate('transparency.stores.title'))}
-      {@render entries(stored(data))}
+      {@render heading({ id: 'transparency-stores', icon: 'storage', title: translate('transparency.stores.title') })}
+      {@render entries({ list: stored(view.data) })}
     </section>
 
     <section aria-labelledby="transparency-logs" class="animate-appear border-t border-white/8 pt-8">
-      {@render heading('transparency-logs', 'list', translate('transparency.logs.title'))}
+      {@render heading({ id: 'transparency-logs', icon: 'list', title: translate('transparency.logs.title') })}
       <div class="mt-6 grid gap-3 sm:grid-cols-2">
         <div class={[CARD, 'p-4 sm:p-5']}>
-          {@render chips(translate('transparency.logs.written'), WRITTEN, 'check', 'text-aegis-300')}
+          {@render chips({
+            title: translate('transparency.logs.written'),
+            list: WRITTEN,
+            icon: 'check',
+            tone: 'text-aegis-300',
+          })}
           <p class="mt-3 text-caption text-pretty text-ink-mute">{translate('transparency.logs.written.note')}</p>
         </div>
         <div class={[CARD, 'p-4 sm:p-5']}>
-          {@render chips(translate('transparency.logs.never'), NEVER_WRITTEN, 'cross', 'text-ink-mute')}
+          {@render chips({
+            title: translate('transparency.logs.never'),
+            list: NEVER_WRITTEN,
+            icon: 'cross',
+            tone: 'text-ink-mute',
+          })}
         </div>
       </div>
     </section>
 
     <section aria-labelledby="transparency-checks" class="animate-appear border-t border-white/8 pt-8">
-      {@render heading('transparency-checks', 'list', translate('transparency.checks.title'))}
+      {@render heading({ id: 'transparency-checks', icon: 'list', title: translate('transparency.checks.title') })}
       <p class="mt-4 max-w-[720px] text-body-sm text-pretty text-ink-soft">{translate('transparency.checks.note')}</p>
       <dl class="mt-4">
         {#each CHECKS as check (check)}
@@ -335,29 +362,33 @@
     </section>
 
     <section aria-labelledby="transparency-others" class="animate-appear border-t border-white/8 pt-8">
-      {@render heading('transparency-others', 'eye', translate('transparency.others.title'))}
-      {@render entries(
-        OTHERS.map((name) => ({
+      {@render heading({ id: 'transparency-others', icon: 'eye', title: translate('transparency.others.title') })}
+      {@render entries({
+        list: OTHERS.map((name) => ({
           title: translate(`transparency.others.${name}.title`),
           text: translate(`transparency.others.${name}`),
         })),
-      )}
+      })}
     </section>
 
     <section aria-labelledby="transparency-personal" class="animate-appear border-t border-white/8 pt-8">
-      {@render heading('transparency-personal', 'person', translate('transparency.personal.title'))}
-      {@render entries(
-        PERSONAL.map((name) => ({
+      {@render heading({
+        id: 'transparency-personal',
+        icon: 'person',
+        title: translate('transparency.personal.title'),
+      })}
+      {@render entries({
+        list: PERSONAL.map((name) => ({
           title: translate(`transparency.personal.${name}.title`),
           text: translate(`transparency.personal.${name}`),
         })),
-      )}
+      })}
     </section>
 
     <section aria-labelledby="transparency-limits" class="animate-appear border-t border-white/8 pt-8">
-      {@render heading('transparency-limits', 'gauge', translate('transparency.limits.title'))}
+      {@render heading({ id: 'transparency-limits', icon: 'gauge', title: translate('transparency.limits.title') })}
       <dl class="mt-6 grid grid-cols-3 gap-2 sm:gap-3">
-        {#each stats(data) as stat (stat.key)}
+        {#each stats(view.data) as stat (stat.key)}
           <div class={[CARD, 'px-3 py-3 sm:px-4 sm:py-3.5']}>
             <dt class="text-micro text-ink-mute">{translate(stat.key)}</dt>
             <dd class="mt-1 text-stat font-light whitespace-nowrap text-ink tabular-nums">{stat.value}</dd>
@@ -365,7 +396,7 @@
         {/each}
       </dl>
       <dl class={[CARD, 'mt-3 px-4']}>
-        {#each rates(data) as rate (rate.key)}
+        {#each rates(view.data) as rate (rate.key)}
           <div
             class="flex flex-col gap-0.5 border-t border-white/8 py-3 first:border-t-0 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6"
           >
@@ -377,14 +408,22 @@
     </section>
 
     <section aria-labelledby="transparency-verify" class="animate-appear border-t border-white/8 pt-8">
-      {@render heading('transparency-verify', 'shieldCheck', translate('transparency.verify.title'))}
+      {@render heading({
+        id: 'transparency-verify',
+        icon: 'shieldCheck',
+        title: translate('transparency.verify.title'),
+      })}
       <dl class="mt-6 grid gap-3 sm:grid-cols-2">
         {@render fact({
           term: translate('transparency.client.version'),
           value: BUILD_INFO.version,
           testId: 'client-version',
         })}
-        {@render fact({ term: translate('transparency.server.version'), value: data.server, testId: 'server-version' })}
+        {@render fact({
+          term: translate('transparency.server.version'),
+          value: view.data.server,
+          testId: 'server-version',
+        })}
         {@render fact({
           term: translate('transparency.client.commit'),
           value: BUILD_INFO.commit,
@@ -398,7 +437,7 @@
             {translate('transparency.files.title')}
           </h3>
           <p class="text-micro text-ink-mute tabular-nums">
-            {translator.plural('count.file', data.files.length)} · SHA-256
+            {translator.plural('count.file', view.data.files.length)} · SHA-256
           </p>
         </div>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{translate('transparency.files')}</p>
@@ -412,7 +451,7 @@
             tabindex="0"
           >
             <ul role="list">
-              {#each data.files as file (file.path)}
+              {#each view.data.files as file (file.path)}
                 <li class="border-t border-white/8 py-2.5 first:border-t-0">
                   <p class="text-caption wrap-anywhere text-ink-soft">{file.path}</p>
                   <p class="mt-0.5 text-caption wrap-anywhere text-ink-mute tabular-nums">{file.sha256}</p>
@@ -445,8 +484,7 @@
         <h3 class="text-title-sm text-ink">{translate('transparency.verify.apps.title')}</h3>
         <p class="mt-1 text-body-sm text-pretty text-ink-soft">{translate('transparency.verify.apps')}</p>
         <Button variant="tint" size="compact" href={VERIFIED_CLIENTS_URL} rel="noreferrer" class="mt-3">
-          {translate('operations.apps.link')}
-          <Icon name="external" class="size-4 shrink-0 text-aegis-300" animated />
+          {translate('operations.apps.link')}<Icon name="external" class="size-4 shrink-0 text-aegis-300" animated />
         </Button>
       </div>
     </section>
@@ -458,8 +496,7 @@
         rel="noreferrer"
         class="max-sm:h-auto max-sm:min-h-11 max-sm:py-2.5 max-sm:text-left max-sm:whitespace-normal"
       >
-        <GithubMark class="size-4 shrink-0" />
-        {translate('transparency.source')}
+        <GithubMark class="size-4 shrink-0" />{translate('transparency.source')}
       </Button>
     </div>
   {/if}

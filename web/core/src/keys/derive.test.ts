@@ -127,4 +127,23 @@ describe('key derivation (spec 2)', () => {
       refuse.mockRestore();
     }
   });
+
+  it('wipes the read seed when the passphrase salt cannot derive', async () => {
+    const deriveBits = crypto.subtle.deriveBits.bind(crypto.subtle);
+    const derived: ArrayBuffer[] = [];
+    const spy = vi
+      .spyOn(crypto.subtle, 'deriveBits')
+      .mockImplementationOnce(async (...parameters) => {
+        const bits = await deriveBits(...parameters);
+        derived.push(bits);
+        return bits;
+      })
+      .mockRejectedValueOnce(new DOMException('refused', 'OperationError'));
+    try {
+      await expect(deriveLink(randomId(), newSecret())).rejects.toMatchObject({ name: 'OperationError' });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(derived.map((bits) => new Uint8Array(bits))).toEqual([new Uint8Array(32)]);
+  });
 });

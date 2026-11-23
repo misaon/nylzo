@@ -90,22 +90,13 @@ func newKey(secret []byte) (*key, error) {
 		macKeys: make(map[Purpose][32]byte, len(purposes)),
 	}
 	for _, purpose := range purposes {
-		macKey, err := hkdf.Key(sha256.New, secret, nil, infoBase+string(purpose), sha256.Size)
-		if err != nil {
-			return nil, err
-		}
+		macKey, _ := hkdf.Key(sha256.New, secret, nil, infoBase+string(purpose), sha256.Size)
 		derived.macKeys[purpose] = [32]byte(macKey)
 	}
-	recordsKey, err := hkdf.Key(sha256.New, secret, nil, infoRecords, SecretLen)
-	if err != nil {
-		return nil, err
-	}
+	recordsKey, _ := hkdf.Key(sha256.New, secret, nil, infoRecords, SecretLen)
 	derived.recordsKey = [SecretLen]byte(recordsKey)
 	clear(recordsKey)
-	oprfSeed, err := hkdf.Key(sha256.New, secret, nil, infoOPRFSeed, opaque.OPRFSeedLen)
-	if err != nil {
-		return nil, err
-	}
+	oprfSeed, _ := hkdf.Key(sha256.New, secret, nil, infoOPRFSeed, opaque.OPRFSeedLen)
 	derived.oprfSeed = [opaque.OPRFSeedLen]byte(oprfSeed)
 	clear(oprfSeed)
 	return derived, nil

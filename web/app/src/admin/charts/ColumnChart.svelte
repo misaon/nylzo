@@ -65,7 +65,7 @@
   const xTicks = $derived(
     Map.groupBy(tickIndexes(right - left), (index) => Math.floor(index / groupSize))
       .entries()
-      .map(([group, indexes]) => ({ group, index: indexes[0] ?? group * groupSize }))
+      .map(([group, indexes]) => ({ group, index: Math.min(...indexes) }))
       .toArray(),
   );
 

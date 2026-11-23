@@ -87,10 +87,7 @@ func encodeStoredMeta(meta Meta, compressedSize int64) ([]byte, error) {
 			object.File.Encoding, object.File.EncodedSize = "gzip", compressedSize
 		}
 	}
-	encoded, err := jsonv2.Marshal(object)
-	if err != nil {
-		return nil, err
-	}
+	encoded, _ := jsonv2.Marshal(object)
 	if len(encoded) > MaxMetaBytes {
 		return nil, ErrMeta
 	}
@@ -129,33 +126,33 @@ func decodeStoredMeta(data []byte) (storedMeta, error) {
 			return storedMeta{}, ErrMeta
 		}
 	}
+	var fileFields map[string]json.RawMessage
 	if raw := lookup(object, "file"); raw != nil {
-		if meta.File, err = decodeFileMeta(raw); err != nil {
+		if fileFields, err = decodeObject(raw); err != nil {
+			return storedMeta{}, err
+		}
+		if meta.File, err = decodeFileMeta(fileFields); err != nil {
 			return storedMeta{}, err
 		}
 	}
 	if validationErr := meta.Validate(); validationErr != nil {
 		return storedMeta{}, validationErr
 	}
-	compressedSize, err := decodeCompression(object, meta, version)
+	compressedSize, err := decodeCompression(fileFields, meta, version)
 	return storedMeta{meta: meta, compressedSize: compressedSize}, err
 }
 
-func decodeCompression(object map[string]json.RawMessage, meta Meta, version int) (int64, error) {
+func decodeCompression(fileFields map[string]json.RawMessage, meta Meta, version int) (int64, error) {
 	if version == 1 {
 		return 0, nil
 	}
 	if meta.File == nil {
 		return 0, ErrMeta
 	}
-	file, err := decodeObject(lookup(object, "file"))
-	if err != nil {
-		return 0, err
-	}
 	var encoding string
 	var size int64
-	if decodeRequired(file, "encoding", &encoding) != nil || encoding != "gzip" ||
-		decodeRequired(file, "encoded_size", &size) != nil || size <= 0 || size >= meta.File.Size {
+	if decodeRequired(fileFields, "encoding", &encoding) != nil || encoding != "gzip" ||
+		decodeRequired(fileFields, "encoded_size", &size) != nil || size <= 0 || size >= meta.File.Size {
 		return 0, ErrMeta
 	}
 	return size, nil
@@ -207,16 +204,12 @@ func decodeRequired(object map[string]json.RawMessage, key string, target any) e
 	return nil
 }
 
-func decodeFileMeta(raw json.RawMessage) (*FileMeta, error) {
-	object, err := decodeObject(raw)
-	if err != nil {
-		return nil, err
-	}
+func decodeFileMeta(fileFields map[string]json.RawMessage) (*FileMeta, error) {
 	file := &FileMeta{}
-	if decodeRequired(object, "name", &file.Name) != nil || decodeRequired(object, "size", &file.Size) != nil {
+	if decodeRequired(fileFields, "name", &file.Name) != nil || decodeRequired(fileFields, "size", &file.Size) != nil {
 		return nil, ErrMeta
 	}
-	if mime := lookup(object, "mime"); mime != nil && json.Unmarshal(mime, &file.MIME) != nil {
+	if mime := lookup(fileFields, "mime"); mime != nil && json.Unmarshal(mime, &file.MIME) != nil {
 		return nil, ErrMeta
 	}
 	return file, nil

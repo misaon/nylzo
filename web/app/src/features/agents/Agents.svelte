@@ -8,11 +8,7 @@
   const { translate } = getTranslator();
 </script>
 
-<svelte:head>
-  <title>{translate('title.agents')}</title>
-</svelte:head>
-
-{#snippet link({ label, href }: AgentLink, placement: string)}
+{#snippet link({ label, href, placement }: AgentLink & { readonly placement: string })}
   <a {href} class={[placement, 'text-caption', TEXT_LINK]}>{translate(label)}</a>
 {/snippet}
 
@@ -36,7 +32,7 @@
         <p class="mt-4 text-title-sm text-ink">{translate(step.title)}</p>
         <p class="mt-1.5 flex-1 text-body-sm text-pretty text-ink-soft">{translate(step.text)}</p>
         {#if step.link}
-          {@render link(step.link, 'mt-3 self-start')}
+          {@render link({ ...step.link, placement: 'mt-3 self-start' })}
         {/if}
       </li>
     {/each}
@@ -49,7 +45,7 @@
     <section class="glass-soft rounded-card p-6">
       <h2 class="text-title text-ink">{translate('agents.missing.title')}</h2>
       <p class="mt-3 text-body-sm text-pretty text-ink-soft">{translate('agents.missing.text')}</p>
-      {@render link(DISCUSSIONS, 'mt-3 inline-block')}
+      {@render link({ ...DISCUSSIONS, placement: 'mt-3 inline-block' })}
     </section>
   </div>
   <p class="mt-6 text-caption text-ink-mute">{translate('agents.markdown')}</p>

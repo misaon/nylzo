@@ -18,6 +18,7 @@ import (
 	"github.com/misaon/nylzo/internal/core/proofofwork"
 	"github.com/misaon/nylzo/internal/epoch"
 	"github.com/misaon/nylzo/internal/pepper"
+	"github.com/misaon/nylzo/internal/store"
 	"github.com/misaon/nylzo/internal/store/sqlite"
 	"github.com/misaon/nylzo/internal/vectors"
 )
@@ -208,4 +209,40 @@ func TestIDTokensFollowTheSpec(t *testing.T) {
 func valid(tokens IDTokens, id core.ID, shareEpoch, ttl uint32, token string, now time.Time) bool {
 	_, ok := tokens.Valid(id, shareEpoch, ttl, token, now)
 	return ok
+}
+
+type failingCounter struct{}
+
+var errCounterFailed = errors.New("rate counter failed")
+
+func (failingCounter) RateHit(context.Context, []store.RateHit) ([]store.RateCount, error) {
+	return nil, errCounterFailed
+}
+
+func TestWorkFailsWhenItCannotSpendTheChallenge(t *testing.T) {
+	t.Parallel()
+	work := NewWork(testRing(t), failingCounter{}, 1)
+	now := time.Now()
+	id := core.NewID()
+	if err := work.Verify(
+		t.Context(),
+		solve(t, work.Challenge(now, 1), id),
+		id,
+		now,
+	); !errors.Is(
+		err,
+		errCounterFailed,
+	) {
+		t.Fatalf("a challenge the counter could not spend: %v", err)
+	}
+	if err := work.Verify(t.Context(), "not base64url!.0000000000000000", id, now); !errors.Is(err, ErrWork) {
+		t.Fatalf("a challenge that is not base64url: %v", err)
+	}
+}
+
+func TestIDTokensRefuseAMalformedToken(t *testing.T) {
+	t.Parallel()
+	if valid(NewIDTokens(testRing(t)), core.NewID(), 1, 3600, "not a token", time.Now()) {
+		t.Fatal("a malformed token was accepted")
+	}
 }

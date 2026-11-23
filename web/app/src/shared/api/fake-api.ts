@@ -128,7 +128,8 @@ export function fakeApi(options: FakeOptions = {}): FakeApi {
   async function envelope(message: Stored, shareKey: ShareKey) {
     const object = new Uint8Array(message.request.object);
     if (options.tamperObject) {
-      object[object.length - 1] = (object.at(-1) ?? 0) ^ 1;
+      const view = new DataView(object.buffer);
+      view.setUint8(object.length - 1, view.getUint8(object.length - 1) ^ 1);
     }
     const share = shares.get(idToString(message.request.id));
     return {

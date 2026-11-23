@@ -18,13 +18,12 @@ var (
 )
 
 // Rejected is an object a reader of the link of envelope case Base must refuse with Error. The reader
-// receives the object of ObjectFrom (default Base) or Object, with FlipByte flipped, SetByte set and cut to
+// receives the object of Base or Object, with FlipByte flipped, SetByte set and cut to
 // TruncateTo. ReaderID, OpensMax, TTLSeconds and Deadline replace what the reader expects: a link to another id, or
 // a policy that the server reports differently, where a Deadline of 0 is a policy without one.
 type Rejected struct {
 	Name       string   `json:"name"`
 	Base       string   `json:"base"`
-	ObjectFrom string   `json:"object_from,omitempty"`
 	Object     *string  `json:"object_b64,omitempty"`
 	FlipByte   *int     `json:"flip_byte,omitempty"`
 	SetByte    *SetByte `json:"set_byte,omitempty"`
@@ -65,20 +64,16 @@ type rejection struct {
 	exportKey *keys.ExportKey
 }
 
-func (f *File) rejected() error {
+func (f *File) rejected() {
 	sealed := map[string]sealedCase{}
 	for _, vector := range envelopeCases {
 		if vector.name == rejectedBase || vector.name == "text-escapes" || vector.name == scryptBase {
-			sealedVector, err := sealCase(vector)
-			if err != nil {
-				return err
-			}
-			sealed[vector.name] = sealedVector
+			sealed[vector.name] = sealCase(vector)
 		}
 	}
 	base := sealed[rejectedBase]
 	secondShare := deterministic32("rejected/second-share")
-	twoKey, err := twoKeyObject(
+	twoKey := twoKeyObject(
 		base.id,
 		base.secret,
 		base.exportKey,
@@ -86,19 +81,11 @@ func (f *File) rejected() error {
 		base.header,
 		base.policy,
 	)
-	if err != nil {
-		return err
-	}
 	cases := rejectedCases(&base, twoKey, secondShare, sealed["text-escapes"].object)
 	cases = append(cases, deadlineRejections(&base)...)
 	for index := range cases {
-		vector, checkErr := rejectedVector(sealed, &cases[index])
-		if checkErr != nil {
-			return checkErr
-		}
-		f.Rejected = append(f.Rejected, vector)
+		f.Rejected = append(f.Rejected, rejectedVector(sealed, &cases[index]))
 	}
-	return nil
 }
 
 func rejectedCases(
@@ -197,19 +184,16 @@ func deadlineRejections(base *sealedCase) []rejection {
 	}
 }
 
-func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected, error) {
+func rejectedVector(sealed map[string]sealedCase, rejected *rejection) Rejected {
 	vector := rejected.vector
 	if vector.Base == "" {
 		vector.Base = rejectedBase
 	}
 	base := sealed[vector.Base]
 	object := rejected.object
-	switch {
-	case object != nil:
+	if object != nil {
 		vector.Object = new(core.Encode(object))
-	case vector.ObjectFrom != "":
-		object = sealed[vector.ObjectFrom].object
-	default:
+	} else {
 		object = base.object
 	}
 	object = mutated(object, &vector)
@@ -221,38 +205,29 @@ func rejectedVector(sealed map[string]sealedCase, rejected *rejection) (Rejected
 	if share == nil {
 		share = base.share
 	}
-	if vector.KDFID < 0 || vector.KDFID > math.MaxUint8 {
-		return Rejected{}, fmt.Errorf("vectors: kdf id %d %w", vector.KDFID, errKDFIDOutOfRange)
-	}
-	kdf := core.KDF(vector.KDFID)
-	id, policy, err := readerOf(&base, &vector)
-	if err != nil {
-		return Rejected{}, err
-	}
+	require(
+		vector.KDFID >= 0 && vector.KDFID <= math.MaxUint8,
+		fmt.Errorf("vectors: kdf id %d %w", vector.KDFID, errKDFIDOutOfRange),
+	)
+	kdf := core.KDF(min(max(vector.KDFID, 0), math.MaxUint8))
+	id, policy := readerOf(&base, &vector)
 	exportKey := rejected.exportKey
 	if exportKey == nil {
 		exportKey = base.exportKey
 	} else {
 		vector.P = new(hex.EncodeToString(exportKey[:]))
 	}
-	content, err := keys.DeriveContent(id, base.secret, exportKey, share)
-	if err != nil {
-		return Rejected{}, err
-	}
+	content := must(keys.DeriveContent(id, base.secret, exportKey, share))
 	expected := envelope.Expected{ID: id, Policy: policy, KDF: kdf, ObjectHash: hash}
 	_, _, openErr := envelope.Open(&content, &expected, object)
-	if got := errorName(openErr); got != vector.Error {
-		return Rejected{}, fmt.Errorf(
-			"%w %q fails with %q, want %q",
-			errRejectionDiffers,
-			vector.Name,
-			got,
-			vector.Error,
-		)
-	}
+	got := errorName(openErr)
+	require(
+		got == vector.Error,
+		fmt.Errorf("%w %q fails with %q, want %q", errRejectionDiffers, vector.Name, got, vector.Error),
+	)
 	vector.ObjectHash = core.Encode(hash[:])
 	vector.E = hex.EncodeToString(share[:])
-	return vector, nil
+	return vector
 }
 
 func mutated(object []byte, vector *Rejected) []byte {
@@ -270,13 +245,10 @@ func mutated(object []byte, vector *Rejected) []byte {
 }
 
 // readerOf is the id and the policy the reader expects: those of the base case unless the vector replaces them.
-func readerOf(base *sealedCase, vector *Rejected) (core.ID, envelope.Policy, error) {
+func readerOf(base *sealedCase, vector *Rejected) (core.ID, envelope.Policy) {
 	id, policy := base.id, base.policy
 	if vector.ReaderID != nil {
-		var err error
-		if id, err = core.ParseID(*vector.ReaderID); err != nil {
-			return id, policy, err
-		}
+		id = must(core.ParseID(*vector.ReaderID))
 	}
 	if vector.OpensMax != nil {
 		policy.OpensMax = uint16(*vector.OpensMax) //nolint:gosec // G115: a generated case near the base policy
@@ -287,7 +259,7 @@ func readerOf(base *sealedCase, vector *Rejected) (core.ID, envelope.Policy, err
 	if vector.Deadline != nil {
 		policy.Deadline = uint32(*vector.Deadline) //nolint:gosec // G115: a generated case near the base policy
 	}
-	return id, policy, nil
+	return id, policy
 }
 
 func errorName(err error) string {

@@ -17,9 +17,8 @@
   const title = $derived(translate(page.notice === 'loading' ? 'read.loading' : `open.notice.${page.notice}`));
   const text = $derived.by(() => {
     const { notice, shown } = page;
-    if (notice === 'busy') {
-      const retryAfter = shown.view === 'retry_later' ? shown.retryAfter : undefined;
-      return translate('open.notice.busy.text', { time: formatWait(retryAfter, translator.plural) });
+    if (shown.view === 'retry_later') {
+      return translate('open.notice.busy.text', { time: formatWait(shown.retryAfter, translator.plural) });
     }
     if (notice === 'timed_out') {
       return translate('open.notice.timed_out.text', { time: formatDuration(SHOWN_SECONDS, translator.language) });

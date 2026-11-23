@@ -129,38 +129,39 @@ func lengthByte(length int) byte {
 func hashToGroup(input []byte) *ristretto255.Element {
 	uniform := expandMessageXMD(input, dstHashToGroup, uniformLen)
 	defer clear(uniform)
-	element, err := ristretto255.NewIdentityElement().SetUniformBytes(uniform)
-	if err != nil {
-		panic(err)
-	}
+	element, _ := ristretto255.NewIdentityElement().SetUniformBytes(uniform)
 	return element
 }
 
 func hashToScalar(input []byte, dst string) *ristretto255.Scalar {
 	uniform := expandMessageXMD(input, dst, uniformLen)
 	defer clear(uniform)
-	scalar, err := ristretto255.NewScalar().SetUniformBytes(uniform)
-	if err != nil {
-		panic(err)
-	}
+	scalar, _ := ristretto255.NewScalar().SetUniformBytes(uniform)
 	return scalar
 }
 
 // deriveKeyPair is DeriveKeyPair of RFC 9497 section 3.2.1.
-func deriveKeyPair(seed []byte, info string) (*ristretto255.Scalar, *ristretto255.Element, error) {
+func deriveKeyPair(seed []byte, info string) (*ristretto255.Scalar, *ristretto255.Element) {
 	input := make([]byte, 0, len(seed)+2+len(info)+1)
 	input = append(input, seed...)
 	input = appendLength16(input, len(info))
 	input = append(input, info...)
 	defer clear(input)
+	private := firstNonZeroScalar(func(counter byte) *ristretto255.Scalar {
+		return hashToScalar(append(input, counter), dstDeriveKeyPair)
+	})
+	return private, ristretto255.NewIdentityElement().ScalarBaseMult(private)
+}
+
+// firstNonZeroScalar panics with DeriveKeyPairError, which only a broken SHA-512 could raise.
+func firstNonZeroScalar(candidate func(counter byte) *ristretto255.Scalar) *ristretto255.Scalar {
 	zero := ristretto255.NewScalar()
 	for counter := 0; counter <= maxDeriveKeyPairTo; counter++ {
-		private := hashToScalar(append(input, byte(counter)), dstDeriveKeyPair)
-		if private.Equal(zero) == 0 {
-			return private, ristretto255.NewIdentityElement().ScalarBaseMult(private), nil
+		if private := candidate(byte(counter)); private.Equal(zero) == 0 {
+			return private
 		}
 	}
-	return nil, nil, errDeriveKeyPair
+	panic(errDeriveKeyPair)
 }
 
 // blind is Blind of RFC 9497 section 3.3.1 with the given blinding scalar.
@@ -168,7 +169,10 @@ func blind(input []byte, factor *ristretto255.Scalar) ([]byte, error) {
 	if len(input) > MaxInputLen {
 		return nil, ErrInputLength
 	}
-	element := hashToGroup(input)
+	return blindElement(hashToGroup(input), factor)
+}
+
+func blindElement(element *ristretto255.Element, factor *ristretto255.Scalar) ([]byte, error) {
 	if element.Equal(ristretto255.NewIdentityElement()) == 1 {
 		return nil, ErrInvalidInput
 	}
@@ -184,11 +188,8 @@ func blindEvaluate(key *ristretto255.Scalar, blinded []byte) ([]byte, error) {
 	return ristretto255.NewIdentityElement().ScalarMult(key, element).Bytes(), nil
 }
 
-// finalize is Finalize of RFC 9497 section 3.3.1.
+// finalize is Finalize of RFC 9497 section 3.3.1 for an input that blind has already bounded to MaxInputLen.
 func finalize(input []byte, factor *ristretto255.Scalar, evaluated []byte) ([]byte, error) {
-	if len(input) > MaxInputLen {
-		return nil, ErrInputLength
-	}
 	element, err := DeserializeElement(evaluated)
 	if err != nil {
 		return nil, err

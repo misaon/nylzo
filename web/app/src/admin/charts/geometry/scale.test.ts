@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { groupSeries, level, niceTicks } from './scale.ts';
+import { groupSeries, level, niceTicks, share, sum } from './scale.ts';
 
 describe('nice ticks', () => {
   it.each([
@@ -26,5 +26,12 @@ describe('grouped series', () => {
   it('sums consecutive periods and keeps a partial last group', () => {
     expect(groupSeries([1, 2, 3, 4, 5], 2)).toEqual([3, 7, 5]);
     expect(groupSeries([], 3)).toEqual([]);
+  });
+});
+
+describe('share', () => {
+  it('divides by the total and gives an empty total no share instead of NaN', () => {
+    expect(share(sum([1, 3]), sum([1, 3, 4]))).toBe(0.5);
+    expect(share(0, sum([]))).toBe(0);
   });
 });

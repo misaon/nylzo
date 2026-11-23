@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { ResponseError } from '../../shared/api/api-errors.ts';
-import { TIMELINE_METRICS } from '../api/types.ts';
 import { parseLive, parseOverview } from './parse.ts';
+import { TIMELINE_METRICS } from './types.ts';
 
 const METRICS = Object.fromEntries(TIMELINE_METRICS.map((metric, index) => [metric, index]));
 
@@ -50,6 +50,9 @@ describe('parseOverview', () => {
     ['a missing metric', { totals: { ...METRICS, refusals: undefined } }],
     ['a negative count', { stored: -1 }],
     ['a fractional count in a series', { series: { ...overviewJson().series, refusals: [1, 0.5] } }],
+    ['storage that is not an object', { storage: [] }],
+    ['a series that is not a list', { series: { ...overviewJson().series, visitors: 3 } }],
+    ['a share that is not an object', { countries: ['CZ'] }],
   ])('refuses %s', (_, changes) => {
     expect(() => parseOverview(overviewJson(changes))).toThrow(ResponseError);
   });
@@ -80,10 +83,25 @@ describe('parseLive', () => {
     expect(parsed.refused?.[0]?.reasons).toEqual({});
     expect(parsed.refusedVersion).toBe(4);
     expect(parseLive({ ...live, refused: undefined }).refused).toBeUndefined();
+    expect(parseLive({ ...live, refused_version: undefined }).refusedVersion).toBeUndefined();
     expect(parsed.sessionExpiresAt).toBe(1_700_000_900);
   });
 
-  it('refuses an answer without usage_supported', () => {
-    expect(() => parseLive({ ...live, usage_supported: 'yes' })).toThrow(ResponseError);
+  it('reads the reasons a client was refused for and treats missing reasons as none', () => {
+    const [client] = live.refused;
+    const reasons = { rate: 2, proof: 1 };
+    expect(parseLive({ ...live, refused: [{ ...client, reasons }] }).refused?.[0]?.reasons).toEqual(reasons);
+    expect(parseLive({ ...live, refused: [{ ...client, reasons: undefined }] }).refused?.[0]?.reasons).toEqual({});
+  });
+
+  it.each([
+    ['without usage_supported', { usage_supported: 'yes' }],
+    ['with a usage sample that is not an object', { usage: [1] }],
+    ['with a processor figure that is not finite', { usage: [{ ...live.usage[0], processor: Number.NaN }] }],
+    ['with a refused client that is not an object', { refused: ['192.0.2.1'] }],
+    ['with reasons that are not an object', { refused: [{ ...live.refused[0], reasons: [] }] }],
+    ['with a reason count that is not a count', { refused: [{ ...live.refused[0], reasons: { rate: 'many' } }] }],
+  ])('refuses an answer %s', (_, changes) => {
+    expect(() => parseLive({ ...live, ...changes })).toThrow(ResponseError);
   });
 });

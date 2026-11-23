@@ -108,10 +108,7 @@ func (b *Blobs) refillInBackground() {
 func (b *Blobs) takeRandom() (upload, error) {
 	listed := false
 	for {
-		name, err := b.drawPoolName()
-		if err != nil {
-			return upload{}, err
-		}
+		name := b.drawPoolName()
 		if name == "" && listed {
 			return upload{}, store.ErrPoolEmpty
 		}
@@ -129,21 +126,18 @@ func (b *Blobs) takeRandom() (upload, error) {
 	}
 }
 
-func (b *Blobs) drawPoolName() (string, error) {
+func (b *Blobs) drawPoolName() string {
 	b.known.Lock()
 	defer b.known.Unlock()
 	if len(b.poolNames) == 0 {
-		return "", nil
+		return ""
 	}
-	index, err := randomIndex(len(b.poolNames))
-	if err != nil {
-		return "", err
-	}
+	index := randomIndex(len(b.poolNames))
 	last := len(b.poolNames) - 1
 	name := b.poolNames[index]
 	b.poolNames[index] = b.poolNames[last]
 	b.poolNames = b.poolNames[:last]
-	return name, nil
+	return name
 }
 
 func (b *Blobs) listPool() error {
@@ -165,8 +159,7 @@ func (b *Blobs) forgetPool() {
 // take writes the claim time into the pool file before the rename, so PurgeTemporary never mistakes a fresh upload
 // for a stale one; it leaves a file that is not empty or that has another link, since it would overwrite data.
 func (b *Blobs) take(name string) (upload, error) {
-	temporary := filepath.Join(b.root, temporaryDirectory)
-	pooledPath := filepath.Join(temporary, name)
+	pooledPath := filepath.Join(b.root, temporaryDirectory, name)
 	file, err := os.OpenFile(pooledPath, os.O_WRONLY|poolOpenFlags, 0)
 	if err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -174,7 +167,15 @@ func (b *Blobs) take(name string) (upload, error) {
 		}
 		return upload{}, errTaken
 	}
-	info, err := file.Stat()
+	return b.claimOpened(file, pooledPath, (*os.File).Stat)
+}
+
+func (b *Blobs) claimOpened(
+	file *os.File,
+	pooledPath string,
+	stat func(*os.File) (os.FileInfo, error),
+) (upload, error) {
+	info, err := stat(file)
 	if err != nil {
 		b.onPoolFailure(err)
 	}
@@ -187,7 +188,7 @@ func (b *Blobs) take(name string) (upload, error) {
 		now := time.Now()
 		err = os.Chtimes(pooledPath, now, now)
 	}
-	uploadPath := filepath.Join(temporary, uploadPrefix+rand.Text())
+	uploadPath := filepath.Join(filepath.Dir(pooledPath), uploadPrefix+rand.Text())
 	if err == nil {
 		err = os.Rename(pooledPath, uploadPath)
 	}
@@ -243,11 +244,7 @@ func (b *Blobs) Replenish(_ context.Context) error {
 	}
 	var errs []error
 	for len(names) > b.pool.Size {
-		index, indexErr := randomIndex(len(names))
-		if indexErr != nil {
-			errs = append(errs, indexErr)
-			break
-		}
+		index := randomIndex(len(names))
 		errs = append(errs, b.discard(names[index]))
 		names = slices.Delete(names, index, index+1)
 	}
@@ -285,11 +282,11 @@ func (b *Blobs) createPoolFiles(count int) ([]string, error) {
 			os.O_WRONLY|os.O_CREATE|os.O_EXCL|poolOpenFlags,
 			0o600,
 		)
+		if err == nil {
+			err = file.Close()
+		}
 		if err != nil {
 			return created, err
-		}
-		if closeErr := file.Close(); closeErr != nil {
-			return created, closeErr
 		}
 		created = append(created, name)
 	}
@@ -316,23 +313,16 @@ func (b *Blobs) discard(name string) error {
 	path := filepath.Join(b.root, temporaryDirectory, name)
 	info, err := os.Lstat(path)
 	switch {
-	case errors.Is(err, os.ErrNotExist):
-		return nil
 	case err != nil:
-		return err
+		return ignoreMissing(err)
 	case info.Mode().IsRegular() && info.Size() > 0 && linkCount(info) == 1:
 		return erase.Shred(path, erase.WholeFile)
 	}
-	if err = os.Remove(path); errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	return err
+	return ignoreMissing(os.Remove(path))
 }
 
-func randomIndex(length int) (int, error) {
-	index, err := rand.Int(rand.Reader, big.NewInt(int64(length)))
-	if err != nil {
-		return 0, err
-	}
-	return int(index.Int64()), nil
+// crypto/rand.Reader never fails, and length is positive.
+func randomIndex(length int) int {
+	index, _ := rand.Int(rand.Reader, big.NewInt(int64(length)))
+	return int(index.Int64())
 }

@@ -68,7 +68,7 @@
 
     <div class="stack shrink-0 sm:ml-auto">
       <Button
-        {@attach composer.focus.attach('submit')}
+        {@attach (element) => composer.focus.attach('submit')(element)}
         variant="primary"
         type="submit"
         disabled={!composer.limits || composer.busy}
@@ -77,8 +77,7 @@
           composer.busy ? 'pointer-events-none opacity-0' : 'opacity-100',
         ]}
       >
-        <Icon name="lock" class="size-4 shrink-0" animated />
-        {translate('compose.submit')}
+        <Icon name="lock" class="size-4 shrink-0" animated />{translate('compose.submit')}
       </Button>
       <WorkingStatus
         label={translate('compose.encrypting')}

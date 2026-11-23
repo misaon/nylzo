@@ -18,9 +18,14 @@ export interface SeriesOptions {
   readonly milliseconds?: number;
 }
 
-function fromTheRight(from: Values, to: Values): number[] {
+interface Span {
+  readonly start: number;
+  readonly end: number;
+}
+
+function fromTheRight(from: Values, to: Values): Span[] {
   const shift = from.length - to.length;
-  return to.map((_, i) => from[i + shift] ?? 0);
+  return to.map((end, i) => ({ start: from[i + shift] ?? 0, end }));
 }
 
 interface Keyed {
@@ -28,36 +33,38 @@ interface Keyed {
   readonly values: Values;
 }
 
-function byKey(from: Keyed, to: Keyed): number[] | undefined {
+function byKey(from: Keyed, to: Keyed): Span[] | undefined {
   const known = new Map(from.keys.map((key, i) => [key, from.values[i] ?? 0]));
   if (!to.keys.some((key) => known.has(key))) {
     return undefined;
   }
-  const starts: number[] = [];
-  for (const i of to.values.keys()) {
+  const spans: Span[] = [];
+  for (const [i, end] of to.values.entries()) {
     const key = to.keys[i];
-    starts.push((key === undefined ? undefined : known.get(key)) ?? starts[i - 1] ?? 0);
+    spans.push({ start: (key === undefined ? undefined : known.get(key)) ?? spans[i - 1]?.start ?? 0, end });
   }
-  return starts;
+  return spans;
 }
 
 // In a window where only the latest value still counts, the smallest shift that keeps the other values is how far it
 // moved.
-function bySlide(from: Values, to: Values): number[] | undefined {
-  const last = to.length - 1;
-  if (from.length !== to.length) {
+function bySlide(from: Values, to: Values): Span[] | undefined {
+  const latest = from.at(-1);
+  if (from.length !== to.length || latest === undefined) {
     return undefined;
   }
-  for (let shift = 0; shift <= last; shift++) {
-    const kept = last - shift;
-    if (to.slice(0, kept).every((value, i) => value === from[i + shift]) && (to[kept] ?? 0) >= (from[last] ?? 0)) {
-      return to.map((_, i) => from[Math.min(i + shift, last)] ?? 0);
-    }
+  const last = to.length - 1;
+  const kept = to.findLastIndex(
+    (value, index) => value >= latest && to.slice(0, index).every((earlier, i) => earlier === from[i + last - index]),
+  );
+  if (kept === -1) {
+    return undefined;
   }
-  return undefined;
+  const shift = last - kept;
+  return to.map((end, i) => ({ start: from[i + shift] ?? latest, end }));
 }
 
-function startsOf(from: Layers, to: Layers, onlyLatestChanges: boolean): number[][] {
+function spansOf(from: Layers, to: Layers, onlyLatestChanges: boolean): Span[][] {
   return to.layers.map((values, layer) => {
     const before = from.layers[layer] ?? [];
     const keyed =
@@ -80,12 +87,10 @@ export function tweenedLayers(
     easing: quintOut,
     duration: motionMs(milliseconds),
     interpolate: (from, to) => {
-      const starts = startsOf(from, to, onlyLatestChanges);
+      const spans = spansOf(from, to, onlyLatestChanges);
       return (progress) => ({
         keys: to.keys,
-        layers: starts.map((start, layer) =>
-          start.map((value, i) => value + ((to.layers[layer]?.[i] ?? 0) - value) * progress),
-        ),
+        layers: spans.map((layer) => layer.map(({ start, end }) => start + (end - start) * progress)),
       });
     },
   });
@@ -100,7 +105,7 @@ export function tweenedSeries(read: () => Values, options?: SeriesOptions): { re
   const layers = tweenedLayers(() => [read()], options);
   return {
     get current() {
-      return layers.current[0] ?? [];
+      return layers.current.flat();
     },
   };
 }

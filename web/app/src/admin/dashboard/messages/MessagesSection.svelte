@@ -65,7 +65,7 @@
         {#each series as entry (entry.label)}
           <li class="flex items-center gap-2">
             <span class={['size-2 rounded-xs', SWATCHES[entry.tone]]} aria-hidden="true"></span>
-            {entry.label}
+            <span>{entry.label}</span>
           </li>
         {/each}
       </ul>

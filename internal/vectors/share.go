@@ -57,50 +57,36 @@ var smallOrderPoints = []struct {
 	{"p-plus-one", "eeffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f"},
 }
 
-func deterministicShareKey(label string) (hpke.PrivateKey, []byte, error) {
-	seed := deterministic(label, 32)
-	key, err := share.NewKeyFromSeed(seed)
-	return key, seed, err
+func deterministicShareKey(seed []byte) hpke.PrivateKey {
+	return must(share.NewKeyFromSeed(seed))
 }
 
-func (f *File) shareKeyRejected() error {
-	key, _, keyErr := deterministicShareKey("share/rejected")
-	if keyErr != nil {
-		return keyErr
-	}
+func (f *File) shareKeyRejected() {
+	key := deterministicShareKey(deterministic("share/rejected", 32))
 	public := key.PublicKey().Bytes()
 	encoded := core.Encode(public)
-	add := func(name, value string, outdated bool) error {
+	add := func(name, value string, outdated bool) {
 		_, err := share.ParseKey(value)
-		switch {
-		case err == nil:
-			return fmt.Errorf("vectors: the share key %s %w", name, errShareKeyAccepted)
-		case errors.Is(err, share.ErrOutdated) != outdated:
-			return fmt.Errorf("vectors: the share key %s %w", name, errShareKeyKind)
-		}
+		require(err != nil, fmt.Errorf("vectors: the share key %s %w", name, errShareKeyAccepted))
+		require(
+			errors.Is(err, share.ErrOutdated) == outdated,
+			fmt.Errorf("vectors: the share key %s %w", name, errShareKeyKind),
+		)
 		f.ShareKeyRejected = append(f.ShareKeyRejected, ShareKeyRejected{Name: name, Key: value, Outdated: outdated})
-		return nil
 	}
-	errs := []error{
-		add("x25519-without-suite", core.Encode(public[mlkemKeyLen:]), true),
-		add("x-wing-without-suite", encoded, false),
-		add("empty", "", false),
-		add("unknown-suite", "2."+encoded, false),
-		add("empty-suite", "."+encoded, false),
-		add("short", suiteKey(public[:share.KeyLen-1]), false),
-		add("ml-kem-coefficient-q", suiteKey(withCoefficientQ(public)), false),
-	}
+	add("x25519-without-suite", core.Encode(public[mlkemKeyLen:]), true)
+	add("x-wing-without-suite", encoded, false)
+	add("empty", "", false)
+	add("unknown-suite", "2."+encoded, false)
+	add("empty-suite", "."+encoded, false)
+	add("short", suiteKey(public[:share.KeyLen-1]), false)
+	add("ml-kem-coefficient-q", suiteKey(withCoefficientQ(public)), false)
 	for _, point := range smallOrderPoints {
-		half, err := hex.DecodeString(point.hex)
-		if err != nil {
-			return err
-		}
-		lowOrder := append(bytes.Clone(public[:mlkemKeyLen]), half...)
-		errs = append(errs, add("x25519-"+point.name, suiteKey(lowOrder), false))
+		lowOrder := append(bytes.Clone(public[:mlkemKeyLen]), must(hex.DecodeString(point.hex))...)
+		add("x25519-"+point.name, suiteKey(lowOrder), false)
 		lowOrder[share.KeyLen-1] |= 0x80
-		errs = append(errs, add("x25519-"+point.name+"-top-bit", suiteKey(lowOrder), false))
+		add("x25519-"+point.name+"-top-bit", suiteKey(lowOrder), false)
 	}
-	return errors.Join(errs...)
 }
 
 func suiteKey(raw []byte) string {
@@ -122,26 +108,19 @@ type CompressedLength struct {
 	ObjectLen int `json:"object_len"`
 }
 
-func (f *File) share() error {
-	client, seed, err := deterministicShareKey("share/client")
-	if err != nil {
-		return err
-	}
+func (f *File) share() {
+	seed := deterministic("share/client", 32)
+	client := deterministicShareKey(seed)
 	expiry := deterministic32("share/e")
-	sealed, err := sealDeterministic(
+	sealed := sealDeterministic(
 		client.PublicKey().Bytes(),
 		expiry[:],
 		deterministic("share/encapsulation", 32),
 		deterministic("share/ephemeral", x25519Len),
 	)
-	if err != nil {
-		return err
-	}
 	wrapped := [share.WrappedLen]byte(sealed)
 	unwrapped, err := share.Unwrap(client, &wrapped)
-	if err != nil || unwrapped != *expiry {
-		return errors.Join(errShareNotUnwrapped, err)
-	}
+	require(err == nil && unwrapped == *expiry, fmt.Errorf("%w: %w", errShareNotUnwrapped, err))
 	clientKey := share.FormatKey(client.PublicKey())
 	f.Share = append(f.Share, ShareCase{
 		Name:       "wrapped-share",
@@ -165,9 +144,8 @@ func (f *File) share() error {
 	for _, change := range damaged {
 		bad := wrapped
 		change.damage(&bad)
-		if _, err = share.Unwrap(client, &bad); err == nil {
-			return fmt.Errorf("%w: %s", errBadShareUnwrapped, change.name)
-		}
+		_, err = share.Unwrap(client, &bad)
+		require(err != nil, fmt.Errorf("%w: %s", errBadShareUnwrapped, change.name))
 		f.Share = append(f.Share, ShareCase{
 			Name:       change.name,
 			ClientSeed: hex.EncodeToString(seed),
@@ -175,10 +153,9 @@ func (f *File) share() error {
 			Wrapped:    core.Encode(bad[:]),
 		})
 	}
-	return nil
 }
 
-func (f *File) compressedLength() error {
+func (f *File) compressedLength() {
 	const block = envelope.Pad
 	for _, pair := range [][2]int{
 		{block, block},
@@ -200,5 +177,4 @@ func (f *File) compressedLength() error {
 			ObjectLen: envelope.CompressedLength(pair[0], pair[1]),
 		})
 	}
-	return nil
 }

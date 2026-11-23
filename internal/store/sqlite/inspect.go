@@ -31,10 +31,8 @@ func Inspect(ctx context.Context, path string) (Readiness, error) {
 	} else if err != nil {
 		return ReadinessCreate, err
 	}
-	database, err := sql.Open("sqlite", "file:"+(&url.URL{Path: path}).EscapedPath()+"?mode=ro&immutable=1")
-	if err != nil {
-		return ReadinessCreate, err
-	}
+	// sql.Open fails only for an unregistered driver.
+	database, _ := sql.Open("sqlite", "file:"+(&url.URL{Path: path}).EscapedPath()+"?mode=ro&immutable=1")
 	defer database.Close()
 	version, err := userVersion(ctx, database)
 	if err != nil {

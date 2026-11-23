@@ -52,7 +52,7 @@ func withoutNylzoVariables(environment []string) []string {
 }
 
 // writeHandoffFile keeps the handoff address out of every process argument, where other accounts could read it.
-func writeHandoffFile(address string) (handoffFile, error) {
+func writeHandoffFile(address string, create func(*os.Root, string) (*os.File, error)) (handoffFile, error) {
 	directory, err := privatefile.MkdirTemp("", "nylzo-open-")
 	if err != nil {
 		return handoffFile{}, err
@@ -61,16 +61,15 @@ func writeHandoffFile(address string) (handoffFile, error) {
 		path:   filepath.Join(directory.Name(), "open.html"),
 		remove: func() { os.RemoveAll(directory.Name()) },
 	}
-	file, err := privatefile.CreateIn(directory, "open.html")
+	file, err := create(directory, "open.html")
 	directory.Close()
+	if err == nil {
+		_, err = fmt.Fprintf(file, handoffPage, html.EscapeString(address))
+		err = errors.Join(err, file.Close())
+	}
 	if err != nil {
 		written.remove()
-		return handoffFile{}, err
-	}
-	_, writeErr := fmt.Fprintf(file, handoffPage, html.EscapeString(address))
-	if closeErr := file.Close(); writeErr != nil || closeErr != nil {
-		written.remove()
-		return handoffFile{}, fmt.Errorf("the handoff page could not be written: %w", errors.Join(writeErr, closeErr))
+		return handoffFile{}, fmt.Errorf("the handoff page could not be written: %w", err)
 	}
 	return written, nil
 }

@@ -30,6 +30,7 @@ func TestExplainNetworkFailuresWithoutRepeatingRemoteText(t *testing.T) {
 		{"expired", x509.CertificateInvalidError{Cert: &x509.Certificate{}, Reason: x509.Expired}, "the server's TLS certificate is invalid or has expired"},
 		{"terminal", console.ErrNoTerminal, "there is no terminal to ask on; use a file instead"},
 		{"passphrase", keys.ErrMalformedPassphrase, "the passphrase is not valid UTF-8"},
+		{"long passphrase", keys.ErrLongPassphrase, fmt.Sprintf("the passphrase is longer than %d bytes", keys.MaxPassphraseBytes)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			t.Parallel()

@@ -2,7 +2,10 @@ package operator
 
 import (
 	"bytes"
+	"context"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -157,4 +160,59 @@ func manyIDs(count int) string {
 		builder.WriteString(core.NewID().String() + "\n")
 	}
 	return builder.String()
+}
+
+func TestTakedownStopsBeforeItOpensAStoreItCannotUse(t *testing.T) {
+	t.Parallel()
+	id := core.NewID().String() + "\n"
+	linkedAdmin := t.TempDir()
+	createStore(t, linkedAdmin)
+	if err := os.Symlink(filepath.Join(t.TempDir(), "admin"), adminStorePath(linkedAdmin)); err != nil {
+		t.Fatal(err)
+	}
+	for name, testCase := range map[string]struct {
+		input     string
+		variables map[string]string
+		code      int
+	}{
+		"an invalid setting":      {id, map[string]string{"NYLZO_RATE_SOURCE_BURST": "0.5"}, command.ExitError},
+		"a linked admin database": {id, map[string]string{"NYLZO_DATA_DIR": linkedAdmin}, command.ExitError},
+		"too many bytes":          {strings.Repeat(id, maxTakedownInput/len(id)+1), nil, command.ExitUsage},
+	} {
+		if result := run(t, testCase.input, testCase.variables, nil, RunTakedown); result.code != testCase.code ||
+			result.stdout != "" {
+			t.Errorf("takedown with %s: %+v", name, result)
+		}
+	}
+}
+
+func TestTakedownReportsEveryIDItCouldNotHandle(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	ids := []core.ID{storeMessage(t, directory), storeMessage(t, directory)}
+	database, blobs, err := openStore(
+		t.Context(),
+		directory,
+		testDevelopment,
+		testPool,
+		sqlite.Open,
+		slog.New(slog.DiscardHandler),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	database.Close()
+	var stdout, stderr bytes.Buffer
+	environment := &command.Environment{Stdout: &stdout, Stderr: &stderr}
+	if code := takeDown(t.Context(), environment, database, blobs, ids); code != command.ExitError ||
+		strings.Count(stdout.String(), " failed: ") != len(ids) || !strings.Contains(stderr.String(), "2 of 2") {
+		t.Fatalf("takedown on a closed store: exit %d, %s%s", code, stdout.String(), stderr.String())
+	}
+	stopped, cancel := context.WithCancel(t.Context())
+	cancel()
+	stdout.Reset()
+	if code := takeDown(stopped, environment, database, blobs, ids); code != command.ExitInterrupted ||
+		stdout.String() != "" {
+		t.Fatalf("a stopped takedown: exit %d, %s", code, stdout.String())
+	}
 }

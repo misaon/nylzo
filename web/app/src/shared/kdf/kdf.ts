@@ -72,10 +72,6 @@ async function runWorker(requestOnStart: () => KdfRequest, onProgress: Progress)
           finish(() => resolve(data));
           break;
         }
-        default: {
-          const exhaustive: never = data;
-          void exhaustive;
-        }
       }
     });
     worker.addEventListener('error', () => fail(new KdfWorkerError()));

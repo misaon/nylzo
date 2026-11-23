@@ -521,11 +521,8 @@ func sealWithDerivedKeys(input *sealInput) (client.CreateRequest, error) {
 	if err != nil {
 		return client.CreateRequest{}, err
 	}
-	read, err := keys.DeriveRead(input.id, input.secret)
+	read := keys.DeriveRead(input.id, input.secret)
 	defer clear(read[:])
-	if err != nil {
-		return client.CreateRequest{}, err
-	}
 	content, err := keys.DeriveContent(input.id, input.secret, &finished.ExportKey, input.share)
 	defer content.Wipe()
 	if err != nil {

@@ -30,10 +30,14 @@ const MaxDifficulty = 7
 var ErrDifficulty = errors.New("core: proof-of-work difficulty out of range")
 
 func Digest(challenge *[ChallengeLen]byte, id core.ID, counter uint64) ([core.KeyLen]byte, error) {
+	return scryptDigest(challenge, id, counter), nil
+}
+
+func scryptDigest(challenge *[ChallengeLen]byte, id core.ID, counter uint64) [core.KeyLen]byte {
 	password := make([]byte, 0, NonceLen+core.IDLen)
 	password = append(password, challenge[NonceOffset:NonceOffset+NonceLen]...)
 	password = append(password, id[:]...)
-	digest, err := scrypt.Key(
+	derived, _ := scrypt.Key(
 		password,
 		binary.BigEndian.AppendUint64(nil, counter),
 		scryptN,
@@ -41,10 +45,7 @@ func Digest(challenge *[ChallengeLen]byte, id core.ID, counter uint64) ([core.Ke
 		scryptP,
 		core.KeyLen,
 	)
-	if err != nil {
-		return [core.KeyLen]byte{}, err
-	}
-	return [core.KeyLen]byte(digest), nil
+	return [core.KeyLen]byte(derived)
 }
 
 func LeadingZeroBits(data []byte) int {
@@ -82,11 +83,7 @@ func FirstSolution(ctx context.Context, challenge *[ChallengeLen]byte, id core.I
 		if err := ctx.Err(); err != nil {
 			return 0, err
 		}
-		digest, err := Digest(challenge, id, counter)
-		if err != nil {
-			return 0, err
-		}
-		if LeadingZeroBits(digest[:]) >= difficulty {
+		if solution := scryptDigest(challenge, id, counter); LeadingZeroBits(solution[:]) >= difficulty {
 			return counter, nil
 		}
 	}

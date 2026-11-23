@@ -87,6 +87,10 @@ func (a *API) handleOverview(w http.ResponseWriter, r *http.Request) {
 	until := chosen.resolution.Start(now).Add(time.Duration(chosen.resolution) * time.Second)
 	from := until.Add(-length)
 	current, err := a.counted(r.Context(), chosen.resolution, from, until)
+	var earlier spanCounts
+	if err == nil && chosen.compared {
+		earlier, err = a.counted(r.Context(), chosen.resolution, from.Add(-length), from)
+	}
 	if err != nil {
 		a.writeInternal(w, r, err)
 		return
@@ -108,11 +112,6 @@ func (a *API) handleOverview(w http.ResponseWriter, r *http.Request) {
 		response.Series[metric] = valuesOf(current.periods, metric)
 	}
 	if chosen.compared {
-		earlier, readErr := a.counted(r.Context(), chosen.resolution, from.Add(-length), from)
-		if readErr != nil {
-			a.writeInternal(w, r, readErr)
-			return
-		}
 		response.Previous = totals(elapsedPart(earlier, now))
 	}
 	signedIn := sessionOf(r)

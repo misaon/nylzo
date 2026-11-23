@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"slices"
 	"strings"
@@ -193,5 +196,68 @@ func TestWindowEndsAtTheStartOfAnHourOnceItSpansAnHour(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestEventsFlushOnlyTheLevelsEnabledAtTheFlush(t *testing.T) {
+	t.Parallel()
+	var buffer bytes.Buffer
+	var level slog.LevelVar
+	events := logging.NewEvents(slog.New(slog.NewJSONHandler(&buffer, &slog.HandlerOptions{Level: &level})))
+	logger, ctx := events.Logger(), t.Context()
+	logger.InfoContext(ctx, "sweep-ran")
+	logger.WarnContext(ctx, "disk-full")
+	level.Set(slog.LevelWarn)
+	events.Flush(ctx)
+	if logs := buffer.String(); strings.Contains(logs, "sweep-ran") || !strings.Contains(logs, "disk-full") {
+		t.Fatalf("flushed lines: %s", logs)
+	}
+}
+
+func TestEventsInAGroupKeepNoAttributes(t *testing.T) {
+	t.Parallel()
+	var buffer bytes.Buffer
+	events := logging.NewEvents(slog.New(slog.NewJSONHandler(&buffer, nil)))
+	logger, ctx := events.Logger(), t.Context()
+	if handler := logger.Handler(); handler.WithGroup("") != handler {
+		t.Error("a group without a name made a new handler")
+	}
+	logger.WarnContext(ctx, "ungrouped", "category", "kept")
+	grouped := logger.WithGroup("request")
+	grouped.WarnContext(ctx, "grouped", "category", "dropped", "err", "dropped")
+	grouped.With("category", "dropped").WarnContext(ctx, "grouped")
+	events.Flush(ctx)
+	logs := buffer.String()
+	for _, want := range []string{
+		`"msg":"grouped","count":2}`,
+		`"msg":"ungrouped","category":"kept","count":1}`,
+	} {
+		if !strings.Contains(logs, want) {
+			t.Fatalf("%s missing: %s", want, logs)
+		}
+	}
+	if strings.Contains(logs, "dropped") {
+		t.Fatalf("a grouped attribute reached the log: %s", logs)
+	}
+}
+
+func TestRequestCountsCountACopiedBodyAsOK(t *testing.T) {
+	t.Parallel()
+	var buffer bytes.Buffer
+	counts := logging.NewRequestCounts(slog.New(slog.NewJSONHandler(&buffer, nil)))
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /copied", func(w http.ResponseWriter, _ *http.Request) {
+		if _, err := io.Copy(w, io.LimitReader(strings.NewReader("copied body"), 6)); err != nil {
+			t.Error(err)
+		}
+	})
+	response := httptest.NewRecorder()
+	counts.Requests(logging.Route(mux)).ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/copied", http.NoBody))
+	if response.Body.String() != "copied" {
+		t.Fatalf("body %q", response.Body.String())
+	}
+	counts.Flush(t.Context())
+	if logs := buffer.String(); !strings.Contains(logs, `"route":"GET /copied","status":200,"count":1`) {
+		t.Fatalf("counted: %s", logs)
 	}
 }

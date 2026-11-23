@@ -16,7 +16,6 @@ const (
 	Spec      = "nylzo/v3"
 	Generator = "go run ./cmd/nylzo-vectors -out spec/vectors.json"
 	seed      = "nylzo/vectors/2026-10-22"
-	inlineMax = 4096
 	base      = "https://nylzo.example"
 )
 
@@ -45,9 +44,11 @@ type File struct {
 	Server           Server                `json:"server"`
 }
 
-func Generate() (*File, error) {
+var errNotEncoded = errors.New("vectors: the vectors do not encode")
+
+func Generate() *File {
 	file := &File{Spec: Spec, Generator: Generator}
-	steps := []func() error{
+	steps := []func(){
 		file.scrypt,
 		file.derive,
 		file.opaque,
@@ -65,27 +66,33 @@ func Generate() (*File, error) {
 		file.pow,
 		file.server,
 	}
-	errs := make([]error, len(steps))
 	var wait sync.WaitGroup
-	for i, step := range steps {
-		wait.Go(func() { errs[i] = step() })
+	for _, step := range steps {
+		wait.Go(step)
 	}
 	wait.Wait()
-	if err := errors.Join(errs...); err != nil {
-		return nil, err
-	}
-	return file, nil
+	return file
 }
 
-func Marshal(file *File) ([]byte, error) {
+func Marshal(file *File) []byte {
 	var buffer bytes.Buffer
 	encoder := json.NewEncoder(&buffer)
 	encoder.SetEscapeHTML(false)
 	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(file); err != nil {
-		return nil, err
+	require(encoder.Encode(file) == nil, errNotEncoded)
+	return buffer.Bytes()
+}
+
+//nolint:ireturn // T is the type of the value the caller hands in, returned unchanged.
+func must[T any](value T, err error) T {
+	require(err == nil, err)
+	return value
+}
+
+func require(holds bool, disagreement error) {
+	if !holds {
+		panic(disagreement)
 	}
-	return buffer.Bytes(), nil
 }
 
 func deterministic(label string, length int) []byte {

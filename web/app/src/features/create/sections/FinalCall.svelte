@@ -19,8 +19,7 @@
       {translate('cta.text')}
     </p>
     <Button variant="primary" size="large" href="#create" class="mt-9 reveal-pop [--reveal-delay:440ms]">
-      <Icon name="lock" class="size-3.5 opacity-70" stroke={2} animated />
-      {translate('cta.button')}
+      <Icon name="lock" class="size-3.5 opacity-70" stroke={2} animated />{` ${translate('cta.button')}`}
     </Button>
   </div>
 </section>

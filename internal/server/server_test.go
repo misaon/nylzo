@@ -12,7 +12,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"maps"
+	"math"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -42,6 +44,7 @@ import (
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/server/transport"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -1259,10 +1262,7 @@ func (n *stolenNeedles) addMessage(label string, message *testMessage, passphras
 	n.secret(label+" registration record", message.registration[:])
 	n.secret(label+" masking_key", message.registration[opaque.ElementLen:opaque.ElementLen+opaque.HashLen])
 	n.secret(label+" client public key", message.registration[:opaque.ElementLen])
-	salt, err := keys.PassphraseSalt(message.secret)
-	if err != nil {
-		n.t.Fatal(err)
-	}
+	salt := keys.PassphraseSalt(message.secret)
 	n.secret(label+" salt_pw", salt[:])
 	if passphrase != "" {
 		n.text(label+" passphrase", passphrase)
@@ -1700,6 +1700,198 @@ func TestLogsContainNoSecrets(t *testing.T) {
 			if strings.Contains(logs, needle) {
 				t.Fatalf("log contains %q", needle)
 			}
+		}
+	})
+}
+
+func TestEventsWaitForTheFlush(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	harness.server.Events().Error("held-event")
+	if strings.Contains(harness.logs.String(), "held-event") {
+		t.Fatal("an event was written before the flush")
+	}
+	if !harness.logged("held-event") {
+		t.Fatalf("the flush did not write the event: %s", harness.logs.String())
+	}
+}
+
+func TestARatchetThatCannotAdvanceIsLogged(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		seedPath := filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)
+		if err := os.WriteFile(seedPath, []byte("damaged"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Sleep(time.Minute)
+		ctx, cancel := context.WithCancel(t.Context())
+		go harness.server.RunRatchet(ctx)
+		synctest.Wait()
+		cancel()
+		synctest.Wait()
+		if !strings.Contains(harness.logs.String(), `"msg":"epoch-advance"`) {
+			t.Fatalf("a ratchet that cannot advance was not logged: %s", harness.logs.String())
+		}
+	})
+}
+
+func TestASweeperWithoutAnIntervalNeverRuns(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.SweepInterval = 0
+		harness := newHarness(t, settings)
+		due := newMessage(t, core.KDFNone, "", 1, 60, "never swept")
+		harness.mustCreate(due)
+		synctest.Sleep(store.BlobPurgeStep + time.Minute)
+		harness.server.RunSweeper(t.Context())
+		if !harness.blobExists(due) {
+			t.Fatal("a sweeper without an interval erased a blob")
+		}
+	})
+}
+
+func TestAFailedSweepIsLoggedAndTheSweeperGoesOn(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.SweepInterval = time.Minute
+		settings.Development.AllowUnerasableStorage = true
+		harness := newHarness(t, settings)
+		harness.withFaultyStore(failingFrom("RateGet", 0))
+		due := newMessage(t, core.KDFNone, "", 1, 60, "swept despite the failure")
+		harness.mustCreate(due)
+		synctest.Sleep(store.BlobPurgeStep + time.Minute)
+		ctx, cancel := context.WithCancel(t.Context())
+		go harness.server.RunSweeper(ctx)
+		synctest.Wait()
+		cancel()
+		synctest.Wait()
+		if !strings.Contains(harness.logs.String(), `"msg":"sweep"`) || harness.blobExists(due) {
+			t.Fatalf("a failed sweep must be logged and still erase: %s", harness.logs.String())
+		}
+	})
+}
+
+func TestANewUTCDayDrawsANewAddressKey(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		address := netip.MustParseAddr("203.0.113.7")
+		synctest.Sleep(time.Until(ratelimit.Day(time.Now()).End) - time.Minute)
+		before := harness.server.addressKey.Source(address)
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+		go func() {
+			harness.server.RunHousekeeping(ctx)
+			close(done)
+		}()
+		synctest.Sleep(2 * time.Minute)
+		cancel()
+		<-done
+		if harness.server.addressKey.Source(address) == before {
+			t.Fatal("a new UTC day kept the address key of the day before")
+		}
+	})
+}
+
+func TestASeedAheadOfTheClockIsReplacedAndLogged(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		ahead, _, err := epoch.Open(harness.settings.EpochDirectory(), time.Now().Add(2*time.Hour), epoch.Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		ahead.Close()
+		harness.reopen(&harness.settings)
+		if !strings.Contains(harness.logs.String(), `"msg":"epoch-generation-replaced"`) {
+			t.Fatalf("a replaced generation was not logged: %s", harness.logs.String())
+		}
+	})
+}
+
+func TestTheLeftoverEpochCheckNeedsANamedDirectoryAndAReadableDataDirectory(t *testing.T) {
+	t.Parallel()
+	settings := baseSettings(pepperA, nil)
+	settings.DataDirectory = t.TempDir()
+	if err := RefuseEpochInDataDirectory(settings); err != nil {
+		t.Fatalf("no NYLZO_EPOCH_DIR refused the data directory: %v", err)
+	}
+	notADirectory := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(notADirectory, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	settings.DataDirectory = notADirectory
+	settings.EpochDirectoryOverride = t.TempDir()
+	if err := RefuseEpochInDataDirectory(settings); !errors.Is(err, syscall.ENOTDIR) ||
+		errors.Is(err, ErrEpochInDataDirectory) {
+		t.Fatalf("a data directory that cannot be checked: %v", err)
+	}
+}
+
+func TestAnAnswerJSONCannotEncodeIsAnInternalError(t *testing.T) {
+	t.Parallel()
+	recorder := httptest.NewRecorder()
+	writeJSON(recorder, http.StatusOK, math.NaN())
+	if recorder.Code != http.StatusInternalServerError || recorder.Body.String() != `{"error":"internal"}` {
+		t.Fatalf("an answer JSON cannot encode: %d %s", recorder.Code, recorder.Body)
+	}
+}
+
+func TestAFailureOfAClientThatLeftIsNoServerError(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	recorder := httptest.NewRecorder()
+	harness.server.writeInternal(recorder, httptest.NewRequestWithContext(ctx, http.MethodGet, "/", nil), ctx.Err())
+	if recorder.Code != http.StatusBadRequest || !harness.logged("handler") ||
+		strings.Contains(harness.logs.String(), `"level":"ERROR"`) {
+		t.Fatalf("a client that left: %d %s", recorder.Code, harness.logs.String())
+	}
+}
+
+func TestRowsThatCannotBeSealedStopTheStart(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	harness.store = &faultyStore{Store: harness.store, fault: failingFrom("ResealWraps", 0)}
+	server, err := New(&harness.settings, harness.store, harness.blobs, WithLogger(slog.New(slog.DiscardHandler)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	if err = server.SealRows(t.Context()); !errors.Is(err, errInjected) {
+		t.Fatalf("rows that cannot be sealed: %v", err)
+	}
+}
+
+func TestACapSlotThatCannotBeReturnedIsLogged(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.GlobalDailyCreates = 100
+		harness := newHarness(t, settings)
+		harness.withFaultyStore(failingFrom("RateRelease", 0))
+		harness.withFaultyBlobs().FailPut(errInjected)
+		response, _ := harness.create(newMessage(t, core.KDFNone, "", 1, 3600, "never stored"))
+		if response.StatusCode != http.StatusInternalServerError || !harness.logged("global-release") {
+			t.Fatalf("a cap slot that cannot be returned: %d", response.StatusCode)
+		}
+	})
+}
+
+func TestAReadByteBudgetOfZeroCountsNoBytes(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		settings := baseSettings(pepperA, nil)
+		settings.Rates.ReadBytesPerHour = 0
+		harness := newHarness(t, settings)
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "unbounded bytes")
+		harness.mustCreate(message)
+		if response, _ := harness.claim(message, message.passphrase, ""); response.StatusCode != http.StatusOK {
+			t.Fatalf("a claim without a read byte budget: %d", response.StatusCode)
 		}
 	})
 }

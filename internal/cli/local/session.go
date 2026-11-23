@@ -2,7 +2,6 @@ package local
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"sync"
@@ -12,6 +11,7 @@ import (
 	"github.com/misaon/nylzo/internal/client"
 	"github.com/misaon/nylzo/internal/core/api"
 	"github.com/misaon/nylzo/internal/localclient"
+	"github.com/misaon/nylzo/internal/privatefile"
 	"github.com/misaon/nylzo/internal/server/operatoraddress"
 	"github.com/misaon/nylzo/internal/server/webclient"
 )
@@ -36,6 +36,7 @@ type Options struct {
 	OpenBrowser       bool
 	Link              *Link
 	ResolvesLocalhost func() bool
+	Listen            func(context.Context) (*localclient.Listeners, error)
 }
 
 type session struct {
@@ -55,14 +56,18 @@ type deadlines struct {
 	stop    func()
 }
 
-func Serve(ctx context.Context, environment *command.Environment, options Options) int {
-	listeners, err := localclient.Listen(ctx)
+func Serve(ctx context.Context, environment *command.Environment, options *Options) int {
+	listen := options.Listen
+	if listen == nil {
+		listen = localclient.Listen
+	}
+	listeners, err := listen(ctx)
 	if err != nil {
 		return command.Failf(environment, "the verified client could not listen on a loopback port: %s", err)
 	}
 	current := &session{
 		environment: environment,
-		options:     options,
+		options:     *options,
 		notices:     make(chan localclient.Notice, noticeBuffer),
 		cleanup:     func() {},
 	}
@@ -191,7 +196,7 @@ func (s *session) handOver() bool {
 	token := s.server.Offer(s.options.Link.Path, s.options.Link.Fragment, s.options.Link.Lifetime)
 	s.address = s.server.Origin() + localclient.HandoffPath + "#" + token
 	if s.options.OpenBrowser {
-		page, writeErr := writeHandoffFile(s.address)
+		page, writeErr := writeHandoffFile(s.address, privatefile.CreateIn)
 		if writeErr == nil {
 			s.cleanup = sync.OnceFunc(page.remove)
 			if openErr := browser(s.environment)(page.path); openErr == nil {
@@ -239,7 +244,7 @@ func (s *session) notef(format string, arguments ...any) {
 func shutdown(ctx context.Context, httpServer *http.Server) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 	defer cancel()
-	if err := httpServer.Shutdown(ctx); errors.Is(err, context.DeadlineExceeded) {
-		httpServer.Close()
-	}
+	_ = httpServer.Shutdown(ctx)
+	// Close is a no-op once Shutdown has drained every connection.
+	httpServer.Close()
 }

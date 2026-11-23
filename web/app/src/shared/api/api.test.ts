@@ -449,6 +449,7 @@ describe('api client', () => {
       ],
       [json(503, { error: 'unavailable' }, { 'Retry-After': '30' }), { kind: 'unavailable', retryAfter: 30 }],
       [new Response('<html>', { status: 502 }), { kind: 'unexpected', status: 502 }],
+      [json(400, { error: 'from_a_newer_server' }), { kind: 'unexpected', status: 400 }],
     ];
     for (const [response, expected] of cases) {
       const server = fakeServer(() => response.clone());
@@ -735,6 +736,24 @@ function serveTransparency(report: unknown, manifest: unknown) {
   ).api.transparency();
 }
 
+describe('instance descriptions', () => {
+  it.each([
+    ['limits that are not an object', { limits: 'none' }],
+    ['proof of work that is not an object', { pow: 4 }],
+    ['proof of work that does not say whether it is required', { pow: { difficulty: 4, challenge: 'x' } }],
+  ])('refuses an instance with %s', async (_, changed) => {
+    const server = fakeServer(() => json(200, { ...instanceBody, ...changed }));
+    await expect(server.api.instance()).rejects.toThrow(ResponseError);
+  });
+
+  it('refuses an instance that issues no id when the sender asked for one', async () => {
+    const server = fakeServer(() => json(200, { ...instanceBody, create: undefined }));
+    await expect(server.api.instance({ ttlSeconds: 3600, shareKey, registrationRequest })).rejects.toThrow(
+      ResponseError,
+    );
+  });
+});
+
 describe('share keys of refused downloads', () => {
   it('erases the share key seed when a download answer is refused', async () => {
     const readKey = await requestKey(new Uint8Array(32).fill(1));
@@ -762,6 +781,12 @@ describe('transparency', () => {
     expect(transparency.files).toEqual([{ path: '/', sha256: DIGEST }]);
   });
 
+  it('reads the visit counting the instance reports', async () => {
+    const report = transparencyReport({ visits: { counted: true, hourly_s: 3600, daily_s: 86_400 } });
+    const { visits } = await serveTransparency(report, clientManifest());
+    expect(visits).toEqual({ counted: true, hourlySeconds: 3600, dailySeconds: 86_400 });
+  });
+
   it('accepts an instance without an operator', async () => {
     const { operator } = await serveTransparency(transparencyReport({ operator: undefined }), clientManifest());
     expect(operator).toBeUndefined();
@@ -773,6 +798,7 @@ describe('transparency', () => {
       [transparencyReport(), clientManifest({ files: [{ path: '/', sha256: 'A'.repeat(64) }] })],
       [transparencyReport(), clientManifest({ files: [{ path: 'assets/x.js', sha256: DIGEST }] })],
       [transparencyReport(), clientManifest({ built: 'yes' })],
+      [transparencyReport(), clientManifest({ files: ['/'] })],
       [
         transparencyReport(),
         clientManifest({

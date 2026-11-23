@@ -23,7 +23,7 @@
   >
     <defs>
       <linearGradient
-        id="keyArc{shape.id}"
+        id={`keyArc${shape.id}`}
         gradientUnits="userSpaceOnUse"
         x1={shape.arcFrom}
         y1="0"
@@ -34,7 +34,7 @@
         <stop offset="0.5" stop-color="#B4A0F2"></stop>
         <stop offset="1" stop-color="#98D5FF"></stop>
       </linearGradient>
-      <mask id="keyArc{shape.id}Gap" maskUnits="userSpaceOnUse" x="-50" y="-50" width="1100" height="420">
+      <mask id={`keyArc${shape.id}Gap`} maskUnits="userSpaceOnUse" x="-50" y="-50" width="1100" height="420">
         <rect x="-50" y="-50" width="1100" height="420" fill="white"></rect>
         <rect
           x={shape.gap.x}
@@ -45,22 +45,22 @@
           fill="black"
         ></rect>
       </mask>
-      <filter id="keyArc{shape.id}Glow" filterUnits="userSpaceOnUse" x="-50" y="-50" width="1100" height="420">
+      <filter id={`keyArc${shape.id}Glow`} filterUnits="userSpaceOnUse" x="-50" y="-50" width="1100" height="420">
         <feGaussianBlur stdDeviation="3"></feGaussianBlur>
       </filter>
     </defs>
-    <g mask="url(#keyArc{shape.id}Gap)">
+    <g mask={`url(#keyArc${shape.id}Gap)`}>
       <path
         d={shape.arc}
-        stroke="url(#keyArc{shape.id})"
+        stroke={`url(#keyArc${shape.id})`}
         stroke-width={shape.glowWidth}
         stroke-linecap="round"
         opacity="0.35"
-        filter="url(#keyArc{shape.id}Glow)"
+        filter={`url(#keyArc${shape.id}Glow)`}
       ></path>
       <path
         d={shape.arc}
-        stroke="url(#keyArc{shape.id})"
+        stroke={`url(#keyArc${shape.id})`}
         stroke-width={shape.arcWidth}
         stroke-linecap="round"
         opacity="0.95"

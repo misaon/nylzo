@@ -39,15 +39,9 @@ import {
   WEAK_BELOW_CHARACTERS,
   WEAK_BELOW_WORDS,
 } from '../create-message.ts';
-import type {
-  Created,
-  CreateFailure,
-  CreateField,
-  CreateInput,
-  CreateProblem,
-  CreateProgress,
-} from '../create-message.ts';
+import type { Created, CreateField, CreateInput, CreateProblem, CreateProgress } from '../create-message.ts';
 import { failureKey, problemKey, readAttachment } from './create-form.ts';
+import type { SendFailure } from './create-form.ts';
 
 export type Menu = 'opens' | 'security' | 'ttl';
 
@@ -96,6 +90,7 @@ const MIN_MS = 1400;
 const REDUCED_MIN_MS = 600;
 const SAVE_TIMEOUT_MS = 5000;
 const DEFAULT_TTL_SECONDS = 86_400;
+const UNEXPECTED_FAILURE: SendFailure = { kind: 'failed' };
 const CIPHER_SOURCE_CHARACTERS = 140;
 const CIPHER_LEAD = 1.3;
 const CIPHER_GROWTH = 1100;
@@ -133,7 +128,7 @@ export class Composer {
   canTrackInTab = $state(true);
   menu = $state<Menu>();
   problems = $state.raw<readonly CreateProblem[]>([]);
-  failure = $state.raw<CreateFailure>();
+  failure = $state.raw<SendFailure>();
   proving = $state(false);
   cipher = $state('');
   left = $state(false);
@@ -274,7 +269,9 @@ export class Composer {
     this.remembered === 'saving' || this.remembered === 'remembered' ? this.kept : this.#keepsNext,
   );
 
-  readonly stepTitle = $derived(this.phase === 'encrypting' ? (this.nodes[this.timeline.paced.step]?.title ?? '') : '');
+  readonly stepTitle = $derived(
+    this.nodes.find((_node, index) => this.phase === 'encrypting' && index === this.timeline.paced.step)?.title ?? '',
+  );
 
   readonly start: Attachment = () => {
     if (servedByLocalClient()) {
@@ -455,7 +452,7 @@ export class Composer {
     this.#sessionStore = sessionStore;
   }
 
-  #failureText(failure: CreateFailure): string {
+  #failureText(failure: SendFailure): string {
     const { translate, plural } = this.#translator;
     const retryAfter =
       failure.kind === 'rate_limited' || failure.kind === 'unavailable' ? failure.retryAfter : undefined;
@@ -589,11 +586,12 @@ export class Composer {
       }
       this.timeline.stop();
       this.#enter({ phase: 'compose' });
-      if (error instanceof CreateError && error.failure.kind === 'invalid') {
-        await this.#showProblems(error.failure.problems);
+      const failure = error instanceof CreateError ? error.failure : UNEXPECTED_FAILURE;
+      if (failure.kind === 'invalid') {
+        await this.#showProblems(failure.problems);
         return;
       }
-      this.failure = error instanceof CreateError ? error.failure : { kind: 'failed' };
+      this.failure = failure;
       await this.focus.focusAfterUpdate('submit');
     }
   }

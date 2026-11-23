@@ -2,6 +2,8 @@ package epoch_test
 
 import (
 	"bufio"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -51,5 +53,26 @@ func TestPinLocksTheSeedPagesUntilClose(t *testing.T) {
 	ratchet.Close()
 	if _, mapped := lockedKiB(t, path); mapped {
 		t.Fatal("Close must release the mapping")
+	}
+}
+
+func TestPinRefusesASeedThatIsNotOneAnyMore(t *testing.T) {
+	t.Parallel()
+	for name, testCase := range map[string]struct {
+		change func(path string) error
+		want   error
+	}{
+		"a removed seed":     {os.Remove, fs.ErrNotExist},
+		"a seed others read": {func(path string) error { return os.Chmod(path, 0o644) }, epoch.ErrExposed},
+		"a truncated seed":   {func(path string) error { return os.Truncate(path, epoch.FileLen-1) }, epoch.ErrCorrupt},
+	} {
+		directory := t.TempDir()
+		ratchet := open(t, directory, time.Now())
+		if err := testCase.change(filepath.Join(directory, epoch.FileName)); err != nil {
+			t.Fatal(err)
+		}
+		if err := ratchet.Pin(); !errors.Is(err, testCase.want) {
+			t.Fatalf("%s: %v", name, err)
+		}
 	}
 }

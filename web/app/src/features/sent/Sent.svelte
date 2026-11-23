@@ -178,12 +178,14 @@
     }
   }
 
-  function summaryOf(item: SentItem): string {
-    const { state } = item;
+  function summaryOf({
+    state,
+    expiresAt,
+  }: {
+    readonly state: Exclude<ItemState, { readonly kind: 'loading' }>;
+    readonly expiresAt: number;
+  }): string {
     switch (state.kind) {
-      case 'loading': {
-        return translate('sent.state.loading');
-      }
       case 'unknown': {
         return translate('sent.unknown');
       }
@@ -195,7 +197,7 @@
       }
       case 'loaded': {
         return translate(`sent.ended.${endedState(state.status.state)}`, {
-          time: time(state.status.endedAt ?? item.expiresAt),
+          time: time(state.status.endedAt ?? expiresAt),
         });
       }
     }
@@ -222,7 +224,7 @@
     void afterAction(current?.kind === 'cancel' ? current.item.id : undefined);
   }
 
-  async function confirmed() {
+  async function confirmed(): Promise<void> {
     const current = confirming;
     confirming = undefined;
     cancelled = undefined;
@@ -231,28 +233,18 @@
     }
     switch (current.kind) {
       case 'cancel': {
-        await run(async () => {
+        return run(async () => {
           cancelled = await sent.cancel(current.item.id);
         }, current.item.id);
-        break;
       }
       case 'forget_all': {
-        await run(() => sent.forgetAll());
-        break;
-      }
-      default: {
-        const exhaustive: never = current;
-        void exhaustive;
+        return run(() => sent.forgetAll());
       }
     }
   }
 </script>
 
 <svelte:window onpagehide={leave} onpageshow={(event) => event.persisted && void sent.load()} />
-
-<svelte:head>
-  <title>{translate('title.sent')}</title>
-</svelte:head>
 
 {#snippet emptyCard({
   icon,
@@ -307,8 +299,7 @@
       class={['self-start sm:self-auto', items.length === 0 && 'invisible max-sm:hidden']}
       onclick={() => (confirming = { kind: 'forget_all' })}
     >
-      <Icon name="close" class="size-4 shrink-0" animated />
-      {translate('sent.forget_all')}
+      <Icon name="close" class="size-4 shrink-0" animated />{translate('sent.forget_all')}
     </Button>
   </div>
 
@@ -317,7 +308,6 @@
       {#each items as item (item.id)}
         {const badge = $derived(badgeOf(item))}
         {const pending = $derived(item.state.kind === 'loading')}
-        {const live = $derived(pending || (item.state.kind === 'loaded' && !item.ended))}
         {const retryable = $derived(
           item.state.kind === 'retry_later' || item.state.kind === 'failed' || item.state.kind === 'unknown',
         )}
@@ -370,12 +360,11 @@
                   {#if !pending}{translate(badge.key)}{/if}
                 </span>
               </div>
-              {#if live}
+              {#if item.state.kind === 'loading' || (item.state.kind === 'loaded' && !item.ended)}
                 <p class="mt-2 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-caption text-ink-soft tabular-nums">
                   {#each factsOf(item) as fact (fact.icon)}
                     <span class={['flex items-center gap-1.5 whitespace-nowrap', fact.warning && 'text-rose-200']}>
-                      <Icon name={fact.icon} class={['size-4 shrink-0', !fact.warning && 'text-ink-mute']} />
-                      {fact.text}
+                      <Icon name={fact.icon} class={['size-4 shrink-0', !fact.warning && 'text-ink-mute']} />{fact.text}
                     </span>
                   {/each}
                   <span class="whitespace-nowrap text-ink-mute">{createdText(item)}</span>
@@ -387,7 +376,7 @@
                     badge.tone === 'problem' ? 'text-rose-200' : 'text-ink-mute',
                   ]}
                 >
-                  {summaryOf(item)}
+                  {summaryOf({ state: item.state, expiresAt: item.expiresAt })}
                 </p>
               {/if}
             </div>
@@ -402,8 +391,7 @@
                     class="max-sm:flex-auto"
                     onclick={() => void run(() => sent.refresh(item.id), item.id)}
                   >
-                    <Icon name="refresh" class="size-4 shrink-0" animated />
-                    {translate('action.retry')}
+                    <Icon name="refresh" class="size-4 shrink-0" animated />{translate('action.retry')}
                   </Button>
                 {/if}
                 {#if item.cancellable || pending}
@@ -414,8 +402,7 @@
                     class={['max-sm:flex-auto', pending && 'invisible']}
                     onclick={() => (confirming = { kind: 'cancel', item })}
                   >
-                    <Icon name="trash" class="size-4 shrink-0" animated />
-                    {translate('sent.cancel')}
+                    <Icon name="trash" class="size-4 shrink-0" animated />{translate('sent.cancel')}
                   </Button>
                 {/if}
               </div>

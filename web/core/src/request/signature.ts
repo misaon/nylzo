@@ -37,8 +37,9 @@ function recordedSha512(message: Uint8Array): Uint8Array {
 }
 
 function clampScalar(bytes: Uint8Array): Uint8Array {
-  bytes[0] = (bytes[0] ?? 0) & 248;
-  bytes[31] = ((bytes[31] ?? 0) & 127) | 64;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  view.setUint8(0, view.getUint8(0) & 248);
+  view.setUint8(31, (view.getUint8(31) & 127) | 64);
   return bytes;
 }
 

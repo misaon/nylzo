@@ -185,9 +185,8 @@ export class BottomSheet {
     const offset = raw >= 0 ? raw : -rubberBand(-raw, this.#height);
     this.#spring.set(offset);
     this.#samples.push({ time: event.timeStamp, position: offset });
-    while (this.#samples.length > 2 && event.timeStamp - (this.#samples[0]?.time ?? 0) > VELOCITY_WINDOW_MS) {
-      this.#samples.shift();
-    }
+    const firstRecent = this.#samples.findIndex((sample) => event.timeStamp - sample.time <= VELOCITY_WINDOW_MS);
+    this.#samples = this.#samples.slice(Math.min(firstRecent, this.#samples.length - 2));
   };
 
   // oxlint-disable-next-line typescript/prefer-readonly-parameter-types -- the DOM hands a listener its own event type.

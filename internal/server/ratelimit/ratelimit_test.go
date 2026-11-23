@@ -210,6 +210,7 @@ func TestClientAddress(t *testing.T) {
 		{"10.0.0.5:1234", "198.51.100.1", "198.51.100.2", "198.51.100.1"},
 		{"[fd00::5]:1234", "2001:db8::7, fd00::9", "", "2001:db8::7"},
 		{"[2001:db8::1]:1234", "2001:db8::7", "", "2001:db8::1"},
+		{"@", "", "", "0.0.0.0"},
 	} {
 		name := fmt.Sprintf("%s/xff=%q/real=%q", testCase.remote, testCase.forwardedFor, testCase.realIP)
 		t.Run(name, func(t *testing.T) {

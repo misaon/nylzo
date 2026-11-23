@@ -37,3 +37,19 @@ func TestRefusalsForgetAClientAnHourAfterItsLastRefusal(t *testing.T) {
 		t.Fatalf("after the reset: %v", listed)
 	}
 }
+
+func TestAFullListOfRefusedClientsDropsTheOneRefusedLongestAgo(t *testing.T) {
+	t.Parallel()
+	refusals := ratelimit.NewRefusals()
+	start := time.Date(2026, 11, 15, 10, 0, 0, 0, time.UTC)
+	const held = 256
+	for i := range held + 1 {
+		address := netip.AddrFrom4([4]byte{198, 51, byte(i >> 8), byte(i)})
+		refusals.Note(address, "create", start.Add(time.Duration(i)*time.Second))
+	}
+	listed := refusals.List()
+	if len(listed) != held || listed[0].Client.Addr() != netip.MustParseAddr("198.51.1.0") ||
+		listed[held-1].Client.Addr() != netip.MustParseAddr("198.51.0.1") {
+		t.Fatalf("listed %d clients, newest %v, oldest %v", len(listed), listed[0].Client, listed[len(listed)-1].Client)
+	}
+}

@@ -21,11 +21,6 @@
   const afterBarShown = $derived((page.phase === 'revealed' || page.phase === 'notice') && !page.askingDelete);
   const retryable = $derived(page.shown.view === 'failed' || page.shown.view === 'retry_later');
   const restShown = $derived(page.revealed !== undefined && (page.revealed.burnable || page.restDeleted));
-  const reservedFacts = $derived(
-    page.reservedOpens === undefined
-      ? []
-      : openedFacts(translator, { opensRemaining: page.reservedOpens, secondsLeft: SHOWN_SECONDS }),
-  );
   const deleteState = $derived(page.ready === undefined && page.actions !== 'dim' ? 'off' : page.actions);
   const DELETE_STATES = {
     on: 'opacity-100',
@@ -38,15 +33,14 @@
     'max-sm:-mx-5 max-sm:border-b max-sm:border-white/8 max-sm:px-5 max-sm:pt-0.5 max-sm:pb-4 sm:gap-x-4 sm:px-2';
 </script>
 
-{#snippet facts(list: readonly Fact[], className: ClassValue)}
+{#snippet facts({ list, className }: { readonly list: readonly Fact[]; readonly className: ClassValue })}
   <ul
     role="list"
     class={['flex flex-wrap items-center justify-start gap-x-5 gap-y-1.5 text-caption text-ink-soft', className]}
   >
     {#each list as fact (fact.icon)}
       <li class={['flex items-center gap-1.5 whitespace-nowrap tabular-nums', fact.accent && 'text-nebula-300']}>
-        <Icon name={fact.icon} class={['size-4 shrink-0', !fact.accent && 'text-ink-mute']} />
-        {fact.text}
+        <Icon name={fact.icon} class={['size-4 shrink-0', !fact.accent && 'text-ink-mute']} />{fact.text}
       </li>
     {/each}
   </ul>
@@ -58,7 +52,7 @@
       <Button
         {@attach sizing ? undefined : page.focus.attach('deleteRest')}
         variant="danger"
-        disabled={sizing || !(page.revealed?.burnable ?? false) || page.deleting}
+        disabled={sizing || page.revealed?.burnable !== true || page.deleting}
         onclick={() => void page.askDelete()}
         class="max-sm:flex-1"
       >
@@ -69,13 +63,11 @@
     {/if}
     {#if retryable && !sizing}
       <Button variant="primary" onclick={page.retry} class="max-sm:flex-1">
-        <Icon name="refresh" class="size-4 shrink-0" animated />
-        {translate('action.retry')}
+        <Icon name="refresh" class="size-4 shrink-0" animated />{translate('action.retry')}
       </Button>
     {:else}
       <Button variant="primary" href="/" class="max-sm:flex-1">
-        <Icon name="pen" class="size-3.5 shrink-0 opacity-70" animated />
-        {translate('nav.write')}
+        <Icon name="pen" class="size-3.5 shrink-0 opacity-70" animated />{translate('nav.write')}
       </Button>
     {/if}
   </div>
@@ -91,20 +83,22 @@
       ]}
       inert={!readyBarShown}
     >
-      {@render facts(page.readyFacts, [
-        'min-h-6 py-0.5 transition-opacity duration-500 max-sm:w-full sm:min-h-5 sm:gap-x-4 sm:px-2 sm:py-0',
-        page.phase === 'opening' ? 'pointer-events-none opacity-40' : 'opacity-100',
-      ])}
+      {@render facts({
+        list: page.readyFacts,
+        className: [
+          'min-h-6 py-0.5 transition-opacity duration-500 max-sm:w-full sm:min-h-5 sm:gap-x-4 sm:px-2 sm:py-0',
+          page.phase === 'opening' ? 'pointer-events-none opacity-40' : 'opacity-100',
+        ],
+      })}
       <Button
-        {@attach page.focus.attach('deleteMessage')}
+        {@attach (element) => page.focus.attach('deleteMessage')(element)}
         variant="danger"
         size="compact"
         disabled={page.actions !== 'on' || page.ready === undefined || page.deleting}
         onclick={() => void page.askDelete()}
         class={['transition-opacity duration-500 max-sm:self-end', DELETE_STATES[deleteState]]}
       >
-        <Icon name="trash" class="size-4 shrink-0" animated />
-        {translate('read.delete')}
+        <Icon name="trash" class="size-4 shrink-0" animated />{translate('read.delete')}
       </Button>
     </div>
 
@@ -117,14 +111,17 @@
       inert={!afterBarShown}
     >
       {#if page.afterFacts.length > 0}
-        {@render facts(page.afterFacts, AFTER_FACTS)}
+        {@render facts({ list: page.afterFacts, className: AFTER_FACTS })}
       {/if}
       {@render actions({ deletable: restShown, sizing: false })}
     </div>
 
     {#if page.reservedOpens !== undefined}
       <div class={['invisible sm:justify-between', AFTER_BAR]} aria-hidden="true" inert>
-        {@render facts(reservedFacts, AFTER_FACTS)}
+        {@render facts({
+          list: openedFacts(translator, { opensRemaining: page.reservedOpens, secondsLeft: SHOWN_SECONDS }),
+          className: AFTER_FACTS,
+        })}
         {@render actions({ deletable: page.reservedOpens > 0, sizing: true })}
       </div>
     {/if}
@@ -150,12 +147,15 @@
         </p>
       </div>
       <div class="grid grid-cols-2 gap-1.5 sm:flex sm:items-center">
-        <Button {@attach page.focus.attach('keepMessage')} variant="ghost" onclick={() => void page.cancelDelete()}>
+        <Button
+          {@attach (element) => page.focus.attach('keepMessage')(element)}
+          variant="ghost"
+          onclick={() => void page.cancelDelete()}
+        >
           {translate('read.delete.no')}
         </Button>
         <Button variant="danger" disabled={!page.askingDelete} onclick={() => void page.burn()}>
-          <Icon name="trash" class="size-4 shrink-0" animated />
-          {translate('read.delete.yes')}
+          <Icon name="trash" class="size-4 shrink-0" animated />{translate('read.delete.yes')}
         </Button>
       </div>
     </div>

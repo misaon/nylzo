@@ -13,10 +13,7 @@ import (
 func TestPassphraseIsCheckedBeforeDerivation(t *testing.T) {
 	t.Parallel()
 	secret := core.NewSecret()
-	salt, err := keys.PassphraseSalt(secret)
-	if err != nil {
-		t.Fatal(err)
-	}
+	salt := keys.PassphraseSalt(secret)
 	password, err := keys.Password(secret, core.KDFNone, "caf\xe9")
 	if err != nil || !bytes.Equal(password, salt[:]) {
 		t.Fatalf("profile 0 must ignore any passphrase: %x %v", password, err)
@@ -58,5 +55,17 @@ func TestContentKeysNeedTheShare(t *testing.T) {
 	third, err := keys.DeriveContent(id, secret, &keys.ExportKey{1}, new([core.ShareLen]byte))
 	if err != nil || third.K == first.K {
 		t.Fatalf("the export key must change K: %v", err)
+	}
+}
+
+func TestWipeClearsBothContentKeys(t *testing.T) {
+	t.Parallel()
+	content, err := keys.DeriveContent(core.NewID(), core.NewSecret(), new(keys.ExportKey), core.NewSecret())
+	if err != nil {
+		t.Fatal(err)
+	}
+	content.Wipe()
+	if content != (keys.ContentKeys{}) {
+		t.Fatal("a content key survived its wipe")
 	}
 }

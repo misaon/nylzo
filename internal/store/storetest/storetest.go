@@ -79,9 +79,28 @@ func Run(t *testing.T, open Factory) {
 }
 
 type fixture struct {
-	t     *testing.T
+	t     testing.TB
 	store store.Store
 	blobs store.Blobs
+}
+
+func (f *fixture) must(err error) {
+	f.t.Helper()
+	f.fatalIf(err != nil, "%v", err)
+}
+
+func (f *fixture) fatalIf(failed bool, format string, arguments ...any) {
+	f.t.Helper()
+	if failed {
+		f.t.Fatalf(format, arguments...)
+	}
+}
+
+func (f *fixture) errorIf(failed bool, format string, arguments ...any) {
+	f.t.Helper()
+	if failed {
+		f.t.Errorf(format, arguments...)
+	}
 }
 
 func newFixture(t *testing.T, open Factory) *fixture {
@@ -105,15 +124,14 @@ func (m *message) reference() string {
 func (f *fixture) create(opens uint16, ttlSeconds uint32, passphrase bool) *message {
 	f.t.Helper()
 	created := f.createRow(opens, ttlSeconds, passphrase)
-	if _, err := f.blobs.PutExpiring(
+	_, err := f.blobs.PutExpiring(
 		f.t.Context(),
 		created.reference(),
 		bytes.NewReader(bytes.Repeat([]byte{0xAB}, blobSize)),
 		blobSize,
 		created.Message.ExpiresAt,
-	); err != nil {
-		f.t.Fatal(err)
-	}
+	)
+	f.must(err)
 	return created
 }
 
@@ -131,9 +149,7 @@ func (f *fixture) createRow(opens uint16, ttlSeconds uint32, passphrase bool) *m
 		core.Encode(blobReference[:]),
 		new(seal.NewBlobKey()),
 	)
-	if err := f.store.Create(f.t.Context(), &record.Row); err != nil {
-		f.t.Fatal(err)
-	}
+	f.must(f.store.Create(f.t.Context(), &record.Row))
 	return &message{Record: record, readKey: readKey, manageKey: manageKey}
 }
 
@@ -141,13 +157,9 @@ func (f *fixture) createRow(opens uint16, ttlSeconds uint32, passphrase bool) *m
 func (f *fixture) get(created *message) *store.Record {
 	f.t.Helper()
 	row, err := f.store.Load(f.t.Context(), created.Row.Locator)
-	if err != nil {
-		f.t.Fatal(err)
-	}
+	f.must(err)
 	record, err := store.OpenRecord(&row, created.Key)
-	if err != nil {
-		f.t.Fatal(err)
-	}
+	f.must(err)
 	return &record
 }
 
@@ -162,9 +174,7 @@ func (f *fixture) attempt(created *message, now time.Time) (store.Attempt, store
 
 func (f *fixture) takeBack(created *message, attempt store.Attempt, now time.Time) {
 	f.t.Helper()
-	if err := store.TakeBack(f.t.Context(), f.store, f.get(created), attempt, now); err != nil {
-		f.t.Fatal(err)
-	}
+	f.must(store.TakeBack(f.t.Context(), f.store, f.get(created), attempt, now))
 }
 
 func (f *fixture) download(created *message, lease *store.Lease, now time.Time) error {
@@ -180,12 +190,8 @@ func (f *fixture) ack(created *message, lease *store.Lease, now time.Time, blobs
 func (f *fixture) claimAndAck(created *message) {
 	f.t.Helper()
 	claimed, err := f.claim(created, baseTime, 1)
-	if err != nil {
-		f.t.Fatal(err)
-	}
-	if err = f.ack(created, &claimed, baseTime, f.blobs); err != nil {
-		f.t.Fatal(err)
-	}
+	f.must(err)
+	f.must(f.ack(created, &claimed, baseTime, f.blobs))
 }
 
 func (f *fixture) end(created *message, state store.State, now time.Time, blobs store.Blobs) (store.Ending, error) {
@@ -204,9 +210,7 @@ func (f *fixture) blobExists(reference string) bool {
 	if errors.Is(err, store.ErrBlobMissing) {
 		return false
 	}
-	if err != nil {
-		f.t.Fatal(err)
-	}
+	f.must(err)
 	content.Close()
 	return true
 }
@@ -247,9 +251,7 @@ func mac(seed string) []byte {
 	return sum[:]
 }
 
-func goneState(err error) store.State {
-	if gone, ok := errors.AsType[*store.GoneError](err); ok {
-		return gone.State
-	}
-	return ""
+func endedAs(err error, state store.State) bool {
+	gone, ok := errors.AsType[*store.GoneError](err)
+	return ok && gone.State == state
 }

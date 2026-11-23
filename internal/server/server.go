@@ -272,15 +272,15 @@ func (s *Server) RunHousekeeping(ctx context.Context) {
 
 func (s *Server) loadWebClient() error {
 	build, err := webclient.Load(s.webFiles)
-	if err != nil {
-		return err
+	if err == nil {
+		s.frontend, err = webclient.NewHandler(
+			build,
+			s.settings.PublicURL,
+			s.settings.Operator.Contact,
+			s.buildInformation(),
+		)
 	}
-	if s.frontend, err = webclient.NewHandler(
-		build,
-		s.settings.PublicURL,
-		s.settings.Operator.Contact,
-		s.buildInformation(),
-	); err != nil {
+	if err != nil {
 		return err
 	}
 	s.logger.Info("web-client", "built", build.Built, "assets", len(build.Assets), "public_url", s.settings.PublicURL)

@@ -34,19 +34,7 @@ func (r *Timers) Schedule(locator seal.Locator, key seal.Key, delay time.Duratio
 	}
 	r.forgetLocked(locator)
 	pending := &pendingRelease{key: key}
-	pending.timer = time.AfterFunc(delay, func() {
-		r.mutex.Lock()
-		if r.closed || r.pending[locator] != pending {
-			r.mutex.Unlock()
-			return
-		}
-		delete(r.pending, locator)
-		r.running.Add(1)
-		r.mutex.Unlock()
-		defer r.running.Done()
-		defer clear(pending.key[:])
-		secretmode.Do(func() { release(pending.key) })
-	})
+	pending.timer = time.AfterFunc(delay, func() { r.fire(locator, pending, release) })
 	r.pending[locator] = pending
 }
 
@@ -72,4 +60,19 @@ func (r *Timers) forgetLocked(locator seal.Locator) {
 		clear(pending.key[:])
 		delete(r.pending, locator)
 	}
+}
+
+// A timer that fired while Schedule, Cancel or Stop replaced its release does nothing.
+func (r *Timers) fire(locator seal.Locator, pending *pendingRelease, release func(seal.Key)) {
+	r.mutex.Lock()
+	if r.closed || r.pending[locator] != pending {
+		r.mutex.Unlock()
+		return
+	}
+	delete(r.pending, locator)
+	r.running.Add(1)
+	r.mutex.Unlock()
+	defer r.running.Done()
+	defer clear(pending.key[:])
+	secretmode.Do(func() { release(pending.key) })
 }

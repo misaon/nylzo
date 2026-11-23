@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 // sysfs builds a fake /sys: a directory per block device under devices, with dm/uuid, slaves links to its lower
@@ -154,5 +157,70 @@ func TestClearSwapWithoutTheSwapTable(t *testing.T) {
 		errNoSwapTable,
 	) {
 		t.Fatalf("a hidden /proc/swaps must not read as no swap, got %v", err)
+	}
+}
+
+func TestASwapTableThatCannotBeReadIsAnError(t *testing.T) {
+	if _, err := clearSwap(t.TempDir(), t.TempDir(), blockDevice); err == nil || errors.Is(err, errNoSwapTable) {
+		t.Fatalf("an unreadable /proc/swaps must not read as a missing one, got %v", err)
+	}
+}
+
+func TestZramWritebackThatCannotBeFollowedCountsAsClear(t *testing.T) {
+	tree := sysfs{t: t, root: t.TempDir()}
+	tree.add("251:0", "zram0", "")
+	tree.add("251:1", "zram1", "")
+	tree.write("devices/zram0/backing_dev", "/dev/zram0\n")
+	if err := os.Mkdir(filepath.Join(tree.root, "devices", "zram1", "backing_dev"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stack := blockStack{devices: tree.devices(), device: func(path string) (string, error) {
+		return map[string]string{"/dev/zram0": "251:0", "/dev/zram1": "251:1"}[path], nil
+	}}
+	for _, area := range []string{"/dev/zram0", "/dev/zram1"} {
+		if !stack.keepsInClear(area, 0) {
+			t.Errorf("%s counts as encrypted", area)
+		}
+	}
+}
+
+func TestBlockDeviceNamesTheDeviceUnderAFileOrOfAPartition(t *testing.T) {
+	number := regexp.MustCompile(`^\d+:\d+$`)
+	if found, err := blockDevice(t.TempDir()); err != nil || !number.MatchString(found) {
+		t.Fatalf("the device under a directory: %q %v", found, err)
+	}
+	if _, err := blockDevice(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Fatal("a missing swap file named a device")
+	}
+	entries, err := os.ReadDir("/dev")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Type()&os.ModeDevice == 0 || entry.Type()&os.ModeCharDevice != 0 {
+			continue
+		}
+		var status unix.Stat_t
+		path := "/dev/" + entry.Name()
+		if unix.Stat(path, &status) != nil {
+			continue
+		}
+		want := fmt.Sprintf("%d:%d", unix.Major(status.Rdev), unix.Minor(status.Rdev))
+		if found, deviceErr := blockDevice(path); deviceErr != nil || found != want {
+			t.Fatalf("the partition %s: %q %v, want %s", path, found, deviceErr, want)
+		}
+		return
+	}
+	t.Skip("this host shows no block device")
+}
+
+func TestTheSwapWarningNamesWhatKeepsTheMemoryUnlocked(t *testing.T) {
+	if warning := swapWarning(nil, nil, errFiniteMemoryLock); warning != "" {
+		t.Fatalf("no swap in clear warned: %s", warning)
+	}
+	refused := errors.New("mlockall refused")
+	if warning := swapWarning([]string{"/swap.img"}, nil, refused); !strings.Contains(warning, refused.Error()) ||
+		!strings.Contains(warning, "/swap.img") {
+		t.Fatalf("a refused lock: %s", warning)
 	}
 }

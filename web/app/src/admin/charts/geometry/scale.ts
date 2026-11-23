@@ -11,25 +11,19 @@ export function niceTicks(maximum: number, count = 4): Ticks {
   }
   const raw = maximum / count;
   const magnitude = 10 ** Math.floor(Math.log10(raw));
-  const factor = STEP_FACTORS.find((candidate) => candidate * magnitude >= raw) ?? 10;
+  const factor = Math.min(...STEP_FACTORS.filter((candidate) => candidate * magnitude >= raw), 10);
   const step = Math.max(1, factor * magnitude);
   const top = Math.ceil(maximum / step) * step;
   const values = Array.from({ length: Math.round(top / step) + 1 }, (_, i) => i * step);
   return { max: top, values };
 }
 
-function intensity(value: number, maximum: number): number {
-  if (value <= 0 || maximum <= 0) {
-    return 0;
-  }
-  return Math.min(1, Math.sqrt(value / maximum));
-}
-
 export function level(value: number, maximum: number, steps: number): number {
   if (value <= 0 || maximum <= 0) {
     return 0;
   }
-  return 1 + Math.min(steps - 1, Math.floor(intensity(value, maximum) * steps));
+  const intensity = Math.min(1, Math.sqrt(value / maximum));
+  return 1 + Math.min(steps - 1, Math.floor(intensity * steps));
 }
 
 export function groupSeries(values: readonly number[], size: number): number[] {

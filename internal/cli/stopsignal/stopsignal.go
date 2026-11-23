@@ -85,6 +85,13 @@ func (p *Pending) record(received os.Signal, held bool) {
 	p.held = p.held || held
 }
 
+func End(received os.Signal, code int) {
+	if received != nil {
+		Exit(received)
+	}
+	os.Exit(code)
+}
+
 // exitCode is the status a shell reports for a process that received ended: 128 plus the signal number.
 func exitCode(received os.Signal) int {
 	number, _ := received.(syscall.Signal)

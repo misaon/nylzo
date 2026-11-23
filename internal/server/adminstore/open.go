@@ -71,16 +71,14 @@ func Files(path string) []string {
 
 func Open(ctx context.Context, path string) (*Store, error) {
 	file, err := os.OpenFile(path, os.O_RDONLY|os.O_CREATE, privateMode)
+	if err == nil {
+		err = file.Close()
+	}
 	if err != nil {
 		return nil, err
 	}
-	if closeErr := file.Close(); closeErr != nil {
-		return nil, closeErr
-	}
-	database, err := sql.Open(driverName, dataSourceName(path))
-	if err != nil {
-		return nil, err
-	}
+	// sql.Open fails only for an unregistered driver.
+	database, _ := sql.Open(driverName, dataSourceName(path))
 	database.SetMaxOpenConns(1)
 	store := &Store{database: database, journal: path + journalSuffix}
 	if err = store.prepare(ctx); err != nil {
@@ -119,18 +117,15 @@ func dataSourceName(path string) string {
 func prepareSchema(ctx context.Context, database *sql.DB) error {
 	return inTransaction(ctx, database, func(tx *sql.Tx) error {
 		var version int
-		if err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version); err != nil {
+		err := tx.QueryRowContext(ctx, `PRAGMA user_version`).Scan(&version)
+		if err != nil || version == schemaVersion {
 			return err
 		}
-		switch {
-		case version == schemaVersion:
-			return nil
-		case version > schemaVersion:
+		if version > schemaVersion {
 			return fmt.Errorf("%w: version %d, this build knows %d", errNewerSchema, version, schemaVersion)
-		default:
-			_, err := tx.ExecContext(ctx, schema+fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion))
-			return err
 		}
+		_, err = tx.ExecContext(ctx, schema+fmt.Sprintf(`PRAGMA user_version = %d;`, schemaVersion))
+		return err
 	})
 }
 

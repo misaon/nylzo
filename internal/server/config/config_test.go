@@ -61,7 +61,7 @@ func TestFromEnvironmentReadsEveryVariable(t *testing.T) {
 	settings, err := config.FromEnvironment(environment(map[string]string{
 		"NYLZO_PEPPER_FILE":          currentPepperFile,
 		"NYLZO_PEPPER_PREVIOUS_FILE": previousPepperFile,
-		"NYLZO_TRUSTED_PROXIES":      "10.0.0.0/8, 192.0.2.1, ::ffff:172.17.0.1, ::ffff:10.0.0.0/104",
+		"NYLZO_TRUSTED_PROXIES":      "10.0.0.0/8, 192.0.2.1, , ::ffff:172.17.0.1, ::ffff:10.0.0.0/104",
 		"NYLZO_SWEEP_INTERVAL":       "15m",
 		"NYLZO_MAX_TTL":              "604800",
 		"NYLZO_MAX_OPENS":            "3",
@@ -107,9 +107,12 @@ func TestFromEnvironmentRefusesInvalidValues(t *testing.T) {
 		{"NYLZO_PEPPER_PREVIOUS", previousPepper},
 		{"NYLZO_PROXY_MODE", "scaleway"},
 		{"NYLZO_TRUSTED_PROXIES", "10.0.0.0/33"},
+		{"NYLZO_TRUSTED_PROXIES", "proxy.internal"},
+		{"NYLZO_EDGE_REPORTS", "maybe"},
 		{"NYLZO_PASSPHRASE_IP_SCOPE", "on"},
 		{"NYLZO_SWEEP_INTERVAL", "-1"},
 		{"NYLZO_MAX_TTL", "169h"},
+		{"NYLZO_MAX_TTL", "a week"},
 		{"NYLZO_MAX_TTL", "604801"},
 		{"NYLZO_MAX_TTL", "36028797019568768"},
 		{"NYLZO_DEFAULT_TTL", "59"},
@@ -174,6 +177,10 @@ func TestPepperFromFile(t *testing.T) {
 		}
 		return path
 	}
+	privateDirectory := filepath.Join(directory, "directory")
+	if err := os.Mkdir(privateDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	fromFile, err := config.FromEnvironment(environment(map[string]string{
 		"NYLZO_PEPPER_FILE":          write("pepper", currentPepper+"\n"),
 		"NYLZO_PEPPER_PREVIOUS_FILE": write("previous", "  "+previousPepper+"\r\n"),
@@ -192,6 +199,7 @@ func TestPepperFromFile(t *testing.T) {
 		"empty file":     {"NYLZO_PEPPER_FILE": write("empty", "\n")},
 		"bad content":    {"NYLZO_PEPPER_FILE": write("bad", "not a pepper")},
 		"too large":      {"NYLZO_PEPPER_FILE": write("large", currentPepper+strings.Repeat(" ", 4097))},
+		"directory":      {"NYLZO_PEPPER_FILE": privateDirectory},
 		"bad previous":   {"NYLZO_PEPPER_FILE": currentPepperFile, "NYLZO_PEPPER_PREVIOUS_FILE": write("bad-previous", "short")},
 		"previous twice": {"NYLZO_PEPPER_FILE": currentPepperFile, "NYLZO_PEPPER_PREVIOUS": previousPepper, "NYLZO_PEPPER_PREVIOUS_FILE": write("twice", previousPepper)},
 	} {

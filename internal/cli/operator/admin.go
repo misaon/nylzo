@@ -120,11 +120,8 @@ func runAdmin(
 			admin.help,
 		)
 	}
-	if code, done := command.ParseFlags(flags, environment, arguments); done {
+	if code, done := parseHostFlags(flags, environment, arguments); done {
 		return code
-	}
-	if !serverSupported {
-		return command.Failf(environment, "%s", errServerUnsupported)
 	}
 	settings, err := config.FromEnvironment(environment.Getenv, false)
 	if err != nil {

@@ -2,6 +2,7 @@ package hostusage
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -55,6 +56,21 @@ func TestSampleOnThisPlatform(t *testing.T) {
 	}
 	if Supported() && sample.MemoryUsed > sample.MemoryTotal {
 		t.Fatalf("used %d above total %d", sample.MemoryUsed, sample.MemoryTotal)
+	}
+}
+
+func TestProcessBytesAreUnknownWithoutTheirMetrics(t *testing.T) {
+	if held := heldBytes("/memory/classes/unknown:bytes", releasedMemoryMetric); held != 0 {
+		t.Errorf("a metric this runtime lacks gave %d bytes", held)
+	}
+	if held := heldBytes(releasedMemoryMetric, totalMemoryMetric); held != 0 {
+		t.Errorf("more released than in total gave %d bytes", held)
+	}
+}
+
+func TestDiskOfAMissingDirectoryFails(t *testing.T) {
+	if _, err := DiskOf(filepath.Join(t.TempDir(), "absent")); err == nil {
+		t.Fatal("a missing directory has a disk")
 	}
 }
 

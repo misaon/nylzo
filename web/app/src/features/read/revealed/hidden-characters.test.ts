@@ -40,5 +40,7 @@ describe('hidden characters in revealed text', () => {
       { key: -1, text: 'ss', hidden: false },
       ...marked.pieces.slice(1),
     ]);
+    expect(piecesOf('x', markHiddenCharacters(''))).toEqual([]);
+    expect(piecesOf('', markHiddenCharacters(''))).toEqual([]);
   });
 });

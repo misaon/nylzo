@@ -33,11 +33,8 @@ func RunTakedown(ctx context.Context, environment *command.Environment, argument
 			command.Program,
 		)
 	}
-	if code, done := command.ParseFlags(flags, environment, arguments); done {
+	if code, done := parseHostFlags(flags, environment, arguments); done {
 		return code
-	}
-	if !serverSupported {
-		return command.Failf(environment, "%s", errServerUnsupported)
 	}
 	if environment.Terminal.StdinIsTerminal() {
 		fmt.Fprintln(

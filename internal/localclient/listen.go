@@ -24,13 +24,20 @@ type Listeners struct {
 // Listen holds one random port on both loopback addresses, so no other program answers the session's name there.
 func Listen(ctx context.Context) (*Listeners, error) {
 	var config net.ListenConfig
-	probe, err := config.Listen(ctx, "tcp6", net.JoinHostPort(loopbackIPv6, "0"))
+	return listenWith(ctx, config.Listen)
+}
+
+func listenWith(
+	ctx context.Context,
+	open func(ctx context.Context, network, address string) (net.Listener, error),
+) (*Listeners, error) {
+	probe, err := open(ctx, "tcp6", net.JoinHostPort(loopbackIPv6, "0"))
 	withIPv6 := err == nil
 	if withIPv6 {
 		probe.Close()
 	}
 	for range listenAttempts {
-		ipv4, listenErr := config.Listen(ctx, "tcp4", net.JoinHostPort(loopbackIPv4, "0"))
+		ipv4, listenErr := open(ctx, "tcp4", net.JoinHostPort(loopbackIPv4, "0"))
 		if listenErr != nil {
 			return nil, listenErr
 		}
@@ -42,7 +49,7 @@ func Listen(ctx context.Context) (*Listeners, error) {
 		if !withIPv6 {
 			return &Listeners{port: port, listeners: []net.Listener{ipv4}}, nil
 		}
-		ipv6, sameErr := config.Listen(ctx, "tcp6", net.JoinHostPort(loopbackIPv6, strconv.Itoa(port)))
+		ipv6, sameErr := open(ctx, "tcp6", net.JoinHostPort(loopbackIPv6, strconv.Itoa(port)))
 		if sameErr == nil {
 			return &Listeners{port: port, listeners: []net.Listener{ipv4, ipv6}}, nil
 		}

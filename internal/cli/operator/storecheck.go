@@ -35,9 +35,6 @@ func RunStoreCheck(ctx context.Context, environment *command.Environment, argume
 }
 
 func storeCheck(ctx context.Context, getenv func(string) string, output io.Writer, logger *slog.Logger) error {
-	if !serverSupported {
-		return errServerUnsupported
-	}
 	settings, err := config.FromEnvironment(getenv, false)
 	if err != nil {
 		return err
@@ -75,17 +72,22 @@ func checkDataDirectory(ctx context.Context, settings *config.Server, output io.
 	}
 	paths := []string{dataDirectory}
 	if _, statErr := os.Stat(filepath.Join(dataDirectory, disk.Directory, "tmp")); statErr == nil {
-		if paths, err = erasablePaths(dataDirectory); err != nil {
-			return err
-		}
+		paths, err = erasablePaths(dataDirectory)
 	}
-	if erasableErr := requireErasable(paths, settings.Development, logger); erasableErr != nil {
-		return erasableErr
+	if err == nil {
+		err = requireErasable(paths, settings.Development, logger)
+	}
+	if err != nil {
+		return err
 	}
 	readiness, err := sqlite.Inspect(ctx, databasePath)
 	if err != nil {
 		return err
 	}
+	return describeReadiness(readiness, output)
+}
+
+func describeReadiness(readiness sqlite.Readiness, output io.Writer) error {
 	switch readiness {
 	case sqlite.ReadinessOpen:
 		fmt.Fprintln(output, "store: this build opens it")
@@ -122,6 +124,10 @@ func checkEpochDirectory(settings *config.Server, output io.Writer, logger *slog
 	); erasableErr != nil {
 		return erasableErr
 	}
+	return describeEpochState(state, output)
+}
+
+func describeEpochState(state epoch.State, output io.Writer) error {
 	switch state {
 	case epoch.StateSeed:
 		fmt.Fprintln(output, "epoch: a seed; serve goes on with it")

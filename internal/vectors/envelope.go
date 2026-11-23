@@ -38,7 +38,6 @@ type Envelope struct {
 	ObjectSHA256 string       `json:"object_sha256"`
 	ObjectHash   string       `json:"h"`
 	Link         string       `json:"link"`
-	Object       *string      `json:"object_b64,omitempty"`
 }
 
 type FileContent struct {
@@ -102,15 +101,10 @@ var envelopeCases = []envelopeCase{
 	{name: "opens-10-ttl-7d", opens: 10, ttl: 604800, text: new("many opens")},
 }
 
-func (f *File) envelope() error {
+func (f *File) envelope() {
 	for _, vector := range envelopeCases {
-		generated, err := envelopeVector(vector)
-		if err != nil {
-			return err
-		}
-		f.Envelope = append(f.Envelope, generated)
+		f.Envelope = append(f.Envelope, envelopeVector(vector))
 	}
-	return nil
 }
 
 type sealedCase struct {
@@ -125,7 +119,7 @@ type sealedCase struct {
 	object    []byte
 }
 
-func sealCase(vector envelopeCase) (sealedCase, error) {
+func sealCase(vector envelopeCase) sealedCase {
 	sealed := sealedCase{
 		id:        deterministicID("env/" + vector.name),
 		secret:    deterministic32("env/s/" + vector.name),
@@ -139,31 +133,23 @@ func sealCase(vector envelopeCase) (sealedCase, error) {
 		},
 		policy: envelope.Policy{OpensMax: vector.opens, TTLSeconds: vector.ttl, Deadline: vectorDeadline},
 	}
-	content, err := keys.DeriveContent(sealed.id, sealed.secret, sealed.exportKey, sealed.share)
-	if err != nil {
-		return sealedCase{}, err
-	}
-	sealed.content = content
+	sealed.content = must(keys.DeriveContent(sealed.id, sealed.secret, sealed.exportKey, sealed.share))
 	sealed.payload, _ = vector.payload()
-	sealed.object, err = envelope.Seal(&sealed.content, sealed.header, sealed.id, sealed.policy, sealed.payload, false)
-	return sealed, err
+	sealed.object = must(
+		envelope.Seal(&sealed.content, sealed.header, sealed.id, sealed.policy, sealed.payload, false),
+	)
+	return sealed
 }
 
-func envelopeVector(vector envelopeCase) (Envelope, error) {
-	sealed, err := sealCase(vector)
-	if err != nil {
-		return Envelope{}, err
-	}
+func envelopeVector(vector envelopeCase) Envelope {
+	sealed := sealCase(vector)
 	_, file := vector.payload()
-	meta, err := envelope.EncodeMeta(sealed.payload.Meta)
-	if err != nil {
-		return Envelope{}, err
-	}
+	meta := must(envelope.EncodeMeta(sealed.payload.Meta))
 	object := sealed.object
 	commitment := object[envelope.HeaderLen:envelope.PrefixLen]
 	sum := sha256.Sum256(object)
 	hash := envelope.ObjectHash(object)
-	generated := Envelope{
+	return Envelope{
 		Name:         vector.name,
 		ID:           sealed.id.String(),
 		S:            hex.EncodeToString(sealed.secret[:]),
@@ -186,10 +172,6 @@ func envelopeVector(vector envelopeCase) (Envelope, error) {
 		ObjectHash:   core.Encode(hash[:]),
 		Link:         core.FormatLink(base, sealed.id, vector.kdf, sealed.secret, &hash),
 	}
-	if len(object) <= inlineMax {
-		generated.Object = new(core.Encode(object))
-	}
-	return generated, nil
 }
 
 func (c envelopeCase) payload() (envelope.Payload, *FileContent) {

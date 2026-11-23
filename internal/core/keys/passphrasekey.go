@@ -56,10 +56,7 @@ func Password(secret *[core.SecretLen]byte, kdf core.KDF, passphrase string) ([]
 	if !kdf.Valid() {
 		return nil, core.ErrKDF
 	}
-	salt, err := PassphraseSalt(secret)
-	if err != nil {
-		return nil, err
-	}
+	salt := PassphraseSalt(secret)
 	defer clear(salt[:])
 	if kdf == core.KDFNone {
 		return append([]byte(nil), salt[:]...), nil

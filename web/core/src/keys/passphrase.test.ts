@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { hexToBytes, sha256Hex, vectors } from '../../test/vectors.ts';
-import { WeakPassphraseError } from '../errors.ts';
+import { MalformedPassphraseError, WeakPassphraseError } from '../errors.ts';
 import { utf8 } from '../primitives/bytes.ts';
 import { COMMON_PASSPHRASES } from './common-passphrases.ts';
 import { loadPassphraseWords, PASSPHRASE_LANGUAGES } from './passphrase-words.ts';
@@ -12,6 +12,7 @@ import {
   assignedCodePointRanges,
   generatePassphrase,
   passphraseFrom,
+  passphraseProblem,
 } from './passphrase.ts';
 
 function upperHex(codePoint: number): string {
@@ -32,6 +33,13 @@ describe('passphrase strength vectors', () => {
     expect(() => {
       assertStrongPassphrase(vector.passphrase);
     }).toThrow(expect.objectContaining({ name: WeakPassphraseError.name, problem: vector.problem }));
+  });
+
+  it('names a passphrase with a lone surrogate malformed before any strength check', () => {
+    expect(passphraseProblem('correct-horse-\u{D800}-battery')).toBe('malformed');
+    expect(() => {
+      assertStrongPassphrase('correct-horse-\u{D800}-battery');
+    }).toThrow(MalformedPassphraseError);
   });
 
   it('uses the same list of common passwords as the Go core', async () => {
@@ -92,6 +100,11 @@ describe('passphrase word list vectors', () => {
 });
 
 describe('generated passphrases', () => {
+  it('refuse a word list shorter than the random indexes reach', () => {
+    const list = { words: ['only'], separator: '-', count: 5 };
+    expect(() => passphraseFrom(list, (length) => new Uint8Array(length).fill(1))).toThrow('no word at index');
+  });
+
   it.each(PASSPHRASE_LANGUAGES)('in %s are distinct words of the list and pass every check', async (language) => {
     const list = await loadPassphraseWords(language);
     const seen = new Set<string>();

@@ -52,14 +52,12 @@
           <li
             class={['flex reveal-focus items-center gap-3 leading-7 [--reveal-blur:5px]', REVEAL_INDEXES[position + 3]]}
           >
-            <IconTile icon="check" tone="neutral" size="small" />
-            {translate(point)}
+            <IconTile icon="check" tone="neutral" size="small" />{translate(point)}
           </li>
         {/each}
       </ul>
       <Button variant="ghost" href={`${REPOSITORY_URL}/wiki/Self-hosting`} class="mt-8 reveal-focus [--reveal-index:7]">
-        {translate('host.guide')}
-        <Icon name="external" animated />
+        {translate('host.guide')}<Icon name="external" animated />
       </Button>
     </div>
     <div
@@ -84,7 +82,7 @@
           {#each tabs as id (id)}
             {const selected = $derived(id === tab)}
             <button
-              id="host-tab-{id}"
+              id={`host-tab-${id}`}
               type="button"
               role="tab"
               aria-selected={selected}
@@ -117,7 +115,7 @@
         <div
           id="host-panel"
           role="tabpanel"
-          aria-labelledby="host-tab-{tab}"
+          aria-labelledby={`host-tab-${tab}`}
           tabindex="0"
           class="stack overflow-x-auto p-4 text-caption tabular-nums -outline-offset-2 outline-transparent transition [--reveal-delay:620ms] [--reveal-step:170ms] not-forced-colors:outline-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-aegis-300 md:text-body-sm"
         >

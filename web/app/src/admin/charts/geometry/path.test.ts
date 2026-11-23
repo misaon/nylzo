@@ -34,6 +34,17 @@ describe('smooth line', () => {
     expect(Math.max(...ys)).toBe(100);
   });
 
+  it('keeps the curve finite when points share an x position', () => {
+    const path = smoothLine([
+      { x: 0, y: 10 },
+      { x: 0, y: 20 },
+      { x: 10, y: 30 },
+      { x: 10, y: 0 },
+      { x: 10, y: 5 },
+    ]);
+    expect(path).toBe('M0,10C0,10 0,20 0,20C3.33,20 6.67,30 10,30C10,30 10,0 10,0C10,0 10,5 10,5');
+  });
+
   it('closes an area along the baseline', () => {
     expect(
       smoothArea(

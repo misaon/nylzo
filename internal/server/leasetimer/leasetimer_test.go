@@ -51,3 +51,17 @@ func TestClosingStopsLeaseTimersAndWaitsForRunningOnes(t *testing.T) {
 		}
 	})
 }
+
+func TestAReleaseThatLostTheLockToAReplacementDoesNothing(t *testing.T) {
+	t.Parallel()
+	timers := New()
+	locator := seal.LocatorOf([]byte("message"))
+	timers.Schedule(locator, seal.NewKey(), time.Hour, func(seal.Key) { t.Error("the current release ran") })
+	current := timers.pending[locator]
+	timers.fire(locator, &pendingRelease{key: seal.NewKey()}, func(seal.Key) { t.Error("a replaced release ran") })
+	if timers.pending[locator] != current {
+		t.Fatal("a replaced release dropped the current one")
+	}
+	timers.Stop()
+	timers.fire(locator, current, func(seal.Key) { t.Error("a release ran after Stop") })
+}

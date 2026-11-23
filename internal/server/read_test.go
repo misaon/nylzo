@@ -2,7 +2,9 @@ package server
 
 import (
 	"bytes"
+	"cmp"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +12,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
@@ -30,6 +33,7 @@ import (
 	"github.com/misaon/nylzo/internal/erase"
 	"github.com/misaon/nylzo/internal/seal"
 	"github.com/misaon/nylzo/internal/server/config"
+	"github.com/misaon/nylzo/internal/server/proof"
 	"github.com/misaon/nylzo/internal/server/ratelimit"
 	"github.com/misaon/nylzo/internal/store"
 )
@@ -2352,4 +2356,437 @@ func TestAClaimFromATabFrozenAfterItsHandshakeTakesTheAttemptBack(t *testing.T) 
 			t.Fatalf("the attempt stayed counted: %d %v", record.Message.FailCountTotal, err)
 		}
 	})
+}
+
+func TestAClaimWhoseAttemptCannotBeTakenBackSpendsNothing(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		err        error
+		status     int
+		retryAfter string
+	}{
+		"a message deleted meanwhile": {err: store.ErrNotFound, status: http.StatusNotFound},
+		"a store busy with its leases": {
+			err:        &store.BusyError{RetryAfter: 3 * time.Second},
+			status:     http.StatusServiceUnavailable,
+			retryAfter: "3",
+		},
+		"a store that fails": {err: errInjected, status: http.StatusInternalServerError},
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			harness := newHarness(t, baseSettings(pepperA, nil))
+			inner := harness.store
+			faults := &faultSwitch{}
+			harness.withFaultyStore(faults.fault)
+			message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "not taken back")
+			harness.mustCreate(message)
+			login, _, _ := harness.handshake(message, message.passphrase, "")
+			faults.fail("Update", test.err)
+			response, body := harness.do(login.request(message, api.ClaimAction, ""))
+			record, err := harness.recordFrom(inner, message)
+			if response.StatusCode != test.status || response.Header.Get("Retry-After") != test.retryAfter ||
+				err != nil || record.Message.OpensRemaining != 1 {
+				t.Fatalf("%s: %d %s, %v", name, response.StatusCode, body, err)
+			}
+		})
+	}
+}
+
+func TestAClaimWhoseShareWentAfterItsHandshakeSpendsNothing(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := harness.issueMessage(core.KDFNone, "", 1, 600, "went after the handshake")
+		harness.mustCreate(message)
+		deadline := epoch.Deadline(message.epoch)
+		synctest.Sleep(time.Until(deadline) - 20*time.Second)
+		login, _, _ := harness.handshake(message, message.passphrase, "")
+		if err := harness.server.advanceRatchet(deadline.Add(10 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		response, body := harness.do(login.request(message, api.ClaimAction, ""))
+		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "expired" ||
+			!harness.blobExists(message) || harness.mustRecord(message).Message.OpensRemaining != 1 {
+			t.Fatalf("a claim whose share went after its handshake: %d %s", response.StatusCode, body)
+		}
+	})
+}
+
+func TestALostShareWhoseEndingFailsWaitsForTheNextRequest(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "lost but not ended")
+		harness.mustCreate(message)
+		if err := os.Remove(filepath.Join(harness.settings.EpochDirectory(), epoch.FileName)); err != nil {
+			t.Fatal(err)
+		}
+		harness.withFaultyStore(failingFrom("Update", 0))
+		if response, metadata := harness.metadata(message); response.StatusCode != http.StatusOK ||
+			metadata["state"] != "available" {
+			t.Fatalf("metadata of a lost share whose ending fails: %d %v", response.StatusCode, metadata)
+		}
+		if response, body := harness.claim(message, message.passphrase, ""); response.StatusCode != http.StatusGone ||
+			decodeJSON(t, body)["state"] != "lost" {
+			t.Fatalf("a claim of a lost share whose ending fails: %d %s", response.StatusCode, body)
+		}
+		if !harness.blobExists(message) || !harness.logged("share-lost") {
+			t.Fatalf("a failed ending must keep the blob and be logged: %s", harness.logs.String())
+		}
+	})
+}
+
+func TestADownloadRefusesWhatItCannotCheck(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		headers func(lease string) map[string]string
+		failing string
+		err     error
+		status  int
+	}{
+		"a malformed KE3": {
+			headers: func(lease string) map[string]string {
+				return map[string]string{api.LeaseHeaderName: lease, api.KE3HeaderName: "not a KE3"}
+			},
+			status: http.StatusBadRequest,
+		},
+		"a malformed lease": {
+			headers: func(string) map[string]string { return map[string]string{api.LeaseHeaderName: "not a lease"} },
+			status:  http.StatusGone,
+		},
+		"a store that cannot count the download": {
+			headers: func(lease string) map[string]string { return map[string]string{api.LeaseHeaderName: lease} },
+			failing: "Update",
+			status:  http.StatusInternalServerError,
+		},
+		"a store that cannot reload a message for an unknown lease": {
+			headers: func(string) map[string]string {
+				return map[string]string{api.LeaseHeaderName: core.Encode(core.NewSecret()[:])}
+			},
+			failing: "Load",
+			status:  http.StatusInternalServerError,
+		},
+		"an unknown lease of a message deleted meanwhile": {
+			headers: func(string) map[string]string {
+				return map[string]string{api.LeaseHeaderName: core.Encode(core.NewSecret()[:])}
+			},
+			failing: "Load",
+			err:     store.ErrNotFound,
+			status:  http.StatusGone,
+		},
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			harness := newHarness(t, baseSettings(pepperA, nil))
+			faults := &faultSwitch{}
+			harness.withFaultyStore(faults.fault)
+			message := newMessage(t, core.KDFNone, "", 2, 3600, "downloaded")
+			harness.mustCreate(message)
+			claimed, _ := harness.claim(message, message.passphrase, "")
+			if test.failing != "" {
+				faults.fail(test.failing, cmp.Or(test.err, errInjected))
+			}
+			response, body := harness.do(&testRequest{
+				method:  http.MethodGet,
+				path:    "/api/v1/messages/" + message.id.String() + api.BlobAction,
+				token:   message.readToken,
+				headers: test.headers(claimed.Header.Get(api.LeaseHeaderName)),
+			})
+			if response.StatusCode != test.status {
+				t.Fatalf("%s: %d %s", name, response.StatusCode, body)
+			}
+		})
+	}
+}
+
+func TestADownloadOfAMessageEndedMeanwhileFinishesIt(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		faulty := harness.withFaultyBlobs()
+		message := newMessage(t, core.KDFNone, "", 2, 3600, "ended during its download")
+		harness.mustCreate(message)
+		claimed, _ := harness.claim(message, message.passphrase, "")
+		faulty.OnOpen(func(reference string) {
+			harness.markEnding(message, store.StateCancelled)
+			faulty.FailDelete(reference, errInjected)
+		})
+		response, body := harness.blob(message, claimed.Header.Get(api.LeaseHeaderName))
+		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" ||
+			!harness.logged("finish-ending") {
+			t.Fatalf("a download of a message ended meanwhile: %d %s", response.StatusCode, body)
+		}
+	})
+}
+
+func TestAClaimWhoseBlobCannotBeCheckedSpendsNothing(t *testing.T) {
+	t.Parallel()
+	for name, damage := range map[string]func(harness *testHarness, message *testMessage, files *brokenBlobs){
+		"a blob wrap changed in the database": func(harness *testHarness, message *testMessage, _ *brokenBlobs) {
+			database, err := sql.Open("sqlite", "file:"+filepath.Join(harness.directory, "nylzo.db"))
+			if err != nil {
+				harness.t.Fatal(err)
+			}
+			defer database.Close()
+			locator := seal.LocatorOf(message.id[:])
+			if _, err = database.ExecContext(
+				harness.t.Context(),
+				`UPDATE messages SET blob_wrap = zeroblob(length(blob_wrap)) WHERE locator = ?`,
+				locator[:],
+			); err != nil {
+				harness.t.Fatal(err)
+			}
+		},
+		"a blob file that cannot seek": func(_ *testHarness, _ *testMessage, files *brokenBlobs) {
+			files.failSeek.Store(true)
+		},
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			harness := newHarness(t, baseSettings(pepperA, nil))
+			files := &brokenBlobs{Blobs: harness.blobs}
+			harness.blobs = files
+			harness.reopen(&harness.settings)
+			message := newMessage(t, core.KDFNone, "", 1, 3600, "unchecked")
+			harness.mustCreate(message)
+			login, _, _ := harness.handshake(message, message.passphrase, "")
+			damage(harness, message, files)
+			response, body := harness.do(login.request(message, api.ClaimAction, ""))
+			if response.StatusCode != http.StatusInternalServerError ||
+				harness.mustRecord(message).Message.OpensRemaining != 1 {
+				t.Fatalf("%s: %d %s", name, response.StatusCode, body)
+			}
+		})
+	}
+}
+
+func TestAClaimWhoseBlobFailsItsCheckAfterAnEndingAnswersTheEnding(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		faulty := harness.withFaultyBlobs()
+		message := newMessage(t, core.KDFNone, "", 1, 3600, "cancelled during the check")
+		harness.mustCreate(message)
+		login, _, _ := harness.handshake(message, message.passphrase, "")
+		faulty.FailRead(errInjected)
+		faulty.OnOpen(func(string) { harness.markEnding(message, store.StateCancelled) })
+		response, body := harness.do(login.request(message, api.ClaimAction, ""))
+		if response.StatusCode != http.StatusGone || decodeJSON(t, body)["state"] != "cancelled" {
+			t.Fatalf("a claim whose blob check failed after a cancel: %d %s", response.StatusCode, body)
+		}
+	})
+}
+
+func TestAHandshakeWhoseBlobCannotBeReadCountsNoAttempt(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		missing bool
+		load    error
+		status  int
+		state   string
+	}{
+		"an erase block that cannot be read": {status: http.StatusInternalServerError},
+		"a missing blob of a row deleted meanwhile": {
+			missing: true,
+			load:    store.ErrNotFound,
+			status:  http.StatusGone,
+			state:   "deleted",
+		},
+		"a missing blob whose row cannot be reloaded": {
+			missing: true,
+			load:    errInjected,
+			status:  http.StatusInternalServerError,
+		},
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			harness := newHarness(t, baseSettings(pepperA, nil))
+			inner := harness.store
+			faults := &faultSwitch{}
+			files := &brokenBlobs{Blobs: harness.blobs}
+			harness.blobs = files
+			harness.withFaultyStore(faults.fault)
+			faulty := harness.withFaultyBlobs()
+			message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "unreadable")
+			harness.mustCreate(message)
+			if test.missing {
+				faulty.FailOpen(store.ErrBlobMissing)
+				faults.fail("Load", test.load)
+			} else {
+				files.failRead.Store(true)
+			}
+			response, body := harness.claim(message, message.passphrase, "")
+			record, err := harness.recordFrom(inner, message)
+			if response.StatusCode != test.status || (test.state != "" && decodeJSON(t, body)["state"] != test.state) ||
+				err != nil || record.Message.FailCountTotal != 0 {
+				t.Fatalf("%s: %d %s, %v", name, response.StatusCode, body, err)
+			}
+		})
+	}
+}
+
+func TestAHandshakeWithoutAFreeChallengeCountsNoAttempt(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		harness := newHarness(t, baseSettings(pepperA, nil))
+		message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "no free challenge")
+		harness.mustCreate(message)
+		var filling atomic.Bool
+		harness.withFaultyStore(func(method string) error {
+			if method == "Lookup" && filling.Load() {
+				harness.server.challenges.Issue(time.Now())
+			}
+			return nil
+		})
+		harness.server.challenges = proof.NewChallenges(harness.server.ring, proof.MinCapacity)
+		var last [signing.ChallengeLen]byte
+		for {
+			challenge, _, issued := harness.server.challenges.Issue(time.Now())
+			if !issued {
+				break
+			}
+			last = challenge
+		}
+		harness.server.challenges.Forget(last)
+		filling.Store(true)
+		response, _ := harness.claim(message, message.passphrase, "")
+		if response.StatusCode != http.StatusServiceUnavailable ||
+			harness.mustRecord(message).Message.FailCountTotal != 0 {
+			t.Fatalf("a handshake without a free challenge: %d", response.StatusCode)
+		}
+	})
+}
+
+func TestAHandshakeWhoseChallengeWentWhileItCountedTakesItsAttemptBack(t *testing.T) {
+	t.Parallel()
+	for name, failedTakeBack := range map[string]bool{
+		"the attempt is taken back":        false,
+		"a take-back that fails is logged": true,
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			harness := newHarness(t, baseSettings(pepperA, nil))
+			inner := harness.store
+			message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "purged challenge")
+			harness.mustCreate(message)
+			var updates atomic.Int32
+			harness.withFaultyStore(func(method string) error {
+				if method != "Update" {
+					return nil
+				}
+				switch updates.Add(1) {
+				case 1:
+					harness.server.purgeChallenges(time.Now().Add(time.Hour))
+				case 2:
+					if failedTakeBack {
+						return errInjected
+					}
+				default:
+				}
+				return nil
+			})
+			response, _ := harness.claim(message, message.passphrase, "")
+			record, err := harness.recordFrom(inner, message)
+			counted := 0
+			if failedTakeBack {
+				counted = 1
+			}
+			if response.StatusCode != http.StatusServiceUnavailable || err != nil ||
+				record.Message.FailCountTotal != counted || failedTakeBack != harness.logged("take-back") {
+				t.Fatalf("%s: %d, %d failures, %v", name, response.StatusCode, record.Message.FailCountTotal, err)
+			}
+		})
+	}
+}
+
+func (h *testHarness) replaceStoredMessage(
+	message *testMessage,
+	change func(stored *store.Message, salt *seal.EraseSalt, locator seal.Locator),
+) {
+	h.t.Helper()
+	record := h.mustRecord(message)
+	blobKey, err := record.BlobKey()
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	blob, _, err := h.blobs.Open(h.t.Context(), record.Row.BlobReference)
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	salt, err := seal.ReadEraseBlock(blob)
+	blob.Close()
+	if err != nil {
+		h.t.Fatal(err)
+	}
+	stored := *record.Message
+	change(&stored, &salt, record.Row.Locator)
+	readKey, manageKey := signing.PublicKey(&message.link.R), signing.PublicKey(message.manage)
+	replaced := store.NewRecord(
+		h.server.recordsKey,
+		record.Row.Locator,
+		&stored,
+		readKey[:],
+		manageKey[:],
+		record.Row.BlobReference,
+		&blobKey,
+	)
+	if err = h.store.Update(h.t.Context(), record.Row.Locator, func(row *store.Row) error {
+		*row = replaced.Row
+		return nil
+	}); err != nil {
+		h.t.Fatal(err)
+	}
+}
+
+func TestAHandshakeForAStoredMessageItCannotOpenCountsNoAttempt(t *testing.T) {
+	t.Parallel()
+	for name, change := range map[string]func(stored *store.Message, salt *seal.EraseSalt, locator seal.Locator){
+		"a registration sealed with another salt": func(stored *store.Message, _ *seal.EraseSalt, locator seal.Locator) {
+			otherSalt := seal.NewEraseSalt()
+			stored.Registration = seal.WrapRegistration(&otherSalt, locator, make([]byte, seal.RegistrationLen))
+		},
+		"a KDF this release does not know": func(stored *store.Message, _ *seal.EraseSalt, _ seal.Locator) {
+			stored.KDF = 99
+		},
+		"a registration without a client key": func(stored *store.Message, salt *seal.EraseSalt, locator seal.Locator) {
+			stored.Registration = seal.WrapRegistration(salt, locator, make([]byte, seal.RegistrationLen))
+		},
+	} {
+		synctest.Test(t, func(t *testing.T) {
+			harness := newHarness(t, baseSettings(pepperA, nil))
+			message := newMessage(t, core.KDFScrypt, "correct horse battery staple", 1, 3600, "cannot be opened")
+			harness.mustCreate(message)
+			harness.replaceStoredMessage(message, change)
+			response, _ := harness.claim(message, message.passphrase, "")
+			if response.StatusCode != http.StatusInternalServerError ||
+				harness.mustRecord(message).Message.FailCountTotal != 0 {
+				t.Fatalf("%s: %d", name, response.StatusCode)
+			}
+		})
+	}
+}
+
+func TestARecordWithoutItsBlobAnswersItsState(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	message := newMessage(t, core.KDFNone, "", 1, 3600, "without its blob")
+	harness.mustCreate(message)
+	record := harness.mustRecord(message)
+	record.Row.BlobWrap = nil
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/", nil)
+	var key seal.BlobKey
+	if harness.server.readBlobKey(recorder, request, &record, &key) || recorder.Code != http.StatusGone ||
+		decodeJSON(t, recorder.Body.Bytes())["state"] != "deleted" {
+		t.Fatalf("a record without its blob: %d %s", recorder.Code, recorder.Body)
+	}
+}
+
+func TestAReloadWithAKeyThatDoesNotOpenTheRowKeepsTheRecord(t *testing.T) {
+	t.Parallel()
+	harness := newHarness(t, baseSettings(pepperA, nil))
+	message := newMessage(t, core.KDFNone, "", 1, 3600, "reloaded")
+	harness.mustCreate(message)
+	record := harness.mustRecord(message)
+	record.Key = seal.NewKey()
+	kept := record
+	if err := harness.server.reload(t.Context(), &record); err == nil || record.Message != kept.Message {
+		t.Fatalf("a reload with another key: %v", err)
+	}
 }

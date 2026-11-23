@@ -4,10 +4,10 @@ import { describe, expect, it } from 'vitest';
 
 import ietf from '../../test/hpke-pq-mlkem768-x25519.json' with { type: 'json' };
 import { hexToBytes, vectors } from '../../test/vectors.ts';
-import { IntegrityError } from '../errors.ts';
+import { EncodingError, IntegrityError } from '../errors.ts';
 import { decodeBase64url } from '../primitives/base64url.ts';
 import { concatenate, utf8 } from '../primitives/bytes.ts';
-import { formatShareKey, hpkeKeySchedule, newShareKey, parseWrappedShare, unwrapShare } from './share.ts';
+import { formatShareKey, hpkeKeySchedule, newShareKey, parseWrappedShare, unwrapShare, wrapShare } from './share.ts';
 import type { ShareKey } from './share.ts';
 
 function vectorKey(seedHex: string, clientKey: string): ShareKey {
@@ -46,6 +46,27 @@ describe('a share key', () => {
     const again = unwrapShare(key, wrapped);
     await expect(again).rejects.toThrow('the share key was already used');
     await expect(again).rejects.not.toBeInstanceOf(IntegrityError);
+  });
+});
+
+describe('unwrapping a share', () => {
+  it('refuses a response without a share and still erases the key', async () => {
+    const key = newShareKey();
+    await expect(unwrapShare(key, undefined)).rejects.toThrow(new IntegrityError('the server sent no share'));
+    expect(wiped(key.seed)).toBe(true);
+  });
+
+  it('refuses a wrapped share of the wrong length as malformed', async () => {
+    const key = newShareKey();
+    const wrapped = await wrapShare(new Uint8Array(32).fill(4), key.publicKey);
+    await expect(unwrapShare(key, wrapped.subarray(1))).rejects.toBeInstanceOf(EncodingError);
+    expect(wiped(key.seed)).toBe(true);
+  });
+
+  it('opens what the fake server wraps for its public key', async () => {
+    const key = newShareKey();
+    const share = new Uint8Array(32).fill(4);
+    expect(await unwrapShare(key, await wrapShare(share, key.publicKey))).toEqual(share);
   });
 });
 

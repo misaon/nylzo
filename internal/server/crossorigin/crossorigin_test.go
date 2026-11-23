@@ -122,3 +122,24 @@ func TestUnconfiguredBrowserMutationTarget(t *testing.T) {
 		}
 	}
 }
+
+func TestUnconfiguredTargetFollowsTheConnectionScheme(t *testing.T) {
+	t.Parallel()
+	for _, test := range []struct {
+		target, host, origin string
+		allowed              bool
+	}{
+		{"https://localhost:8443/api/v1/messages", "localhost:8443", "https://localhost:8443", true},
+		{"https://localhost:8443/api/v1/messages", "localhost:8443", "http://localhost:8443", false},
+		{"https://[::1]:443/api/v1/messages", "[::1]:443", "https://[::1]", true},
+		{"https://localhost/api/v1/messages", "", "https://localhost", false},
+	} {
+		request := httptest.NewRequest(http.MethodPost, test.target, http.NoBody)
+		request.Host = test.host
+		request.Header.Set("Origin", test.origin)
+		request.Header.Set("X-Requested-With", requestedWith)
+		if allowed := validBrowserMutation(request, "", http.NewCrossOriginProtection()); allowed != test.allowed {
+			t.Errorf("host %q, origin %s: allowed=%v", test.host, test.origin, allowed)
+		}
+	}
+}

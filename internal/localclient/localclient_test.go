@@ -337,6 +337,10 @@ func TestPagesAreTheEmbeddedClientWithTheInstanceAddress(t *testing.T) {
 	if asset := do(t, server, call{method: http.MethodGet, path: "/assets/index-a1.js"}); asset.Body.String() != appJS {
 		t.Fatalf("asset: %d %s", asset.Code, asset.Body)
 	}
+	missing := do(t, server, call{method: http.MethodGet, path: "/assets/missing.js"})
+	if missing.Code != http.StatusNotFound {
+		t.Fatalf("a missing asset: %d", missing.Code)
+	}
 }
 
 func TestHandoffIsSingleUse(t *testing.T) {
@@ -446,5 +450,24 @@ func TestRelayPassesNoInformationalAnswerOrUpgrade(t *testing.T) {
 	upgrade := do(t, server, fetchFromPage(http.MethodGet, "/api/v1/upgrade"))
 	if upgrade.Code != http.StatusBadGateway || upgrade.Header().Get("Upgrade") != "" {
 		t.Fatalf("an upgrade must not reach the browser: %d %v", upgrade.Code, upgrade.Header())
+	}
+}
+
+func TestASessionNeedsAnInstanceAClientAndAValidContact(t *testing.T) {
+	t.Parallel()
+	listeners, err := localclient.Listen(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listeners.Close()
+	build := webBuild(t)
+	for name, config := range map[string]*localclient.Config{
+		"an address that is no instance": {Instance: "ftp://nylzo.example", Build: build},
+		"no web client":                  {Instance: "https://nylzo.example"},
+		"an unsafe operator contact":     {Instance: "https://nylzo.example", Build: build, Contact: "javascript:alert(1)"},
+	} {
+		if server, newErr := localclient.New(listeners, config); newErr == nil || server != nil {
+			t.Errorf("%s: a session started", name)
+		}
 	}
 }

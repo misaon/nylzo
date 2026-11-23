@@ -39,7 +39,7 @@ const LANGUAGE_KEY = 'nylzo:lang';
 const TRADITIONAL_CHINESE = new Set(['hant', 'hk', 'mo', 'tw']);
 
 function baseOf(tag: string): string {
-  return tag.toLowerCase().split('-', 1)[0] ?? '';
+  return tag.toLowerCase().replace(/-.*/su, '');
 }
 
 const BASE_LANGUAGES: ReadonlyMap<string, Language> = new Map([
@@ -52,7 +52,8 @@ export function homePath(language: Language): string {
 }
 
 function matchLanguage(tag: string): Language | undefined {
-  const [base = '', ...subtags] = tag.toLowerCase().split('-');
+  const base = baseOf(tag);
+  const subtags = tag.toLowerCase().split('-').slice(1);
   if (base === 'zh' && subtags.some((subtag) => TRADITIONAL_CHINESE.has(subtag))) {
     return undefined;
   }

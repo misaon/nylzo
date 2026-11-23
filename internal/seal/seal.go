@@ -220,10 +220,7 @@ func subkey(key Key, locator Locator, info string) Key {
 }
 
 func derive(secret, salt []byte, info string) Key {
-	derived, err := hkdf.Key(sha256.New, secret, salt, info, KeyLen)
-	if err != nil {
-		panic(err)
-	}
+	derived, _ := hkdf.Key(sha256.New, secret, salt, info, KeyLen)
 	defer clear(derived)
 	return Key(derived)
 }
@@ -332,17 +329,11 @@ func additionalData(locator Locator, purpose label) []byte {
 }
 
 func newAEAD(key Key) cipher.AEAD {
-	aead, err := cipher.NewGCMWithRandomNonce(newBlock(key))
-	if err != nil {
-		panic(err)
-	}
+	aead, _ := cipher.NewGCMWithRandomNonce(newBlock(key))
 	return aead
 }
 
 func newBlock(key Key) cipher.Block {
-	block, err := aes.NewCipher(key[:])
-	if err != nil {
-		panic(err)
-	}
+	block, _ := aes.NewCipher(key[:])
 	return block
 }

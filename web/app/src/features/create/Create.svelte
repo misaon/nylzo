@@ -1,6 +1,6 @@
 <script lang="ts">
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
-  import Composer from './composer/Composer.svelte';
+  import ComposerSection from './composer/ComposerSection.svelte';
   import About from './sections/About.svelte';
   import Compare from './sections/compare/Compare.svelte';
   import Extras from './sections/Extras.svelte';
@@ -19,11 +19,10 @@
 </script>
 
 <svelte:head>
-  <title>{translate('seo.title')}</title>
   <meta name="description" content={translate('seo.description')} />
 </svelte:head>
 
-<Composer />
+<ComposerSection />
 <TrustStrip />
 <HowItWorks />
 <Promises />

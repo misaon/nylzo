@@ -51,8 +51,7 @@
               </p>
             {/if}
             <Button variant="ghost" onclick={() => void area.signOut()}>
-              <Icon name="userOff" />
-              {translate('access.signOut')}
+              <Icon name="userOff" />{translate('access.signOut')}
             </Button>
           </div>
         {/if}
@@ -76,8 +75,7 @@
     </main>
     <footer class="flex justify-center px-4 pb-8">
       <Button variant="ghost" href="/">
-        <Icon name="arrowRight" class="size-4 rotate-180" />
-        {translate('access.back')}
+        <Icon name="arrowRight" class="size-4 rotate-180" />{translate('access.back')}
       </Button>
     </footer>
   </div>

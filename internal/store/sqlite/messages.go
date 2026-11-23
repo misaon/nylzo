@@ -179,10 +179,7 @@ func scanRow(scanner *sql.Row) (store.Row, error) {
 	if err != nil {
 		return store.Row{}, err
 	}
-	if len(locator) != seal.LocatorLen {
-		return store.Row{}, store.ErrCorrupt
-	}
-	row.Locator = seal.Locator(locator)
+	copy(row.Locator[:], locator)
 	if !blobReferenceMissing {
 		row.BlobReference = blobReference
 	}

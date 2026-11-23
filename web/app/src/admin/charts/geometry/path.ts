@@ -28,45 +28,45 @@ function endTangent(from: Point, to: Point, neighbour: number): number {
   return width === 0 ? neighbour : (3 * (to.y - from.y)) / width / 2 - neighbour / 2;
 }
 
-function tangents(points: readonly Point[]): number[] {
-  const slopes = points.map((point, i) => {
-    const before = points[i - 1];
-    const after = points[i + 1];
-    return before && after ? interiorTangent(before, point, after) : 0;
-  });
-  const [first, second] = points;
-  const last = points.at(-1);
-  const beforeLast = points.at(-2);
-  if (first && second && last && beforeLast) {
-    slopes[0] = endTangent(first, second, slopes[1] ?? 0);
-    slopes[points.length - 1] = endTangent(beforeLast, last, slopes.at(-2) ?? 0);
-  }
-  return slopes;
+interface Knot {
+  readonly point: Point;
+  readonly slope: number;
+}
+
+function curve(from: Knot, to: Knot): string {
+  const third = (to.point.x - from.point.x) / 3;
+  const start = { x: from.point.x + third, y: from.point.y + third * from.slope };
+  const end = { x: to.point.x - third, y: to.point.y - third * to.slope };
+  return `C${coordinates(start)} ${coordinates(end)} ${coordinates(to.point)}`;
 }
 
 export function smoothLine(points: readonly Point[]): string {
-  const [first, second] = points;
+  const [first, second, third] = points;
   if (!first) {
     return '';
   }
   if (!second) {
     return `M${coordinates(first)}`;
   }
-  if (points.length === 2) {
+  if (!third) {
     return `M${coordinates(first)}L${coordinates(second)}`;
   }
-  const slopes = tangents(points);
+  const firstInner = { point: second, slope: interiorTangent(first, second, third) };
+  const inner = [firstInner];
+  let lastInner = firstInner;
+  let before = second;
+  let at = third;
+  for (const after of points.slice(3)) {
+    lastInner = { point: at, slope: interiorTangent(before, at, after) };
+    inner.push(lastInner);
+    before = at;
+    at = after;
+  }
+  let from = { point: first, slope: endTangent(first, second, firstInner.slope) };
   let path = `M${coordinates(first)}`;
-  for (let i = 1; i < points.length; i += 1) {
-    const from = points[i - 1];
-    const to = points[i];
-    if (!from || !to) {
-      continue;
-    }
-    const third = (to.x - from.x) / 3;
-    const start = { x: from.x + third, y: from.y + third * (slopes[i - 1] ?? 0) };
-    const end = { x: to.x - third, y: to.y - third * (slopes[i] ?? 0) };
-    path += `C${coordinates(start)} ${coordinates(end)} ${coordinates(to)}`;
+  for (const to of [...inner, { point: at, slope: endTangent(before, at, lastInner.slope) }]) {
+    path += curve(from, to);
+    from = to;
   }
   return path;
 }
