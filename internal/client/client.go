@@ -106,7 +106,16 @@ func Origin(server string) (string, error) {
 	default:
 		return "", ErrServerURL
 	}
-	return scheme + "://" + strings.ToLower(parsed.Host), nil
+	return (&url.URL{Scheme: scheme, Host: lowerHost(parsed.Host)}).String(), nil
+}
+
+// An IPv6 zone names a network interface, which may differ only in case.
+func lowerHost(host string) string {
+	address, zone, zoned := strings.Cut(host, "%")
+	if !zoned {
+		return strings.ToLower(host)
+	}
+	return strings.ToLower(address) + "%" + zone
 }
 
 func (c *Client) Origin() string {
