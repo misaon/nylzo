@@ -132,12 +132,12 @@ export const czech = {
   'dashboard.limit.admin': 'Přihlášení do správy',
 
   'dashboard.access.title': 'Přístup',
-  'dashboard.access.passkeys': 'Přístupové klíče',
+  'dashboard.access.passkeys': 'Passkey pro správu',
   'dashboard.access.last': 'Předchozí přihlášení',
   'dashboard.access.never': 'Žádné',
   'dashboard.access.session': 'Relace skončí',
   'dashboard.access.session.note': 'Nejpozději. Skončí dřív, když je stránka 15 minut skrytá nebo zavřená.',
-  'dashboard.access.add': 'Přidat klíč',
-  'dashboard.access.reset': 'Odebrat všechny klíče',
+  'dashboard.access.add': 'Přidat passkey',
+  'dashboard.access.reset': 'Odebrat všechny passkey',
   'dashboard.access.command': 'Příkaz spusťte na serveru.',
 };
