@@ -163,7 +163,7 @@ export const messages = {
   'failure.unavailable': 'Služba teď nové zprávy nepřijímá. Zkuste to za {time}.',
   'failure.too_large': 'Zpráva je pro tuto službu příliš velká. Zkraťte text, nebo pošlete menší přílohu.',
   'failure.kdf': 'Toto zařízení zašifrování heslem nezvládlo. Zkuste jiné zařízení, nebo zprávu pošlete bez hesla.',
-  'failure.pow': 'Ochrana proti zneužití se nestihla dokončit. Zkuste to znovu.',
+  'failure.pow': 'Ochrana proti zahlcení se nestihla dokončit. Zkuste to znovu.',
   'failure.failed': 'Zprávu se nepodařilo vytvořit. Text zůstal v\u{A0}poli, zkuste to znovu.',
 
   'created.title': 'Odkaz je připravený',

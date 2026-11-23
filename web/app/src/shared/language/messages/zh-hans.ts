@@ -157,7 +157,7 @@ export const messages: Catalog = {
   'failure.unavailable': '服务目前不接受新消息。请在 {time}后重试。',
   'failure.too_large': '消息对此服务来说太大。请缩短文本，或发送更小的附件。',
   'failure.kdf': '此设备无法完成基于密码的加密。请换一台设备，或发送不设密码的消息。',
-  'failure.pow': '防滥用验证未能及时完成。请重试。',
+  'failure.pow': '防过载计算未能及时完成。请重试。',
   'failure.failed': '无法创建消息。文本仍保留在输入框中，请重试。',
 
   'created.title': '链接已就绪',

@@ -175,7 +175,7 @@ export const messages: Catalog = {
     'Le message est trop volumineux pour ce service. Raccourcissez le texte ou joignez un fichier plus petit.',
   'failure.kdf':
     'Cet appareil n’a pas réussi à chiffrer avec un mot de passe. Essayez un autre appareil ou envoyez le message sans mot de passe.',
-  'failure.pow': 'La protection contre les abus n’a pas pu se terminer à temps. Réessayez.',
+  'failure.pow': 'La protection anti-saturation n’a pas pu se terminer à temps. Réessayez.',
   'failure.failed': 'Impossible de créer le message. Le texte est resté dans le champ, réessayez.',
 
   'created.title': 'Le lien est prêt',

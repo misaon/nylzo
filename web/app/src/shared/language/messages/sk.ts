@@ -164,7 +164,7 @@ export const messages: Catalog = {
   'failure.unavailable': 'Služba teraz nové správy neprijíma. Skúste to znova o\u{A0}{time}.',
   'failure.too_large': 'Správa je pre túto službu príliš veľká. Skráťte text alebo pošlite menšiu prílohu.',
   'failure.kdf': 'Toto zariadenie nezvládlo zašifrovanie heslom. Skúste iné zariadenie alebo pošlite správu bez hesla.',
-  'failure.pow': 'Ochrana proti zneužitiu sa nestihla dokončiť. Skúste to znova.',
+  'failure.pow': 'Ochrana proti zahlteniu sa nestihla dokončiť. Skúste to znova.',
   'failure.failed': 'Správu sa nepodarilo vytvoriť. Text zostal v\u{A0}poli, skúste to znova.',
 
   'created.title': 'Odkaz je pripravený',

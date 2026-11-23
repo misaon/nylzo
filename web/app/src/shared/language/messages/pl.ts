@@ -203,7 +203,7 @@ export const messages: Catalog = {
   'failure.too_large': 'Wiadomość jest za duża dla tej usługi. Skróć tekst albo wyślij mniejszy załącznik.',
   'failure.kdf':
     'To urządzenie nie poradziło sobie z\u{A0}szyfrowaniem hasłem. Spróbuj na innym urządzeniu albo wyślij wiadomość bez hasła.',
-  'failure.pow': 'Ochrona przed nadużyciami nie zdążyła się zakończyć. Spróbuj ponownie.',
+  'failure.pow': 'Ochrona przed przeciążeniem nie zdążyła się zakończyć. Spróbuj ponownie.',
   'failure.failed': 'Nie udało się utworzyć wiadomości. Tekst pozostał w\u{A0}polu, spróbuj ponownie.',
 
   'created.title': 'Link jest gotowy',

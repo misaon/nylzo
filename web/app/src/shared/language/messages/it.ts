@@ -173,7 +173,7 @@ export const messages: Catalog = {
     'Il messaggio è troppo grande per questo servizio. Accorcia il testo o invia un allegato più piccolo.',
   'failure.kdf':
     'Questo dispositivo non è riuscito a cifrare con la password. Prova con un altro dispositivo o invia il messaggio senza password.',
-  'failure.pow': 'La protezione contro gli abusi non si è completata in tempo. Riprova.',
+  'failure.pow': 'La protezione contro il sovraccarico non si è completata in tempo. Riprova.',
   'failure.failed': 'Impossibile creare il messaggio. Il testo è rimasto nel campo, riprova.',
 
   'created.title': 'Il link è pronto',

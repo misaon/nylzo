@@ -171,7 +171,7 @@ export const messages: Catalog = {
   'failure.too_large': 'Pesan terlalu besar untuk layanan ini. Persingkat teks, atau kirim lampiran yang lebih kecil.',
   'failure.kdf':
     'Perangkat ini tidak mampu mengenkripsi dengan kata sandi. Coba perangkat lain, atau kirim pesan tanpa kata sandi.',
-  'failure.pow': 'Perlindungan terhadap penyalahgunaan tidak sempat selesai. Coba lagi.',
+  'failure.pow': 'Perlindungan dari beban berlebih tidak sempat selesai. Coba lagi.',
   'failure.failed': 'Pesan tidak dapat dibuat. Teks masih ada di kolom, coba lagi.',
 
   'created.title': 'Tautan sudah siap',

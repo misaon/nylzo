@@ -175,7 +175,7 @@ export const messages: Catalog = {
     'Die Nachricht ist für diesen Dienst zu groß. Kürzen Sie den Text oder senden Sie einen kleineren Anhang.',
   'failure.kdf':
     'Dieses Gerät konnte die Verschlüsselung mit Passwort nicht durchführen. Versuchen Sie es auf einem anderen Gerät oder senden Sie die Nachricht ohne Passwort.',
-  'failure.pow': 'Der Schutz vor Missbrauch wurde nicht rechtzeitig fertig. Versuchen Sie es erneut.',
+  'failure.pow': 'Der Schutz vor Überlastung wurde nicht rechtzeitig fertig. Versuchen Sie es erneut.',
   'failure.failed': 'Die Nachricht konnte nicht erstellt werden. Der Text steht noch im Feld, versuchen Sie es erneut.',
 
   'created.title': 'Der Link ist fertig',

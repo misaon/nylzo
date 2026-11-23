@@ -165,7 +165,7 @@ export const messages: Catalog = {
   'failure.too_large': 'The message is too large for this service. Shorten the text, or attach a smaller file.',
   'failure.kdf':
     'This device could not encrypt with a passphrase. Try another device, or send the message without a passphrase.',
-  'failure.pow': 'The abuse protection did not finish in time. Try again.',
+  'failure.pow': 'The anti-flooding check did not finish in time. Try again.',
   'failure.failed': 'The message could not be created. The text stayed in the field, try again.',
 
   'created.title': 'The link is ready',
