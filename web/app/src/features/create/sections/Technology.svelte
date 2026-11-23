@@ -5,9 +5,7 @@
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
   import SectionIntro from '../../../shared/ui/section/SectionIntro.svelte';
 
-  const translator = getTranslator();
-  const { translate } = translator;
-  const SCORECARD_SCORE = 7.9;
+  const { translate } = getTranslator();
 
   const PLATE_TILT = '[transform:rotateX(60deg)_rotateZ(-45deg)]';
   const layers = [
@@ -36,31 +34,32 @@
       depth: 'z-10 [--reveal-index:3]',
     },
   ] as const;
-  const scorecard = $derived(
-    new Intl.NumberFormat(translator.language, { minimumFractionDigits: 1 }).format(SCORECARD_SCORE),
-  );
-  const tests = $derived([
+  const tests = [
     {
       grade: 'A+',
       name: 'securityheaders.com',
+      subject: 'tech.tests.site',
       report: 'https://securityheaders.com/?q=https%3A%2F%2Fnylzo.com%2F&followRedirects=on',
     },
     {
       grade: 'A+',
       name: 'Mozilla Observatory',
+      subject: 'tech.tests.site',
       report: 'https://developer.mozilla.org/en-US/observatory/analyze?host=nylzo.com',
     },
     {
       grade: '100',
       name: 'PageSpeed Insights',
+      subject: 'tech.tests.site',
       report: 'https://pagespeed.web.dev/analysis?url=https%3A%2F%2Fnylzo.com%2F',
     },
     {
-      grade: scorecard,
+      grade: undefined,
       name: 'OpenSSF Scorecard',
+      subject: 'tech.tests.repository',
       report: 'https://scorecard.dev/viewer/?uri=github.com/misaon/nylzo',
     },
-  ]);
+  ] as const;
 </script>
 
 <section id="technology" class="px-4 py-28 sm:px-6 md:py-40" aria-labelledby="tech-title" {@attach pauseOffscreen}>
@@ -136,13 +135,22 @@
               rel="noreferrer"
               class="group flex h-full flex-col gap-2 px-5 py-4 transition hover:bg-white/4 focus-visible:-outline-offset-2"
             >
-              <span
-                class="font-display text-[1.75rem] leading-none font-light tracking-[-0.03em] text-aegis-200 tabular-nums"
-                >{test.grade}</span
-              >
+              {#if test.grade}
+                <span
+                  class="font-display text-[1.75rem] leading-none font-light tracking-[-0.03em] text-aegis-200 tabular-nums"
+                  >{test.grade}</span
+                >
+              {:else}
+                <span class="grid h-7 items-center text-aegis-200">
+                  <Icon name="gauge" viewBox="3.2 4.6 17.6 12.8" class="h-5 w-7" stroke={1.2} />
+                </span>
+              {/if}
               <span
                 class="flex items-center gap-1.5 text-micro wrap-anywhere text-ink-soft transition group-hover:text-ink"
-                >{test.name}<Icon name="external" class="size-3 shrink-0" /></span
+                >{test.name}<span class="sr-only">: {translate(test.subject)}</span><Icon
+                  name="external"
+                  class="size-3 shrink-0"
+                /></span
               >
             </a>
           </li>

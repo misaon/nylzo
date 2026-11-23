@@ -782,7 +782,9 @@ export const messages: Catalog = {
   'tech.web.text': 'Svelte 5、SHA\u{2011}384ハッシュ、Cookieなし',
   'tech.release.title': '開発とリリース',
   'tech.release.text': '署名付きリリースと修正の自動適用',
-  'tech.tests.title': 'nylzo.comの第三者によるテスト',
+  'tech.tests.title': '第三者によるテスト',
+  'tech.tests.site': 'nylzo.comサイトのテスト',
+  'tech.tests.repository': 'GitHubリポジトリのテスト',
 
   'host.eyebrow': 'ターミナルとセルフホスト',
   'host.title': 'ターミナルでも自分のサーバーでも使えるNylzo',

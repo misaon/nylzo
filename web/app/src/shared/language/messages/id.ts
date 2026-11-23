@@ -790,7 +790,9 @@ export const messages: Catalog = {
   'tech.web.text': 'Svelte\u{A0}5, sidik jari SHA\u{2011}384, dan tanpa cookie',
   'tech.release.title': 'Pengembangan dan rilis',
   'tech.release.text': 'Rilis bertanda tangan dan perbaikan otomatis',
-  'tech.tests.title': 'Pengujian independen nylzo.com',
+  'tech.tests.title': 'Pengujian independen',
+  'tech.tests.site': 'pengujian situs nylzo.com',
+  'tech.tests.repository': 'pengujian repositori GitHub',
 
   'host.eyebrow': 'Terminal dan server sendiri',
   'host.title': 'Nylzo di terminal dan di server Anda sendiri',

@@ -800,7 +800,9 @@ export const messages: Catalog = {
   'tech.web.text': 'Svelte\u{A0}5, empreintes SHA\u{2011}384, sans cookies',
   'tech.release.title': 'Développement et publication',
   'tech.release.text': 'Versions signées et correctifs automatiques',
-  'tech.tests.title': 'Tests indépendants de nylzo.com',
+  'tech.tests.title': 'Tests indépendants',
+  'tech.tests.site': 'test du site nylzo.com',
+  'tech.tests.repository': 'test du dépôt GitHub',
 
   'host.eyebrow': 'Terminal et auto-hébergement',
   'host.title': 'Nylzo dans votre terminal et sur votre propre serveur',
