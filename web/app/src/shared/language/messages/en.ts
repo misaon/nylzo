@@ -516,7 +516,8 @@ export const messages: Catalog = {
   'leave.draft.title': 'Leave the message you are writing?',
   'leave.draft.message': 'We do not save the text or the attachment anywhere. If you leave, they are gone.',
   'leave.link.title': 'Leave without copying the link?',
-  'leave.link.message': 'You see the link only now. Without it nobody can open the message, and you cannot cancel it.',
+  'leave.link.message':
+    'You see the link only now, and it is not saved anywhere. Without it nobody can open the message.',
   'leave.confirm': 'Leave',
   'leave.stay': 'Stay',
   'created.passphrase.show': 'Show passphrase',

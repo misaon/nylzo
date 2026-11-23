@@ -493,7 +493,7 @@ export const messages: Catalog = {
   'leave.draft.title': '离开尚未写完的消息？',
   'leave.draft.message': '我们不会在任何地方保存文本或附件。离开后它们将丢失。',
   'leave.link.title': '不复制链接就离开？',
-  'leave.link.message': '链接只在此时显示。没有链接，任何人都无法打开消息，你也无法撤销它。',
+  'leave.link.message': '链接只在此时显示，不会保存在任何地方。没有链接，任何人都无法打开消息。',
   'leave.confirm': '离开',
   'leave.stay': '留下',
   'created.passphrase.show': '显示密码',

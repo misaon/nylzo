@@ -530,7 +530,7 @@ export const messages: Catalog = {
   'leave.draft.message': 'Não salvamos o texto nem o anexo em lugar nenhum. Se você sair, vai perdê-los.',
   'leave.link.title': 'Sair sem copiar o link?',
   'leave.link.message':
-    'Você só verá o link agora. Sem ele, ninguém consegue abrir a mensagem e você não poderá cancelá-la.',
+    'Você só verá o link agora, e ele não fica salvo em lugar nenhum. Sem ele, ninguém consegue abrir a mensagem.',
   'leave.confirm': 'Sair',
   'leave.stay': 'Ficar',
   'created.passphrase.show': 'Mostrar senha',

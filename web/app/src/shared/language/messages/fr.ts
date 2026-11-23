@@ -536,7 +536,7 @@ export const messages: Catalog = {
   'leave.draft.message': 'Nous n’enregistrons ni le texte ni la pièce jointe. Si vous partez, ils seront perdus.',
   'leave.link.title': 'Partir sans copier le lien\u{A0}?',
   'leave.link.message':
-    'Vous ne voyez le lien que maintenant. Sans lui, personne ne pourra ouvrir le message et vous ne pourrez pas l’annuler.',
+    'Vous ne voyez le lien que maintenant, et il n’est enregistré nulle part. Sans lui, personne ne pourra ouvrir le message.',
   'leave.confirm': 'Partir',
   'leave.stay': 'Rester',
   'created.passphrase.show': 'Afficher le mot de passe',

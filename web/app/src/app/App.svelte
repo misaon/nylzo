@@ -31,6 +31,11 @@
     readonly start: { readonly path: string; readonly language: Language };
   }
 
+  interface LeaveRequest {
+    readonly unsaved: UnsavedWork;
+    readonly proceed: () => void;
+  }
+
   const HEADER_VARIANTS = {
     agents: 'page',
     create: 'home',
@@ -59,7 +64,8 @@
   let visit = $state(0);
   let replacingUrl = false;
   let main: HTMLElement | undefined;
-  let leaving = $state<{ readonly unsaved: UnsavedWork; readonly proceed: () => void }>();
+  let unloadAsked = false;
+  let leaving = $state<LeaveRequest>();
   const screen = $derived(screenOf(path));
   const translator = setTranslator(new Translator(startLanguage));
   const tracked = setSessionSentStore(sessionSentStore());
@@ -128,7 +134,7 @@
       return;
     }
     const { unsaved } = work;
-    if (unsaved && event.cancelable && event.info !== LEAVE_CONFIRMED) {
+    if (unsaved && event.cancelable && event.info !== LEAVE_CONFIRMED && !unloadAsked) {
       event.preventDefault();
       leaving = { unsaved, proceed: repeatNavigation(event) };
       return;
@@ -166,10 +172,27 @@
     };
   }
 
-  function leave() {
-    const proceed = leaving?.proceed;
+  // WebKit asks before unload and only then fires navigate, so one navigation must not ask twice.
+  function askBeforeUnload(event: BeforeUnloadEvent) {
+    if (!work.unsaved) {
+      return;
+    }
+    event.preventDefault();
+    unloadAsked = true;
+    setTimeout(() => {
+      unloadAsked = false;
+    }, 0);
+  }
+
+  // A dialog still fading out answers for its own question, never for a newer one.
+  function answer(request: LeaveRequest, confirmed: boolean) {
+    if (leaving !== request) {
+      return;
+    }
     leaving = undefined;
-    proceed?.();
+    if (confirmed) {
+      request.proceed();
+    }
   }
 
   const listenForNavigation: Attachment = () => {
@@ -227,6 +250,7 @@
 <svelte:window
   onpopstate={returned}
   onpagehide={() => void tracked.clear()}
+  onbeforeunload={askBeforeUnload}
   ondragover={keepPageOnFileDrop}
   ondrop={keepPageOnFileDrop}
 />
@@ -280,16 +304,16 @@
   </div>
 </div>
 
-{#if leaving}
+{#each leaving ? [leaving] : [] as request (request)}
   <ConfirmDialog
     id="leave-confirm"
     tone="warning"
     icon="warning"
-    title={translate(leaving.unsaved === 'draft' ? 'leave.draft.title' : 'leave.link.title')}
-    message={translate(leaving.unsaved === 'draft' ? 'leave.draft.message' : 'leave.link.message')}
+    title={translate(request.unsaved === 'draft' ? 'leave.draft.title' : 'leave.link.title')}
+    message={translate(request.unsaved === 'draft' ? 'leave.draft.message' : 'leave.link.message')}
     confirmLabel={translate('leave.confirm')}
     dismissLabel={translate('leave.stay')}
-    onconfirm={leave}
-    onclose={() => (leaving = undefined)}
+    onconfirm={() => answer(request, true)}
+    onclose={() => answer(request, false)}
   />
-{/if}
+{/each}

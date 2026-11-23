@@ -41,7 +41,7 @@
   onclick={composer.onWindowClick}
   onpagehide={composer.leave}
   onpageshow={composer.returned}
-  onbeforeunload={composer.guardLeaving}
+  onbeforeunload={composer.forgetPassphrase}
 />
 
 <span id="napsat" class="block" aria-hidden="true"></span>

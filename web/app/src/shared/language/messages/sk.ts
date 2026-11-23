@@ -525,7 +525,7 @@ export const messages: Catalog = {
   'leave.draft.title': 'Odísť od rozpísanej správy?',
   'leave.draft.message': 'Text ani prílohu nikam neukladáme. Keď odídete, prídete o\u{A0}ne.',
   'leave.link.title': 'Odísť bez skopírovaného odkazu?',
-  'leave.link.message': 'Odkaz vidíte len teraz. Bez neho správu nikto neotvorí a\u{A0}vy ju nebudete môcť zrušiť.',
+  'leave.link.message': 'Odkaz vidíte len teraz a\u{A0}nikam sa neukladá. Bez neho správu nikto neotvorí.',
   'leave.confirm': 'Odísť',
   'leave.stay': 'Zostať',
   'created.passphrase.show': 'Ukázať heslo',

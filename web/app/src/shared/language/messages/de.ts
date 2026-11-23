@@ -541,7 +541,7 @@ export const messages: Catalog = {
   'leave.draft.message': 'Wir speichern Text und Anhang nirgends. Wenn Sie gehen, sind sie verloren.',
   'leave.link.title': 'Seite verlassen, ohne den Link zu kopieren?',
   'leave.link.message':
-    'Sie sehen den Link nur jetzt. Ohne ihn kann niemand die Nachricht öffnen, und Sie können sie nicht widerrufen.',
+    'Sie sehen den Link nur jetzt, und er wird nirgends gespeichert. Ohne ihn kann niemand die Nachricht öffnen.',
   'leave.confirm': 'Verlassen',
   'leave.stay': 'Bleiben',
   'created.passphrase.show': 'Passwort anzeigen',

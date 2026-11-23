@@ -343,24 +343,21 @@ describe('message composer interactions', () => {
     },
   );
 
-  it('warns before leaving a draft, or a link that was neither copied nor tracked', async () => {
+  it('counts a draft, or a link that was not copied even while Sent tracks it, as unsaved', async () => {
     const form = composer();
     form.text = '  ';
-    expect(leaving(form)).toEqual([undefined, false]);
+    expect(form.unsaved).toBeUndefined();
     form.text = 'draft';
-    form.passphrase = 'correct horse battery staple';
-    expect([...leaving(form), form.passphrase]).toEqual(['draft', true, '']);
+    expect(form.unsaved).toBe('draft');
     await submit(form);
     vi.advanceTimersByTime(5100);
-    expect(leaving(form)).toEqual(['link', true]);
+    expect(form.unsaved).toBe('link');
+    await form.remember('');
+    expect([form.remembered, form.kept, form.unsaved]).toEqual(['remembered', true, 'link']);
     form.linkCopied = true;
-    expect(leaving(form)).toEqual([undefined, false]);
-    form.linkCopied = false;
-    vi.mocked(rememberSent).mockResolvedValueOnce(false);
-    await form.remember('');
-    expect(leaving(form)).toEqual(['link', true]);
-    await form.remember('');
-    expect([form.kept, ...leaving(form)]).toEqual([false, undefined, true]);
+    expect(form.unsaved).toBeUndefined();
+    await form.another();
+    expect([form.linkCopied, form.unsaved]).toEqual([false, undefined]);
   });
 
   it('keeps a message only in this tab when the page cannot keep it in the browser', async () => {
@@ -587,12 +584,6 @@ describe('message composer interactions', () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 });
-
-function leaving(form: Composer): readonly [Composer['unsaved'], boolean] {
-  const event = new Event('beforeunload', { cancelable: true });
-  form.guardLeaving(event);
-  return [form.unsaved, event.defaultPrevented];
-}
 
 function submit(form: Composer): Promise<void> {
   return form.submit(new SubmitEvent('submit', { cancelable: true }));

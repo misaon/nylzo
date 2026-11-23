@@ -569,7 +569,7 @@ export const messages: Catalog = {
   'leave.draft.message': 'Nigdzie nie zapisujemy tekstu ani załącznika. Jeśli wyjdziesz, przepadną.',
   'leave.link.title': 'Wyjść bez kopiowania linku?',
   'leave.link.message':
-    'Link widzisz tylko teraz. Bez niego nikt nie otworzy wiadomości i\u{A0}nie da się jej anulować.',
+    'Link widzisz tylko teraz i\u{A0}nigdzie nie jest zapisywany. Bez niego nikt nie otworzy wiadomości.',
   'leave.confirm': 'Wyjdź',
   'leave.stay': 'Zostań',
   'created.passphrase.show': 'Pokaż hasło',

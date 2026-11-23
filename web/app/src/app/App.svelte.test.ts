@@ -96,6 +96,12 @@ function choose(language: Language): void {
   flushSync();
 }
 
+function unloadPrevented(): boolean {
+  const event = new Event('beforeunload', { cancelable: true });
+  dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
 function drag(type: 'dragover' | 'drop', source: EventTarget, types?: readonly string[]): boolean {
   const event = Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
     dataTransfer: types ? { types } : null,
@@ -294,6 +300,16 @@ describe('app shell', () => {
       await intercepted(navigate({ url: '/agents', cancelable: false }));
       expect(document.querySelector('dialog')).toBeNull();
       expect(document.title).toBe(translated('en', 'title.agents'));
+    });
+
+    it('asks before unload while work is unsaved, and does not ask again when WebKit then fires navigate', async () => {
+      show('/terms');
+      holdMessages();
+      expect(unloadPrevented()).toBe(false);
+      screenWork().guard(() => 'link');
+      expect(unloadPrevented()).toBe(true);
+      await intercepted(navigate({ url: '/agents' }));
+      expect(document.querySelector('dialog')).toBeNull();
     });
 
     it('leaves a navigation to the browser while this tab tracks no message', () => {

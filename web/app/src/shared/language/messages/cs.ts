@@ -520,7 +520,7 @@ export const messages = {
   'leave.draft.title': 'Odejít od rozepsané zprávy?',
   'leave.draft.message': 'Text ani přílohu nikam neukládáme. Když odejdete, přijdete o\u{A0}ně.',
   'leave.link.title': 'Odejít bez zkopírovaného odkazu?',
-  'leave.link.message': 'Odkaz uvidíte jen teď. Bez něj zprávu nikdo neotevře a\u{A0}vy ji nebudete moct zrušit.',
+  'leave.link.message': 'Odkaz uvidíte jen teď a\u{A0}nikam se neukládá. Bez něj zprávu nikdo neotevře.',
   'leave.confirm': 'Odejít',
   'leave.stay': 'Zůstat',
   'created.passphrase.show': 'Ukázat heslo',

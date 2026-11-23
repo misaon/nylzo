@@ -530,7 +530,7 @@ export const messages: Catalog = {
   'leave.draft.message': 'Kami tidak menyimpan teks atau lampiran di mana pun. Jika Anda keluar, semuanya hilang.',
   'leave.link.title': 'Keluar tanpa menyalin tautan?',
   'leave.link.message':
-    'Tautan ini hanya ditampilkan sekarang. Tanpanya, tidak ada yang bisa membuka pesan, dan Anda tidak bisa membatalkannya.',
+    'Tautan ini hanya ditampilkan sekarang dan tidak disimpan di mana pun. Tanpanya, tidak ada yang bisa membuka pesan.',
   'leave.confirm': 'Keluar',
   'leave.stay': 'Tetap di sini',
   'created.passphrase.show': 'Tampilkan kata sandi',

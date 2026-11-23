@@ -524,7 +524,7 @@ export const messages: Catalog = {
   'leave.draft.message': 'テキストと添付ファイルはどこにも保存されません。移動すると失われます。',
   'leave.link.title': 'リンクをコピーせずに移動しますか？',
   'leave.link.message':
-    'リンクが表示されるのは今だけです。リンクがないと誰もメッセージを開けず、取り消すこともできません。',
+    'リンクが表示されるのは今だけで、どこにも保存されません。リンクがないと誰もメッセージを開けません。',
   'leave.confirm': '移動する',
   'leave.stay': 'とどまる',
   'created.passphrase.show': 'パスワードを表示',
