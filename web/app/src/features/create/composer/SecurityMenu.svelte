@@ -54,10 +54,10 @@
     <div class="flex items-center gap-2">
       <div
         class={[
-          'flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-control px-3.5 well transition md:h-10',
+          'flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-control px-3.5 well transition has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-offset-3 has-[input:focus-visible]:outline-aegis-300 md:h-10',
           composer.problemOf.passphrase
             ? 'shadow-[0_0_24px_-8px_oklch(0.65_0.2_15/0.7)] outline-1 -outline-offset-1 outline-rose-300/70'
-            : 'outline-offset-3 outline-transparent not-forced-colors:outline-2 has-[input:focus-visible]:outline-2 has-[input:focus-visible]:outline-aegis-300',
+            : 'outline-offset-3 outline-transparent not-forced-colors:outline-2',
         ]}
       >
         <Icon name="key" class="size-4 shrink-0 text-aegis-300" />
