@@ -8,6 +8,7 @@ import {
   choosePassphrase,
   createdLink,
   createMessageInPage,
+  deleteRestButton,
   expectMessageShown,
   nextFrames,
   openApp,
@@ -212,9 +213,9 @@ for (const viewport of VIEWPORTS) {
     await expectMessageShown(recipient);
     await settle(recipient);
     await expectNothingMoved(recipient, 'revealed with actions');
-    await recipient.getByRole('button', { name: 'Delete message' }).click();
-    await recipient.getByRole('alertdialog').getByRole('button', { name: 'Yes, delete' }).click();
-    await expect(recipient.getByRole('button', { name: 'Delete message' })).toBeDisabled();
+    await deleteRestButton(recipient).click();
+    await recipient.getByRole('alertdialog').getByRole('button', { name: 'Delete message' }).click();
+    await expect(deleteRestButton(recipient)).toBeDisabled();
     await expectNothingMoved(recipient, 'rest deleted');
 
     const unopened = await createMessageThroughApi({ text: 'layout' });
@@ -228,8 +229,8 @@ for (const viewport of VIEWPORTS) {
       await route.continue();
     });
     await deleter.getByRole('button', { name: 'Delete without opening' }).click();
-    await deleter.getByRole('alertdialog').getByRole('button', { name: 'Yes, delete' }).click();
-    await expect(deleter.getByText('You deleted the message')).toBeVisible();
+    await deleter.getByRole('alertdialog').getByRole('button', { name: 'Delete message' }).click();
+    await expect(deleter.getByRole('heading', { name: 'You deleted the message' })).toBeVisible();
     await motionFinished(deleter);
     await expectNothingMoved(deleter, 'deleted before opening');
   });

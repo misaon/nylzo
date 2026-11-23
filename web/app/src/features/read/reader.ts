@@ -179,6 +179,12 @@ export type ClosedView = Extract<ReadView, { readonly view: 'cleared' | 'timed_o
 
 const LEFT_PAGE: ClosedView = { view: 'cleared' };
 
+function copyOf(link: Link): Link {
+  return { ...link, secret: new Uint8Array(link.secret) };
+}
+
+const RETRYABLE_VIEWS: ReadonlySet<ReadView['view']> = new Set(['busy', 'failed', 'loading', 'ready', 'retry_later']);
+
 function burnOutcomeOf(error: unknown): BurnOutcome {
   if (isApiError(error, 'gone')) {
     const state = endedStateOf(error);
@@ -256,6 +262,8 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   let lease: string | undefined;
   let revealable = false;
   let closedAs: ClosedView | undefined;
+  // The address bar gives the fragment up on the first load, so a retry takes the link from memory only.
+  let retryLink: Link | undefined;
 
   const storedLease = () => lease ?? leaseOf(session.getItem(LEASE_KEY));
   const allowed = () => page.visible() && !page.prerendering();
@@ -276,6 +284,28 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
   function forgetLease(): void {
     lease = undefined;
     session.removeItem(LEASE_KEY);
+  }
+
+  function forgetRetryLink(): void {
+    retryLink?.secret.fill(0);
+    retryLink = undefined;
+  }
+
+  function linkToLoad(): Link | ReadView {
+    if (retryLink) {
+      return copyOf(retryLink);
+    }
+    const taken = takeFragment(dependencies);
+    if (typeof taken !== 'string') {
+      return taken;
+    }
+    try {
+      const link = parseFragment(dependencies.location.pathname, taken);
+      retryLink = copyOf(link);
+      return link;
+    } catch (error) {
+      return linkProblemView(error, dependencies.location.pathname);
+    }
   }
 
   function forgetSecrets(): void {
@@ -305,6 +335,9 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
     const view = closedAs ?? next;
     revealable = view.view === 'ready';
     revealedView = view.view === 'revealed' ? view : undefined;
+    if (!RETRYABLE_VIEWS.has(view.view)) {
+      forgetRetryLink();
+    }
     if (view.view !== 'ready' && view.view !== 'busy') {
       forgetSecrets();
     }
@@ -359,16 +392,9 @@ export function createReader(dependencies: ReaderDependencies, onView: (view: Re
 
   async function load(): Promise<void> {
     show({ view: 'loading' });
-    const taken = takeFragment(dependencies);
-    if (typeof taken !== 'string') {
-      show(taken);
-      return;
-    }
-    let link: Link;
-    try {
-      link = parseFragment(dependencies.location.pathname, taken);
-    } catch (error) {
-      show(linkProblemView(error, dependencies.location.pathname));
+    const link = linkToLoad();
+    if ('view' in link) {
+      show(link);
       return;
     }
     show({ view: 'loading', kdfId: link.kdfId });

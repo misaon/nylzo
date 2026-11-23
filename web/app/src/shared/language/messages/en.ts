@@ -243,8 +243,8 @@ export const messages: Catalog = {
     'This device could not process the passphrase last time. If it happens again, open the link on another device.',
   'read.rejected.wrong': 'Wrong passphrase. The message stays unopened. {attempts} left.',
   'read.rejected.wait': 'Wrong passphrase. You can try again in {time}.',
-  'read.rejected.malformed': 'The passphrase contains invalid characters.',
-  'read.rejected.long': 'The passphrase is too long.',
+  'read.rejected.malformed': 'The passphrase contains invalid characters. Paste it again.',
+  'read.rejected.long': 'The passphrase is too long. Paste only the passphrase from the sender.',
   'read.delete': 'Delete without opening',
   'read.delete.rest': 'Delete message',
   'read.delete.rest.short': 'Delete',
@@ -253,7 +253,7 @@ export const messages: Catalog = {
   'read.terms': 'By showing the message you agree to the {link}.',
   'read.copy_failed': 'Copying failed. Select the message text and copy it by hand.',
   'read.delete.confirm': 'After that nobody can open it, you included.',
-  'read.delete.yes': 'Yes, delete',
+  'read.delete.yes': 'Delete message',
   'read.delete.no': 'Do not delete',
   'read.deleted_rest': 'The remaining opens are deleted.',
   'read.delete.failed': 'The message could not be deleted. Try again.',
@@ -275,7 +275,8 @@ export const messages: Catalog = {
   'revealed.file': 'Attachment',
   'revealed.file.unchecked':
     'The attachment is encrypted, so Nylzo cannot scan it for viruses. Download files only from senders you trust.',
-  'revealed.confirm.title':
+  'revealed.confirm.title': 'Download an attachment from an unverified sender?',
+  'revealed.confirm.text':
     'Any file can carry malware, even a PDF, a document or an image. Download it only if you trust the sender.',
   'revealed.confirm.extension': 'File extension:',
   'revealed.confirm.none': 'The file has no extension.',
@@ -284,8 +285,8 @@ export const messages: Catalog = {
   'revealed.history': 'The link stays in your browser history while opens remain',
   'revealed.hidden':
     'Hidden or direction-changing characters in the text: {count}. They are shown as codes such as U+202E, because they can make the text look different from what a copy contains.',
-  'revealed.hidden.confirm':
-    'The text contains hidden or direction-changing characters. A copy keeps them exactly as the sender wrote them. Copy it anyway?',
+  'revealed.hidden.confirm': 'Copy the hidden characters too?',
+  'revealed.hidden.confirm.text': 'A copy keeps them exactly as the sender wrote them.',
   'revealed.hidden.copy': 'Copy anyway',
   'revealed.hidden.keep': 'Do not copy',
 
@@ -529,10 +530,11 @@ export const messages: Catalog = {
   'open.passphrase.hide': 'Hide passphrase',
   'open.passphrase.empty': 'Enter the passphrase from the sender.',
   'open.chip.expires': 'Valid until {time}',
+  'open.chip.passphrase': 'Passphrase protected',
   'open.chip.opens': { one: '{count} open left', other: '{count} opens left' },
   'open.chip.now': 'Opened just now',
   'open.chip.last': 'Last open',
-  'open.chip.clears': 'Deleted in {time}',
+  'open.chip.clears': 'Off screen in {time}',
   'open.chip.first_opened': 'First opened {time}',
   'open.chip.ended': 'Ended {time}',
   'open.step.derive.label': 'Key',
@@ -543,7 +545,7 @@ export const messages: Catalog = {
   'open.step.claim.detail': 'one open is counted',
   'open.step.download.label': 'Download',
   'open.step.download.title': 'Downloading the encrypted message',
-  'open.step.download.detail': 'the key stays only with you',
+  'open.step.download.detail': 'the key is not sent to the server',
   'open.step.decrypt.label': 'Decryption',
   'open.step.decrypt.title': 'Decrypting',
   'open.step.decrypt.detail': 'and checking that nobody changed the message',
@@ -559,7 +561,8 @@ export const messages: Catalog = {
   'open.notice.cancelled': 'The sender cancelled the message',
   'open.notice.cancelled.text': 'Nobody can open it now. If you still need it, ask the sender for a new link.',
   'open.notice.deleted': 'The message was deleted',
-  'open.notice.deleted.text': 'The recipient deleted it, or the operator removed it.',
+  'open.notice.deleted.text':
+    'The recipient deleted it, or the operator removed it. If you still need it, ask the sender for a new link.',
   'open.notice.lost': 'The server can no longer open this message',
   'open.notice.lost.text':
     'The server lost the key to it, usually in a restart. Nobody can open it now. Ask the sender to send it again.',
@@ -584,16 +587,17 @@ export const messages: Catalog = {
   'open.notice.reopen.text':
     'This page keeps the key only in memory, so the reload forgot it. Open the link again. Finishing does not use another open.',
   'open.notice.tampered': 'The message cannot be opened safely',
-  'open.notice.tampered.text': 'The server or the connection returned other data than the sender created.',
-  'open.notice.failed': 'Something went wrong',
-  'open.notice.failed.text': 'The message could not be loaded. Try again.',
+  'open.notice.tampered.text':
+    'The server or the connection returned other data than the sender created. Tell the sender and ask for a new link.',
+  'open.notice.failed': 'The message could not be loaded',
+  'open.notice.failed.text': 'Check your connection and try again.',
   'open.notice.busy': 'The service is busy',
   'open.notice.busy.text': 'Try again in {time}. Trying again does not use up an open.',
   'open.notice.cleared': 'This page no longer shows the message',
   'open.notice.cleared.text': 'You left the page, so it no longer shows the message.',
   'open.notice.timed_out': 'Time to view is up',
   'open.notice.timed_out.text':
-    'The message was on screen for {time}, so the page deleted it. This protects it in case you walk away from the device.',
+    'The message was on screen for {time}, so the page closed it. This protects it in case you walk away from the device.',
   'open.chip.burned': 'Deleted without opening',
   'open.notice.burned': 'You deleted the message',
   'open.notice.burned.text': 'Nobody can open it now, you included.',

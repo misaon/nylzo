@@ -240,8 +240,8 @@ export const messages = {
     'Minule se na tomto zařízení nepodařilo heslo zpracovat. Pokud se to opakuje, otevřete odkaz na jiném zařízení.',
   'read.rejected.wrong': 'Heslo nesedí. Zpráva zůstala neotevřená. Ještě {attempts}.',
   'read.rejected.wait': 'Heslo nesedí. Další pokus je možný za {time}.',
-  'read.rejected.malformed': 'Heslo obsahuje neplatné znaky.',
-  'read.rejected.long': 'Heslo je příliš dlouhé.',
+  'read.rejected.malformed': 'Heslo obsahuje neplatné znaky. Vložte ho znovu.',
+  'read.rejected.long': 'Heslo je příliš dlouhé. Vložte jen heslo od odesílatele.',
   'read.delete': 'Smazat bez otevření',
   'read.delete.rest': 'Smazat zprávu',
   'read.delete.rest.short': 'Smazat',
@@ -250,7 +250,7 @@ export const messages = {
   'read.terms': 'Zobrazením zprávy souhlasíte s\u{A0}{link}.',
   'read.copy_failed': 'Zkopírovat se nepodařilo. Označte text zprávy a\u{A0}zkopírujte ho ručně.',
   'read.delete.confirm': 'Zprávu pak už nikdo neotevře, ani vy.',
-  'read.delete.yes': 'Ano, smazat',
+  'read.delete.yes': 'Smazat zprávu',
   'read.delete.no': 'Nemazat',
   'read.deleted_rest': 'Zbývající otevření jsou smazaná.',
   'read.delete.failed': 'Zprávu se nepodařilo smazat. Zkuste to znovu.',
@@ -272,7 +272,8 @@ export const messages = {
   'revealed.file': 'Příloha',
   'revealed.file.unchecked':
     'Nylzo šifrovanou přílohu nemůže prověřit antivirem. Stahujte jen od odesílatelů, kterým věříte.',
-  'revealed.confirm.title':
+  'revealed.confirm.title': 'Stáhnout přílohu od neověřeného odesílatele?',
+  'revealed.confirm.text':
     'Škodlivý kód může nést každý soubor, i\u{A0}PDF, dokument nebo obrázek. Stáhněte ho, jen pokud odesílateli věříte.',
   'revealed.confirm.extension': 'Přípona souboru:',
   'revealed.confirm.none': 'Soubor nemá příponu.',
@@ -281,8 +282,8 @@ export const messages = {
   'revealed.history': 'Odkaz zůstane v\u{A0}historii prohlížeče, dokud zbývají otevření',
   'revealed.hidden':
     'Skryté znaky nebo znaky měnící směr textu: {count}. Zobrazujeme je jako kódy, například U+202E, protože kvůli nim může text na obrazovce vypadat jinak, než jak ho zkopírujete.',
-  'revealed.hidden.confirm':
-    'Text obsahuje skryté znaky nebo znaky měnící směr textu. Kopie je zachová přesně tak, jak je odesílatel napsal. Přesto zkopírovat?',
+  'revealed.hidden.confirm': 'Zkopírovat i\u{A0}skryté znaky?',
+  'revealed.hidden.confirm.text': 'Kopie je zachová přesně tak, jak je odesílatel napsal.',
   'revealed.hidden.copy': 'Přesto zkopírovat',
   'revealed.hidden.keep': 'Nekopírovat',
 
@@ -528,6 +529,7 @@ export const messages = {
   'open.passphrase.hide': 'Skrýt heslo',
   'open.passphrase.empty': 'Zadejte heslo od odesílatele.',
   'open.chip.expires': 'Platí do {time}',
+  'open.chip.passphrase': 'Chráněno heslem',
   'open.chip.opens': {
     one: 'Zbývá {count} otevření',
     few: 'Zbývají {count} otevření',
@@ -535,7 +537,7 @@ export const messages = {
   },
   'open.chip.now': 'Otevřeno teď',
   'open.chip.last': 'Poslední otevření',
-  'open.chip.clears': 'Smaže se za {time}',
+  'open.chip.clears': 'Zmizí z\u{A0}obrazovky za {time}',
   'open.chip.first_opened': 'Poprvé otevřena {time}',
   'open.chip.ended': 'Skončila {time}',
   'open.step.derive.label': 'Klíč',
@@ -546,7 +548,7 @@ export const messages = {
   'open.step.claim.detail': 'započítá se jedno otevření',
   'open.step.download.label': 'Stažení',
   'open.step.download.title': 'Stahujeme zašifrovanou zprávu',
-  'open.step.download.detail': 'klíč zůstává jen u\u{A0}vás',
+  'open.step.download.detail': 'klíč se na server neposílá',
   'open.step.decrypt.label': 'Dešifrování',
   'open.step.decrypt.title': 'Dešifrujeme',
   'open.step.decrypt.detail': 'a\u{A0}ověřujeme, že zprávu nikdo nezměnil',
@@ -563,7 +565,8 @@ export const messages = {
   'open.notice.cancelled.text':
     'Zprávu už nikdo neotevře. Pokud ji stále potřebujete, požádejte odesílatele o\u{A0}nový odkaz.',
   'open.notice.deleted': 'Zpráva byla smazána',
-  'open.notice.deleted.text': 'Smazal ji příjemce, nebo ji odstranil provozovatel.',
+  'open.notice.deleted.text':
+    'Smazal ji příjemce, nebo ji odstranil provozovatel. Pokud ji stále potřebujete, požádejte odesílatele o\u{A0}nový odkaz.',
   'open.notice.lost': 'Server už tuto zprávu neotevře',
   'open.notice.lost.text':
     'Server ztratil její klíč, nejčastěji při restartu. Zprávu už nikdo neotevře. Požádejte odesílatele, ať ji pošle znovu.',
@@ -589,16 +592,17 @@ export const messages = {
   'open.notice.reopen.text':
     'Stránka uchovává klíč jen v\u{A0}paměti, takže ho po obnovení stránky zapomněla. Otevřete odkaz znovu. Když otevření dokončíte, další otevření se nespotřebuje.',
   'open.notice.tampered': 'Zprávu nejde bezpečně otevřít',
-  'open.notice.tampered.text': 'Server nebo spojení vrátilo jiná data, než odesílatel vytvořil.',
-  'open.notice.failed': 'Něco se pokazilo',
-  'open.notice.failed.text': 'Zprávu se nepodařilo načíst. Zkuste to znovu.',
+  'open.notice.tampered.text':
+    'Server nebo spojení vrátilo jiná data, než odesílatel vytvořil. Dejte vědět odesílateli a\u{A0}požádejte ho o\u{A0}nový odkaz.',
+  'open.notice.failed': 'Zprávu se nepodařilo načíst',
+  'open.notice.failed.text': 'Zkontrolujte připojení a\u{A0}zkuste to znovu.',
   'open.notice.busy': 'Služba je přetížená',
   'open.notice.busy.text': 'Zkuste to za {time}. Opakovaným pokusem otevření nespotřebujete.',
   'open.notice.cleared': 'Stránka už zprávu neukazuje',
   'open.notice.cleared.text': 'Protože jste stránku opustili, zpráva se už nezobrazuje.',
   'open.notice.timed_out': 'Čas na zobrazení vypršel',
   'open.notice.timed_out.text':
-    'Zpráva byla na obrazovce {time}, a\u{A0}tak ji stránka smazala. Chrání to zprávu, kdybyste od zařízení odešli.',
+    'Zpráva byla na obrazovce {time}, a\u{A0}tak ji stránka zavřela. Chrání to zprávu, kdybyste od zařízení odešli.',
   'open.chip.burned': 'Smazáno bez otevření',
   'open.notice.burned': 'Zprávu jste smazali',
   'open.notice.burned.text': 'Už ji nikdo neotevře, ani vy.',

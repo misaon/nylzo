@@ -68,7 +68,7 @@ test('the sender cancels a remembered message from the sent list, then forgets e
 
   const recipient = await newPage();
   await recipient.goto(link);
-  await expect(recipient.getByText('The sender cancelled the message')).toBeVisible();
+  await expect(recipient.getByRole('heading', { name: 'The sender cancelled the message' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Clear the list' }).click();
   await dialog.getByRole('button', { name: 'Yes, clear', exact: true }).click();

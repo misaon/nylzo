@@ -245,8 +245,8 @@ export const messages: Catalog = {
     '前回、この端末ではパスワードを処理できませんでした。同じことが再び起きる場合は、別の端末でリンクを開いてください。',
   'read.rejected.wrong': 'パスワードが違います。メッセージはまだ開封されていません。あと{attempts}試せます。',
   'read.rejected.wait': 'パスワードが違います。次は{time}後に試せます。',
-  'read.rejected.malformed': 'パスワードに使えない文字が含まれています。',
-  'read.rejected.long': 'パスワードが長すぎます。',
+  'read.rejected.malformed': 'パスワードに使えない文字が含まれています。もう一度貼り付けてください。',
+  'read.rejected.long': 'パスワードが長すぎます。送信者のパスワードだけを貼り付けてください。',
   'read.delete': '開封せずに削除',
   'read.delete.rest': 'メッセージを削除',
   'read.delete.rest.short': '削除',
@@ -255,7 +255,7 @@ export const messages: Catalog = {
   'read.terms': 'メッセージを表示すると、{link}に同意したことになります。',
   'read.copy_failed': 'コピーできませんでした。メッセージの本文を選択して、手動でコピーしてください。',
   'read.delete.confirm': '削除すると、あなたも含めて誰もメッセージを開封できなくなります。',
-  'read.delete.yes': '削除する',
+  'read.delete.yes': 'メッセージを削除',
   'read.delete.no': '削除しない',
   'read.deleted_rest': '残りの開封回数を削除しました。',
   'read.delete.failed': 'メッセージを削除できませんでした。もう一度お試しください。',
@@ -278,7 +278,8 @@ export const messages: Catalog = {
   'revealed.file': '添付ファイル',
   'revealed.file.unchecked':
     '添付ファイルは暗号化されているため、Nylzoはウイルスチェックができません。信頼できる送信者からのファイルだけをダウンロードしてください。',
-  'revealed.confirm.title':
+  'revealed.confirm.title': '未確認の送信者からの添付ファイルをダウンロードしますか？',
+  'revealed.confirm.text':
     'PDF、文書、画像を含め、どのファイルにも悪意のあるコードが含まれている可能性があります。送信者を信頼できる場合にのみダウンロードしてください。',
   'revealed.confirm.extension': 'ファイルの拡張子：',
   'revealed.confirm.none': 'ファイルに拡張子がありません。',
@@ -287,8 +288,8 @@ export const messages: Catalog = {
   'revealed.history': '開封回数が残っている間は、リンクがブラウザの履歴に残ります',
   'revealed.hidden':
     '非表示の文字または文字の向きを変える文字：{count}個。これらの文字があると、画面上のテキストとコピーした内容が違って見えることがあるため、U+202Eのようなコードで表示しています。',
-  'revealed.hidden.confirm':
-    'テキストに、非表示の文字または文字の向きを変える文字が含まれています。コピーすると、送信者が書いたとおりにそのまま残ります。それでもコピーしますか？',
+  'revealed.hidden.confirm': '非表示の文字もコピーしますか？',
+  'revealed.hidden.confirm.text': 'コピーすると、送信者が書いたとおりにそのまま残ります。',
   'revealed.hidden.copy': 'それでもコピー',
   'revealed.hidden.keep': 'コピーしない',
 
@@ -535,10 +536,11 @@ export const messages: Catalog = {
   'open.passphrase.hide': 'パスワードを隠す',
   'open.passphrase.empty': '送信者から受け取ったパスワードを入力してください。',
   'open.chip.expires': '{time}まで有効',
+  'open.chip.passphrase': 'パスワードで保護',
   'open.chip.opens': { other: '開封は残り{count}回' },
   'open.chip.now': 'たった今開封',
   'open.chip.last': '最後の開封',
-  'open.chip.clears': 'あと{time}で削除',
+  'open.chip.clears': 'あと{time}で画面から消えます',
   'open.chip.first_opened': '{time}に初回開封',
   'open.chip.ended': '{time}に終了',
   'open.step.derive.label': '鍵',
@@ -549,7 +551,7 @@ export const messages: Catalog = {
   'open.step.claim.detail': '開封が1回カウントされます',
   'open.step.download.label': 'ダウンロード',
   'open.step.download.title': '暗号化されたメッセージをダウンロード中',
-  'open.step.download.detail': '鍵はあなたの手元にだけ残ります',
+  'open.step.download.detail': '鍵はサーバーに送信されません',
   'open.step.decrypt.label': '復号',
   'open.step.decrypt.title': '復号中',
   'open.step.decrypt.detail': 'あわせて、メッセージが改ざんされていないことを確認',
@@ -566,7 +568,8 @@ export const messages: Catalog = {
   'open.notice.cancelled.text':
     'このメッセージはもう誰も開封できません。まだ必要な場合は、送信者に新しいリンクを依頼してください。',
   'open.notice.deleted': 'メッセージは削除されました',
-  'open.notice.deleted.text': '受信者が削除したか、運営者が撤去しました。',
+  'open.notice.deleted.text':
+    '受信者が削除したか、運営者が撤去しました。まだ必要な場合は、送信者に新しいリンクを依頼してください。',
   'open.notice.lost': 'サーバーはこのメッセージをもう開封できません',
   'open.notice.lost.text':
     'サーバーが再起動などでこのメッセージの鍵を失いました。もう誰も開封できません。送信者にもう一度送ってもらってください。',
@@ -592,16 +595,17 @@ export const messages: Catalog = {
   'open.notice.reopen.text':
     'このページは鍵をメモリ上にのみ保持するため、ページの再読み込みで鍵が失われました。リンクを開き直してください。開封を完了しても、開封回数がさらに消費されることはありません。',
   'open.notice.tampered': 'メッセージを安全に開封できません',
-  'open.notice.tampered.text': 'サーバーまたは通信経路から、送信者が作成したものとは異なるデータが返されました。',
-  'open.notice.failed': '問題が発生しました',
-  'open.notice.failed.text': 'メッセージを読み込めませんでした。もう一度お試しください。',
+  'open.notice.tampered.text':
+    'サーバーまたは通信経路から、送信者が作成したものとは異なるデータが返されました。送信者に知らせて、新しいリンクを依頼してください。',
+  'open.notice.failed': 'メッセージを読み込めませんでした',
+  'open.notice.failed.text': '接続を確認して、もう一度お試しください。',
   'open.notice.busy': 'サービスが混み合っています',
   'open.notice.busy.text': '{time}後にもう一度お試しください。再試行しても開封回数は消費されません。',
   'open.notice.cleared': 'このページにはもうメッセージは表示されません',
   'open.notice.cleared.text': 'ページから離れたため、メッセージは表示されなくなりました。',
   'open.notice.timed_out': '表示時間が終了しました',
   'open.notice.timed_out.text':
-    'メッセージが{time}表示されていたため、このページから消去しました。端末から離れたときにメッセージを守るためです。',
+    'メッセージが{time}表示されていたため、ページがメッセージを閉じました。端末から離れたときにメッセージを守るためです。',
   'open.chip.burned': '開封せずに削除',
   'open.notice.burned': 'メッセージを削除しました',
   'open.notice.burned.text': 'あなたも含め、もう誰も開封できません。',

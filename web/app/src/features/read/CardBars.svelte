@@ -62,12 +62,14 @@
       </Button>
     {/if}
     {#if retryable && !sizing}
-      <Button variant="primary" onclick={page.retry} class="max-sm:flex-1">
+      <Button variant="primary" onclick={() => void page.retry()} class="max-sm:flex-1">
         <Icon name="refresh" class="size-4 shrink-0" animated />{translate('action.retry')}
       </Button>
     {:else}
       <Button variant="primary" href="/" class="max-sm:flex-1">
-        <Icon name="pen" class="size-3.5 shrink-0 opacity-70" animated />{translate('nav.write')}
+        <Icon name="pen" class="size-3.5 shrink-0 opacity-70" animated />
+        <span class="sm:hidden" aria-hidden="true">{translate('nav.write.short')}</span>
+        <span class="max-sm:sr-only">{translate('nav.write')}</span>
       </Button>
     {/if}
   </div>
@@ -142,11 +144,11 @@
         <p id="{id}-confirm-title" class="text-ui font-medium text-ink">
           {translate(page.revealed ? 'read.delete.rest.confirm' : 'read.delete.confirm.title')}
         </p>
-        <p id="{id}-confirm" class="mt-0.5 text-caption text-pretty text-ink-mute max-sm:sr-only">
+        <p id="{id}-confirm" class="mt-0.5 text-caption text-pretty text-ink-mute">
           {translate('read.delete.confirm')}
         </p>
       </div>
-      <div class="grid grid-cols-2 gap-1.5 sm:flex sm:items-center">
+      <div class="flex flex-wrap gap-1.5 *:min-w-fit *:flex-1 sm:flex-nowrap sm:items-center sm:*:flex-none">
         <Button
           {@attach (element) => page.focus.attach('keepMessage')(element)}
           variant="ghost"

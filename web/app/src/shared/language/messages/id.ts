@@ -250,8 +250,8 @@ export const messages: Catalog = {
     'Terakhir kali, perangkat ini gagal memproses kata sandi. Jika hal ini terulang, buka tautan di perangkat lain.',
   'read.rejected.wrong': 'Kata sandi salah. Anda belum membuka pesan ini. Masih ada {attempts} lagi.',
   'read.rejected.wait': 'Kata sandi salah. Anda bisa mencoba lagi dalam {time}.',
-  'read.rejected.malformed': 'Kata sandi berisi karakter yang tidak valid.',
-  'read.rejected.long': 'Kata sandi terlalu panjang.',
+  'read.rejected.malformed': 'Kata sandi berisi karakter yang tidak valid. Tempel ulang.',
+  'read.rejected.long': 'Kata sandi terlalu panjang. Tempel hanya kata sandi dari pengirim.',
   'read.delete': 'Hapus tanpa membuka',
   'read.delete.rest': 'Hapus pesan',
   'read.delete.rest.short': 'Hapus',
@@ -260,7 +260,7 @@ export const messages: Catalog = {
   'read.terms': 'Dengan menampilkan pesan, Anda menyetujui {link}.',
   'read.copy_failed': 'Gagal menyalin. Pilih teks pesan, lalu salin secara manual.',
   'read.delete.confirm': 'Setelah itu, tidak ada yang bisa membuka pesan ini lagi, termasuk Anda.',
-  'read.delete.yes': 'Ya, hapus',
+  'read.delete.yes': 'Hapus pesan',
   'read.delete.no': 'Jangan hapus',
   'read.deleted_rest': 'Pesan sudah dihapus dan tidak bisa dibuka lagi.',
   'read.delete.failed': 'Pesan tidak dapat dihapus. Coba lagi.',
@@ -284,7 +284,8 @@ export const messages: Catalog = {
   'revealed.file': 'Lampiran',
   'revealed.file.unchecked':
     'Lampiran ini terenkripsi, sehingga Nylzo tidak dapat memindainya dengan antivirus. Unduh hanya file dari pengirim yang Anda percayai.',
-  'revealed.confirm.title':
+  'revealed.confirm.title': 'Unduh lampiran dari pengirim yang tidak terverifikasi?',
+  'revealed.confirm.text':
     'File apa pun bisa berisi kode berbahaya, termasuk PDF, dokumen, atau gambar. Unduh hanya jika Anda memercayai pengirimnya.',
   'revealed.confirm.extension': 'Ekstensi file:',
   'revealed.confirm.none': 'File ini tidak memiliki ekstensi.',
@@ -293,8 +294,9 @@ export const messages: Catalog = {
   'revealed.history': 'Tautan tetap ada di riwayat browser selama pesan masih bisa dibuka',
   'revealed.hidden':
     'Karakter tersembunyi atau karakter yang mengubah arah teks: {count}. Kami menampilkannya sebagai kode, misalnya U+202E, karena karakter tersebut bisa membuat teks di layar terlihat berbeda dari teks yang Anda salin.',
-  'revealed.hidden.confirm':
-    'Teks ini berisi karakter tersembunyi atau karakter yang mengubah arah teks. Salinannya akan mempertahankan karakter tersebut persis seperti yang ditulis pengirim. Tetap salin?',
+  'revealed.hidden.confirm': 'Salin karakter tersembunyi juga?',
+  'revealed.hidden.confirm.text':
+    'Salinannya akan mempertahankan karakter tersebut persis seperti yang ditulis pengirim.',
   'revealed.hidden.copy': 'Tetap salin',
   'revealed.hidden.keep': 'Jangan salin',
 
@@ -541,10 +543,11 @@ export const messages: Catalog = {
   'open.passphrase.hide': 'Sembunyikan kata sandi',
   'open.passphrase.empty': 'Masukkan kata sandi dari pengirim.',
   'open.chip.expires': 'Berlaku hingga {time}',
+  'open.chip.passphrase': 'Dilindungi kata sandi',
   'open.chip.opens': { other: 'Bisa dibuka {count} kali lagi' },
   'open.chip.now': 'Baru saja dibuka',
   'open.chip.last': 'Tidak bisa dibuka lagi',
-  'open.chip.clears': 'Dihapus dalam {time}',
+  'open.chip.clears': 'Hilang dari layar dalam {time}',
   'open.chip.first_opened': 'Pertama dibuka {time}',
   'open.chip.ended': 'Berakhir {time}',
   'open.step.derive.label': 'Kunci',
@@ -555,7 +558,7 @@ export const messages: Catalog = {
   'open.step.claim.detail': 'dihitung sebagai satu kali dibuka',
   'open.step.download.label': 'Unduh',
   'open.step.download.title': 'Mengunduh pesan terenkripsi',
-  'open.step.download.detail': 'kunci hanya ada pada Anda',
+  'open.step.download.detail': 'kunci tidak dikirim ke server',
   'open.step.decrypt.label': 'Dekripsi',
   'open.step.decrypt.title': 'Mendekripsi',
   'open.step.decrypt.detail': 'dan memeriksa bahwa tidak ada yang mengubah pesan',
@@ -572,7 +575,8 @@ export const messages: Catalog = {
   'open.notice.cancelled.text':
     'Pesan ini tidak bisa dibuka lagi oleh siapa pun. Jika Anda masih membutuhkannya, minta tautan baru kepada pengirim.',
   'open.notice.deleted': 'Pesan ini sudah dihapus',
-  'open.notice.deleted.text': 'Penerima menghapusnya, atau operator menurunkannya.',
+  'open.notice.deleted.text':
+    'Penerima menghapusnya, atau operator menurunkannya. Jika Anda masih membutuhkannya, minta tautan baru kepada pengirim.',
   'open.notice.lost': 'Server tidak bisa lagi membuka pesan ini',
   'open.notice.lost.text':
     'Server kehilangan kuncinya, biasanya saat dimulai ulang. Pesan ini tidak bisa dibuka lagi oleh siapa pun. Minta pengirim untuk mengirimkannya lagi.',
@@ -598,16 +602,17 @@ export const messages: Catalog = {
   'open.notice.reopen.text':
     'Halaman ini hanya menyimpan kunci di memori, sehingga kunci terlupakan setelah halaman dimuat ulang. Buka tautan lagi. Jika Anda menyelesaikan pembukaan, pesan tidak akan dihitung dibuka lagi.',
   'open.notice.tampered': 'Pesan tidak dapat dibuka dengan aman',
-  'open.notice.tampered.text': 'Server atau koneksi mengembalikan data yang berbeda dari yang dibuat pengirim.',
-  'open.notice.failed': 'Terjadi kesalahan',
-  'open.notice.failed.text': 'Pesan tidak dapat dimuat. Coba lagi.',
+  'open.notice.tampered.text':
+    'Server atau koneksi mengembalikan data yang berbeda dari yang dibuat pengirim. Beri tahu pengirim dan minta tautan baru.',
+  'open.notice.failed': 'Pesan tidak dapat dimuat',
+  'open.notice.failed.text': 'Periksa koneksi Anda, lalu coba lagi.',
   'open.notice.busy': 'Layanan sedang sibuk',
   'open.notice.busy.text': 'Coba lagi dalam {time}. Mencoba lagi tidak akan dihitung sebagai dibuka.',
   'open.notice.cleared': 'Halaman tidak lagi menampilkan pesan',
   'open.notice.cleared.text': 'Karena Anda meninggalkan halaman, pesan tidak lagi ditampilkan.',
   'open.notice.timed_out': 'Waktu tampil sudah habis',
   'open.notice.timed_out.text':
-    'Pesan sudah tampil di layar selama {time}, sehingga halaman menghapusnya. Ini melindungi pesan jika Anda meninggalkan perangkat.',
+    'Pesan sudah tampil di layar selama {time}, sehingga halaman menutupnya. Ini melindungi pesan jika Anda meninggalkan perangkat.',
   'open.chip.burned': 'Dihapus tanpa dibuka',
   'open.notice.burned': 'Anda telah menghapus pesan ini',
   'open.notice.burned.text': 'Pesan ini tidak bisa dibuka lagi oleh siapa pun, termasuk Anda.',

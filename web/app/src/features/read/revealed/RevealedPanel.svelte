@@ -4,6 +4,7 @@
   import ConfirmDialog from '../../../shared/ui/dialog/ConfirmDialog.svelte';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
+  import ErrorNote from '../../../shared/ui/notice/ErrorNote.svelte';
   import Tooltip from '../../../shared/ui/tooltip/Tooltip.svelte';
   import type { ReadPage } from '../read-page.svelte.ts';
   import { copyOriginals, piecesOf } from './hidden-characters.ts';
@@ -48,7 +49,7 @@
           >
             {translate('revealed.title')}
           </h3>
-          <p class="truncate text-caption text-ink-mute">{translate('open.revealed.sub')}</p>
+          <p class="text-caption text-pretty text-ink-mute">{translate('open.revealed.sub')}</p>
         </div>
       </div>
       {#if page.revealed.text !== undefined}
@@ -81,18 +82,13 @@
             </span>
           </span>
         </Button>
-        <span class="sr-only" role="status"
-          >{page.copied.shown
-            ? translate('open.copied.text')
-            : page.copyFailed.shown
-              ? translate('read.copy_failed')
-              : ''}</span
-        >
+        <span class="sr-only" role="status">{page.copied.shown ? translate('open.copied.text') : ''}</span>
       {/if}
       {#if page.confirmingCopy}
         <ConfirmDialog
           id="{id}-copy"
           title={translate('revealed.hidden.confirm')}
+          message={translate('revealed.hidden.confirm.text')}
           tone="warning"
           icon="alert"
           confirmLabel={translate('revealed.hidden.copy')}
@@ -130,6 +126,10 @@
           </div>
         {/if}
         <div class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-caption text-ink-mute">
+          <ErrorNote
+            message={page.copyFailedNote ? translate('read.copy_failed') : ''}
+            class={page.copyFailedNote ? 'w-full' : 'sr-only'}
+          />
           {#if hiddenCount > 0}
             <span role="alert" class="inline-flex items-center gap-1.5 text-rose-300">
               <Icon name="alert" class="size-3.5 shrink-0" stroke={2} />
@@ -138,9 +138,7 @@
           {/if}
           {#if lastOpen}
             <span class="inline-flex items-center gap-1.5">
-              <Icon name="clock" class="size-3.5 shrink-0 text-[oklch(0.82_0.12_80)]" stroke={2} />{translate(
-                'revealed.note',
-              )}
+              <Icon name="clock" class="size-3.5 shrink-0 text-solar-300" stroke={2} />{translate('revealed.note')}
             </span>
           {/if}
           {#if historyNoted}
@@ -151,7 +149,7 @@
               ]}
               aria-hidden={page.restDeleted}
             >
-              <Icon name="alert" class="size-3.5 shrink-0 text-[oklch(0.82_0.12_80)]" stroke={2} />
+              <Icon name="alert" class="size-3.5 shrink-0 text-solar-300" stroke={2} />
               {translate('revealed.history')}
             </span>
           {/if}

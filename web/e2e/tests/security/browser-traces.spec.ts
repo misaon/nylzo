@@ -57,7 +57,7 @@ test(
       await route.fulfill({ response, body: Buffer.alloc(0) });
     });
     await showMessage(page, message.link);
-    await expect(page.getByText('The message cannot be opened safely')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'The message cannot be opened safely' })).toBeVisible();
     const stored = await browserStorage(page);
     expect(Object.keys(stored.session).toSorted((left, right) => left.localeCompare(right))).toEqual([
       'nylzo:dropped:r',
@@ -69,7 +69,7 @@ test(
 
     await page.unrouteAll();
     await page.reload();
-    await expect(page.getByText('Open the link again to finish')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Open the link again to finish' })).toBeVisible();
     await page.goto(message.link);
     await expect(page.getByText('You already opened the message here')).toBeVisible();
     await page.getByRole('button', { name: 'Show message' }).click();

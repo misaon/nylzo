@@ -48,7 +48,7 @@ test(
 
     const late = await newPage();
     await late.goto(link);
-    await expect(late.getByText('The message has already been opened')).toBeVisible();
+    await expect(late.getByRole('heading', { name: 'The message has already been opened' })).toBeVisible();
 
     const { id, secret } = parseLink(link);
     const { readSeed, passphraseSalt } = await deriveLink(id, secret);

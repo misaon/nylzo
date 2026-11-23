@@ -27,7 +27,7 @@
 
 <svelte:document onvisibilitychange={page.checkCountdown} />
 
-<section id="open" class="px-4 pt-16 pb-20 sm:px-6 md:pt-24 md:pb-28" aria-labelledby="read-title">
+<section id="open" class="px-4 pt-16 pb-1 sm:px-6 md:pt-24 md:pb-9" aria-labelledby="read-title">
   <p class="sr-only" role="status" aria-live="polite">{page.status}</p>
   {#if page.settled}
     <div class="relative mx-auto flex max-w-column flex-col items-center text-center">

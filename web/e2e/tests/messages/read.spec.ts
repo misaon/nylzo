@@ -4,6 +4,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '../support/fixtures.ts';
 import { createMessageThroughApi } from '../support/messages.ts';
 import {
+  deleteRestButton,
   expectMessageShown,
   leavePage,
   nextFrames,
@@ -47,14 +48,14 @@ test('loading drops the key from the address, and reloading or a return from the
   await expect(show).toBeVisible();
   expect(new URL(page.url()).hash).toBe('');
   await page.reload();
-  await expect(page.getByText(REMOVED)).toBeVisible();
+  await expect(page.getByRole('heading', { name: REMOVED })).toBeVisible();
   await page.goto(message.link);
   await expect(notInert(page, show)).toBeVisible();
   expect(new URL(page.url()).hash).toBe('');
   await leavePage(page);
   await expect(page.getByText(LEFT)).toBeVisible();
   await returnFromBackForwardCache(page);
-  await expect(page.getByText(REMOVED)).toBeVisible();
+  await expect(page.getByRole('heading', { name: REMOVED })).toBeVisible();
   expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 0 });
   await page.goto(message.link);
   await notInert(page, show).click();
@@ -69,7 +70,7 @@ test(
     try {
       const message = await createMessageThroughApi({ text: 'only once in this tab', opensMax: 2 });
       const readPage = `${BASE_URL}/r`;
-      const removed = page.getByText(REMOVED);
+      const removed = page.getByRole('heading', { name: REMOVED });
       await openApp(page, '/');
       await showMessage(page, message.link);
       await expectMessageShown(page);
@@ -151,7 +152,7 @@ test('the reader acknowledges the open only once the message is on the screen, a
   expect(acknowledgements).toEqual([]);
 
   await page.reload();
-  await expect(page.getByText('Open the link again to finish')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Open the link again to finish' })).toBeVisible();
   await page.goto(message.link);
   await expect(page.getByText('You already opened the message here')).toBeVisible();
   const acknowledged = page.waitForResponse((response) => response.url().endsWith('/ack'));
@@ -190,14 +191,14 @@ test('leaving the page wipes the shown message and closes its dialogs without de
   await showMessage(page, message.link);
   await expectMessageShown(page);
   await expect(page.locator('pre')).toHaveText('gone after leaving');
-  await page.getByRole('button', { name: 'Delete message' }).click();
+  await deleteRestButton(page).click();
   await expect(notInert(page, page.getByRole('alertdialog'))).toBeVisible();
   await leavePage(page);
   await expect(page.getByText(LEFT)).toBeVisible();
   await expect(page.locator('pre')).toHaveCount(0);
   const dialogs = page.getByRole('dialog').or(page.getByRole('alertdialog'));
   await expect(notInert(page, dialogs)).toHaveCount(0);
-  await expect(notInert(page, page.getByRole('button', { name: 'Delete message' }))).toHaveCount(0);
+  await expect(notInert(page, deleteRestButton(page))).toHaveCount(0);
   expect(await message.status()).toMatchObject({ state: 'available', opensUsed: 1 });
 });
 
@@ -286,7 +287,7 @@ test('the reader stops before the handshake when the server reports another pass
     await route.fulfill({ response, json: { ...fields, kdf_id: KDF_NONE } });
   });
   await page.goto(message.link);
-  await expect(page.getByText(/cannot be opened safely/u)).toBeVisible();
+  await expect(page.getByRole('heading', { name: /cannot be opened safely/u })).toBeVisible();
   await expect(notInert(page, page.getByRole('button', { name: 'Show message' }))).toHaveCount(0);
   expect(sensitive).toEqual([]);
   expect(await message.status()).toMatchObject({ opensUsed: 0, failedPassphraseAttempts: 0 });
@@ -342,7 +343,7 @@ test(
     await expect(page.getByText('Hidden or direction-changing characters in the text: 1.')).toBeVisible();
     expect(await page.locator('pre').textContent()).not.toContain('\u{202E}');
     await page.getByRole('button', { name: 'Copy message' }).click();
-    const confirm = page.getByRole('dialog', { name: /hidden or direction-changing characters/u });
+    const confirm = page.getByRole('dialog', { name: 'Copy the hidden characters too?' });
     await expect(confirm.getByText(/A copy keeps them exactly as the sender wrote them/u)).toBeVisible();
     await confirm.getByRole('button', { name: 'Do not copy' }).click();
     await expect(confirm).toHaveCount(0);

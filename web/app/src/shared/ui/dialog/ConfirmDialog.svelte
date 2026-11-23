@@ -81,7 +81,7 @@
   {#if message}
     <p id={`${id}-message`} class="mt-1.5 text-body text-pretty text-ink-soft">{message}</p>
   {/if}
-  <div class="mt-6 grid grid-cols-2 gap-2">
+  <div class="mt-6 flex flex-wrap gap-2 *:min-w-fit *:flex-1">
     <Button variant="ghost" onclick={() => void report(false)}>{dismissLabel}</Button>
     <Button variant={tone === 'danger' ? 'danger' : 'primary'} onclick={() => void report(true)}>
       {#if tone === 'danger'}

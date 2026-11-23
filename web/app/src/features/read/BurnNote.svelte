@@ -14,7 +14,7 @@
 
 <p
   class={[
-    'absolute inset-x-0 top-full mt-4 flex items-center justify-center gap-2 px-1 text-center text-caption fade-swap max-sm:block max-sm:text-balance',
+    'mt-4 flex min-h-[3lh] items-start justify-center gap-2 px-1 text-center text-caption fade-swap max-sm:block max-sm:text-balance',
     page.burnFailed ? 'text-rose-200' : 'text-ink-soft',
     page.burnNote ? 'opacity-100' : 'invisible opacity-0',
   ]}

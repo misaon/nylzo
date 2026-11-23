@@ -41,8 +41,8 @@
           <Icon name="file" class="size-5.5" />
         </span>
         <span class="min-w-0 flex-1">
-          <bdi translate="no" class="flex min-w-0 text-title-sm text-ink"
-            ><span class="truncate">{parts.stem}</span><span class="shrink-0">{parts.extension}</span></bdi
+          <bdi translate="no" class="block text-title-sm wrap-anywhere text-ink"
+            >{parts.stem}<span class="whitespace-nowrap">{parts.extension}</span></bdi
           >
           <span translate="no" class="mt-1 block text-caption text-ink-mute tabular-nums"
             >{kind ? `${kind} · ${size}` : size}</span
@@ -74,14 +74,15 @@
       >
         <div class="flex min-w-0 items-center gap-3.5">
           <span
-            class="grid size-10 shrink-0 place-items-center rounded-control text-white tile-danger"
+            class="grid size-10 shrink-0 place-items-center rounded-control text-white tile-warning"
             aria-hidden="true"
           >
             <Icon name="alert" class="size-5" />
           </span>
           <span class="min-w-0">
             <span id="{id}-confirm-title" class="block text-ui text-ink">{translate('revealed.confirm.title')}</span>
-            <span id="{id}-confirm" class="block text-micro text-ink-mute"
+            <span id="{id}-confirm" class="block text-micro text-pretty text-ink-mute"
+              ><span class="block">{translate('revealed.confirm.text')}</span
               >{#if extension}{`${translate('revealed.confirm.extension')} `}<bdi translate="no">{`.${extension}`}</bdi
                 >{:else}{translate('revealed.confirm.none')}{/if}</span
             >
@@ -98,7 +99,7 @@
             {translate('revealed.confirm.cancel')}
           </Button>
           <Button
-            variant="danger"
+            variant="tint"
             disabled={!page.download.shown}
             aria-disabled={page.download.shown && !page.download.ready}
             onclick={(event: MouseEvent) => void page.download.confirm(event, file)}
@@ -111,7 +112,7 @@
     <p
       class="flex items-center gap-2 border-t border-white/8 bg-white/3 px-3.5 py-2.5 text-caption text-pretty text-ink-mute"
     >
-      <Icon name="shield" class="size-3.5 shrink-0 text-[oklch(0.82_0.12_80)]" stroke={2} />
+      <Icon name="shield" class="size-3.5 shrink-0 text-solar-300" stroke={2} />
       <span>{translate('revealed.file.unchecked')}</span>
     </p>
   </div>

@@ -151,3 +151,7 @@ export async function nextFrames(page: Page): Promise<void> {
 export function notInert(page: Page, locator: Locator): Locator {
   return locator.and(page.locator(':not([inert]):not([inert] *)'));
 }
+
+export function deleteRestButton(page: Page): Locator {
+  return page.getByRole('button', { name: 'Delete message' }).and(page.locator(':not([role="alertdialog"] *)'));
+}

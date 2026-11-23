@@ -252,8 +252,8 @@ export const messages: Catalog = {
     'L’ultima volta questo dispositivo non è riuscito a elaborare la password. Se succede di nuovo, apri il link su un altro dispositivo.',
   'read.rejected.wrong': 'Password errata. Il messaggio non è stato aperto. Hai ancora {attempts}.',
   'read.rejected.wait': 'Password errata. Puoi riprovare tra {time}.',
-  'read.rejected.malformed': 'La password contiene caratteri non validi.',
-  'read.rejected.long': 'La password è troppo lunga.',
+  'read.rejected.malformed': 'La password contiene caratteri non validi. Incollala di nuovo.',
+  'read.rejected.long': 'La password è troppo lunga. Incolla solo la password del mittente.',
   'read.delete': 'Elimina senza aprire',
   'read.delete.rest': 'Elimina messaggio',
   'read.delete.rest.short': 'Elimina',
@@ -262,7 +262,7 @@ export const messages: Catalog = {
   'read.terms': 'Mostrando il messaggio accetti i {link}.',
   'read.copy_failed': 'Copia non riuscita. Seleziona il testo del messaggio e copialo a mano.',
   'read.delete.confirm': 'Poi nessuno potrà più aprire il messaggio, nemmeno tu.',
-  'read.delete.yes': 'Sì, elimina',
+  'read.delete.yes': 'Elimina messaggio',
   'read.delete.no': 'Non eliminare',
   'read.deleted_rest': 'Le aperture rimanenti sono state eliminate.',
   'read.delete.failed': 'Impossibile eliminare il messaggio. Riprova.',
@@ -285,7 +285,8 @@ export const messages: Catalog = {
   'revealed.file': 'Allegato',
   'revealed.file.unchecked':
     'L’allegato è cifrato, quindi Nylzo non può controllarlo con un antivirus. Scarica solo file di mittenti di cui ti fidi.',
-  'revealed.confirm.title':
+  'revealed.confirm.title': 'Scaricare un allegato da un mittente non verificato?',
+  'revealed.confirm.text':
     'Qualsiasi file può contenere codice dannoso, anche un PDF, un documento o un’immagine. Scaricalo solo se ti fidi del mittente.',
   'revealed.confirm.extension': 'Estensione del file:',
   'revealed.confirm.none': 'Il file non ha estensione.',
@@ -294,8 +295,8 @@ export const messages: Catalog = {
   'revealed.history': 'Il link rimane nella cronologia del browser finché ci sono aperture disponibili',
   'revealed.hidden':
     'Caratteri nascosti o che cambiano la direzione del testo: {count}. Li mostriamo come codici, ad esempio U+202E, perché a causa loro il testo sullo schermo può apparire diverso da come lo copi.',
-  'revealed.hidden.confirm':
-    'Il testo contiene caratteri nascosti o che cambiano la direzione del testo. La copia li conserva esattamente come li ha scritti il mittente. Copiare comunque?',
+  'revealed.hidden.confirm': 'Copiare anche i caratteri nascosti?',
+  'revealed.hidden.confirm.text': 'La copia li conserva esattamente come li ha scritti il mittente.',
   'revealed.hidden.copy': 'Copia comunque',
   'revealed.hidden.keep': 'Non copiare',
 
@@ -540,10 +541,11 @@ export const messages: Catalog = {
   'open.passphrase.hide': 'Nascondi password',
   'open.passphrase.empty': 'Inserisci la password ricevuta dal mittente.',
   'open.chip.expires': 'Scadenza: {time}',
+  'open.chip.passphrase': 'Protetto da password',
   'open.chip.opens': { one: 'Resta {count}\u{A0}apertura', other: 'Restano {count}\u{A0}aperture' },
   'open.chip.now': 'Aperto ora',
   'open.chip.last': 'Ultima apertura',
-  'open.chip.clears': 'Eliminazione tra {time}',
+  'open.chip.clears': 'Sparisce dallo schermo tra {time}',
   'open.chip.first_opened': 'Prima apertura: {time}',
   'open.chip.ended': 'Terminato: {time}',
   'open.step.derive.label': 'Chiave',
@@ -554,7 +556,7 @@ export const messages: Catalog = {
   'open.step.claim.detail': 'viene conteggiata un’apertura',
   'open.step.download.label': 'Download',
   'open.step.download.title': 'Scarichiamo il messaggio cifrato',
-  'open.step.download.detail': 'la chiave resta solo da te',
+  'open.step.download.detail': 'la chiave non viene inviata al server',
   'open.step.decrypt.label': 'Decifratura',
   'open.step.decrypt.title': 'Decifriamo',
   'open.step.decrypt.detail': 'e verifichiamo che nessuno abbia modificato il messaggio',
@@ -570,7 +572,8 @@ export const messages: Catalog = {
   'open.notice.cancelled': 'Il mittente ha annullato il messaggio',
   'open.notice.cancelled.text': 'Nessuno potrà più aprirlo. Se ti serve ancora, chiedi al mittente un nuovo link.',
   'open.notice.deleted': 'Il messaggio è stato eliminato',
-  'open.notice.deleted.text': 'Lo ha eliminato il destinatario o lo ha rimosso il gestore.',
+  'open.notice.deleted.text':
+    'Lo ha eliminato il destinatario o lo ha rimosso il gestore. Se ti serve ancora, chiedi al mittente un nuovo link.',
   'open.notice.lost': 'Il server non può più aprire questo messaggio',
   'open.notice.lost.text':
     'Il server ha perso la sua chiave, di solito durante un riavvio. Nessuno potrà più aprirlo. Chiedi al mittente di inviarlo di nuovo.',
@@ -597,16 +600,16 @@ export const messages: Catalog = {
     'La pagina conserva la chiave solo in memoria, quindi l’ha dimenticata quando è stata ricaricata. Apri di nuovo il link. Completando l’apertura non ne consumi un’altra.',
   'open.notice.tampered': 'Il messaggio non si può aprire in sicurezza',
   'open.notice.tampered.text':
-    'Il server o la connessione hanno restituito dati diversi da quelli creati dal mittente.',
-  'open.notice.failed': 'Qualcosa è andato storto',
-  'open.notice.failed.text': 'Impossibile caricare il messaggio. Riprova.',
+    'Il server o la connessione hanno restituito dati diversi da quelli creati dal mittente. Avvisa il mittente e chiedigli un nuovo link.',
+  'open.notice.failed': 'Impossibile caricare il messaggio',
+  'open.notice.failed.text': 'Controlla la connessione e riprova.',
   'open.notice.busy': 'Il servizio è sovraccarico',
   'open.notice.busy.text': 'Riprova tra {time}. Riprovare non consuma aperture.',
   'open.notice.cleared': 'La pagina non mostra più il messaggio',
   'open.notice.cleared.text': 'Hai lasciato la pagina, quindi il messaggio non viene più mostrato.',
   'open.notice.timed_out': 'Il tempo di visualizzazione è scaduto',
   'open.notice.timed_out.text':
-    'Il messaggio è rimasto sullo schermo per {time}, quindi la pagina lo ha eliminato. Così il messaggio è protetto nel caso ti allontani dal dispositivo.',
+    'Il messaggio è rimasto sullo schermo per {time}, quindi la pagina lo ha chiuso. Così il messaggio è protetto nel caso ti allontani dal dispositivo.',
   'open.chip.burned': 'Eliminato senza apertura',
   'open.notice.burned': 'Hai eliminato il messaggio',
   'open.notice.burned.text': 'Nessuno potrà più aprirlo, nemmeno tu.',

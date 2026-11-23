@@ -247,8 +247,8 @@ export const messages: Catalog = {
     'Da última vez, este dispositivo não conseguiu processar a senha. Se isso se repetir, abra o link em outro dispositivo.',
   'read.rejected.wrong': 'Senha incorreta. A mensagem ainda não foi aberta. Você tem mais {attempts}.',
   'read.rejected.wait': 'Senha incorreta. Você poderá tentar de novo em {time}.',
-  'read.rejected.malformed': 'A senha contém caracteres inválidos.',
-  'read.rejected.long': 'A senha é longa demais.',
+  'read.rejected.malformed': 'A senha contém caracteres inválidos. Cole-a novamente.',
+  'read.rejected.long': 'A senha é longa demais. Cole apenas a senha do remetente.',
   'read.delete': 'Apagar sem abrir',
   'read.delete.rest': 'Apagar mensagem',
   'read.delete.rest.short': 'Apagar',
@@ -257,7 +257,7 @@ export const messages: Catalog = {
   'read.terms': 'Ao mostrar a mensagem, você aceita os {link}.',
   'read.copy_failed': 'Não foi possível copiar. Selecione o texto da mensagem e copie à mão.',
   'read.delete.confirm': 'Depois disso, ninguém mais poderá abri-la, nem você.',
-  'read.delete.yes': 'Sim, apagar',
+  'read.delete.yes': 'Apagar mensagem',
   'read.delete.no': 'Não apagar',
   'read.deleted_rest': 'As aberturas restantes foram apagadas.',
   'read.delete.failed': 'Não foi possível apagar a mensagem. Tente novamente.',
@@ -281,7 +281,8 @@ export const messages: Catalog = {
   'revealed.file': 'Anexo',
   'revealed.file.unchecked':
     'O anexo é criptografado, então o Nylzo não consegue verificá-lo com um antivírus. Baixe apenas arquivos de remetentes em quem você confia.',
-  'revealed.confirm.title':
+  'revealed.confirm.title': 'Baixar um anexo de um remetente não verificado?',
+  'revealed.confirm.text':
     'Qualquer arquivo pode conter código malicioso, até um PDF, um documento ou uma imagem. Baixe-o apenas se você confiar no remetente.',
   'revealed.confirm.extension': 'Extensão do arquivo:',
   'revealed.confirm.none': 'O arquivo não tem extensão.',
@@ -290,8 +291,8 @@ export const messages: Catalog = {
   'revealed.history': 'O link fica no histórico do navegador enquanto restarem aberturas',
   'revealed.hidden':
     'Caracteres ocultos ou que mudam a direção do texto: {count}. Nós os mostramos como códigos, por exemplo U+202E, porque eles podem fazer o texto na tela parecer diferente do que você copia.',
-  'revealed.hidden.confirm':
-    'O texto contém caracteres ocultos ou que mudam a direção do texto. A cópia os mantém exatamente como o remetente os escreveu. Copiar mesmo assim?',
+  'revealed.hidden.confirm': 'Copiar também os caracteres ocultos?',
+  'revealed.hidden.confirm.text': 'A cópia os mantém exatamente como o remetente os escreveu.',
   'revealed.hidden.copy': 'Copiar mesmo assim',
   'revealed.hidden.keep': 'Não copiar',
 
@@ -537,10 +538,11 @@ export const messages: Catalog = {
   'open.passphrase.hide': 'Ocultar senha',
   'open.passphrase.empty': 'Digite a senha enviada pelo remetente.',
   'open.chip.expires': 'Vale até {time}',
+  'open.chip.passphrase': 'Protegida por senha',
   'open.chip.opens': { one: 'Resta {count} abertura', other: 'Restam {count} aberturas' },
   'open.chip.now': 'Aberta agora',
   'open.chip.last': 'Última abertura',
-  'open.chip.clears': 'Será apagada em {time}',
+  'open.chip.clears': 'Sai da tela em {time}',
   'open.chip.first_opened': 'Aberta pela primeira vez em {time}',
   'open.chip.ended': 'Encerrada em {time}',
   'open.step.derive.label': 'Chave',
@@ -551,7 +553,7 @@ export const messages: Catalog = {
   'open.step.claim.detail': 'uma abertura é contabilizada',
   'open.step.download.label': 'Download',
   'open.step.download.title': 'Baixando a mensagem criptografada',
-  'open.step.download.detail': 'a chave fica só com você',
+  'open.step.download.detail': 'a chave não é enviada ao servidor',
   'open.step.decrypt.label': 'Descriptografia',
   'open.step.decrypt.title': 'Descriptografando',
   'open.step.decrypt.detail': 'e verificando se ninguém alterou a mensagem',
@@ -568,7 +570,8 @@ export const messages: Catalog = {
   'open.notice.cancelled.text':
     'Ninguém mais poderá abri-la. Se você ainda precisar dela, peça ao remetente um novo link.',
   'open.notice.deleted': 'A mensagem foi apagada',
-  'open.notice.deleted.text': 'O destinatário a apagou ou o operador a removeu.',
+  'open.notice.deleted.text':
+    'O destinatário a apagou ou o operador a removeu. Se você ainda precisar dela, peça ao remetente um novo link.',
   'open.notice.lost': 'O servidor não consegue mais abrir esta mensagem',
   'open.notice.lost.text':
     'O servidor perdeu a chave dela, geralmente ao reiniciar. Ninguém mais poderá abrir esta mensagem. Peça ao remetente que a envie de novo.',
@@ -594,16 +597,17 @@ export const messages: Catalog = {
   'open.notice.reopen.text':
     'A página guarda a chave só na memória, por isso a esqueceu quando foi recarregada. Abra o link de novo. Concluir a abertura não consome outra abertura.',
   'open.notice.tampered': 'Não é possível abrir a mensagem com segurança',
-  'open.notice.tampered.text': 'O servidor ou a conexão retornou dados diferentes dos que o remetente criou.',
-  'open.notice.failed': 'Algo deu errado',
-  'open.notice.failed.text': 'Não foi possível carregar a mensagem. Tente novamente.',
+  'open.notice.tampered.text':
+    'O servidor ou a conexão retornou dados diferentes dos que o remetente criou. Avise o remetente e peça um novo link.',
+  'open.notice.failed': 'Não foi possível carregar a mensagem',
+  'open.notice.failed.text': 'Verifique sua conexão e tente novamente.',
   'open.notice.busy': 'O serviço está sobrecarregado',
   'open.notice.busy.text': 'Tente novamente em {time}. Tentar de novo não consome uma abertura.',
   'open.notice.cleared': 'A página não mostra mais a mensagem',
   'open.notice.cleared.text': 'Como você saiu da página, a mensagem não é mais exibida.',
   'open.notice.timed_out': 'O tempo de exibição acabou',
   'open.notice.timed_out.text':
-    'A mensagem ficou na tela por {time}, então a página a apagou. Isso protege a mensagem caso você se afaste do dispositivo.',
+    'A mensagem ficou na tela por {time}, então a página a fechou. Isso protege a mensagem caso você se afaste do dispositivo.',
   'open.chip.burned': 'Apagada sem abrir',
   'open.notice.burned': 'Você apagou a mensagem',
   'open.notice.burned.text': 'Ninguém mais poderá abri-la, nem você.',

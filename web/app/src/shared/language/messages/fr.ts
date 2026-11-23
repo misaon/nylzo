@@ -254,8 +254,8 @@ export const messages: Catalog = {
     'La dernière fois, cet appareil n’a pas réussi à traiter le mot de passe. Si cela se reproduit, ouvrez le lien sur un autre appareil.',
   'read.rejected.wrong': 'Mot de passe incorrect. Vous n’avez pas encore ouvert le message. Il vous reste {attempts}.',
   'read.rejected.wait': 'Mot de passe incorrect. Vous pourrez réessayer dans {time}.',
-  'read.rejected.malformed': 'Le mot de passe contient des caractères non valides.',
-  'read.rejected.long': 'Le mot de passe est trop long.',
+  'read.rejected.malformed': 'Le mot de passe contient des caractères non valides. Collez-le à nouveau.',
+  'read.rejected.long': 'Le mot de passe est trop long. Collez uniquement le mot de passe de l’expéditeur.',
   'read.delete': 'Supprimer sans ouvrir',
   'read.delete.rest': 'Supprimer le message',
   'read.delete.rest.short': 'Supprimer',
@@ -264,7 +264,7 @@ export const messages: Catalog = {
   'read.terms': 'En affichant le message, vous acceptez les {link}.',
   'read.copy_failed': 'La copie a échoué. Sélectionnez le texte du message et copiez-le à la main.',
   'read.delete.confirm': 'Ensuite, plus personne ne pourra l’ouvrir, pas même vous.',
-  'read.delete.yes': 'Oui, supprimer',
+  'read.delete.yes': 'Supprimer le message',
   'read.delete.no': 'Ne pas supprimer',
   'read.deleted_rest': 'Les ouvertures restantes sont supprimées.',
   'read.delete.failed': 'Impossible de supprimer le message. Réessayez.',
@@ -289,7 +289,8 @@ export const messages: Catalog = {
   'revealed.file': 'Pièce jointe',
   'revealed.file.unchecked':
     'La pièce jointe est chiffrée, Nylzo ne peut donc pas l’analyser avec un antivirus. Ne téléchargez que des fichiers d’expéditeurs de confiance.',
-  'revealed.confirm.title':
+  'revealed.confirm.title': 'Télécharger une pièce jointe d’un expéditeur non vérifié\u{A0}?',
+  'revealed.confirm.text':
     'Tout fichier peut contenir un logiciel malveillant, même un PDF, un document ou une image. Ne le téléchargez que si vous faites confiance à l’expéditeur.',
   'revealed.confirm.extension': 'Extension du fichier\u{A0}:',
   'revealed.confirm.none': 'Le fichier n’a pas d’extension.',
@@ -298,8 +299,8 @@ export const messages: Catalog = {
   'revealed.history': 'Le lien reste dans l’historique du navigateur tant qu’il reste des ouvertures',
   'revealed.hidden':
     'Caractères masqués ou changeant la direction du texte\u{A0}: {count}. Nous les affichons sous forme de codes, par exemple U+202E, car ils peuvent faire apparaître le texte à l’écran autrement que ce que vous copiez.',
-  'revealed.hidden.confirm':
-    'Le texte contient des caractères masqués ou changeant la direction du texte. La copie les conserve exactement tels que l’expéditeur les a écrits. Copier quand même\u{A0}?',
+  'revealed.hidden.confirm': 'Copier aussi les caractères masqués\u{A0}?',
+  'revealed.hidden.confirm.text': 'La copie les conserve exactement tels que l’expéditeur les a écrits.',
   'revealed.hidden.copy': 'Copier quand même',
   'revealed.hidden.keep': 'Ne pas copier',
 
@@ -548,10 +549,11 @@ export const messages: Catalog = {
   'open.passphrase.hide': 'Masquer le mot de passe',
   'open.passphrase.empty': 'Saisissez le mot de passe de l’expéditeur.',
   'open.chip.expires': 'Valable jusqu’au {time}',
+  'open.chip.passphrase': 'Protégé par mot de passe',
   'open.chip.opens': { one: '{count} ouverture restante', other: '{count} ouvertures restantes' },
   'open.chip.now': 'Ouvert à l’instant',
   'open.chip.last': 'Dernière ouverture',
-  'open.chip.clears': 'Supprimé dans {time}',
+  'open.chip.clears': 'Masqué dans {time}',
   'open.chip.first_opened': 'Première ouverture le {time}',
   'open.chip.ended': 'Terminé le {time}',
   'open.step.derive.label': 'Clé',
@@ -562,7 +564,7 @@ export const messages: Catalog = {
   'open.step.claim.detail': 'une ouverture est décomptée',
   'open.step.download.label': 'Téléchargement',
   'open.step.download.title': 'Téléchargement du message chiffré',
-  'open.step.download.detail': 'la clé reste uniquement chez vous',
+  'open.step.download.detail': 'la clé n’est pas envoyée au serveur',
   'open.step.decrypt.label': 'Déchiffrement',
   'open.step.decrypt.title': 'Déchiffrement',
   'open.step.decrypt.detail': 'et vérification que personne n’a modifié le message',
@@ -579,7 +581,8 @@ export const messages: Catalog = {
   'open.notice.cancelled.text':
     'Plus personne ne peut l’ouvrir. Si vous en avez encore besoin, demandez un nouveau lien à l’expéditeur.',
   'open.notice.deleted': 'Le message a été supprimé',
-  'open.notice.deleted.text': 'Le destinataire l’a supprimé, ou l’exploitant l’a retiré.',
+  'open.notice.deleted.text':
+    'Le destinataire l’a supprimé, ou l’exploitant l’a retiré. Si vous en avez encore besoin, demandez un nouveau lien à l’expéditeur.',
   'open.notice.lost': 'Le serveur ne peut plus ouvrir ce message',
   'open.notice.lost.text':
     'Le serveur a perdu sa clé, le plus souvent lors d’un redémarrage. Plus personne ne peut l’ouvrir. Demandez à l’expéditeur de vous le renvoyer.',
@@ -606,16 +609,16 @@ export const messages: Catalog = {
     'La page ne garde la clé qu’en mémoire, elle l’a donc oubliée lors de l’actualisation. Rouvrez le lien. Si vous terminez l’ouverture, aucune autre ouverture ne sera consommée.',
   'open.notice.tampered': 'Le message ne peut pas être ouvert en toute sécurité',
   'open.notice.tampered.text':
-    'Le serveur ou la connexion a renvoyé d’autres données que celles créées par l’expéditeur.',
-  'open.notice.failed': 'Un problème est survenu',
-  'open.notice.failed.text': 'Impossible de charger le message. Réessayez.',
+    'Le serveur ou la connexion a renvoyé d’autres données que celles créées par l’expéditeur. Prévenez l’expéditeur et demandez-lui un nouveau lien.',
+  'open.notice.failed': 'Impossible de charger le message',
+  'open.notice.failed.text': 'Vérifiez votre connexion et réessayez.',
   'open.notice.busy': 'Le service est surchargé',
   'open.notice.busy.text': 'Réessayez dans {time}. Une nouvelle tentative ne consomme pas d’ouverture.',
   'open.notice.cleared': 'La page n’affiche plus le message',
   'open.notice.cleared.text': 'Comme vous avez quitté la page, le message n’est plus affiché.',
   'open.notice.timed_out': 'Le temps d’affichage est écoulé',
   'open.notice.timed_out.text':
-    'Le message est resté affiché {time}, la page l’a donc effacé. Cela le protège au cas où vous vous éloigneriez de l’appareil.',
+    'Le message est resté affiché {time}, la page l’a donc fermé. Cela le protège au cas où vous vous éloigneriez de l’appareil.',
   'open.chip.burned': 'Supprimé sans ouverture',
   'open.notice.burned': 'Vous avez supprimé le message',
   'open.notice.burned.text': 'Plus personne ne peut l’ouvrir, pas même vous.',

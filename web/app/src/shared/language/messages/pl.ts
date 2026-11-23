@@ -280,8 +280,8 @@ export const messages: Catalog = {
     'Ostatnim razem to urządzenie nie zdołało przetworzyć hasła. Jeśli to się powtórzy, otwórz link na innym urządzeniu.',
   'read.rejected.wrong': 'Nieprawidłowe hasło. Wiadomość pozostaje nieotwarta. Jeszcze {attempts}.',
   'read.rejected.wait': 'Nieprawidłowe hasło. Kolejna próba będzie możliwa za {time}.',
-  'read.rejected.malformed': 'Hasło zawiera niedozwolone znaki.',
-  'read.rejected.long': 'Hasło jest za długie.',
+  'read.rejected.malformed': 'Hasło zawiera niedozwolone znaki. Wklej je ponownie.',
+  'read.rejected.long': 'Hasło jest za długie. Wklej tylko hasło od nadawcy.',
   'read.delete': 'Usuń bez otwierania',
   'read.delete.rest': 'Usuń wiadomość',
   'read.delete.rest.short': 'Usuń',
@@ -290,7 +290,7 @@ export const messages: Catalog = {
   'read.terms': 'Wyświetlając wiadomość, akceptujesz {link}.',
   'read.copy_failed': 'Nie udało się skopiować. Zaznacz tekst wiadomości i\u{A0}skopiuj go ręcznie.',
   'read.delete.confirm': 'Potem nikt już jej nie otworzy, nawet ty.',
-  'read.delete.yes': 'Tak, usuń',
+  'read.delete.yes': 'Usuń wiadomość',
   'read.delete.no': 'Nie usuwaj',
   'read.deleted_rest': 'Pozostałe otwarcia zostały usunięte.',
   'read.delete.failed': 'Nie udało się usunąć wiadomości. Spróbuj ponownie.',
@@ -313,7 +313,8 @@ export const messages: Catalog = {
   'revealed.file': 'Załącznik',
   'revealed.file.unchecked':
     'Załącznik jest zaszyfrowany, więc Nylzo nie może sprawdzić go programem antywirusowym. Pobieraj tylko pliki od nadawców, którym ufasz.',
-  'revealed.confirm.title':
+  'revealed.confirm.title': 'Pobrać załącznik od niezweryfikowanego nadawcy?',
+  'revealed.confirm.text':
     'Każdy plik może zawierać złośliwy kod, także PDF, dokument czy obraz. Pobierz go tylko wtedy, gdy ufasz nadawcy.',
   'revealed.confirm.extension': 'Rozszerzenie pliku:',
   'revealed.confirm.none': 'Plik nie ma rozszerzenia.',
@@ -322,8 +323,8 @@ export const messages: Catalog = {
   'revealed.history': 'Link zostaje w\u{A0}historii przeglądarki, dopóki nie wyczerpią się otwarcia',
   'revealed.hidden':
     'Ukryte znaki lub znaki zmieniające kierunek tekstu: {count}. Pokazujemy je jako kody, na przykład U+202E, ponieważ przez nie tekst na ekranie może wyglądać inaczej niż po skopiowaniu.',
-  'revealed.hidden.confirm':
-    'Tekst zawiera ukryte znaki lub znaki zmieniające kierunek tekstu. Kopia zachowa je dokładnie tak, jak napisał je nadawca. Skopiować mimo to?',
+  'revealed.hidden.confirm': 'Skopiować także ukryte znaki?',
+  'revealed.hidden.confirm.text': 'Kopia zachowa je dokładnie tak, jak napisał je nadawca.',
   'revealed.hidden.copy': 'Skopiuj mimo to',
   'revealed.hidden.keep': 'Nie kopiuj',
 
@@ -575,6 +576,7 @@ export const messages: Catalog = {
   'open.passphrase.hide': 'Ukryj hasło',
   'open.passphrase.empty': 'Wpisz hasło od nadawcy.',
   'open.chip.expires': 'Ważna do {time}',
+  'open.chip.passphrase': 'Chroniona hasłem',
   'open.chip.opens': {
     one: 'Zostało {count}\u{A0}otwarcie',
     few: 'Zostały {count}\u{A0}otwarcia',
@@ -583,7 +585,7 @@ export const messages: Catalog = {
   },
   'open.chip.now': 'Otwarta przed chwilą',
   'open.chip.last': 'Ostatnie otwarcie',
-  'open.chip.clears': 'Usunięcie za {time}',
+  'open.chip.clears': 'Zniknie z\u{A0}ekranu za {time}',
   'open.chip.first_opened': 'Pierwsze otwarcie {time}',
   'open.chip.ended': 'Zakończona {time}',
   'open.step.derive.label': 'Klucz',
@@ -594,7 +596,7 @@ export const messages: Catalog = {
   'open.step.claim.detail': 'zostanie policzone jedno otwarcie',
   'open.step.download.label': 'Pobieranie',
   'open.step.download.title': 'Pobieramy zaszyfrowaną wiadomość',
-  'open.step.download.detail': 'klucz zostaje tylko u\u{A0}ciebie',
+  'open.step.download.detail': 'klucz nie trafia na serwer',
   'open.step.decrypt.label': 'Odszyfrowanie',
   'open.step.decrypt.title': 'Odszyfrowujemy',
   'open.step.decrypt.detail': 'i\u{A0}sprawdzamy, czy nikt nie zmienił wiadomości',
@@ -611,7 +613,8 @@ export const messages: Catalog = {
   'open.notice.cancelled.text':
     'Nikt już jej nie otworzy. Jeśli nadal jej potrzebujesz, poproś nadawcę o\u{A0}nowy link.',
   'open.notice.deleted': 'Wiadomość została usunięta',
-  'open.notice.deleted.text': 'Usunął ją odbiorca albo zdjął ją operator.',
+  'open.notice.deleted.text':
+    'Usunął ją odbiorca albo zdjął ją operator. Jeśli nadal jej potrzebujesz, poproś nadawcę o\u{A0}nowy link.',
   'open.notice.lost': 'Serwer nie może już otworzyć tej wiadomości',
   'open.notice.lost.text':
     'Serwer utracił jej klucz, zwykle przy restarcie. Nikt już tej wiadomości nie otworzy. Poproś nadawcę o\u{A0}ponowne wysłanie.',
@@ -637,16 +640,17 @@ export const messages: Catalog = {
   'open.notice.reopen.text':
     'Strona przechowuje klucz tylko w\u{A0}pamięci, więc po odświeżeniu go zapomniała. Otwórz link ponownie. Dokończenie otwierania nie zużyje kolejnego otwarcia.',
   'open.notice.tampered': 'Nie można bezpiecznie otworzyć wiadomości',
-  'open.notice.tampered.text': 'Serwer lub połączenie zwróciło inne dane, niż utworzył nadawca.',
-  'open.notice.failed': 'Coś poszło nie tak',
-  'open.notice.failed.text': 'Nie udało się wczytać wiadomości. Spróbuj ponownie.',
+  'open.notice.tampered.text':
+    'Serwer lub połączenie zwróciło inne dane, niż utworzył nadawca. Daj znać nadawcy i\u{A0}poproś go o\u{A0}nowy link.',
+  'open.notice.failed': 'Nie udało się wczytać wiadomości',
+  'open.notice.failed.text': 'Sprawdź połączenie i\u{A0}spróbuj ponownie.',
   'open.notice.busy': 'Usługa jest przeciążona',
   'open.notice.busy.text': 'Spróbuj ponownie za {time}. Ponowna próba nie zużywa otwarcia.',
   'open.notice.cleared': 'Strona już nie pokazuje wiadomości',
   'open.notice.cleared.text': 'Po wyjściu ze strony wiadomość nie jest już wyświetlana.',
   'open.notice.timed_out': 'Czas na wyświetlenie minął',
   'open.notice.timed_out.text':
-    'Wiadomość była na ekranie przez {time}, więc strona ją usunęła. Chroni to wiadomość na wypadek, gdyby urządzenie zostało bez opieki.',
+    'Wiadomość była na ekranie przez {time}, więc strona ją zamknęła. Chroni to wiadomość na wypadek, gdyby urządzenie zostało bez opieki.',
   'open.chip.burned': 'Usunięta bez otwierania',
   'open.notice.burned': 'Usunięto wiadomość',
   'open.notice.burned.text': 'Nikt już jej nie otworzy, nawet ty.',
