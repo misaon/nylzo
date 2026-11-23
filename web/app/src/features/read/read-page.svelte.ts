@@ -103,6 +103,7 @@ export class ReadPage {
   revealRest = $state('');
   marked = $state.raw<MarkedText>();
   confirmingCopy = $state(false);
+  copyFailedNote = $state(false);
   linkInHistory = $state(false);
   noise = $state('');
   settled = $state(false);
@@ -169,10 +170,10 @@ export class ReadPage {
     if (this.opening && this.view.view === 'busy') {
       return translate(`busy.${this.view.step}`);
     }
-    if (this.notice === 'timed_out') {
-      return translate('open.notice.timed_out');
+    if (this.burnNote !== '' || this.phase !== 'notice' || this.notice === 'loading') {
+      return this.burnNote;
     }
-    return this.burnNote;
+    return translate(`open.notice.${this.notice}`);
   });
 
   readonly readyFacts: readonly Fact[] = $derived.by(() => {
@@ -285,6 +286,7 @@ export class ReadPage {
     if (!this.revealed?.text) {
       return;
     }
+    this.copyFailedNote = false;
     try {
       await navigator.clipboard.writeText(this.revealed.text);
       this.copyFailed.hide();
@@ -292,6 +294,7 @@ export class ReadPage {
     } catch {
       this.copied.hide();
       this.copyFailed.show();
+      this.copyFailedNote = true;
     }
   };
 
@@ -528,6 +531,7 @@ export class ReadPage {
     this.#clearReveal();
     this.marked = undefined;
     this.confirmingCopy = false;
+    this.copyFailedNote = false;
     clearInterval(this.#revealTimer);
     this.#stopTimeline();
     this.#stopCountdown();

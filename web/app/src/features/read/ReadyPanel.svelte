@@ -177,9 +177,7 @@
       </div>
     {:else}
       {@render revealButton({ className: '-mt-1 w-full max-w-[360px] sm:w-auto sm:min-w-[260px]' })}
-      {#if alert}
-        <ErrorNote message={alert} class="max-w-[440px] text-left" />
-      {/if}
+      <ErrorNote message={alert} class={['max-w-[440px] text-left', !alert && 'sr-only']} />
     {/if}
     <p class="text-caption text-balance text-ink-mute">
       <Interpolated text={translate('read.terms')} placeholder="link"

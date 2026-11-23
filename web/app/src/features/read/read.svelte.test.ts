@@ -447,7 +447,8 @@ describe('read interface', () => {
     button(translator.translate('open.copy.text')).click();
     await vi.advanceTimersByTimeAsync(0);
     flushSync();
-    expect(target.querySelector('span[role="status"]')?.textContent).toBe(translator.translate('read.copy_failed'));
+    const alerts = [...target.querySelectorAll('[role="alert"]')].map((element) => element.textContent.trim());
+    expect(alerts).toContain(translator.translate('read.copy_failed'));
   });
 
   it('explains that a file without an extension has none', () => {

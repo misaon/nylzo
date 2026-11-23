@@ -3,6 +3,7 @@
   import Button from '../../../shared/ui/button/Button.svelte';
   import ConfirmDialog from '../../../shared/ui/dialog/ConfirmDialog.svelte';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
+  import ErrorNote from '../../../shared/ui/notice/ErrorNote.svelte';
   import SwapIcon from '../../../shared/ui/icon/SwapIcon.svelte';
   import Tooltip from '../../../shared/ui/tooltip/Tooltip.svelte';
   import type { ReadPage } from '../read-page.svelte.ts';
@@ -81,13 +82,7 @@
             </span>
           </span>
         </Button>
-        <span class="sr-only" role="status"
-          >{page.copied.shown
-            ? translate('open.copied.text')
-            : page.copyFailed.shown
-              ? translate('read.copy_failed')
-              : ''}</span
-        >
+        <span class="sr-only" role="status">{page.copied.shown ? translate('open.copied.text') : ''}</span>
       {/if}
       {#if page.confirmingCopy}
         <ConfirmDialog
@@ -130,6 +125,10 @@
           </div>
         {/if}
         <div class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-caption text-ink-mute">
+          <ErrorNote
+            message={page.copyFailedNote ? translate('read.copy_failed') : ''}
+            class={page.copyFailedNote ? 'w-full' : 'sr-only'}
+          />
           {#if hiddenCount > 0}
             <span role="alert" class="inline-flex items-center gap-1.5 text-rose-300">
               <Icon name="alert" class="size-3.5 shrink-0" stroke={2} />
