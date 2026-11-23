@@ -26,7 +26,7 @@
   const id = $props.id();
   const home = $derived(homePath(translator.language));
   const versionHref = buildSourceHref(BUILD_INFO);
-  const LINK = 'transition hover:text-ink';
+  const LINK = 'transition hover:text-ink aria-[current=page]:font-medium aria-[current=page]:text-ink';
 
   const groups: readonly { readonly key: MessageKey; readonly links: readonly FooterLink[] }[] = $derived([
     {

@@ -9,9 +9,15 @@
   }
 
   const TONES = {
-    current: { tile: 'tile-current', halo: 'bg-[radial-gradient(closest-side,oklch(0.56_0.19_258/0.55),transparent)]' },
+    current: {
+      tile: 'tile-current',
+      halo: 'bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--color-aegis-500)_55%,transparent),transparent)]',
+    },
     danger: { tile: 'tile-danger', halo: 'bg-[radial-gradient(closest-side,oklch(0.56_0.17_18/0.5),transparent)]' },
-    warning: { tile: 'tile-warning', halo: 'bg-[radial-gradient(closest-side,oklch(0.7_0.14_75/0.42),transparent)]' },
+    warning: {
+      tile: 'tile-warning',
+      halo: 'bg-[radial-gradient(closest-side,color-mix(in_oklab,var(--color-solar-500)_42%,transparent),transparent)]',
+    },
   } as const;
 
   const { tone, glyph, class: className, orbit = false }: Props = $props();
@@ -22,10 +28,10 @@
   ></span>
   {#if orbit}
     <span
-      class="pointer-events-none absolute -inset-[24%] rounded-full border border-dashed border-[oklch(0.88_0.09_85/0.3)] motion-safe:animate-orbit"
+      class="pointer-events-none absolute -inset-[24%] rounded-full border border-dashed border-solar-200/30 motion-safe:animate-orbit"
     >
       <span
-        class="absolute top-0 left-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[oklch(0.92_0.1_88)] shadow-[0_0_14px_3px_oklch(0.82_0.14_80/0.75)]"
+        class="absolute top-0 left-1/2 size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-solar-100 shadow-[0_0_14px_3px_color-mix(in_oklab,var(--color-solar-400)_75%,transparent)]"
       ></span>
     </span>
   {/if}

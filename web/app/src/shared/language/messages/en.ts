@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Try again',
   'app.crashed': 'The page ran into an error. Reload it.',
+  'app.crashed.reopen': 'The page ran into an error. Open the message link again.',
   'start.failed': 'The page could not start. Check your connection and try again.',
   'start.failed.reopen': 'The page could not start. Check your connection and open the link again.',
 
@@ -86,8 +87,7 @@ export const messages: Catalog = {
   'agents.missing.text':
     'An MCP server. The plan is ready, the code is not. If you need an MCP server, say so in GitHub Discussions.',
   'agents.missing.link': 'Discussions',
-  'agents.markdown':
-    'The same content is available as Markdown at /agents.md, so agents can read it without a browser.',
+  'agents.markdown': 'The same content is available as Markdown at {link}, so agents can read it without a browser.',
   'action.copy': 'Copy',
   'count.day': { one: '{count}\u{A0}day', other: '{count}\u{A0}days' },
   'count.attempt': { one: '{count}\u{A0}attempt', other: '{count}\u{A0}attempts' },
@@ -111,7 +111,7 @@ export const messages: Catalog = {
   'maintenance.badge': 'Maintenance in progress',
   'maintenance.title': 'Back in a moment',
   'maintenance.lead': 'Nylzo is temporarily unavailable for maintenance.',
-  'maintenance.reload': 'We reload the page every {seconds} seconds.',
+  'maintenance.reload': 'When maintenance ends, reload the page. To read a message, open the link you received again.',
   'maintenance.retry': 'Try now',
   'maintenance.encrypted': 'Messages stay encrypted on the server.',
   'maintenance.expiry': 'Expiry times keep running during maintenance.',
@@ -197,16 +197,20 @@ export const messages: Catalog = {
   'sent.first_opened': 'First opened: {time}',
   'sent.until': 'Valid until {time}',
   'sent.opens': 'Opens: {used} of {max}',
-  'sent.unknown': 'The server did not find the message. It may have ended. “Clear the list” removes the entry.',
+  'sent.unknown': 'The server did not find the message. It may have ended.',
+  'sent.forget': 'Remove from the list',
+  'sent.forget.title': 'Remove the message from the list?',
+  'sent.forget.confirm': 'If the message is still live, you will not be able to cancel it from here.',
   'sent.failed': 'The status could not be loaded. Check the connection and try again.',
   'sent.cancel': 'Cancel message',
   'sent.cancel.confirm': 'Once cancelled, nobody can open the message.',
-  'sent.cancel.yes': 'Yes, cancel',
   'sent.cancel.no': 'Keep it',
   'sent.cancelled': 'The message is cancelled.',
+  'sent.cancel.failed': 'The message could not be cancelled. Check the connection and try again.',
+  'sent.cancel.retry_later': 'The message could not be cancelled because the service is busy. Try again in {time}.',
+  'sent.cancel.ended': 'The message ended before it could be cancelled.',
   'sent.forget_all': 'Clear the list',
   'sent.forget_all.confirm': 'You will not be able to cancel these messages from here.',
-  'sent.forget_all.yes': 'Yes, clear',
   'sent.keep': 'Keep',
   'sent.unavailable.title': 'The sent list cannot be saved here',
   'sent.empty.title': 'Nothing here yet',
@@ -357,13 +361,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype and golangci-lint, tests of the protocol and of what we promise, and a stolen-server data test. Every commit on the main branch is signed.',
   'transparency.checks.ai.title': 'Reviews with AI agents',
   'transparency.checks.ai':
-    'AI agents examined the code in five in-depth security reviews: 25 October, 1 November, 7 November (web and server) and 8 November 2026 (repository). The findings are fixed and documented on GitHub.',
+    'AI agents examined the code in five in-depth security reviews: 25 October, 1 November, 7 November (web and server) and 8 November 2026 (repository). The findings are fixed in {link}.',
+  'transparency.checks.ai.link': 'pull requests on GitHub',
   'transparency.checks.watch.title': 'Watching nylzo.com',
   'transparency.checks.watch':
     'Every 30 minutes the site code is compared with the signed release. On a difference: automatic maintenance, a cloud firewall cut-off and an incident report. Every hour a job creates, reads and spends a test message.',
   'transparency.checks.ratings.title': 'Project ratings',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (automated rating), OpenSSF Best Practices (self-assessment) and A+ on securityheaders.com and in Mozilla Observatory. The links are in the README.',
+    'OpenSSF Scorecard (automated rating), OpenSSF Best Practices (self-assessment) and A+ on securityheaders.com and in Mozilla Observatory. The links are in the {link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'What others see',
   'transparency.others.hosting.title': 'Hosting and proxy',
   'transparency.others.hosting':
@@ -392,7 +398,7 @@ export const messages: Catalog = {
   'transparency.limits.create': 'New messages from one address',
   'transparency.limits.create.value': '{hour} per hour, {day} per day',
   'transparency.limits.read': 'Reads from one address',
-  'transparency.limits.read.value': '{hour} requests per hour',
+  'transparency.limits.read.value': { one: '{count}\u{A0}request per hour', other: '{count}\u{A0}requests per hour' },
   'transparency.limits.global': 'New messages in total per day',
   'transparency.limits.global.value':
     '{max}, from half of that with an anti-flooding check in the browser that takes longer as the cap fills',

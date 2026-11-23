@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': '再試行',
   'app.crashed': 'ページでエラーが発生しました。再読み込みしてください。',
+  'app.crashed.reopen': 'ページでエラーが発生しました。メッセージのリンクをもう一度開いてください。',
   'start.failed': 'ページを読み込めませんでした。接続を確認して、もう一度お試しください。',
   'start.failed.reopen': 'ページを読み込めませんでした。接続を確認して、リンクをもう一度開いてください。',
 
@@ -85,7 +86,7 @@ export const messages: Catalog = {
   'agents.missing.text':
     'MCPサーバーです。計画はできていますが、コードはまだありません。MCPサーバーが必要な場合は、GitHubのDiscussionsに書き込んでください。',
   'agents.missing.link': 'Discussions',
-  'agents.markdown': '同じ内容はMarkdown形式でも/agents.mdにあるため、エージェントはブラウザなしで読むことができます。',
+  'agents.markdown': '同じ内容はMarkdown形式でも{link}にあるため、エージェントはブラウザなしで読むことができます。',
   'action.copy': 'コピー',
   'count.day': { other: '{count}日' },
   'count.attempt': { other: '{count}回' },
@@ -109,7 +110,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'メンテナンス中',
   'maintenance.title': 'まもなく再開します',
   'maintenance.lead': 'Nylzoはメンテナンスのため一時的に利用できません。',
-  'maintenance.reload': '{seconds}秒ごとにページを再読み込みします。',
+  'maintenance.reload':
+    'メンテナンスが終わったら、ページを再読み込みしてください。メッセージを読む場合は、受け取ったリンクをもう一度開いてください。',
   'maintenance.retry': '今すぐ再試行',
   'maintenance.encrypted': 'メッセージはサーバー上で暗号化されたままです。',
   'maintenance.expiry': 'メンテナンス中も、メッセージの有効期限までの時間は止まりません。',
@@ -197,17 +199,21 @@ export const messages: Catalog = {
   'sent.first_opened': '初回開封：{time}',
   'sent.until': '{time}まで有効',
   'sent.opens': '開封回数：{max}回中{used}回',
-  'sent.unknown':
-    'サーバーでメッセージが見つかりませんでした。すでに終了している可能性があります。「一覧を消去」で項目を削除できます。',
+  'sent.unknown': 'サーバーでメッセージが見つかりませんでした。すでに終了している可能性があります。',
+  'sent.forget': '一覧から削除',
+  'sent.forget.title': 'メッセージを一覧から削除しますか？',
+  'sent.forget.confirm': 'メッセージがまだ有効な場合、ここから取り消せなくなります。',
   'sent.failed': '状態を読み込めませんでした。接続を確認して、もう一度お試しください。',
   'sent.cancel': 'メッセージを取り消す',
   'sent.cancel.confirm': '取り消すと、誰もメッセージを開封できなくなります。',
-  'sent.cancel.yes': '取り消す',
   'sent.cancel.no': '取り消さない',
   'sent.cancelled': 'メッセージを取り消しました。',
+  'sent.cancel.failed': 'メッセージを取り消せませんでした。接続を確認して、もう一度お試しください。',
+  'sent.cancel.retry_later':
+    'サービスが混み合っているため、メッセージを取り消せませんでした。{time}後にもう一度お試しください。',
+  'sent.cancel.ended': 'メッセージはすでに終了していたため、取り消せませんでした。',
   'sent.forget_all': '一覧を消去',
   'sent.forget_all.confirm': '一覧にあるメッセージは、ここから取り消せなくなります。',
-  'sent.forget_all.yes': '消去する',
   'sent.keep': 'そのままにする',
   'sent.unavailable.title': '送信済みの一覧をここに保存できません',
   'sent.empty.title': 'まだ何もありません',
@@ -361,13 +367,15 @@ export const messages: Catalog = {
     'CodeQL、govulncheck、OSV-Scanner、Grype、golangci-lint、プロトコルと約束内容のテスト、そして盗まれたサーバーのデータを調べるテスト。メインブランチのコミットはすべて署名されています。',
   'transparency.checks.ai.title': 'AIエージェントによるチェック',
   'transparency.checks.ai':
-    'AIエージェントが、5回の詳細なセキュリティチェックでコードを調べました。実施日は2026年10月25日、11月1日、11月7日（Webとサーバー）、11月8日（リポジトリ）です。見つかった問題は修正済みで、GitHubに記載しています。',
+    'AIエージェントが、5回の詳細なセキュリティチェックでコードを調べました。実施日は2026年10月25日、11月1日、11月7日（Webとサーバー）、11月8日（リポジトリ）です。見つかった問題は修正済みで、修正は{link}にあります。',
+  'transparency.checks.ai.link': 'GitHubのプルリクエスト',
   'transparency.checks.watch.title': 'nylzo.comの監視',
   'transparency.checks.watch':
     '30分ごとに、サイトのコードを署名されたリリースと比較します。違いがあれば、自動でメンテナンスに切り替え、クラウドファイアウォールで遮断し、インシデントを報告します。1時間ごとに、自動ジョブがテスト用のメッセージを作成して読み取り、削除させます。',
   'transparency.checks.ratings.title': 'プロジェクトの評価',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard（自動評価）、OpenSSF Best Practices（自己評価）、securityheaders.comとMozilla ObservatoryでのA+。リンクはREADMEにあります。',
+    'OpenSSF Scorecard（自動評価）、OpenSSF Best Practices（自己評価）、securityheaders.comとMozilla ObservatoryでのA+。リンクは{link}にあります。',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': '他者から見えるもの',
   'transparency.others.hosting.title': 'ホスティングとプロキシ',
   'transparency.others.hosting':
@@ -397,7 +405,7 @@ export const messages: Catalog = {
   'transparency.limits.create': '1つのアドレスからの新規メッセージ',
   'transparency.limits.create.value': '1時間あたり{hour}件、1日あたり{day}件',
   'transparency.limits.read': '1つのアドレスからの読み取り',
-  'transparency.limits.read.value': '1時間あたり{hour}件のリクエスト',
+  'transparency.limits.read.value': { other: '1時間あたり{count}件のリクエスト' },
   'transparency.limits.global': '1日あたりの新規メッセージの総数',
   'transparency.limits.global.value':
     '{max}件（半分を超えると、サービスの過負荷を防ぐ計算が必要になり、上限に近づくほど時間がかかります）',

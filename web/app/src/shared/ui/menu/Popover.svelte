@@ -27,7 +27,7 @@
     if (open) {
       element
         .querySelector<HTMLElement>(
-          'button:not(:disabled, [aria-disabled="true"]), input:not(:disabled), textarea:not(:disabled)',
+          'button:not(:disabled, [aria-disabled="true"]), input:not(:disabled), textarea:not(:disabled), [role="option"][tabindex="0"]',
         )
         ?.focus({ preventScroll: sheet });
     }

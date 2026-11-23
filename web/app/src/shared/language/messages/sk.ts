@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Skúsiť znova',
   'app.crashed': 'Na stránke nastala chyba. Načítajte ju znova.',
+  'app.crashed.reopen': 'Na stránke nastala chyba. Otvorte odkaz na správu znova.',
   'start.failed': 'Stránku sa nepodarilo spustiť. Skontrolujte pripojenie a\u{A0}skúste to znova.',
   'start.failed.reopen': 'Stránku sa nepodarilo spustiť. Skontrolujte pripojenie a\u{A0}otvorte odkaz znova.',
 
@@ -85,7 +86,7 @@ export const messages: Catalog = {
     'MCP server. Plán je hotový, kód zatiaľ nie. Ak MCP server potrebujete, napíšte do Discussions na GitHube.',
   'agents.missing.link': 'Discussions',
   'agents.markdown':
-    'Rovnaký obsah je k\u{A0}dispozícii aj v\u{A0}Markdowne na /agents.md, aby ho agenti prečítali bez prehliadača.',
+    'Rovnaký obsah je k\u{A0}dispozícii aj v\u{A0}Markdowne na {link}, aby ho agenti prečítali bez prehliadača.',
   'action.copy': 'Skopírovať',
   'count.day': { one: '{count}\u{A0}deň', few: '{count}\u{A0}dni', other: '{count}\u{A0}dní' },
   'count.attempt': { one: '{count}\u{A0}pokus', few: '{count}\u{A0}pokusy', other: '{count}\u{A0}pokusov' },
@@ -109,7 +110,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'Prebieha údržba',
   'maintenance.title': 'O\u{A0}chvíľu sme späť',
   'maintenance.lead': 'Nylzo je pre údržbu dočasne nedostupné.',
-  'maintenance.reload': 'Stránku znova načítame každých {seconds}\u{A0}sekúnd.',
+  'maintenance.reload':
+    'Keď údržba skončí, načítajte stránku znova. Správu otvorte znova z\u{A0}odkazu, ktorý ste dostali.',
   'maintenance.retry': 'Skúsiť hneď',
   'maintenance.encrypted': 'Správy zostávajú na serveri zašifrované.',
   'maintenance.expiry': 'Platnosť správ počas údržby plynie ďalej.',
@@ -195,16 +197,20 @@ export const messages: Catalog = {
   'sent.first_opened': 'Prvé otvorenie {time}',
   'sent.until': 'Platí do {time}',
   'sent.opens': 'Otvorené {used} z\u{A0}{max}',
-  'sent.unknown': 'Server správu nenašiel. Možno už skončila. Záznam odstránite tlačidlom „Vymazať zoznam“.',
+  'sent.unknown': 'Server správu nenašiel. Možno už skončila.',
+  'sent.forget': 'Odobrať zo zoznamu',
+  'sent.forget.title': 'Odobrať správu zo zoznamu?',
+  'sent.forget.confirm': 'Ak správa ešte platí, odtiaľto ju už nebude možné zrušiť.',
   'sent.failed': 'Stav sa nepodarilo načítať. Skontrolujte pripojenie a\u{A0}skúste to znova.',
   'sent.cancel': 'Zrušiť správu',
   'sent.cancel.confirm': 'Po zrušení už správu nikto neotvorí.',
-  'sent.cancel.yes': 'Áno, zrušiť',
   'sent.cancel.no': 'Ponechať',
   'sent.cancelled': 'Správa je zrušená.',
+  'sent.cancel.failed': 'Správu sa nepodarilo zrušiť. Skontrolujte pripojenie a\u{A0}skúste to znova.',
+  'sent.cancel.retry_later': 'Správu sa nepodarilo zrušiť, služba je preťažená. Skúste to znova o\u{A0}{time}.',
+  'sent.cancel.ended': 'Zrušiť už nešlo, správa medzitým skončila.',
   'sent.forget_all': 'Vymazať zoznam',
   'sent.forget_all.confirm': 'Správy zo zoznamu odtiaľto už nebude možné zrušiť.',
-  'sent.forget_all.yes': 'Áno, vymazať',
   'sent.keep': 'Ponechať',
   'sent.unavailable.title': 'Zoznam odoslaných správ sa tu nedá uložiť',
   'sent.empty.title': 'Zatiaľ tu nič nie je',
@@ -357,13 +363,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype a\u{A0}golangci-lint, testy protokolu a\u{A0}toho, čo sľubujeme, a\u{A0}test dát z\u{A0}ukradnutého servera. Každý commit v\u{A0}hlavnej vetve je podpísaný.',
   'transparency.checks.ai.title': 'Kontroly s\u{A0}agentmi AI',
   'transparency.checks.ai':
-    'Agenti AI preverili kód v\u{A0}piatich hĺbkových bezpečnostných kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web aj server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitár). Nálezy sú opravené a\u{A0}opísané na GitHube.',
+    'Agenti AI preverili kód v\u{A0}piatich hĺbkových bezpečnostných kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web aj server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitár). Nálezy sú opravené v\u{A0}{link}.',
+  'transparency.checks.ai.link': 'pull requestoch na GitHube',
   'transparency.checks.watch.title': 'Dohľad nad nylzo.com',
   'transparency.checks.watch':
     'Každých 30\u{A0}minút porovnanie kódu webu s\u{A0}podpísaným vydaním. Pri odchýlke automatická údržba, odpojenie cloudovým firewallom a\u{A0}hlásenie incidentu. Každú hodinu skúšobná správa, ktorú automat vytvorí, prečíta a\u{A0}nechá vymazať.',
   'transparency.checks.ratings.title': 'Hodnotenie projektu',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (automatické hodnotenie), OpenSSF Best Practices (vlastné hodnotenie) a\u{A0}A+ na securityheaders.com aj v\u{A0}Mozilla Observatory. Odkazy sú v\u{A0}README.',
+    'OpenSSF Scorecard (automatické hodnotenie), OpenSSF Best Practices (vlastné hodnotenie) a\u{A0}A+ na securityheaders.com aj v\u{A0}Mozilla Observatory. Odkazy sú v\u{A0}{link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'Čo vidia ostatní',
   'transparency.others.hosting.title': 'Hosting a\u{A0}proxy',
   'transparency.others.hosting':
@@ -394,7 +402,11 @@ export const messages: Catalog = {
   'transparency.limits.create': 'Nové správy z\u{A0}jednej adresy',
   'transparency.limits.create.value': '{hour} za hodinu, {day} za deň',
   'transparency.limits.read': 'Čítanie z\u{A0}jednej adresy',
-  'transparency.limits.read.value': '{hour} požiadaviek za hodinu',
+  'transparency.limits.read.value': {
+    one: '{count}\u{A0}požiadavka za hodinu',
+    few: '{count}\u{A0}požiadavky za hodinu',
+    other: '{count}\u{A0}požiadaviek za hodinu',
+  },
   'transparency.limits.global': 'Nové správy celkom za deň',
   'transparency.limits.global.value':
     '{max}, od polovice s\u{A0}výpočtom proti zahlteniu služby, ktorý sa predlžuje s\u{A0}napĺňaním limitu',

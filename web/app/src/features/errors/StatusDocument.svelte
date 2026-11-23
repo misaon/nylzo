@@ -7,7 +7,6 @@
   import Sky from '../../shared/shell/Sky.svelte';
   import Maintenance from './Maintenance.svelte';
   import ServerError from './ServerError.svelte';
-  import { MAINTENANCE_RELOAD_SECONDS } from './status-page.ts';
   import type { StatusPage } from './status-page.ts';
 
   interface Props {
@@ -21,9 +20,6 @@
 
 <svelte:head>
   <title>{translate(page === 'error' ? 'title.serverError' : 'title.maintenance')}</title>
-  {#if page === 'maintenance'}
-    <meta http-equiv="refresh" content={String(MAINTENANCE_RELOAD_SECONDS)} />
-  {/if}
 </svelte:head>
 
 <div class="relative overflow-x-clip bg-void-950 font-sans text-ink">

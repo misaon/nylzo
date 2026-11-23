@@ -195,7 +195,7 @@ for (const viewport of VIEWPORTS) {
     const firstItem = sender.getByRole('listitem').first();
     const before = await pagePosition(firstItem);
     await cancel.click();
-    await sender.getByRole('dialog').getByRole('button', { name: 'Yes, cancel' }).click();
+    await sender.getByRole('dialog').getByRole('button', { name: 'Cancel message' }).click();
     await expect(sender.getByText('Cancelled', { exact: true })).toBeVisible();
     await settle(sender);
     expect(await pagePosition(firstItem), 'cancelled').toEqual(before);

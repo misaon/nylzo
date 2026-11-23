@@ -1,11 +1,13 @@
 <script lang="ts">
+  import { homePath } from '../../shared/language/language.ts';
   import { getTranslator } from '../../shared/language/translator.svelte.ts';
   import Button from '../../shared/ui/button/Button.svelte';
   import Icon from '../../shared/ui/icon/Icon.svelte';
   import IconTile from '../../shared/ui/tile/IconTile.svelte';
   import StatusNumeral from './StatusNumeral.svelte';
 
-  const { translate } = getTranslator();
+  const translator = getTranslator();
+  const { translate } = translator;
   const id = $props.id();
 </script>
 
@@ -25,7 +27,7 @@
       {translate('error.notFound.lead')}
     </p>
     <div class="mt-9 flex w-full animate-rise justify-center [animation-delay:240ms]">
-      <Button variant="primary" size="large" href="/" class="w-full sm:w-auto">
+      <Button variant="primary" size="large" href={homePath(translator.language)} class="w-full sm:w-auto">
         <Icon name="pen" class="size-4 shrink-0" animated />
         <span class="relative">{translate('nav.write')}</span>
       </Button>

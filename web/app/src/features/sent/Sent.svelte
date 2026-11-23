@@ -29,14 +29,14 @@
     readonly warning?: boolean;
   }
 
-  type Confirming = { readonly kind: 'cancel'; readonly item: SentItem } | { readonly kind: 'forget_all' };
+  type Confirming = { readonly kind: 'cancel' | 'forget'; readonly item: SentItem } | { readonly kind: 'forget_all' };
 
   const translator = getTranslator();
   const { translate } = translator;
 
   let view = $state.raw<SentView>({ view: 'loading' });
   let confirming = $state.raw<Confirming>();
-  let cancelled = $state.raw<CancelOutcome>();
+  let cancelled = $state.raw<{ readonly id: string; readonly outcome: CancelOutcome }>();
   let storageFailed = $state(false);
   const focus = new FocusTargets<string>();
   const retention = $derived(translator.plural('count.day', RETENTION_DAYS));
@@ -65,12 +65,14 @@
         return translate('sent.cancelled');
       }
       case 'retry_later': {
-        return translate('read.retry_later', { time: formatWait(outcome.retryAfter, translator.plural) });
+        return translate('sent.cancel.retry_later', { time: formatWait(outcome.retryAfter, translator.plural) });
       }
       case 'failed': {
-        return translate('sent.failed');
+        return translate('sent.cancel.failed');
       }
-      case 'ended':
+      case 'ended': {
+        return translate('sent.cancel.ended');
+      }
       case 'unknown':
       case 'ignored': {
         return '';
@@ -78,12 +80,20 @@
     }
   }
 
+  const storageProblem = $derived(storageFailed || (view.view === 'list' && view.storageFailed));
   const status = $derived.by(() => {
-    if (storageFailed || (view.view === 'list' && view.storageFailed)) {
+    if (storageProblem) {
       return translate('sent.unavailable');
     }
-    return cancelled ? cancelText(cancelled) : '';
+    return cancelled ? cancelText(cancelled.outcome) : '';
   });
+
+  function cancelProblem(item: SentItem): string {
+    if (cancelled?.id !== item.id || cancelled.outcome.outcome === 'cancelled') {
+      return '';
+    }
+    return cancelText(cancelled.outcome);
+  }
 
   function dialogOf(asked: Confirming) {
     switch (asked.kind) {
@@ -92,16 +102,25 @@
         return {
           title: label ? translate('sent.cancel.title', { label }) : translate('sent.cancel.title.untitled'),
           message: translate('sent.cancel.confirm'),
-          confirmLabel: translate('sent.cancel.yes'),
+          confirmLabel: translate('sent.cancel'),
           dismissLabel: translate('sent.cancel.no'),
           icon: 'trash',
+        } as const;
+      }
+      case 'forget': {
+        return {
+          title: translate('sent.forget.title'),
+          message: translate('sent.forget.confirm'),
+          confirmLabel: translate('sent.forget'),
+          dismissLabel: translate('sent.keep'),
+          icon: 'close',
         } as const;
       }
       case 'forget_all': {
         return {
           title: translate('sent.forget_all.title'),
           message: translate('sent.forget_all.confirm'),
-          confirmLabel: translate('sent.forget_all.yes'),
+          confirmLabel: translate('sent.forget_all'),
           dismissLabel: translate('sent.keep'),
           icon: 'close',
         } as const;
@@ -221,7 +240,34 @@
   function dismissed() {
     const current = confirming;
     confirming = undefined;
-    void afterAction(current?.kind === 'cancel' ? current.item.id : undefined);
+    void afterAction(current && current.kind !== 'forget_all' ? current.item.id : undefined);
+  }
+
+  async function forget(id: string): Promise<void> {
+    const index = items.findIndex((item) => item.id === id);
+    if (index === -1) {
+      return;
+    }
+    const neighbour = items[index + 1] ?? items[index - 1];
+    storageFailed = false;
+    try {
+      await sent.forget(id);
+    } catch {
+      storageFailed = true;
+    }
+    await tick();
+    if (items.some((item) => item.id === id)) {
+      keepFocus(focus.get(headingId(id)));
+    } else {
+      focus.focus(neighbour ? headingId(neighbour.id) : 'title');
+    }
+  }
+
+  function retry(id: string): void {
+    if (cancelled?.id === id) {
+      cancelled = undefined;
+    }
+    void run(() => sent.refresh(id), id);
   }
 
   async function confirmed(): Promise<void> {
@@ -234,8 +280,11 @@
     switch (current.kind) {
       case 'cancel': {
         return run(async () => {
-          cancelled = await sent.cancel(current.item.id);
+          cancelled = { id: current.item.id, outcome: await sent.cancel(current.item.id) };
         }, current.item.id);
+      }
+      case 'forget': {
+        return forget(current.item.id);
       }
       case 'forget_all': {
         return run(() => sent.forgetAll());
@@ -260,7 +309,7 @@
   <span class={['grid size-14 place-items-center rounded-full', tone]} aria-hidden="true">
     <Icon name={icon} class="size-6" stroke={1.6} />
   </span>
-  <p class="mt-5 text-title-sm text-ink">{title}</p>
+  <h2 class="mt-5 text-title-sm text-ink">{title}</h2>
   <p role={icon === 'alert' ? 'alert' : undefined} class="mt-1.5 max-w-[380px] text-body-sm text-pretty text-ink-mute">
     {text}
   </p>
@@ -270,11 +319,7 @@
   </Button>
 {/snippet}
 
-<p
-  role="status"
-  aria-live="polite"
-  class={status === '' || cancelled?.outcome === 'cancelled' ? 'sr-only' : 'mb-4 text-body text-aegis-200'}
->
+<p role="status" aria-live="polite" class={storageProblem ? 'mb-4 text-body text-aegis-200' : 'sr-only'}>
   {status}
 </p>
 
@@ -379,6 +424,11 @@
                   {summaryOf({ state: item.state, expiresAt: item.expiresAt })}
                 </p>
               {/if}
+              {#if cancelProblem(item)}
+                <p class="mt-2 flex items-start gap-1.5 text-caption text-pretty text-rose-200">
+                  <Icon name="alert" class="mt-0.5 size-4 shrink-0" />{cancelProblem(item)}
+                </p>
+              {/if}
             </div>
             {#if retryable || item.cancellable || pending}
               <div
@@ -388,10 +438,22 @@
                   <Button
                     variant="tint"
                     size="compact"
+                    aria-describedby={headingId(item.id)}
                     class="max-sm:flex-auto"
-                    onclick={() => void run(() => sent.refresh(item.id), item.id)}
+                    onclick={() => retry(item.id)}
                   >
                     <Icon name="refresh" class="size-4 shrink-0" animated />{translate('action.retry')}
+                  </Button>
+                {/if}
+                {#if item.state.kind === 'unknown'}
+                  <Button
+                    variant="ghost"
+                    size="compact"
+                    aria-describedby={headingId(item.id)}
+                    class="max-sm:flex-auto"
+                    onclick={() => (confirming = { kind: 'forget', item })}
+                  >
+                    <Icon name="close" class="size-4 shrink-0" animated />{translate('sent.forget')}
                   </Button>
                 {/if}
                 {#if item.cancellable || pending}

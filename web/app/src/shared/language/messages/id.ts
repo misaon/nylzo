@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Coba lagi',
   'app.crashed': 'Terjadi kesalahan di halaman ini. Muat ulang halamannya.',
+  'app.crashed.reopen': 'Terjadi kesalahan di halaman ini. Buka lagi tautan pesannya.',
   'start.failed': 'Halaman gagal dijalankan. Periksa koneksi Anda, lalu coba lagi.',
   'start.failed.reopen': 'Halaman gagal dijalankan. Periksa koneksi Anda, lalu buka tautannya lagi.',
 
@@ -91,7 +92,7 @@ export const messages: Catalog = {
     'Server MCP. Rencananya sudah siap, kodenya belum. Jika Anda membutuhkan server MCP, tulis di GitHub Discussions.',
   'agents.missing.link': 'Discussions',
   'agents.markdown':
-    'Isi yang sama juga tersedia dalam format Markdown di /agents.md, sehingga agen dapat membacanya tanpa browser.',
+    'Isi yang sama juga tersedia dalam format Markdown di {link}, sehingga agen dapat membacanya tanpa browser.',
   'action.copy': 'Salin',
   'count.day': { other: '{count}\u{A0}hari' },
   'count.attempt': { other: '{count}\u{A0}percobaan' },
@@ -115,7 +116,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'Sedang dalam pemeliharaan',
   'maintenance.title': 'Kami segera kembali',
   'maintenance.lead': 'Nylzo untuk sementara tidak tersedia karena pemeliharaan.',
-  'maintenance.reload': 'Kami memuat ulang halaman ini setiap {seconds}\u{A0}detik.',
+  'maintenance.reload':
+    'Setelah pemeliharaan selesai, muat ulang halaman ini. Untuk membaca pesan, buka lagi tautan yang Anda terima.',
   'maintenance.retry': 'Coba sekarang',
   'maintenance.encrypted': 'Pesan tetap terenkripsi di server.',
   'maintenance.expiry': 'Masa berlaku pesan tetap berjalan selama pemeliharaan.',
@@ -202,17 +204,20 @@ export const messages: Catalog = {
   'sent.first_opened': 'Pertama dibuka: {time}',
   'sent.until': 'Berlaku hingga {time}',
   'sent.opens': 'Dibuka: {used} dari {max}',
-  'sent.unknown':
-    'Server tidak menemukan pesan ini. Mungkin pesan sudah berakhir. “Kosongkan daftar” menghapus catatannya.',
+  'sent.unknown': 'Server tidak menemukan pesan ini. Mungkin pesan sudah berakhir.',
+  'sent.forget': 'Hapus dari daftar',
+  'sent.forget.title': 'Hapus pesan dari daftar?',
+  'sent.forget.confirm': 'Jika pesan masih berlaku, pesan itu tidak bisa lagi dibatalkan dari sini.',
   'sent.failed': 'Status tidak dapat dimuat. Periksa koneksi dan coba lagi.',
   'sent.cancel': 'Batalkan pesan',
   'sent.cancel.confirm': 'Setelah dibatalkan, tidak ada lagi yang bisa membuka pesan ini.',
-  'sent.cancel.yes': 'Ya, batalkan',
   'sent.cancel.no': 'Biarkan',
   'sent.cancelled': 'Pesan sudah dibatalkan.',
+  'sent.cancel.failed': 'Pesan gagal dibatalkan. Periksa koneksi dan coba lagi.',
+  'sent.cancel.retry_later': 'Pesan gagal dibatalkan karena layanan sedang sibuk. Coba lagi dalam {time}.',
+  'sent.cancel.ended': 'Pesan tidak bisa dibatalkan lagi karena sudah berakhir.',
   'sent.forget_all': 'Kosongkan daftar',
   'sent.forget_all.confirm': 'Pesan dalam daftar ini tidak bisa lagi dibatalkan dari sini.',
-  'sent.forget_all.yes': 'Ya, kosongkan',
   'sent.keep': 'Biarkan',
   'sent.unavailable.title': 'Daftar pesan terkirim tidak bisa disimpan di sini',
   'sent.empty.title': 'Belum ada apa-apa di sini',
@@ -367,13 +372,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype, dan golangci-lint, pengujian protokol dan hal-hal yang kami janjikan, serta pengujian data dari server yang dicuri. Setiap commit di branch utama ditandatangani.',
   'transparency.checks.ai.title': 'Pemeriksaan dengan agen AI',
   'transparency.checks.ai':
-    'Agen AI memeriksa kode dalam lima pemeriksaan keamanan mendalam: 25\u{A0}Oktober, 1\u{A0}November, 7\u{A0}November (klien web dan server), dan 8\u{A0}November 2026 (repositori). Temuannya sudah diperbaiki dan dijelaskan di GitHub.',
+    'Agen AI memeriksa kode dalam lima pemeriksaan keamanan mendalam: 25\u{A0}Oktober, 1\u{A0}November, 7\u{A0}November (klien web dan server), dan 8\u{A0}November 2026 (repositori). Temuannya sudah diperbaiki di {link}.',
+  'transparency.checks.ai.link': 'pull request di GitHub',
   'transparency.checks.watch.title': 'Pemantauan nylzo.com',
   'transparency.checks.watch':
     'Setiap 30\u{A0}menit, kode situs dibandingkan dengan rilis yang ditandatangani. Jika berbeda: mode pemeliharaan otomatis, pemutusan oleh firewall cloud, dan laporan insiden. Setiap jam, tugas otomatis membuat pesan uji, membacanya, lalu membiarkan server menghapusnya.',
   'transparency.checks.ratings.title': 'Penilaian proyek',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (penilaian otomatis), OpenSSF Best Practices (penilaian mandiri), serta A+ di securityheaders.com dan Mozilla Observatory. Tautannya ada di README.',
+    'OpenSSF Scorecard (penilaian otomatis), OpenSSF Best Practices (penilaian mandiri), serta A+ di securityheaders.com dan Mozilla Observatory. Tautannya ada di {link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'Apa yang dilihat pihak lain',
   'transparency.others.hosting.title': 'Hosting dan proxy',
   'transparency.others.hosting':
@@ -403,7 +410,7 @@ export const messages: Catalog = {
   'transparency.limits.create': 'Pesan baru dari satu alamat',
   'transparency.limits.create.value': '{hour} per jam, {day} per hari',
   'transparency.limits.read': 'Pembacaan dari satu alamat',
-  'transparency.limits.read.value': '{hour} permintaan per jam',
+  'transparency.limits.read.value': { other: '{count}\u{A0}permintaan per jam' },
   'transparency.limits.global': 'Total pesan baru per hari',
   'transparency.limits.global.value':
     '{max}, mulai dari separuh batas disertai perhitungan pencegah beban berlebih yang makin lama seiring batas makin penuh',

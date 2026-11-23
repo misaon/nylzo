@@ -58,7 +58,7 @@ test('the sender cancels a remembered message from the sent list, then forgets e
     await expect(cancel).toBeFocused();
   }
   await cancel.click();
-  await dialog.getByRole('button', { name: 'Yes, cancel', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Cancel message', exact: true }).click();
   await expect(item.getByText('Cancelled', { exact: true })).toBeVisible();
   await expect(cancel).toHaveCount(0);
   await expect(item.getByRole('heading', { level: 2 })).toBeFocused();
@@ -71,7 +71,7 @@ test('the sender cancels a remembered message from the sent list, then forgets e
   await expect(recipient.getByRole('heading', { name: 'The sender cancelled the message' })).toBeVisible();
 
   await page.getByRole('button', { name: 'Clear the list' }).click();
-  await dialog.getByRole('button', { name: 'Yes, clear', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Clear the list', exact: true }).click();
   await expect(page.getByText(NOTHING_REMEMBERED)).toBeVisible();
   expect(await sentRecords(page)).toEqual([]);
   await page.reload();
@@ -101,7 +101,7 @@ test(
     expect(await sameDocument()).toBe(true);
 
     await item.getByRole('button', { name: 'Cancel message' }).click();
-    await page.getByRole('dialog').getByRole('button', { name: 'Yes, cancel', exact: true }).click();
+    await page.getByRole('dialog').getByRole('button', { name: 'Cancel message', exact: true }).click();
     await expect(item.getByText('Cancelled', { exact: true })).toBeVisible();
     expect(await completedWrites()).toBe(0);
     expect(await databaseNames(page)).toEqual([]);
@@ -212,7 +212,7 @@ test('a status that answers after the sender forgot the message does not store i
   await page.goto('/sent');
   await status.requested;
   await page.getByRole('button', { name: 'Clear the list' }).click();
-  await page.getByRole('dialog').getByRole('button', { name: 'Yes, clear', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Clear the list', exact: true }).click();
   await expect(page.getByText(NOTHING_REMEMBERED)).toBeVisible();
   expect(await sentRecords(page)).toEqual([]);
   const writesBeforeAnswer = await completedWrites();

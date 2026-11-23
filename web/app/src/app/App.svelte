@@ -20,6 +20,8 @@
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
+  import Button from '../shared/ui/button/Button.svelte';
+  import Icon from '../shared/ui/icon/Icon.svelte';
   import { SCREEN_TITLES, screenOf } from './pages.ts';
   import type { Screen } from './pages.ts';
 
@@ -53,6 +55,7 @@
   let path = $state(startPath);
   let visit = $state(0);
   let replacingUrl = false;
+  let main: HTMLElement | undefined;
   const screen = $derived(screenOf(path));
   const translator = setTranslator(new Translator(startLanguage));
   const tracked = setSessionSentStore(sessionSentStore());
@@ -122,8 +125,21 @@
     // A home page keeps the language shown, as a reload would through the saved choice.
     path = destination.pathname;
     visit++;
-    event.intercept({ handler: tick });
+    event.intercept({
+      focusReset: 'manual',
+      handler: async () => {
+        await tick();
+        main?.focus({ preventScroll: true });
+      },
+    });
   }
+
+  const holdMain: Attachment<HTMLElement> = (element) => {
+    main = element;
+    return () => {
+      main = undefined;
+    };
+  };
 
   const listenForNavigation: Attachment = () => {
     if (typeof navigation === 'undefined') {
@@ -188,7 +204,12 @@
   <Sky />
   <div class="relative z-10 flex min-h-dvh flex-col">
     <SiteHeader {variant} current={screen} {onlanguage} />
-    <main class={['flex-1', screen !== 'notFound' && 'min-h-svh']}>
+    <main
+      id="main"
+      tabindex="-1"
+      class={['flex-1 outline-none', screen !== 'notFound' && 'min-h-svh']}
+      {@attach holdMain}
+    >
       {#key visit}
         <svelte:boundary>
           {#if screen === 'read'}
@@ -211,7 +232,14 @@
 
           {#snippet failed()}
             <div class="mx-auto max-w-column px-4 pt-16 pb-24 sm:px-6 md:pt-24">
-              <p role="alert" class="glass rounded-card p-6 text-ink-soft md:p-10">{translate('app.crashed')}</p>
+              <div role="alert" class="glass flex flex-col items-start gap-4 rounded-card p-6 md:p-10">
+                <p class="text-ink-soft">{translate(screen === 'read' ? 'app.crashed.reopen' : 'app.crashed')}</p>
+                {#if screen !== 'read'}
+                  <Button variant="ghost" size="compact" href="">
+                    <Icon name="refresh" class="size-4 shrink-0" animated />{translate('error.server.reload')}
+                  </Button>
+                {/if}
+              </div>
             </div>
           {/snippet}
         </svelte:boundary>

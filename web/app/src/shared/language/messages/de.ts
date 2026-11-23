@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Erneut versuchen',
   'app.crashed': 'Auf der Seite ist ein Fehler aufgetreten. Laden Sie sie neu.',
+  'app.crashed.reopen': 'Auf der Seite ist ein Fehler aufgetreten. Öffnen Sie den Link zur Nachricht erneut.',
   'start.failed': 'Die Seite konnte nicht starten. Prüfen Sie die Verbindung und versuchen Sie es erneut.',
   'start.failed.reopen': 'Die Seite konnte nicht starten. Prüfen Sie die Verbindung und öffnen Sie den Link erneut.',
 
@@ -91,7 +92,7 @@ export const messages: Catalog = {
     'Einen MCP-Server. Der Plan steht, der Code noch nicht. Wenn Sie einen MCP-Server brauchen, schreiben Sie in die Discussions auf GitHub.',
   'agents.missing.link': 'Discussions',
   'agents.markdown':
-    'Denselben Inhalt gibt es auch als Markdown unter /agents.md, damit Agenten ihn ohne Browser lesen können.',
+    'Denselben Inhalt gibt es auch als Markdown unter {link}, damit Agenten ihn ohne Browser lesen können.',
   'action.copy': 'Kopieren',
   'count.day': { one: '{count}\u{A0}Tag', other: '{count}\u{A0}Tage' },
   'count.attempt': { one: '{count}\u{A0}Versuch', other: '{count}\u{A0}Versuche' },
@@ -116,7 +117,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'Wartung läuft',
   'maintenance.title': 'Gleich wieder da',
   'maintenance.lead': 'Nylzo ist wegen Wartungsarbeiten vorübergehend nicht erreichbar.',
-  'maintenance.reload': 'Wir laden die Seite alle {seconds}\u{A0}Sekunden neu.',
+  'maintenance.reload':
+    'Laden Sie die Seite neu, sobald die Wartung beendet ist. Eine Nachricht öffnen Sie erneut über den Link, den Sie erhalten haben.',
   'maintenance.retry': 'Jetzt versuchen',
   'maintenance.encrypted': 'Nachrichten bleiben auf dem Server verschlüsselt.',
   'maintenance.expiry': 'Die Gültigkeit der Nachrichten läuft auch während der Wartung weiter.',
@@ -206,17 +208,22 @@ export const messages: Catalog = {
   'sent.first_opened': 'Erster Aufruf: {time}',
   'sent.until': 'Gültig bis {time}',
   'sent.opens': 'Aufrufe: {used} von {max}',
-  'sent.unknown':
-    'Der Server hat die Nachricht nicht gefunden. Vielleicht ist sie schon beendet. Mit „Liste leeren“ entfernen Sie den Eintrag.',
+  'sent.unknown': 'Der Server hat die Nachricht nicht gefunden. Vielleicht ist sie schon beendet.',
+  'sent.forget': 'Aus der Liste entfernen',
+  'sent.forget.title': 'Nachricht aus der Liste entfernen?',
+  'sent.forget.confirm': 'Falls die Nachricht noch gilt, können Sie sie von hier aus nicht mehr widerrufen.',
   'sent.failed': 'Der Status konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.',
   'sent.cancel': 'Nachricht widerrufen',
   'sent.cancel.confirm': 'Nach dem Widerruf kann niemand mehr die Nachricht öffnen.',
-  'sent.cancel.yes': 'Ja, widerrufen',
   'sent.cancel.no': 'Behalten',
   'sent.cancelled': 'Die Nachricht ist widerrufen.',
+  'sent.cancel.failed':
+    'Die Nachricht konnte nicht widerrufen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.',
+  'sent.cancel.retry_later':
+    'Die Nachricht konnte nicht widerrufen werden, der Dienst ist überlastet. Versuchen Sie es in {time} erneut.',
+  'sent.cancel.ended': 'Widerrufen ging nicht mehr, die Nachricht ist inzwischen beendet.',
   'sent.forget_all': 'Liste leeren',
   'sent.forget_all.confirm': 'Die Nachrichten aus der Liste können Sie von hier aus nicht mehr widerrufen.',
-  'sent.forget_all.yes': 'Ja, leeren',
   'sent.keep': 'Behalten',
   'sent.unavailable.title': 'Die Liste gesendeter Nachrichten lässt sich hier nicht speichern',
   'sent.empty.title': 'Noch nichts da',
@@ -372,13 +379,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype und golangci-lint, Tests des Protokolls und dessen, was wir versprechen, sowie ein Test der Daten eines gestohlenen Servers. Jeder Commit im Hauptzweig ist signiert.',
   'transparency.checks.ai.title': 'Prüfungen mit KI-Agenten',
   'transparency.checks.ai':
-    'KI-Agenten haben den Code in fünf eingehenden Sicherheitsprüfungen untersucht: am 25.\u{A0}Oktober, 1.\u{A0}November, 7.\u{A0}November (Web und Server) und 8.\u{A0}November 2026 (Repository). Die Befunde sind behoben und auf GitHub beschrieben.',
+    'KI-Agenten haben den Code in fünf eingehenden Sicherheitsprüfungen untersucht: am 25.\u{A0}Oktober, 1.\u{A0}November, 7.\u{A0}November (Web und Server) und 8.\u{A0}November 2026 (Repository). Die Befunde sind in {link} behoben.',
+  'transparency.checks.ai.link': 'Pull Requests auf GitHub',
   'transparency.checks.watch.title': 'Überwachung von nylzo.com',
   'transparency.checks.watch':
     'Alle 30\u{A0}Minuten ein Abgleich des Website-Codes mit dem signierten Release. Bei einer Abweichung automatische Wartung, Trennung durch die Cloud-Firewall und eine Meldung des Vorfalls. Jede Stunde eine Testnachricht, die ein automatischer Job erstellt, liest und löschen lässt.',
   'transparency.checks.ratings.title': 'Bewertungen des Projekts',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (automatische Bewertung), OpenSSF Best Practices (Selbstbewertung) und A+ auf securityheaders.com und im Mozilla Observatory. Die Links stehen im README.',
+    'OpenSSF Scorecard (automatische Bewertung), OpenSSF Best Practices (Selbstbewertung) und A+ auf securityheaders.com und im Mozilla Observatory. Die Links stehen im {link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'Was andere sehen',
   'transparency.others.hosting.title': 'Hosting und Proxy',
   'transparency.others.hosting':
@@ -408,7 +417,10 @@ export const messages: Catalog = {
   'transparency.limits.create': 'Neue Nachrichten von einer Adresse',
   'transparency.limits.create.value': '{hour} pro Stunde, {day} pro Tag',
   'transparency.limits.read': 'Lesezugriffe von einer Adresse',
-  'transparency.limits.read.value': '{hour} Anfragen pro Stunde',
+  'transparency.limits.read.value': {
+    one: '{count}\u{A0}Anfrage pro Stunde',
+    other: '{count}\u{A0}Anfragen pro Stunde',
+  },
   'transparency.limits.global': 'Neue Nachrichten insgesamt pro Tag',
   'transparency.limits.global.value':
     '{max}, ab der Hälfte mit einer Rechenaufgabe gegen Überlastung des Dienstes, die länger dauert, je voller das Limit ist',

@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Tentar novamente',
   'app.crashed': 'A página encontrou um erro. Recarregue-a.',
+  'app.crashed.reopen': 'A página encontrou um erro. Abra o link da mensagem de novo.',
   'start.failed': 'Não foi possível iniciar a página. Verifique sua conexão e tente de novo.',
   'start.failed.reopen': 'Não foi possível iniciar a página. Verifique sua conexão e abra o link de novo.',
 
@@ -88,7 +89,7 @@ export const messages: Catalog = {
     'Um servidor MCP. O plano está pronto, o código ainda não. Se você precisa de um servidor MCP, escreva em Discussions no GitHub.',
   'agents.missing.link': 'Discussions',
   'agents.markdown':
-    'O mesmo conteúdo também está disponível em Markdown em /agents.md, para que os agentes o leiam sem navegador.',
+    'O mesmo conteúdo também está disponível em Markdown em {link}, para que os agentes o leiam sem navegador.',
   'action.copy': 'Copiar',
   'count.day': { one: '{count}\u{A0}dia', other: '{count}\u{A0}dias' },
   'count.attempt': { one: '{count}\u{A0}tentativa', other: '{count}\u{A0}tentativas' },
@@ -112,7 +113,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'Em manutenção',
   'maintenance.title': 'Voltamos em instantes',
   'maintenance.lead': 'O Nylzo está temporariamente indisponível para manutenção.',
-  'maintenance.reload': 'Recarregaremos a página a cada {seconds}\u{A0}segundos.',
+  'maintenance.reload':
+    'Quando a manutenção terminar, recarregue a página. Para ler uma mensagem, abra de novo o link que você recebeu.',
   'maintenance.retry': 'Tentar agora',
   'maintenance.encrypted': 'As mensagens continuam criptografadas no servidor.',
   'maintenance.expiry': 'Durante a manutenção, a validade das mensagens continua correndo.',
@@ -200,16 +202,21 @@ export const messages: Catalog = {
   'sent.first_opened': 'Primeira abertura: {time}',
   'sent.until': 'Vale até {time}',
   'sent.opens': 'Aberturas: {used} de {max}',
-  'sent.unknown': 'O servidor não encontrou a mensagem. Ela pode já ter terminado. “Limpar lista” remove o item.',
+  'sent.unknown': 'O servidor não encontrou a mensagem. Ela pode já ter terminado.',
+  'sent.forget': 'Remover da lista',
+  'sent.forget.title': 'Remover a mensagem da lista?',
+  'sent.forget.confirm': 'Se a mensagem ainda estiver ativa, você não poderá mais cancelá-la daqui.',
   'sent.failed': 'Não foi possível carregar o status. Verifique a conexão e tente novamente.',
   'sent.cancel': 'Cancelar mensagem',
   'sent.cancel.confirm': 'Depois de cancelada, ninguém mais poderá abrir a mensagem.',
-  'sent.cancel.yes': 'Sim, cancelar',
   'sent.cancel.no': 'Manter',
   'sent.cancelled': 'A mensagem foi cancelada.',
+  'sent.cancel.failed': 'Não foi possível cancelar a mensagem. Verifique a conexão e tente novamente.',
+  'sent.cancel.retry_later':
+    'Não foi possível cancelar a mensagem porque o serviço está sobrecarregado. Tente novamente em {time}.',
+  'sent.cancel.ended': 'Não deu mais para cancelar: a mensagem terminou nesse meio-tempo.',
   'sent.forget_all': 'Limpar lista',
   'sent.forget_all.confirm': 'Você não poderá mais cancelar daqui as mensagens da lista.',
-  'sent.forget_all.yes': 'Sim, limpar',
   'sent.keep': 'Manter',
   'sent.unavailable.title': 'Não é possível salvar aqui a lista de mensagens enviadas',
   'sent.empty.title': 'Ainda não há nada aqui',
@@ -363,13 +370,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype e golangci-lint, testes do protocolo e do que prometemos, e um teste dos dados de um servidor roubado. Todo commit na branch principal é assinado.',
   'transparency.checks.ai.title': 'Revisões com agentes de IA',
   'transparency.checks.ai':
-    'Agentes de IA examinaram o código em cinco revisões de segurança aprofundadas: 25/10, 01/11, 07/11 (web e servidor) e 08/11/2026 (repositório). Os problemas encontrados foram corrigidos e estão descritos no GitHub.',
+    'Agentes de IA examinaram o código em cinco revisões de segurança aprofundadas: 25/10, 01/11, 07/11 (web e servidor) e 08/11/2026 (repositório). Os problemas encontrados foram corrigidos em {link}.',
+  'transparency.checks.ai.link': 'pull requests no GitHub',
   'transparency.checks.watch.title': 'Monitoramento do nylzo.com',
   'transparency.checks.watch':
     'A cada 30\u{A0}minutos, o código do site é comparado com a versão assinada. Se houver diferença: manutenção automática, desconexão pelo firewall na nuvem e relatório de incidente. A cada hora, uma rotina automática cria uma mensagem de teste, a lê e deixa que ela seja apagada.',
   'transparency.checks.ratings.title': 'Avaliações do projeto',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (avaliação automática), OpenSSF Best Practices (autoavaliação) e A+ no securityheaders.com e no Mozilla Observatory. Os links estão no README.',
+    'OpenSSF Scorecard (avaliação automática), OpenSSF Best Practices (autoavaliação) e A+ no securityheaders.com e no Mozilla Observatory. Os links estão no {link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'O que os outros veem',
   'transparency.others.hosting.title': 'Hospedagem e proxy',
   'transparency.others.hosting':
@@ -399,7 +408,10 @@ export const messages: Catalog = {
   'transparency.limits.create': 'Novas mensagens por endereço',
   'transparency.limits.create.value': '{hour} por hora, {day} por dia',
   'transparency.limits.read': 'Leituras por endereço',
-  'transparency.limits.read.value': '{hour} requisições por hora',
+  'transparency.limits.read.value': {
+    one: '{count}\u{A0}requisição por hora',
+    other: '{count}\u{A0}requisições por hora',
+  },
   'transparency.limits.global': 'Novas mensagens por dia, no total',
   'transparency.limits.global.value':
     '{max}; a partir da metade, com um cálculo contra sobrecarga do serviço que fica mais demorado à medida que o limite se aproxima',

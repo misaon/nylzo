@@ -3,6 +3,7 @@ import type { Catalog } from '../catalog.ts';
 export const messages: Catalog = {
   'action.retry': 'Réessayer',
   'app.crashed': 'La page a rencontré une erreur. Rechargez-la.',
+  'app.crashed.reopen': 'La page a rencontré une erreur. Ouvrez à nouveau le lien du message.',
   'start.failed': 'La page n’a pas pu démarrer. Vérifiez votre connexion et réessayez.',
   'start.failed.reopen': 'La page n’a pas pu démarrer. Vérifiez votre connexion et rouvrez le lien.',
 
@@ -93,7 +94,7 @@ export const messages: Catalog = {
     'Un serveur MCP. Le plan est prêt, le code pas encore. Si vous avez besoin d’un serveur MCP, écrivez dans les Discussions sur GitHub.',
   'agents.missing.link': 'Discussions',
   'agents.markdown':
-    'Le même contenu est aussi disponible en Markdown sur /agents.md, pour que les agents puissent le lire sans navigateur.',
+    'Le même contenu est aussi disponible en Markdown sur {link}, pour que les agents puissent le lire sans navigateur.',
   'action.copy': 'Copier',
   'count.day': { one: '{count}\u{A0}jour', other: '{count}\u{A0}jours' },
   'count.attempt': { one: '{count}\u{A0}tentative', other: '{count}\u{A0}tentatives' },
@@ -117,7 +118,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'Maintenance en cours',
   'maintenance.title': 'De retour dans un instant',
   'maintenance.lead': 'Nylzo est temporairement indisponible pour cause de maintenance.',
-  'maintenance.reload': 'Nous rechargeons la page toutes les {seconds}\u{A0}secondes.',
+  'maintenance.reload':
+    'Rechargez la page une fois la maintenance terminée. Pour lire un message, rouvrez le lien que vous avez reçu.',
   'maintenance.retry': 'Réessayer maintenant',
   'maintenance.encrypted': 'Les messages restent chiffrés sur le serveur.',
   'maintenance.expiry': 'La validité des messages continue de courir pendant la maintenance.',
@@ -206,17 +208,20 @@ export const messages: Catalog = {
   'sent.first_opened': 'Première ouverture: {time}',
   'sent.until': 'Valable jusqu’au {time}',
   'sent.opens': 'Ouvertures: {used} sur {max}',
-  'sent.unknown':
-    'Le serveur n’a pas trouvé le message. Il est peut-être déjà terminé. « Vider la liste » retire l’entrée.',
+  'sent.unknown': 'Le serveur n’a pas trouvé le message. Il est peut-être déjà terminé.',
+  'sent.forget': 'Retirer de la liste',
+  'sent.forget.title': 'Retirer le message de la liste\u{A0}?',
+  'sent.forget.confirm': 'Si le message est encore actif, vous ne pourrez plus l’annuler d’ici.',
   'sent.failed': 'Impossible de charger l’état. Vérifiez la connexion et réessayez.',
   'sent.cancel': 'Annuler le message',
   'sent.cancel.confirm': 'Une fois le message annulé, plus personne ne pourra l’ouvrir.',
-  'sent.cancel.yes': 'Oui, annuler',
   'sent.cancel.no': 'Conserver',
   'sent.cancelled': 'Le message est annulé.',
+  'sent.cancel.failed': 'Le message n’a pas pu être annulé. Vérifiez la connexion et réessayez.',
+  'sent.cancel.retry_later': 'Le message n’a pas pu être annulé, le service est surchargé. Réessayez dans {time}.',
+  'sent.cancel.ended': 'Trop tard pour annuler\u{A0}: le message s’est terminé entre-temps.',
   'sent.forget_all': 'Vider la liste',
   'sent.forget_all.confirm': 'Les messages de la liste ne pourront plus être annulés d’ici.',
-  'sent.forget_all.yes': 'Oui, vider',
   'sent.keep': 'Conserver',
   'sent.unavailable.title': 'La liste des messages envoyés ne peut pas être enregistrée ici',
   'sent.empty.title': 'Rien pour l’instant',
@@ -373,13 +378,15 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype et golangci-lint, des tests du protocole et de ce que nous promettons, et un test des données d’un serveur volé. Chaque commit de la branche principale est signé.',
   'transparency.checks.ai.title': 'Contrôles avec des agents IA',
   'transparency.checks.ai':
-    'Des agents IA ont examiné le code lors de cinq contrôles de sécurité approfondis\u{A0}: les 25\u{A0}octobre, 1er\u{A0}novembre, 7\u{A0}novembre (web et serveur) et 8\u{A0}novembre 2026 (dépôt). Les problèmes relevés sont corrigés et décrits sur GitHub.',
+    'Des agents IA ont examiné le code lors de cinq contrôles de sécurité approfondis\u{A0}: les 25\u{A0}octobre, 1er\u{A0}novembre, 7\u{A0}novembre (web et serveur) et 8\u{A0}novembre 2026 (dépôt). Les problèmes relevés sont corrigés dans des {link}.',
+  'transparency.checks.ai.link': 'pull requests sur GitHub',
   'transparency.checks.watch.title': 'Surveillance de nylzo.com',
   'transparency.checks.watch':
     'Toutes les 30\u{A0}minutes, comparaison du code du site avec la version signée. En cas d’écart\u{A0}: maintenance automatique, mise hors ligne par le pare-feu cloud et signalement d’incident. Toutes les heures, une tâche automatique crée un message de test, le lit et le fait supprimer.',
   'transparency.checks.ratings.title': 'Évaluations du projet',
   'transparency.checks.ratings':
-    'OpenSSF Scorecard (évaluation automatique), OpenSSF Best Practices (auto-évaluation) et A+ sur securityheaders.com et dans Mozilla Observatory. Les liens sont dans le README.',
+    'OpenSSF Scorecard (évaluation automatique), OpenSSF Best Practices (auto-évaluation) et A+ sur securityheaders.com et dans Mozilla Observatory. Les liens sont dans le {link}.',
+  'transparency.checks.ratings.link': 'README',
   'transparency.others.title': 'Ce que voient les autres',
   'transparency.others.hosting.title': 'Hébergement et proxy',
   'transparency.others.hosting':
@@ -409,7 +416,7 @@ export const messages: Catalog = {
   'transparency.limits.create': 'Nouveaux messages depuis une même adresse',
   'transparency.limits.create.value': '{hour} par heure, {day} par jour',
   'transparency.limits.read': 'Lectures depuis une même adresse',
-  'transparency.limits.read.value': '{hour} requêtes par heure',
+  'transparency.limits.read.value': { one: '{count}\u{A0}requête par heure', other: '{count}\u{A0}requêtes par heure' },
   'transparency.limits.global': 'Nouveaux messages au total par jour',
   'transparency.limits.global.value':
     '{max}, avec, à partir de la moitié, un calcul anti-saturation qui s’allonge à mesure que la limite se remplit',

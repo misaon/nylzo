@@ -36,6 +36,7 @@ describe('sent messages interface', () => {
     load: vi.fn<() => Promise<void>>(),
     refresh: vi.fn<(id: string) => Promise<void>>(),
     cancel: vi.fn<(id: string) => Promise<CancelOutcome>>(),
+    forget: vi.fn<(id: string) => Promise<void>>(),
     forgetAll: vi.fn<() => Promise<void>>(),
     stop: vi.fn<() => void>(),
   };
@@ -46,6 +47,16 @@ describe('sent messages interface', () => {
       throw new Error(`missing button ${label}`);
     }
     return element;
+  }
+
+  function confirm(label: string): void {
+    const element = [...(target.querySelector('dialog')?.querySelectorAll('button') ?? [])].find(
+      (candidate) => candidate.textContent.trim() === label,
+    );
+    if (!element) {
+      throw new Error(`missing dialog button ${label}`);
+    }
+    element.click();
   }
 
   function show(items?: readonly SentItem[]): void {
@@ -65,6 +76,7 @@ describe('sent messages interface', () => {
     vi.mocked(getSessionSentStore).mockReturnValue(sessionSentStore());
     page.load.mockResolvedValue();
     page.refresh.mockResolvedValue();
+    page.forget.mockResolvedValue();
     page.forgetAll.mockResolvedValue();
     page.cancel.mockResolvedValue({ outcome: 'cancelled' });
     vi.mocked(createSentPage).mockImplementation((_dependencies, onView) => {
@@ -188,30 +200,49 @@ describe('sent messages interface', () => {
     ]);
   });
 
-  it.each<CancelOutcome>([{ outcome: 'cancelled' }, { outcome: 'failed' }, { outcome: 'retry_later', retryAfter: 30 }])(
-    'confirms cancellation and announces $outcome',
-    async (outcome) => {
-      page.cancel.mockResolvedValue(outcome);
-      show([item()]);
-      button(translator.translate('sent.cancel')).click();
-      flushSync();
-      expect(target.querySelector('dialog')?.open).toBe(true);
-      button(translator.translate('sent.cancel.yes')).click();
-      await vi.waitFor(() => expect(page.cancel).toHaveBeenCalledExactlyOnceWith(item().id));
-      await tick();
-      expect(target.querySelector('dialog')).toBeNull();
-      expect(target.querySelector('[role="status"]')?.textContent).not.toBe('');
-    },
-  );
+  it.each<CancelOutcome>([
+    { outcome: 'cancelled' },
+    { outcome: 'failed' },
+    { outcome: 'retry_later', retryAfter: 30 },
+    { outcome: 'ended' },
+  ])('confirms cancellation and announces $outcome, a failure next to its message', async (outcome) => {
+    page.cancel.mockResolvedValue(outcome);
+    show([item()]);
+    button(translator.translate('sent.cancel')).click();
+    flushSync();
+    expect(target.querySelector('dialog')?.open).toBe(true);
+    confirm(translator.translate('sent.cancel'));
+    await vi.waitFor(() => expect(page.cancel).toHaveBeenCalledExactlyOnceWith(item().id));
+    await tick();
+    expect(target.querySelector('dialog')).toBeNull();
+    const announced = status();
+    expect(announced).not.toBe('');
+    expect(target.querySelector('li')?.textContent.includes(announced ?? '')).toBe(outcome.outcome !== 'cancelled');
+  });
 
-  it.each<CancelOutcome>([{ outcome: 'ended' }, { outcome: 'unknown' }, { outcome: 'ignored' }])(
+  it('removes a message the server no longer knows after confirmation and moves focus to the next one', async () => {
+    const next = { ...item(), id: 'AQEBAQEBAQEBAQEBAQEBAQ' };
+    page.forget.mockImplementation(() => {
+      notify({ view: 'list', items: [next], storageFailed: false });
+      return Promise.resolve();
+    });
+    show([{ ...item({ kind: 'unknown' }), cancellable: false }, next]);
+    button(translator.translate('sent.forget')).click();
+    flushSync();
+    expect(page.forget).not.toHaveBeenCalled();
+    confirm(translator.translate('sent.forget'));
+    await vi.waitFor(() => expect(document.activeElement?.id).toBe(`sent-item-${next.id}`));
+    expect(page.forget).toHaveBeenCalledExactlyOnceWith(item().id);
+  });
+
+  it.each<CancelOutcome>([{ outcome: 'unknown' }, { outcome: 'ignored' }])(
     'confirms cancellation and announces nothing when the outcome is $outcome',
     async (outcome) => {
       page.cancel.mockResolvedValue(outcome);
       show([item()]);
       button(translator.translate('sent.cancel')).click();
       flushSync();
-      button(translator.translate('sent.cancel.yes')).click();
+      confirm(translator.translate('sent.cancel'));
       await vi.waitFor(() => expect(page.cancel).toHaveBeenCalledOnce());
       await tick();
       expect(status()).toBe('');
@@ -230,7 +261,7 @@ describe('sent messages interface', () => {
     vi.spyOn(dialog, 'getAnimations').mockReturnValue([
       Object.assign(new Animation(), { finished: closing.promise.then(() => new Animation()) }),
     ]);
-    button(translator.translate('sent.cancel.yes')).click();
+    confirm(translator.translate('sent.cancel'));
     dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }));
     closing.resolve(undefined);
     await tick();
@@ -324,7 +355,7 @@ describe('sent messages interface', () => {
     button(translator.translate('sent.forget_all')).click();
     flushSync();
     expect(page.forgetAll).not.toHaveBeenCalled();
-    button(translator.translate('sent.forget_all.yes')).click();
+    confirm(translator.translate('sent.forget_all'));
     await vi.waitFor(() => expect(page.forgetAll).toHaveBeenCalledOnce());
   });
 
@@ -333,7 +364,7 @@ describe('sent messages interface', () => {
     show([{ ...item(), cancellable: false }]);
     button(translator.translate('sent.forget_all')).click();
     flushSync();
-    button(translator.translate('sent.forget_all.yes')).click();
+    confirm(translator.translate('sent.forget_all'));
     await vi.waitFor(() =>
       expect(target.querySelector('[role="status"]')?.textContent).toBe(translator.translate('sent.unavailable')),
     );
