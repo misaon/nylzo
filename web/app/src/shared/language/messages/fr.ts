@@ -828,8 +828,8 @@ export const messages: Catalog = {
   'compare.part': 'Partiellement',
   'compare.row.client': 'Chiffrement dans votre navigateur',
   'compare.row.preview': 'L’aperçu du lien ne consomme rien',
-  'compare.row.passphrase': 'Le mot de passe fait partie du chiffrement',
-  'compare.row.secret': 'Secret dans le lien',
+  'compare.row.passphrase': 'Le mot de passe du message fait partie du chiffrement',
+  'compare.row.secret': 'Clé dans le lien',
   'compare.row.verify': 'Vérifie que le site correspond à la version publiée',
   'compare.row.length': 'Arrondit la longueur à des blocs entiers',
   'compare.row.id': 'L’ID seul n’ouvre pas le message',
@@ -845,7 +845,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Exploitation',
   'operations.title': 'Nous surveillons aussi le serveur nylzo.com',
   'operations.sub':
-    'Le chiffrement protège le contenu du message. Nous surveillons séparément le serveur, la connexion et le code du site, et si quelque chose ne correspond pas, le service se met lui-même hors ligne.',
+    'Le chiffrement protège le contenu du message. Nous surveillons séparément le serveur, la connexion et le code du site, et si quelque chose ne correspond pas, le service passe en maintenance.',
   'operations.diagram':
     'Toutes les 30\u{A0}minutes, nous comparons le code de nylzo.com avec la version signée. S’il diffère, le service passe en maintenance.',
   'operations.release': 'Version sur GitHub',
@@ -907,7 +907,7 @@ export const messages: Catalog = {
     'Oui, il peut le copier ou le photographier. N’envoyez le message qu’à quelqu’un en qui vous avez confiance.',
   'faq.operator.question': 'L’exploitant peut-il lire le message\u{A0}?',
   'faq.operator.answer':
-    'Pas à partir des données du serveur\u{A0}: le serveur ne reçoit que des données chiffrées et ne voit jamais la clé du lien. Toutes les 30\u{A0}minutes, nous comparons en outre le code du site avec la version signée, et en cas d’écart le service s’arrête de lui-même. Vous pouvez envoyer les données les plus sensibles avec l’application vérifiée, qui ne charge aucun code depuis le serveur.',
+    'Pas à partir des données du serveur\u{A0}: le serveur ne reçoit que des données chiffrées et ne voit jamais la clé du lien. Toutes les 30\u{A0}minutes, nous comparons en outre le code du site avec la version signée, et en cas d’écart le service passe en maintenance. Vous pouvez envoyer les données les plus sensibles avec l’application vérifiée, qui ne charge aucun code depuis le serveur.',
   'faq.opened.question': 'Saurai-je que quelqu’un a ouvert le message\u{A0}?',
   'faq.opened.answer':
     'Oui, si vous le suivez dans Envoyés. Vous y verrez quand quelqu’un l’a ouvert pour la première fois, et vous pourrez l’annuler.',
@@ -922,7 +922,7 @@ export const messages: Catalog = {
     'Le code, la spécification du protocole et les vecteurs de test sont publics. Chaque modification passe par les tests du protocole, l’analyse statique, le contrôle des dépendances et le test des données d’un serveur volé. Les versions sont signées et reproductibles. La page Transparence présente les résultats des contrôles.',
   'cta.title': 'Vous avez quelque chose qui n’a pas sa place dans une messagerie\u{A0}?',
   'cta.text':
-    'Un mot de passe envoyé dans une messagerie reste dans l’historique jusqu’à ce que quelqu’un le supprime. Un message envoyé via Nylzo est supprimé après son ouverture.',
+    'Un mot de passe envoyé dans une messagerie reste dans l’historique jusqu’à ce que quelqu’un le supprime. Un message envoyé via Nylzo est supprimé après la dernière ouverture.',
   'cta.button': 'Écrire un message',
   'host.domain': 'votre-domaine.fr',
   'host.terminal': 'bash — nylzo',

@@ -801,8 +801,8 @@ export const messages: Catalog = {
   'compare.part': 'Partly',
   'compare.row.client': 'Encrypts in your browser',
   'compare.row.preview': 'Link previews use up nothing',
-  'compare.row.passphrase': 'Passphrase is part of the encryption',
-  'compare.row.secret': 'Secret in the link',
+  'compare.row.passphrase': 'Message passphrase is part of the encryption',
+  'compare.row.secret': 'Key in the link',
   'compare.row.verify': 'Watches that the site matches the release',
   'compare.row.length': 'Pads the length to whole blocks',
   'compare.row.id': 'The ID alone does not open the message',
@@ -818,7 +818,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Operations',
   'operations.title': 'We watch the nylzo.com server too',
   'operations.sub':
-    'Encryption protects the content of a message. We watch the server, the connection and the site code separately, and when something is off, the service takes itself offline.',
+    'Encryption protects the content of a message. We watch the server, the connection and the site code separately, and when something is off, the service switches to maintenance.',
   'operations.diagram':
     'Every 30 minutes we compare the code on nylzo.com with the signed release. If it differs, the service switches to maintenance.',
   'operations.release': 'Release on GitHub',
@@ -876,7 +876,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'Yes, they can copy it or take a photo of it. Send it only to someone you trust.',
   'faq.operator.question': 'Can the operator read the message?',
   'faq.operator.answer':
-    'Not from the data on the server: it receives only ciphertext and never sees the key in the link. We also compare the site code with the signed release every 30 minutes, and on any difference the service shuts itself off. For the most sensitive data you can use the verified app, which loads no code from the server at all.',
+    'Not from the data on the server: it receives only ciphertext and never sees the key in the link. We also compare the site code with the signed release every 30 minutes, and on any difference the service switches to maintenance. For the most sensitive data you can use the verified app, which loads no code from the server at all.',
   'faq.opened.question': 'Will I know someone opened the message?',
   'faq.opened.answer':
     'Yes, if you track it in Sent. You will see there when someone first opened it, and you can cancel it.',
@@ -891,7 +891,7 @@ export const messages: Catalog = {
     'The code, the protocol specification and the test vectors are public. Every change goes through protocol tests, static analysis, dependency checks and a stolen-server data test. Releases are signed and reproducible. The Transparency page shows the results of the checks.',
   'cta.title': 'Got something that does not belong in a chat?',
   'cta.text':
-    'A password in a chat stays in the history until someone deletes it. A message sent through Nylzo is deleted after it is opened.',
+    'A password in a chat stays in the history until someone deletes it. A message sent through Nylzo is deleted after the last opening.',
   'cta.button': 'Write a message',
   'host.domain': 'your-domain.example',
   'host.terminal': 'bash — nylzo',

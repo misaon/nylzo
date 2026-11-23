@@ -813,8 +813,8 @@ export const messages: Catalog = {
   'compare.part': 'Em parte',
   'compare.row.client': 'Criptografa no seu navegador',
   'compare.row.preview': 'A prévia do link não consome nada',
-  'compare.row.passphrase': 'A senha faz parte da criptografia',
-  'compare.row.secret': 'Segredo no link',
+  'compare.row.passphrase': 'A senha da mensagem faz parte da criptografia',
+  'compare.row.secret': 'Chave no link',
   'compare.row.verify': 'Monitora se o site corresponde à versão publicada',
   'compare.row.length': 'Arredonda o tamanho para blocos inteiros',
   'compare.row.id': 'O ID sozinho não abre a mensagem',
@@ -830,7 +830,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Operação',
   'operations.title': 'Também monitoramos o servidor do nylzo.com',
   'operations.sub':
-    'A criptografia protege o conteúdo da mensagem. Monitoramos à parte o servidor, a conexão e o código do site e, se algo não bater, o serviço sai do ar sozinho.',
+    'A criptografia protege o conteúdo da mensagem. Monitoramos à parte o servidor, a conexão e o código do site e, se algo não bater, o serviço entra em manutenção.',
   'operations.diagram':
     'A cada 30\u{A0}minutos, comparamos o código no nylzo.com com a versão assinada. Se houver diferença, o serviço entra em manutenção.',
   'operations.release': 'Versão no GitHub',
@@ -889,7 +889,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'Sim, pode copiá-la ou fotografá-la. Envie-a só para pessoas em quem você confia.',
   'faq.operator.question': 'O operador pode ler a mensagem?',
   'faq.operator.answer':
-    'Com os dados do servidor, não: ele recebe só o texto cifrado e nunca vê a chave do link. Além disso, a cada 30\u{A0}minutos comparamos o código do site com a versão assinada e, se houver diferença, o serviço se desliga sozinho. Os dados mais sensíveis você pode enviar pelo aplicativo verificado, que não carrega nenhum código do servidor.',
+    'Com os dados do servidor, não: ele recebe só o texto cifrado e nunca vê a chave do link. Além disso, a cada 30\u{A0}minutos comparamos o código do site com a versão assinada e, se houver diferença, o serviço entra em manutenção. Os dados mais sensíveis você pode enviar pelo aplicativo verificado, que não carrega nenhum código do servidor.',
   'faq.opened.question': 'Vou saber se alguém abriu a mensagem?',
   'faq.opened.answer':
     'Sim, se você a acompanhar em Enviadas. Lá você verá quando ela foi aberta pela primeira vez e poderá cancelá-la.',
@@ -904,7 +904,7 @@ export const messages: Catalog = {
     'O código, a especificação do protocolo e os vetores de teste são públicos. Cada mudança passa por testes do protocolo, análise estática, verificação de dependências e um teste dos dados de um servidor roubado. As versões são assinadas e reproduzíveis. A página Transparência mostra os resultados das verificações.',
   'cta.title': 'Tem algo que não deveria ficar no chat?',
   'cta.text':
-    'Uma senha enviada no chat fica no histórico até alguém apagá-la. Uma mensagem enviada pelo Nylzo é apagada depois de aberta.',
+    'Uma senha enviada no chat fica no histórico até alguém apagá-la. Uma mensagem enviada pelo Nylzo é apagada após a última abertura.',
   'cta.button': 'Escrever mensagem',
   'host.domain': 'seu-dominio.com.br',
   'host.terminal': 'bash — nylzo',

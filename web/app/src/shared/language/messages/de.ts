@@ -826,8 +826,8 @@ export const messages: Catalog = {
   'compare.part': 'Teilweise',
   'compare.row.client': 'Verschlüsselt in Ihrem Browser',
   'compare.row.preview': 'Linkvorschau verbraucht nichts',
-  'compare.row.passphrase': 'Passwort ist Teil der Verschlüsselung',
-  'compare.row.secret': 'Geheimnis im Link',
+  'compare.row.passphrase': 'Passwort der Nachricht ist Teil der Verschlüsselung',
+  'compare.row.secret': 'Schlüssel im Link',
   'compare.row.verify': 'Überwacht, ob die Website dem Release entspricht',
   'compare.row.length': 'Rundet die Länge auf ganze Blöcke auf',
   'compare.row.id': 'Die ID allein öffnet die Nachricht nicht',
@@ -843,7 +843,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Betrieb',
   'operations.title': 'Wir überwachen auch den Server von nylzo.com',
   'operations.sub':
-    'Die Verschlüsselung schützt den Inhalt einer Nachricht. Server, Verbindung und den Code der Website überwachen wir gesondert, und wenn etwas nicht stimmt, geht der Dienst von selbst vom Netz.',
+    'Die Verschlüsselung schützt den Inhalt einer Nachricht. Server, Verbindung und den Code der Website überwachen wir gesondert, und wenn etwas nicht stimmt, geht der Dienst in den Wartungsmodus.',
   'operations.diagram':
     'Alle 30\u{A0}Minuten vergleichen wir den Code auf nylzo.com mit dem signierten Release. Weicht er ab, geht der Dienst in den Wartungsmodus.',
   'operations.release': 'Release auf GitHub',
@@ -904,7 +904,7 @@ export const messages: Catalog = {
     'Ja, er kann sie kopieren oder abfotografieren. Senden Sie sie nur an Personen, denen Sie vertrauen.',
   'faq.operator.question': 'Kann der Betreiber die Nachricht lesen?',
   'faq.operator.answer':
-    'Aus den Daten auf dem Server nicht: Der Server erhält nur den Geheimtext und sieht den Schlüssel aus dem Link nie. Außerdem vergleichen wir den Code der Website alle 30\u{A0}Minuten mit dem signierten Release, und bei einer Abweichung schaltet sich der Dienst selbst ab. Die sensibelsten Daten können Sie über die verifizierte App senden, die überhaupt keinen Code vom Server lädt.',
+    'Aus den Daten auf dem Server nicht: Der Server erhält nur den Geheimtext und sieht den Schlüssel aus dem Link nie. Außerdem vergleichen wir den Code der Website alle 30\u{A0}Minuten mit dem signierten Release, und bei einer Abweichung geht der Dienst in den Wartungsmodus. Die sensibelsten Daten können Sie über die verifizierte App senden, die überhaupt keinen Code vom Server lädt.',
   'faq.opened.question': 'Erfahre ich, ob jemand die Nachricht geöffnet hat?',
   'faq.opened.answer':
     'Ja, wenn Sie sie unter Gesendet verfolgen. Dort sehen Sie, wann sie zuerst geöffnet wurde, und können sie widerrufen.',
@@ -919,7 +919,7 @@ export const messages: Catalog = {
     'Code, Protokollspezifikation und Testvektoren sind öffentlich. Jede Änderung durchläuft Protokolltests, statische Analyse, eine Prüfung der Abhängigkeiten und einen Test der Daten eines gestohlenen Servers. Releases sind signiert und reproduzierbar. Die Ergebnisse der Prüfungen zeigt die Seite Transparenz.',
   'cta.title': 'Haben Sie etwas, das nicht in den Chat gehört?',
   'cta.text':
-    'Ein Passwort im Chat bleibt im Verlauf, bis es jemand löscht. Eine über Nylzo gesendete Nachricht wird nach dem Öffnen gelöscht.',
+    'Ein Passwort im Chat bleibt im Verlauf, bis es jemand löscht. Eine über Nylzo gesendete Nachricht wird nach dem letzten Aufruf gelöscht.',
   'cta.button': 'Nachricht schreiben',
   'host.domain': 'ihre-domain.de',
   'host.terminal': 'bash — nylzo',

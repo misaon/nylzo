@@ -810,8 +810,8 @@ export const messages: Catalog = {
   'compare.part': 'Čiastočne',
   'compare.row.client': 'Šifruje sa vo vašom prehliadači',
   'compare.row.preview': 'Náhľad odkazu nič nespotrebuje',
-  'compare.row.passphrase': 'Heslo je súčasťou šifrovania',
-  'compare.row.secret': 'Tajomstvo v\u{A0}odkaze',
+  'compare.row.passphrase': 'Heslo k\u{A0}správe je súčasťou šifrovania',
+  'compare.row.secret': 'Kľúč v\u{A0}odkaze',
   'compare.row.verify': 'Stráži, či web zodpovedá vydaniu',
   'compare.row.length': 'Zaokrúhli dĺžku na celé bloky',
   'compare.row.id': 'Samotné ID správu neotvorí',
@@ -827,7 +827,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Prevádzka',
   'operations.title': 'Strážime aj server nylzo.com',
   'operations.sub':
-    'Šifrovanie chráni obsah správy. Server, spojenie aj kód webu strážime zvlášť, a\u{A0}keď niečo nesedí, služba sa sama odpojí.',
+    'Šifrovanie chráni obsah správy. Server, spojenie aj kód webu strážime zvlášť, a\u{A0}keď niečo nesedí, služba prejde do údržby.',
   'operations.diagram':
     'Každých 30\u{A0}minút porovnávame kód na nylzo.com s\u{A0}podpísaným vydaním. Keď sa líši, služba prejde do údržby.',
   'operations.release': 'Vydanie na GitHube',
@@ -884,7 +884,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'Áno, skopírovať ju alebo odfotiť. Posielajte ju len tomu, komu dôverujete.',
   'faq.operator.question': 'Môže prevádzkovateľ správu prečítať?',
   'faq.operator.answer':
-    'Z\u{A0}dát na serveri nie: server dostane len šifru a\u{A0}kľúč z\u{A0}odkazu nikdy neuvidí. Kód webu navyše každých 30\u{A0}minút porovnávame s\u{A0}podpísaným vydaním a\u{A0}pri odchýlke sa služba sama vypne. Najcitlivejšie dáta môžete poslať cez overenú aplikáciu, ktorá kód zo servera vôbec nenačítava.',
+    'Z\u{A0}dát na serveri nie: server dostane len šifru a\u{A0}kľúč z\u{A0}odkazu nikdy neuvidí. Kód webu navyše každých 30\u{A0}minút porovnávame s\u{A0}podpísaným vydaním a\u{A0}pri odchýlke služba prejde do údržby. Najcitlivejšie dáta môžete poslať cez overenú aplikáciu, ktorá kód zo servera vôbec nenačítava.',
   'faq.opened.question': 'Dozviem sa, či správu niekto otvoril?',
   'faq.opened.answer':
     'Áno, ak ju budete sledovať v\u{A0}Odoslaných. Uvidíte tam, kedy ju niekto prvýkrát otvoril, a\u{A0}môžete ju zrušiť.',
@@ -899,7 +899,7 @@ export const messages: Catalog = {
     'Kód, špecifikácia protokolu aj testovacie vektory sú verejné. Každú zmenu preveria testy protokolu, statická analýza, kontrola závislostí a\u{A0}test dát z\u{A0}ukradnutého servera. Vydania sú podpísané a\u{A0}reprodukovateľné. Výsledky kontrol ukazuje stránka Transparentnosť.',
   'cta.title': 'Máte niečo, čo nepatrí do chatu?',
   'cta.text':
-    'Heslo v\u{A0}chate zostane v\u{A0}histórii, kým ho niekto nevymaže. Správa poslaná cez Nylzo sa po otvorení vymaže.',
+    'Heslo v\u{A0}chate zostane v\u{A0}histórii, kým ho niekto nevymaže. Správa poslaná cez Nylzo sa po poslednom otvorení vymaže.',
   'cta.button': 'Napísať správu',
   'host.domain': 'vasa-domena.sk',
   'host.terminal': 'bash — nylzo',
