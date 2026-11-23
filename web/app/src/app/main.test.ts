@@ -67,6 +67,8 @@ class PaintObserver {
 }
 
 const NEVER = Promise.withResolvers<never>().promise;
+// The first boot transforms the whole app, which takes seconds on a cold CI runner with coverage.
+const STARTUP = { timeout: 15_000 };
 
 function prerenderedHome(): void {
   const main = document.createElement('main');
@@ -90,7 +92,7 @@ async function settled(): Promise<void> {
   await vi.waitFor(async () => {
     await vi.runAllTimersAsync();
     expect(document.documentElement.dataset['ready']).toBe('');
-  });
+  }, STARTUP);
 }
 
 async function failed(): Promise<HTMLElement> {
@@ -99,7 +101,7 @@ async function failed(): Promise<HTMLElement> {
     const notice = document.querySelector<HTMLElement>('#start-failure');
     expect(notice).not.toBeNull();
     return notice ?? document.body;
-  });
+  }, STARTUP);
 }
 
 function notices(): number {
@@ -148,7 +150,7 @@ describe('client startup', () => {
     expect(startup.prepareWorker).not.toHaveBeenCalled();
     await vi.waitFor(() => {
       expect(startup.watchBrowserVisit).toHaveBeenCalledExactlyOnceWith('sent');
-    });
+    }, STARTUP);
     expect(startup.forgetRetiredRecovery).toHaveBeenCalledOnce();
     expect(startup.forgetRetiredRecovery.mock.calls[0]?.[0]()).toBe(sessionStorage);
     expect(startup.keepPurgingSentRecords).toHaveBeenCalledOnce();
@@ -181,7 +183,7 @@ describe('client startup', () => {
     expect(startup.prepareWorker).toHaveBeenCalledExactlyOnceWith('low');
     await vi.waitFor(() => {
       expect(startup.watchBrowserVisit).toHaveBeenCalledExactlyOnceWith('create');
-    });
+    }, STARTUP);
     expect(document.documentElement.lang).toBe('cs');
   });
 
@@ -260,7 +262,7 @@ describe('client startup', () => {
     await settled();
     await vi.waitFor(() => {
       expect(startup.watchBrowserVisit).toHaveBeenCalledOnce();
-    });
+    }, STARTUP);
     expect(notices()).toBe(0);
   });
 
@@ -305,7 +307,7 @@ describe('client startup', () => {
     await vi.waitFor(async () => {
       await vi.runAllTimersAsync();
       expect(startup.loadCatalog).toHaveBeenCalledTimes(2);
-    });
+    }, STARTUP);
     await vi.runAllTimersAsync();
     expect(notices()).toBe(1);
   });
@@ -317,7 +319,7 @@ describe('client startup', () => {
     await vi.waitFor(async () => {
       await vi.runAllTimersAsync();
       expect(startup.loadCatalog).toHaveBeenCalledOnce();
-    });
+    }, STARTUP);
     await vi.runAllTimersAsync();
     expect(notices()).toBe(0);
     expect(document.documentElement.dataset['fonts']).toBe('');
