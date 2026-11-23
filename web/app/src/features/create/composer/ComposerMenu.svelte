@@ -61,7 +61,7 @@
       open && CHIP_OPEN,
     ]}
   >
-    <Icon name={icon} class="size-4 shrink-0" animated />
+    <Icon name={problem && !open ? 'warning' : icon} class="size-4 shrink-0" animated />
     <span class="grid min-w-0">
       <span class="col-start-1 row-start-1 truncate">
         {#if hint !== undefined}<span class="sr-only">{hint}: </span>{/if}{label}

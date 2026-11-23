@@ -172,6 +172,9 @@ describe('message composer interactions', () => {
     expect(form.menu).toBe('security');
     expect(form.problems).toContainEqual({ field: 'passphrase', code: 'too_short' });
     expect(form.passphraseMessage).not.toBe('');
+    expect(form.notice).toBe('');
+    form.menu = undefined;
+    expect(form.notice).toBe(form.passphraseMessage);
     expect(createMessage).not.toHaveBeenCalled();
     await form.generatePassphrase();
     expect(form.problems).toEqual([]);

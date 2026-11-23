@@ -256,8 +256,8 @@ export class Composer {
   });
 
   readonly problemNotice = $derived.by(() => {
-    const { content, text, file, ttl, opens } = this.problemOf;
-    return content ?? text ?? file ?? ttl ?? opens ?? '';
+    const { content, text, file, ttl, opens, passphrase } = this.problemOf;
+    return content ?? text ?? file ?? ttl ?? opens ?? (this.menu === 'security' ? undefined : passphrase) ?? '';
   });
 
   readonly notice = $derived(this.failureNotice || this.problemNotice);
@@ -597,10 +597,13 @@ export class Composer {
   }
 
   async #showProblems(problems: readonly CreateProblem[]): Promise<void> {
+    const passphraseProblem = problems.some((problem) => problem.field === 'passphrase');
     this.problems = problems;
-    await tick();
-    if (problems.some((problem) => problem.field === 'passphrase')) {
+    if (passphraseProblem) {
       this.menu = 'security';
+    }
+    await tick();
+    if (passphraseProblem) {
       await this.focus.focusAfterUpdate('passphrase');
     } else if (problems.some((problem) => problem.field === 'content' || problem.field === 'text')) {
       this.focus.focus('text');
