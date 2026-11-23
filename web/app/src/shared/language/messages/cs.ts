@@ -628,7 +628,7 @@ export const messages = {
   'how.chip.key': 'klíč v\u{A0}odkazu',
   'how.deleted': 'Po posledním otevření server zprávu smaže.',
   'how.link.title': 'Co je v\u{A0}odkazu',
-  'how.link.sub': 'Odkaz má čtyři části. Kliknutím na kteroukoli zjistíte, k\u{A0}čemu slouží.',
+  'how.link.sub': 'Odkaz má čtyři části. Vyberte kteroukoli a\u{A0}zjistíte, k\u{A0}čemu slouží.',
   'how.link.host.title': 'Adresa serveru',
   'how.link.host.meta': 'vidí ji server i\u{A0}síť',
   'how.link.host.body':

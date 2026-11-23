@@ -591,7 +591,7 @@ export const messages: Catalog = {
   'how.chip.key': '链接中的密钥',
   'how.deleted': '最后一次打开后，服务器会删除消息。',
   'how.link.title': '链接里有什么',
-  'how.link.sub': '链接由四个部分组成。点击任一部分，了解它的作用。',
+  'how.link.sub': '链接由四个部分组成。选择任一部分，了解它的作用。',
   'how.link.host.title': '服务器地址',
   'how.link.host.meta': '服务器和网络都能看到',
   'how.link.host.body':

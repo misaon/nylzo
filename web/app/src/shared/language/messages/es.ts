@@ -637,7 +637,7 @@ export const messages: Catalog = {
   'how.chip.key': 'clave en el enlace',
   'how.deleted': 'Tras la última apertura, el servidor borra el mensaje.',
   'how.link.title': 'Qué hay en el enlace',
-  'how.link.sub': 'El enlace tiene cuatro partes. Haz clic en cualquiera para ver para qué sirve.',
+  'how.link.sub': 'El enlace tiene cuatro partes. Elige cualquiera para ver para qué sirve.',
   'how.link.host.title': 'Dirección del servidor',
   'how.link.host.meta': 'la ven el servidor y la red',
   'how.link.host.body':

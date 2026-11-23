@@ -633,7 +633,7 @@ export const messages: Catalog = {
   'how.chip.key': 'リンク内の鍵',
   'how.deleted': '最後の開封の後、サーバーはメッセージを削除します。',
   'how.link.title': 'リンクの中身',
-  'how.link.sub': 'リンクは4つの部分からなります。各部分をクリックすると、その役割が分かります。',
+  'how.link.sub': 'リンクは4つの部分からなります。各部分を選ぶと、その役割が分かります。',
   'how.link.host.title': 'サーバーのアドレス',
   'how.link.host.meta': 'サーバーとネットワークから見える',
   'how.link.host.body':

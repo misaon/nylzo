@@ -77,6 +77,7 @@
                 ]}
                 type="button"
                 aria-pressed={active}
+                aria-describedby={`how-link-body-${part.id}`}
                 onclick={() => (selected = index)}
               >
                 <span class="flex w-fit max-w-full flex-col">
@@ -87,7 +88,7 @@
                       active ? 'opacity-100' : 'opacity-75 group-hover:opacity-100',
                     ]}
                   >
-                    <span class="sr-only">{translate(part.title)}: </span>{part.text}
+                    {part.text}
                   </span>
                   <span
                     class={[
@@ -119,6 +120,7 @@
         <div class="mt-5 stack items-start border-t border-white/8 pt-5 max-lg:hidden lg:items-center">
           {#each LINK_PARTS as part, index (part.id)}
             <p
+              id={`how-link-body-${part.id}`}
               class={[
                 'text-body text-pretty text-ink-soft transition-opacity duration-500',
                 selected === index ? 'opacity-100' : 'pointer-events-none opacity-0',

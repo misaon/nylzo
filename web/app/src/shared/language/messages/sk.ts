@@ -634,7 +634,7 @@ export const messages: Catalog = {
   'how.chip.key': 'kľúč v\u{A0}odkaze',
   'how.deleted': 'Po poslednom otvorení server správu vymaže.',
   'how.link.title': 'Čo je v\u{A0}odkaze',
-  'how.link.sub': 'Odkaz má štyri časti. Kliknutím na ktorúkoľvek zistíte, na čo slúži.',
+  'how.link.sub': 'Odkaz má štyri časti. Vyberte ktorúkoľvek a\u{A0}zistíte, na čo slúži.',
   'how.link.host.title': 'Adresa servera',
   'how.link.host.meta': 'vidí ju server aj sieť',
   'how.link.host.body':

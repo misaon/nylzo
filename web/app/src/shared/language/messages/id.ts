@@ -639,7 +639,7 @@ export const messages: Catalog = {
   'how.chip.key': 'kunci di tautan',
   'how.deleted': 'Setelah terakhir kali dibuka, server menghapus pesan.',
   'how.link.title': 'Apa isi tautan',
-  'how.link.sub': 'Tautan terdiri dari empat bagian. Klik salah satunya untuk melihat fungsinya.',
+  'how.link.sub': 'Tautan terdiri dari empat bagian. Pilih salah satunya untuk melihat fungsinya.',
   'how.link.host.title': 'Alamat server',
   'how.link.host.meta': 'terlihat oleh server dan jaringan',
   'how.link.host.body':
