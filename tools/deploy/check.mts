@@ -16,12 +16,11 @@ for (const architecture of ["amd64", "arm64"]) {
     serverType: architecture === "arm64" ? "cax11" : "cx23", architecture,
     administratorNetworks: ["192.0.2.1/32"],
     administratorPublicKey: `${securityKey} ${Buffer.concat([field(securityKey), field(Buffer.alloc(32, 1)), field("ssh:")]).toString("base64")}`,
-    reportPublicKey: Buffer.alloc(1216, 1).toString("base64url"),
     operator: "Test operator", contact: "security@example.org", hosting: "Test provider",
-    dailyCreates: 250, initialRelease: "v0.3.0", automaticUpdates: true,
+    dailyCreates: 250, initialRelease: "v0.14.0", automaticUpdates: true,
     heartbeatUrl: "https://heartbeat.example.org/ping/00000000-0000-4000-8000-000000000000",
     tang: { threshold: 2, servers: [{ url: "http://tang-one.example.org", thumbprint: "A".repeat(43) }, { url: "http://tang-two.example.net", thumbprint: "B".repeat(43) }] },
-  }, releaseBundle("v0.3.0", "0".repeat(64)));
+  }, releaseBundle("v0.14.0", "0".repeat(64)));
   for (const [name, document] of Object.entries({ server: result.ignition, installer: result.installer })) {
     await writeFile(`${destination}/${architecture}-${name}.ign`, JSON.stringify(document));
   }
