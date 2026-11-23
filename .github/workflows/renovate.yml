@@ -27,7 +27,7 @@ jobs:
       group: vulnerability-inventory
       cancel-in-progress: false
     steps:
-      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - uses: $/.github/actions/setup
@@ -95,7 +95,7 @@ jobs:
       group: renovate
       cancel-in-progress: false
     steps:
-      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: block
           allowed-endpoints: >
@@ -153,7 +153,7 @@ jobs:
         run: |
           test -d /tmp/renovate-cache && test ! -L /tmp/renovate-cache
           sudo chown --recursive --no-dereference 12021:0 /tmp/renovate-cache
-      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
         id: app
         with:
           client-id: ${{ vars.DEPENDENCY_APP_CLIENT_ID }}
@@ -177,7 +177,7 @@ jobs:
           env-regex: ^(?:RENOVATE_\w+|LOG_LEVEL|METADATA_SERVER_DETECTION)$
           token: ${{ steps.app.outputs.token }}
           configurationFile: ${{ runner.temp }}/renovate-global.json
-          renovate-image: ghcr.io/renovatebot/renovate:44.257.5@sha256:d57dca79611ee02af29f1243d27956618a291e6364294ea8ae17629b2e66696f
+          renovate-image: ghcr.io/renovatebot/renovate:44.257.9@sha256:d6b65ff3562dd499240b23d34ef806ec7e5fd2675e4236a027dfb36774f2aa75
           mount-docker-socket: false
           docker-volumes: /tmp:/tmp;${{ github.workspace }}/automation/dependency-sync/sync.ts:/opt/nylzo-dependency-sync.ts:ro
       # Runs started by another workflow may only read the cache; the regular run writes it once a week.

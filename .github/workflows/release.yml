@@ -26,7 +26,7 @@ jobs:
       contents: read
       checks: read # require successful CI and CodeQL before building a release
     steps:
-      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - uses: $/.github/actions/setup
@@ -64,7 +64,7 @@ jobs:
       manifest: ${{ steps.manifest.outputs.sha256 }}
       evidence_manifest: ${{ steps.manifest.outputs.evidence_sha256 }}
     steps:
-      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - uses: $/.github/actions/setup
@@ -126,7 +126,7 @@ jobs:
         image: registry:3@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c
         ports: ["127.0.0.1:5000:5000"]
     steps:
-      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - uses: $/.github/actions/setup
@@ -222,7 +222,7 @@ jobs:
       id-token: write # keyless cosign signatures and provenance
       attestations: write # build provenance attestations
     steps:
-      - uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a # v2.22.4
+      - uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
         with:
           egress-policy: audit
       - uses: $/.github/actions/setup
