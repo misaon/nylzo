@@ -220,7 +220,7 @@ describe('sent messages interface', () => {
     expect(target.querySelector('li')?.textContent.includes(announced ?? '')).toBe(outcome.outcome !== 'cancelled');
   });
 
-  it('removes a message the server no longer knows from the list and moves focus to the next one', async () => {
+  it('removes a message the server no longer knows after confirmation and moves focus to the next one', async () => {
     const next = { ...item(), id: 'AQEBAQEBAQEBAQEBAQEBAQ' };
     page.forget.mockImplementation(() => {
       notify({ view: 'list', items: [next], storageFailed: false });
@@ -228,6 +228,9 @@ describe('sent messages interface', () => {
     });
     show([{ ...item({ kind: 'unknown' }), cancellable: false }, next]);
     button(translator.translate('sent.forget')).click();
+    flushSync();
+    expect(page.forget).not.toHaveBeenCalled();
+    confirm(translator.translate('sent.forget'));
     await vi.waitFor(() => expect(document.activeElement?.id).toBe(`sent-item-${next.id}`));
     expect(page.forget).toHaveBeenCalledExactlyOnceWith(item().id);
   });

@@ -110,7 +110,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'Prebieha údržba',
   'maintenance.title': 'O\u{A0}chvíľu sme späť',
   'maintenance.lead': 'Nylzo je pre údržbu dočasne nedostupné.',
-  'maintenance.reload': 'Keď údržba skončí, načítajte stránku znova.',
+  'maintenance.reload':
+    'Keď údržba skončí, načítajte stránku znova. Správu otvorte znova z\u{A0}odkazu, ktorý ste dostali.',
   'maintenance.retry': 'Skúsiť hneď',
   'maintenance.encrypted': 'Správy zostávajú na serveri zašifrované.',
   'maintenance.expiry': 'Platnosť správ počas údržby plynie ďalej.',
@@ -198,6 +199,8 @@ export const messages: Catalog = {
   'sent.opens': 'Otvorené {used} z\u{A0}{max}',
   'sent.unknown': 'Server správu nenašiel. Možno už skončila.',
   'sent.forget': 'Odobrať zo zoznamu',
+  'sent.forget.title': 'Odobrať správu zo zoznamu?',
+  'sent.forget.confirm': 'Ak správa ešte platí, odtiaľto ju už nebude možné zrušiť.',
   'sent.failed': 'Stav sa nepodarilo načítať. Skontrolujte pripojenie a\u{A0}skúste to znova.',
   'sent.cancel': 'Zrušiť správu',
   'sent.cancel.confirm': 'Po zrušení už správu nikto neotvorí.',

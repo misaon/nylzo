@@ -116,7 +116,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'Sedang dalam pemeliharaan',
   'maintenance.title': 'Kami segera kembali',
   'maintenance.lead': 'Nylzo untuk sementara tidak tersedia karena pemeliharaan.',
-  'maintenance.reload': 'Setelah pemeliharaan selesai, muat ulang halaman ini.',
+  'maintenance.reload':
+    'Setelah pemeliharaan selesai, muat ulang halaman ini. Untuk membaca pesan, buka lagi tautan yang Anda terima.',
   'maintenance.retry': 'Coba sekarang',
   'maintenance.encrypted': 'Pesan tetap terenkripsi di server.',
   'maintenance.expiry': 'Masa berlaku pesan tetap berjalan selama pemeliharaan.',
@@ -205,6 +206,8 @@ export const messages: Catalog = {
   'sent.opens': 'Dibuka: {used} dari {max}',
   'sent.unknown': 'Server tidak menemukan pesan ini. Mungkin pesan sudah berakhir.',
   'sent.forget': 'Hapus dari daftar',
+  'sent.forget.title': 'Hapus pesan dari daftar?',
+  'sent.forget.confirm': 'Jika pesan masih berlaku, pesan itu tidak bisa lagi dibatalkan dari sini.',
   'sent.failed': 'Status tidak dapat dimuat. Periksa koneksi dan coba lagi.',
   'sent.cancel': 'Batalkan pesan',
   'sent.cancel.confirm': 'Setelah dibatalkan, tidak ada lagi yang bisa membuka pesan ini.',

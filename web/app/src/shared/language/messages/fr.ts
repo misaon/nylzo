@@ -118,7 +118,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'Maintenance en cours',
   'maintenance.title': 'De retour dans un instant',
   'maintenance.lead': 'Nylzo est temporairement indisponible pour cause de maintenance.',
-  'maintenance.reload': 'Rechargez la page une fois la maintenance terminée.',
+  'maintenance.reload':
+    'Rechargez la page une fois la maintenance terminée. Pour lire un message, rouvrez le lien que vous avez reçu.',
   'maintenance.retry': 'Réessayer maintenant',
   'maintenance.encrypted': 'Les messages restent chiffrés sur le serveur.',
   'maintenance.expiry': 'La validité des messages continue de courir pendant la maintenance.',
@@ -209,6 +210,8 @@ export const messages: Catalog = {
   'sent.opens': 'Ouvertures: {used} sur {max}',
   'sent.unknown': 'Le serveur n’a pas trouvé le message. Il est peut-être déjà terminé.',
   'sent.forget': 'Retirer de la liste',
+  'sent.forget.title': 'Retirer le message de la liste\u{A0}?',
+  'sent.forget.confirm': 'Si le message est encore actif, vous ne pourrez plus l’annuler d’ici.',
   'sent.failed': 'Impossible de charger l’état. Vérifiez la connexion et réessayez.',
   'sent.cancel': 'Annuler le message',
   'sent.cancel.confirm': 'Une fois le message annulé, plus personne ne pourra l’ouvrir.',

@@ -29,7 +29,7 @@
     readonly warning?: boolean;
   }
 
-  type Confirming = { readonly kind: 'cancel'; readonly item: SentItem } | { readonly kind: 'forget_all' };
+  type Confirming = { readonly kind: 'cancel' | 'forget'; readonly item: SentItem } | { readonly kind: 'forget_all' };
 
   const translator = getTranslator();
   const { translate } = translator;
@@ -105,6 +105,15 @@
           confirmLabel: translate('sent.cancel'),
           dismissLabel: translate('sent.cancel.no'),
           icon: 'trash',
+        } as const;
+      }
+      case 'forget': {
+        return {
+          title: translate('sent.forget.title'),
+          message: translate('sent.forget.confirm'),
+          confirmLabel: translate('sent.forget'),
+          dismissLabel: translate('sent.keep'),
+          icon: 'close',
         } as const;
       }
       case 'forget_all': {
@@ -231,16 +240,34 @@
   function dismissed() {
     const current = confirming;
     confirming = undefined;
-    void afterAction(current?.kind === 'cancel' ? current.item.id : undefined);
+    void afterAction(current && current.kind !== 'forget_all' ? current.item.id : undefined);
   }
 
   async function forget(id: string): Promise<void> {
     const index = items.findIndex((item) => item.id === id);
+    if (index === -1) {
+      return;
+    }
     const neighbour = items[index + 1] ?? items[index - 1];
-    await run(() => sent.forget(id));
-    if (!items.some((item) => item.id === id)) {
+    storageFailed = false;
+    try {
+      await sent.forget(id);
+    } catch {
+      storageFailed = true;
+    }
+    await tick();
+    if (items.some((item) => item.id === id)) {
+      keepFocus(focus.get(headingId(id)));
+    } else {
       focus.focus(neighbour ? headingId(neighbour.id) : 'title');
     }
+  }
+
+  function retry(id: string): void {
+    if (cancelled?.id === id) {
+      cancelled = undefined;
+    }
+    void run(() => sent.refresh(id), id);
   }
 
   async function confirmed(): Promise<void> {
@@ -255,6 +282,9 @@
         return run(async () => {
           cancelled = { id: current.item.id, outcome: await sent.cancel(current.item.id) };
         }, current.item.id);
+      }
+      case 'forget': {
+        return forget(current.item.id);
       }
       case 'forget_all': {
         return run(() => sent.forgetAll());
@@ -410,7 +440,7 @@
                     size="compact"
                     aria-describedby={headingId(item.id)}
                     class="max-sm:flex-auto"
-                    onclick={() => void run(() => sent.refresh(item.id), item.id)}
+                    onclick={() => retry(item.id)}
                   >
                     <Icon name="refresh" class="size-4 shrink-0" animated />{translate('action.retry')}
                   </Button>
@@ -421,7 +451,7 @@
                     size="compact"
                     aria-describedby={headingId(item.id)}
                     class="max-sm:flex-auto"
-                    onclick={() => void forget(item.id)}
+                    onclick={() => (confirming = { kind: 'forget', item })}
                   >
                     <Icon name="close" class="size-4 shrink-0" animated />{translate('sent.forget')}
                   </Button>

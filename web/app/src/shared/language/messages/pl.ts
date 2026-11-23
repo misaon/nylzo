@@ -148,7 +148,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'Trwają prace techniczne',
   'maintenance.title': 'Zaraz wracamy',
   'maintenance.lead': 'Nylzo jest chwilowo niedostępne z\u{A0}powodu prac technicznych.',
-  'maintenance.reload': 'Gdy prace techniczne się skończą, wczytaj stronę ponownie.',
+  'maintenance.reload':
+    'Gdy prace techniczne się skończą, wczytaj stronę ponownie. Aby przeczytać wiadomość, otwórz ponownie otrzymany link.',
   'maintenance.retry': 'Spróbuj teraz',
   'maintenance.encrypted': 'Wiadomości pozostają na serwerze zaszyfrowane.',
   'maintenance.expiry': 'Podczas prac technicznych czas ważności wiadomości biegnie dalej.',
@@ -236,6 +237,8 @@ export const messages: Catalog = {
   'sent.opens': 'Otwarcia: {used} z\u{A0}{max}',
   'sent.unknown': 'Serwer nie znalazł wiadomości. Mogła się już zakończyć.',
   'sent.forget': 'Usuń z\u{A0}listy',
+  'sent.forget.title': 'Usunąć wiadomość z\u{A0}listy?',
+  'sent.forget.confirm': 'Jeśli wiadomość jest nadal aktywna, nie będzie można jej już stąd anulować.',
   'sent.failed': 'Nie udało się wczytać stanu. Sprawdź połączenie i\u{A0}spróbuj ponownie.',
   'sent.cancel': 'Anuluj wiadomość',
   'sent.cancel.confirm': 'Po anulowaniu nikt już nie otworzy tej wiadomości.',

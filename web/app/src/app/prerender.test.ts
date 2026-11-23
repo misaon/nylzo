@@ -200,8 +200,17 @@ describe('the app on the server', () => {
     expect(body).not.toContain('role="alert"');
   });
 
-  it.each(['/sent', '/transparency', '/r'])('renders the crash notice for %s, which needs a browser', (path) => {
-    const { body } = render(App, { props: { start: { path, language: 'en' } }, transformError: (error) => error });
-    expect(body).toMatch(/<div role="alert"[^>]*><p[^>]*>[^<]+<\/p>/u);
-  });
+  it.each([
+    ['/sent', 'app.crashed', true],
+    ['/transparency', 'app.crashed', true],
+    ['/r', 'app.crashed.reopen', false],
+  ] as const)(
+    'renders the crash notice for %s, which needs a browser, and offers a reload only outside the read page',
+    (path, notice, reload) => {
+      const { body } = render(App, { props: { start: { path, language: 'en' } }, transformError: (error) => error });
+      const text = RegExp.escape(translate(notice));
+      expect(body).toMatch(new RegExp(`<div role="alert"[^>]*><p[^>]*>${text}</p>`, 'u'));
+      expect(body.includes('href=""')).toBe(reload);
+    },
+  );
 });

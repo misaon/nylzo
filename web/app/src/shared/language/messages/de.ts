@@ -117,7 +117,8 @@ export const messages: Catalog = {
   'maintenance.badge': 'Wartung läuft',
   'maintenance.title': 'Gleich wieder da',
   'maintenance.lead': 'Nylzo ist wegen Wartungsarbeiten vorübergehend nicht erreichbar.',
-  'maintenance.reload': 'Laden Sie die Seite neu, sobald die Wartung beendet ist.',
+  'maintenance.reload':
+    'Laden Sie die Seite neu, sobald die Wartung beendet ist. Eine Nachricht öffnen Sie erneut über den Link, den Sie erhalten haben.',
   'maintenance.retry': 'Jetzt versuchen',
   'maintenance.encrypted': 'Nachrichten bleiben auf dem Server verschlüsselt.',
   'maintenance.expiry': 'Die Gültigkeit der Nachrichten läuft auch während der Wartung weiter.',
@@ -209,6 +210,8 @@ export const messages: Catalog = {
   'sent.opens': 'Aufrufe: {used} von {max}',
   'sent.unknown': 'Der Server hat die Nachricht nicht gefunden. Vielleicht ist sie schon beendet.',
   'sent.forget': 'Aus der Liste entfernen',
+  'sent.forget.title': 'Nachricht aus der Liste entfernen?',
+  'sent.forget.confirm': 'Falls die Nachricht noch gilt, können Sie sie von hier aus nicht mehr widerrufen.',
   'sent.failed': 'Der Status konnte nicht geladen werden. Prüfen Sie die Verbindung und versuchen Sie es erneut.',
   'sent.cancel': 'Nachricht widerrufen',
   'sent.cancel.confirm': 'Nach dem Widerruf kann niemand mehr die Nachricht öffnen.',

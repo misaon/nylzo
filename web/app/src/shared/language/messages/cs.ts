@@ -109,7 +109,8 @@ export const messages = {
   'maintenance.badge': 'Probíhá údržba',
   'maintenance.title': 'Za chvíli jsme zpět',
   'maintenance.lead': 'Nylzo je kvůli údržbě dočasně nedostupné.',
-  'maintenance.reload': 'Až údržba skončí, načtěte stránku znovu.',
+  'maintenance.reload':
+    'Až údržba skončí, načtěte stránku znovu. Zprávu otevřete znovu z\u{A0}odkazu, který jste dostali.',
   'maintenance.retry': 'Zkusit hned',
   'maintenance.encrypted': 'Zprávy zůstávají na serveru zašifrované.',
   'maintenance.expiry': 'Během údržby se platnost zpráv nezastavuje.',
@@ -196,6 +197,8 @@ export const messages = {
   'sent.opens': 'Otevřeno {used} z\u{A0}{max}',
   'sent.unknown': 'Server zprávu nenašel. Mohla už skončit.',
   'sent.forget': 'Odebrat ze seznamu',
+  'sent.forget.title': 'Odebrat zprávu ze seznamu?',
+  'sent.forget.confirm': 'Pokud zpráva ještě platí, odtud ji už nepůjde zrušit.',
   'sent.failed': 'Stav se nepodařilo načíst. Zkontrolujte připojení a\u{A0}zkuste to znovu.',
   'sent.cancel': 'Zrušit zprávu',
   'sent.cancel.confirm': 'Po zrušení zprávu už nikdo neotevře.',
