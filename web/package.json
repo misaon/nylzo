@@ -18,12 +18,12 @@
   },
   "devDependencies": {
     "@eslint-community/eslint-plugin-eslint-comments": "4.8.1",
-    "@sveltejs/mcp": "0.1.30",
-    "@types/bun": "1.4.4",
+    "@sveltejs/mcp": "0.1.31",
+    "@types/bun": "1.4.5",
     "eslint-plugin-perfectionist": "5.14.0",
     "eslint-plugin-playwright": "2.12.2",
     "eslint-plugin-regexp": "3.3.3",
-    "knip": "6.45.1",
+    "knip": "6.47.0",
     "oxfmt": "0.79.0",
     "oxlint": "1.94.0",
     "oxlint-tsgolint": "7.0.2007"
@@ -33,9 +33,9 @@
     "minimatch": "11.0.9"
   },
   "engines": {
-    "bun": "1.4.4"
+    "bun": "1.4.5"
   },
-  "packageManager": "bun@1.4.4",
+  "packageManager": "bun@1.4.5",
   "patchedDependencies": {
     "deepmerge@4.3.1": "patches/deepmerge@4.3.1.patch"
   },
