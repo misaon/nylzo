@@ -117,7 +117,7 @@ export const messages: Catalog = {
   'maintenance.badge': 'Wartung läuft',
   'maintenance.title': 'Gleich wieder da',
   'maintenance.lead': 'Nylzo ist wegen Wartungsarbeiten vorübergehend nicht erreichbar.',
-  'maintenance.reload': 'Wir laden die Seite alle {seconds}\u{A0}Sekunden neu.',
+  'maintenance.reload': 'Laden Sie die Seite neu, sobald die Wartung beendet ist.',
   'maintenance.retry': 'Jetzt versuchen',
   'maintenance.encrypted': 'Nachrichten bleiben auf dem Server verschlüsselt.',
   'maintenance.expiry': 'Die Gültigkeit der Nachrichten läuft auch während der Wartung weiter.',

@@ -113,7 +113,7 @@ export const messages: Catalog = {
   'maintenance.badge': 'Em manutenção',
   'maintenance.title': 'Voltamos em instantes',
   'maintenance.lead': 'O Nylzo está temporariamente indisponível para manutenção.',
-  'maintenance.reload': 'Recarregaremos a página a cada {seconds}\u{A0}segundos.',
+  'maintenance.reload': 'Quando a manutenção terminar, recarregue a página.',
   'maintenance.retry': 'Tentar agora',
   'maintenance.encrypted': 'As mensagens continuam criptografadas no servidor.',
   'maintenance.expiry': 'Durante a manutenção, a validade das mensagens continua correndo.',

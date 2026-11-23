@@ -109,7 +109,7 @@ export const messages = {
   'maintenance.badge': 'Probíhá údržba',
   'maintenance.title': 'Za chvíli jsme zpět',
   'maintenance.lead': 'Nylzo je kvůli údržbě dočasně nedostupné.',
-  'maintenance.reload': 'Stránku znovu načteme každých {seconds}\u{A0}sekund.',
+  'maintenance.reload': 'Až údržba skončí, načtěte stránku znovu.',
   'maintenance.retry': 'Zkusit hned',
   'maintenance.encrypted': 'Zprávy zůstávají na serveru zašifrované.',
   'maintenance.expiry': 'Během údržby se platnost zpráv nezastavuje.',

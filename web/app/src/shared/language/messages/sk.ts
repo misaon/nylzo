@@ -110,7 +110,7 @@ export const messages: Catalog = {
   'maintenance.badge': 'Prebieha údržba',
   'maintenance.title': 'O\u{A0}chvíľu sme späť',
   'maintenance.lead': 'Nylzo je pre údržbu dočasne nedostupné.',
-  'maintenance.reload': 'Stránku znova načítame každých {seconds}\u{A0}sekúnd.',
+  'maintenance.reload': 'Keď údržba skončí, načítajte stránku znova.',
   'maintenance.retry': 'Skúsiť hneď',
   'maintenance.encrypted': 'Správy zostávajú na serveri zašifrované.',
   'maintenance.expiry': 'Platnosť správ počas údržby plynie ďalej.',

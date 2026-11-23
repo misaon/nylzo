@@ -39,7 +39,6 @@
   --animate-led: led 1.8s ease-in-out infinite;
   --animate-halo: halo 3.8s ease-in-out infinite;
   --animate-orbit: orbit 18s linear infinite;
-  --animate-retry: retry 30s linear infinite;
   --animate-how-flow-a: how-flow-a 7s linear infinite;
   --animate-how-flow-b: how-flow-b 7s linear infinite;
   --animate-how-flow-key: how-flow-key 7s linear infinite;
@@ -636,14 +635,6 @@
   @keyframes orbit {
     to {
       rotate: 360deg;
-    }
-  }
-  @keyframes retry {
-    from {
-      scale: 0 1;
-    }
-    to {
-      scale: 1 1;
     }
   }
   @keyframes burst {

@@ -110,7 +110,7 @@ export const messages: Catalog = {
   'maintenance.badge': 'メンテナンス中',
   'maintenance.title': 'まもなく再開します',
   'maintenance.lead': 'Nylzoはメンテナンスのため一時的に利用できません。',
-  'maintenance.reload': '{seconds}秒ごとにページを再読み込みします。',
+  'maintenance.reload': 'メンテナンスが終わったら、ページを再読み込みしてください。',
   'maintenance.retry': '今すぐ再試行',
   'maintenance.encrypted': 'メッセージはサーバー上で暗号化されたままです。',
   'maintenance.expiry': 'メンテナンス中も、メッセージの有効期限までの時間は止まりません。',

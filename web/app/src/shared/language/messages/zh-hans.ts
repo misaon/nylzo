@@ -105,7 +105,7 @@ export const messages: Catalog = {
   'maintenance.badge': '正在维护',
   'maintenance.title': '马上回来',
   'maintenance.lead': 'Nylzo 正在维护，暂时无法使用。',
-  'maintenance.reload': '我们每 {seconds} 秒重新加载一次页面。',
+  'maintenance.reload': '维护结束后，请重新加载页面。',
   'maintenance.retry': '立即重试',
   'maintenance.encrypted': '消息在服务器上仍保持加密。',
   'maintenance.expiry': '维护期间，消息的有效期不会暂停。',

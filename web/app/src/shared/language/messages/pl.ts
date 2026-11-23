@@ -148,7 +148,7 @@ export const messages: Catalog = {
   'maintenance.badge': 'Trwają prace techniczne',
   'maintenance.title': 'Zaraz wracamy',
   'maintenance.lead': 'Nylzo jest chwilowo niedostępne z\u{A0}powodu prac technicznych.',
-  'maintenance.reload': 'Stronę wczytamy ponownie co {seconds}\u{A0}sekund.',
+  'maintenance.reload': 'Gdy prace techniczne się skończą, wczytaj stronę ponownie.',
   'maintenance.retry': 'Spróbuj teraz',
   'maintenance.encrypted': 'Wiadomości pozostają na serwerze zaszyfrowane.',
   'maintenance.expiry': 'Podczas prac technicznych czas ważności wiadomości biegnie dalej.',

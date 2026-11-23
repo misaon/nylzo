@@ -116,7 +116,7 @@ export const messages: Catalog = {
   'maintenance.badge': 'Sedang dalam pemeliharaan',
   'maintenance.title': 'Kami segera kembali',
   'maintenance.lead': 'Nylzo untuk sementara tidak tersedia karena pemeliharaan.',
-  'maintenance.reload': 'Kami memuat ulang halaman ini setiap {seconds}\u{A0}detik.',
+  'maintenance.reload': 'Setelah pemeliharaan selesai, muat ulang halaman ini.',
   'maintenance.retry': 'Coba sekarang',
   'maintenance.encrypted': 'Pesan tetap terenkripsi di server.',
   'maintenance.expiry': 'Masa berlaku pesan tetap berjalan selama pemeliharaan.',
