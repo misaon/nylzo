@@ -190,7 +190,7 @@ export class ReadPage {
     }
     facts.push({ icon: 'eye', text: this.opensLeft(this.metadata.opensRemaining) });
     if (this.metadata.kdfId !== KDF_NONE) {
-      facts.push({ icon: 'key', text: translate('create.passphrase'), accent: true });
+      facts.push({ icon: 'key', text: translate('open.chip.passphrase'), accent: true });
     }
     return facts;
   });

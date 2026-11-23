@@ -432,11 +432,11 @@ describe('read page interactions', () => {
   it('forgets an opened message once it was on screen for the shown time', () => {
     const page = new ReadPage(new Translator('en'));
     notify({ view: 'revealed', text: 'secret', file, burnable: false, opensRemaining: 0 });
-    expect(page.afterFacts[0]).toEqual({ icon: 'timer', text: 'Deleted in 15:00' });
+    expect(page.afterFacts[0]).toEqual({ icon: 'timer', text: 'Off screen in 15:00' });
     vi.advanceTimersByTime(61_000);
-    expect(page.afterFacts[0]?.text).toBe('Deleted in 13:59');
+    expect(page.afterFacts[0]?.text).toBe('Off screen in 13:59');
     notify({ view: 'revealed', text: 'secret', file, burnable: false, opensRemaining: 0 });
-    expect(page.afterFacts[0]?.text).toBe('Deleted in 13:59');
+    expect(page.afterFacts[0]?.text).toBe('Off screen in 13:59');
     expect(reader.clear).not.toHaveBeenCalled();
     vi.advanceTimersByTime((SHOWN_SECONDS - 61) * 1000);
     expect(reader.clear).toHaveBeenCalledExactlyOnceWith({ view: 'timed_out' });

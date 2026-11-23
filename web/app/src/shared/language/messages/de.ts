@@ -254,8 +254,8 @@ export const messages: Catalog = {
     'Beim letzten Mal konnte dieses Gerät das Passwort nicht verarbeiten. Falls das wieder passiert, öffnen Sie den Link auf einem anderen Gerät.',
   'read.rejected.wrong': 'Das Passwort stimmt nicht. Sie haben die Nachricht noch nicht geöffnet. Noch {attempts}.',
   'read.rejected.wait': 'Das Passwort stimmt nicht. Der nächste Versuch ist in {time} möglich.',
-  'read.rejected.malformed': 'Das Passwort enthält ungültige Zeichen.',
-  'read.rejected.long': 'Das Passwort ist zu lang.',
+  'read.rejected.malformed': 'Das Passwort enthält ungültige Zeichen. Fügen Sie es erneut ein.',
+  'read.rejected.long': 'Das Passwort ist zu lang. Fügen Sie nur das Passwort des Absenders ein.',
   'read.delete': 'Ohne Öffnen löschen',
   'read.delete.rest': 'Nachricht löschen',
   'read.delete.rest.short': 'Löschen',
@@ -265,7 +265,7 @@ export const messages: Catalog = {
   'read.copy_failed':
     'Kopieren ist fehlgeschlagen. Markieren Sie den Text der Nachricht und kopieren Sie ihn von Hand.',
   'read.delete.confirm': 'Danach kann niemand die Nachricht mehr öffnen, auch Sie nicht.',
-  'read.delete.yes': 'Ja, löschen',
+  'read.delete.yes': 'Nachricht löschen',
   'read.delete.no': 'Nicht löschen',
   'read.deleted_rest': 'Die verbleibenden Aufrufe sind gelöscht.',
   'read.delete.failed': 'Die Nachricht konnte nicht gelöscht werden. Versuchen Sie es erneut.',
@@ -289,7 +289,8 @@ export const messages: Catalog = {
   'revealed.file': 'Anhang',
   'revealed.file.unchecked':
     'Der Anhang ist verschlüsselt, deshalb kann Nylzo ihn nicht mit einem Virenscanner prüfen. Laden Sie nur Dateien von Absendern herunter, denen Sie vertrauen.',
-  'revealed.confirm.title':
+  'revealed.confirm.title': 'Anhang von einem nicht überprüften Absender herunterladen?',
+  'revealed.confirm.text':
     'Jede Datei kann Schadcode enthalten, auch ein PDF, ein Dokument oder ein Bild. Laden Sie die Datei nur herunter, wenn Sie dem Absender vertrauen.',
   'revealed.confirm.extension': 'Dateiendung:',
   'revealed.confirm.none': 'Die Datei hat keine Endung.',
@@ -298,8 +299,8 @@ export const messages: Catalog = {
   'revealed.history': 'Der Link bleibt im Browserverlauf, solange noch Aufrufe übrig sind',
   'revealed.hidden':
     'Versteckte oder die Textrichtung ändernde Zeichen: {count}. Wir zeigen sie als Codes an, zum Beispiel U+202E, weil der Text durch sie auf dem Bildschirm anders aussehen kann als das, was Sie kopieren.',
-  'revealed.hidden.confirm':
-    'Der Text enthält versteckte oder die Textrichtung ändernde Zeichen. Die Kopie behält sie genau so, wie der Absender sie geschrieben hat. Trotzdem kopieren?',
+  'revealed.hidden.confirm': 'Auch die versteckten Zeichen kopieren?',
+  'revealed.hidden.confirm.text': 'Die Kopie behält sie genau so, wie der Absender sie geschrieben hat.',
   'revealed.hidden.copy': 'Trotzdem kopieren',
   'revealed.hidden.keep': 'Nicht kopieren',
 
@@ -548,10 +549,11 @@ export const messages: Catalog = {
   'open.passphrase.hide': 'Passwort ausblenden',
   'open.passphrase.empty': 'Geben Sie das Passwort vom Absender ein.',
   'open.chip.expires': 'Gültig bis {time}',
+  'open.chip.passphrase': 'Mit Passwort geschützt',
   'open.chip.opens': { one: 'Noch {count}\u{A0}Aufruf', other: 'Noch {count}\u{A0}Aufrufe' },
   'open.chip.now': 'Gerade geöffnet',
   'open.chip.last': 'Letzter Aufruf',
-  'open.chip.clears': 'Gelöscht in {time}',
+  'open.chip.clears': 'Ausgeblendet in {time}',
   'open.chip.first_opened': 'Zuerst geöffnet am {time}',
   'open.chip.ended': 'Beendet am {time}',
   'open.step.derive.label': 'Schlüssel',
@@ -562,7 +564,7 @@ export const messages: Catalog = {
   'open.step.claim.detail': 'ein Aufruf wird gezählt',
   'open.step.download.label': 'Herunterladen',
   'open.step.download.title': 'Verschlüsselte Nachricht wird heruntergeladen',
-  'open.step.download.detail': 'der Schlüssel bleibt nur bei Ihnen',
+  'open.step.download.detail': 'der Schlüssel geht nicht an den Server',
   'open.step.decrypt.label': 'Entschlüsselung',
   'open.step.decrypt.title': 'Wird entschlüsselt',
   'open.step.decrypt.detail': 'und geprüft, dass niemand die Nachricht verändert hat',
@@ -579,7 +581,8 @@ export const messages: Catalog = {
   'open.notice.cancelled.text':
     'Niemand kann sie mehr öffnen. Wenn Sie sie noch brauchen, bitten Sie den Absender um einen neuen Link.',
   'open.notice.deleted': 'Die Nachricht wurde gelöscht',
-  'open.notice.deleted.text': 'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt.',
+  'open.notice.deleted.text':
+    'Der Empfänger hat sie gelöscht oder der Betreiber hat sie entfernt. Wenn Sie sie noch brauchen, bitten Sie den Absender um einen neuen Link.',
   'open.notice.lost': 'Der Server kann diese Nachricht nicht mehr öffnen',
   'open.notice.lost.text':
     'Der Server hat den Schlüssel dazu verloren, meist bei einem Neustart. Niemand kann sie mehr öffnen. Bitten Sie den Absender, sie erneut zu senden.',
@@ -606,16 +609,16 @@ export const messages: Catalog = {
     'Die Seite hält den Schlüssel nur im Arbeitsspeicher und hat ihn beim Neuladen vergessen. Öffnen Sie den Link erneut. Wenn Sie das Öffnen abschließen, wird kein weiterer Aufruf verbraucht.',
   'open.notice.tampered': 'Die Nachricht lässt sich nicht sicher öffnen',
   'open.notice.tampered.text':
-    'Der Server oder die Verbindung hat andere Daten geliefert, als der Absender erstellt hat.',
-  'open.notice.failed': 'Etwas ist schiefgelaufen',
-  'open.notice.failed.text': 'Die Nachricht konnte nicht geladen werden. Versuchen Sie es erneut.',
+    'Der Server oder die Verbindung hat andere Daten geliefert, als der Absender erstellt hat. Informieren Sie den Absender und bitten Sie um einen neuen Link.',
+  'open.notice.failed': 'Die Nachricht konnte nicht geladen werden',
+  'open.notice.failed.text': 'Prüfen Sie Ihre Verbindung und versuchen Sie es erneut.',
   'open.notice.busy': 'Der Dienst ist überlastet',
   'open.notice.busy.text': 'Versuchen Sie es in {time} erneut. Ein erneuter Versuch verbraucht keinen Aufruf.',
   'open.notice.cleared': 'Die Seite zeigt die Nachricht nicht mehr an',
   'open.notice.cleared.text': 'Weil Sie die Seite verlassen haben, wird die Nachricht nicht mehr angezeigt.',
   'open.notice.timed_out': 'Die Anzeigezeit ist abgelaufen',
   'open.notice.timed_out.text':
-    'Die Nachricht war {time} lang auf dem Bildschirm, deshalb hat die Seite sie gelöscht. Das schützt die Nachricht, falls Sie vom Gerät weggehen.',
+    'Die Nachricht war {time} lang auf dem Bildschirm, deshalb hat die Seite sie geschlossen. Das schützt die Nachricht, falls Sie vom Gerät weggehen.',
   'open.chip.burned': 'Ohne Öffnen gelöscht',
   'open.notice.burned': 'Sie haben die Nachricht gelöscht',
   'open.notice.burned.text': 'Niemand kann sie mehr öffnen, auch Sie nicht.',

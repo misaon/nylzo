@@ -88,6 +88,7 @@
         <ConfirmDialog
           id="{id}-copy"
           title={translate('revealed.hidden.confirm')}
+          message={translate('revealed.hidden.confirm.text')}
           tone="warning"
           icon="alert"
           confirmLabel={translate('revealed.hidden.copy')}

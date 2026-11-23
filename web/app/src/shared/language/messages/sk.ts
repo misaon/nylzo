@@ -242,8 +242,8 @@ export const messages: Catalog = {
     'Minule sa v\u{A0}tomto zariadení nepodarilo heslo spracovať. Ak sa to opakuje, otvorte odkaz v\u{A0}inom zariadení.',
   'read.rejected.wrong': 'Heslo nie je správne. Správu ste zatiaľ neotvorili. Máte ešte {attempts}.',
   'read.rejected.wait': 'Heslo nie je správne. Ďalší pokus bude možný o\u{A0}{time}.',
-  'read.rejected.malformed': 'Heslo obsahuje neplatné znaky.',
-  'read.rejected.long': 'Heslo je príliš dlhé.',
+  'read.rejected.malformed': 'Heslo obsahuje neplatné znaky. Vložte ho znova.',
+  'read.rejected.long': 'Heslo je príliš dlhé. Vložte len heslo od odosielateľa.',
   'read.delete': 'Vymazať bez otvorenia',
   'read.delete.rest': 'Vymazať správu',
   'read.delete.rest.short': 'Vymazať',
@@ -252,7 +252,7 @@ export const messages: Catalog = {
   'read.terms': 'Zobrazením správy súhlasíte s\u{A0}{link}.',
   'read.copy_failed': 'Skopírovať sa nepodarilo. Označte text správy a\u{A0}skopírujte ho ručne.',
   'read.delete.confirm': 'Správu potom už nikto neotvorí, ani vy.',
-  'read.delete.yes': 'Áno, vymazať',
+  'read.delete.yes': 'Vymazať správu',
   'read.delete.no': 'Nevymazať',
   'read.deleted_rest': 'Zostávajúce otvorenia sú vymazané.',
   'read.delete.failed': 'Správu sa nepodarilo vymazať. Skúste to znova.',
@@ -275,7 +275,8 @@ export const messages: Catalog = {
   'revealed.file': 'Príloha',
   'revealed.file.unchecked':
     'Príloha je šifrovaná, takže ju Nylzo nemôže preveriť antivírusom. Sťahujte len súbory od odosielateľov, ktorým dôverujete.',
-  'revealed.confirm.title':
+  'revealed.confirm.title': 'Stiahnuť prílohu od neovereného odosielateľa?',
+  'revealed.confirm.text':
     'Škodlivý kód môže niesť každý súbor, aj PDF, dokument alebo obrázok. Stiahnite ho, len ak odosielateľovi dôverujete.',
   'revealed.confirm.extension': 'Prípona súboru:',
   'revealed.confirm.none': 'Súbor nemá príponu.',
@@ -284,8 +285,8 @@ export const messages: Catalog = {
   'revealed.history': 'Odkaz zostane v\u{A0}histórii prehliadača, kým zostávajú otvorenia',
   'revealed.hidden':
     'Skryté znaky alebo znaky meniace smer textu: {count}. Zobrazujeme ich ako kódy, napríklad U+202E, pretože pre ne môže text na obrazovke vyzerať inak ako to, čo skopírujete.',
-  'revealed.hidden.confirm':
-    'Text obsahuje skryté znaky alebo znaky meniace smer textu. Kópia ich zachová presne tak, ako ich odosielateľ napísal. Napriek tomu skopírovať?',
+  'revealed.hidden.confirm': 'Skopírovať aj skryté znaky?',
+  'revealed.hidden.confirm.text': 'Kópia ich zachová presne tak, ako ich odosielateľ napísal.',
   'revealed.hidden.copy': 'Napriek tomu skopírovať',
   'revealed.hidden.keep': 'Nekopírovať',
 
@@ -533,6 +534,7 @@ export const messages: Catalog = {
   'open.passphrase.hide': 'Skryť heslo',
   'open.passphrase.empty': 'Zadajte heslo od odosielateľa.',
   'open.chip.expires': 'Platí do {time}',
+  'open.chip.passphrase': 'Chránené heslom',
   'open.chip.opens': {
     one: 'Zostáva {count} otvorenie',
     few: 'Zostávajú {count} otvorenia',
@@ -540,7 +542,7 @@ export const messages: Catalog = {
   },
   'open.chip.now': 'Otvorené teraz',
   'open.chip.last': 'Posledné otvorenie',
-  'open.chip.clears': 'Do vymazania {time}',
+  'open.chip.clears': 'Zmizne z\u{A0}obrazovky o\u{A0}{time}',
   'open.chip.first_opened': 'Prvýkrát otvorená {time}',
   'open.chip.ended': 'Skončila {time}',
   'open.step.derive.label': 'Kľúč',
@@ -551,7 +553,7 @@ export const messages: Catalog = {
   'open.step.claim.detail': 'započíta sa jedno otvorenie',
   'open.step.download.label': 'Stiahnutie',
   'open.step.download.title': 'Sťahujeme zašifrovanú správu',
-  'open.step.download.detail': 'kľúč zostáva len u\u{A0}vás',
+  'open.step.download.detail': 'kľúč sa na server neposiela',
   'open.step.decrypt.label': 'Dešifrovanie',
   'open.step.decrypt.title': 'Dešifrujeme',
   'open.step.decrypt.detail': 'a\u{A0}overujeme, že správu nikto nezmenil',
@@ -568,7 +570,8 @@ export const messages: Catalog = {
   'open.notice.cancelled.text':
     'Správu už nikto neotvorí. Ak ju stále potrebujete, požiadajte odosielateľa o\u{A0}nový odkaz.',
   'open.notice.deleted': 'Správa bola vymazaná',
-  'open.notice.deleted.text': 'Vymazal ju príjemca alebo ju odstránil prevádzkovateľ.',
+  'open.notice.deleted.text':
+    'Vymazal ju príjemca alebo ju odstránil prevádzkovateľ. Ak ju stále potrebujete, požiadajte odosielateľa o\u{A0}nový odkaz.',
   'open.notice.lost': 'Server už túto správu neotvorí',
   'open.notice.lost.text':
     'Server stratil jej kľúč, najčastejšie pri reštarte. Správu už nikto neotvorí. Požiadajte odosielateľa, aby ju poslal znova.',
@@ -594,16 +597,17 @@ export const messages: Catalog = {
   'open.notice.reopen.text':
     'Stránka uchováva kľúč len v\u{A0}pamäti, takže ho po obnovení stránky zabudla. Otvorte odkaz znova. Keď otvorenie dokončíte, ďalšie otvorenie sa nespotrebuje.',
   'open.notice.tampered': 'Správu nemožno bezpečne otvoriť',
-  'open.notice.tampered.text': 'Server alebo spojenie vrátilo iné dáta, ako vytvoril odosielateľ.',
-  'open.notice.failed': 'Niečo sa pokazilo',
-  'open.notice.failed.text': 'Správu sa nepodarilo načítať. Skúste to znova.',
+  'open.notice.tampered.text':
+    'Server alebo spojenie vrátilo iné dáta, ako vytvoril odosielateľ. Dajte vedieť odosielateľovi a\u{A0}požiadajte ho o\u{A0}nový odkaz.',
+  'open.notice.failed': 'Správu sa nepodarilo načítať',
+  'open.notice.failed.text': 'Skontrolujte pripojenie a\u{A0}skúste to znova.',
   'open.notice.busy': 'Služba je preťažená',
   'open.notice.busy.text': 'Skúste to znova o\u{A0}{time}. Opakovaným pokusom otvorenie nespotrebujete.',
   'open.notice.cleared': 'Stránka už správu nezobrazuje',
   'open.notice.cleared.text': 'Keďže ste stránku opustili, správa sa už nezobrazuje.',
   'open.notice.timed_out': 'Čas na zobrazenie vypršal',
   'open.notice.timed_out.text':
-    'Správa bola na obrazovke {time}, a\u{A0}preto ju stránka vymazala. Chráni to správu pre prípad, že by ste od zariadenia odišli.',
+    'Správa bola na obrazovke {time}, a\u{A0}preto ju stránka zavrela. Chráni to správu pre prípad, že by ste od zariadenia odišli.',
   'open.chip.burned': 'Vymazané bez otvorenia',
   'open.notice.burned': 'Správu ste vymazali',
   'open.notice.burned.text': 'Už ju nikto neotvorí, ani vy.',

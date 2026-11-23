@@ -81,7 +81,8 @@
           </span>
           <span class="min-w-0">
             <span id="{id}-confirm-title" class="block text-ui text-ink">{translate('revealed.confirm.title')}</span>
-            <span id="{id}-confirm" class="block text-micro text-ink-mute"
+            <span id="{id}-confirm" class="block text-micro text-pretty text-ink-mute"
+              ><span class="block">{translate('revealed.confirm.text')}</span
               >{#if extension}{`${translate('revealed.confirm.extension')} `}<bdi translate="no">{`.${extension}`}</bdi
                 >{:else}{translate('revealed.confirm.none')}{/if}</span
             >

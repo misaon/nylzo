@@ -144,7 +144,7 @@
         <p id="{id}-confirm-title" class="text-ui font-medium text-ink">
           {translate(page.revealed ? 'read.delete.rest.confirm' : 'read.delete.confirm.title')}
         </p>
-        <p id="{id}-confirm" class="mt-0.5 text-caption text-pretty text-ink-mute max-sm:sr-only">
+        <p id="{id}-confirm" class="mt-0.5 text-caption text-pretty text-ink-mute">
           {translate('read.delete.confirm')}
         </p>
       </div>
