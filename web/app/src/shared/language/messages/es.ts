@@ -371,8 +371,8 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype y golangci-lint, pruebas del protocolo y de lo que prometemos, y una prueba con los datos de un servidor robado. Cada commit de la rama principal está firmado.',
   'transparency.checks.ai.title': 'Revisiones con agentes de IA',
   'transparency.checks.ai':
-    'Agentes de IA examinaron el código en cinco revisiones de seguridad en profundidad: el 25 de octubre, el 1 de noviembre, el 7 de noviembre (web y servidor) y el 8 de noviembre de 2026 (repositorio). Los hallazgos están corregidos en pull requests públicos en {link}.',
-  'transparency.checks.ai.link': 'GitHub',
+    'Agentes de IA examinaron el código en cinco revisiones de seguridad en profundidad: el 25 de octubre, el 1 de noviembre, el 7 de noviembre (web y servidor) y el 8 de noviembre de 2026 (repositorio). Los hallazgos están corregidos en {link}.',
+  'transparency.checks.ai.link': 'pull requests en GitHub',
   'transparency.checks.watch.title': 'Vigilancia de nylzo.com',
   'transparency.checks.watch':
     'Cada 30\u{A0}minutos se compara el código de la web con la versión firmada. Si hay una diferencia: mantenimiento automático, desconexión mediante el firewall en la nube y aviso de incidente. Cada hora, un proceso automático crea un mensaje de prueba, lo lee y deja que se borre.',

@@ -378,8 +378,8 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype und golangci-lint, Tests des Protokolls und dessen, was wir versprechen, sowie ein Test der Daten eines gestohlenen Servers. Jeder Commit im Hauptzweig ist signiert.',
   'transparency.checks.ai.title': 'Prüfungen mit KI-Agenten',
   'transparency.checks.ai':
-    'KI-Agenten haben den Code in fünf eingehenden Sicherheitsprüfungen untersucht: am 25.\u{A0}Oktober, 1.\u{A0}November, 7.\u{A0}November (Web und Server) und 8.\u{A0}November 2026 (Repository). Die Befunde sind in öffentlichen Pull Requests auf {link} behoben.',
-  'transparency.checks.ai.link': 'GitHub',
+    'KI-Agenten haben den Code in fünf eingehenden Sicherheitsprüfungen untersucht: am 25.\u{A0}Oktober, 1.\u{A0}November, 7.\u{A0}November (Web und Server) und 8.\u{A0}November 2026 (Repository). Die Befunde sind in {link} behoben.',
+  'transparency.checks.ai.link': 'Pull Requests auf GitHub',
   'transparency.checks.watch.title': 'Überwachung von nylzo.com',
   'transparency.checks.watch':
     'Alle 30\u{A0}Minuten ein Abgleich des Website-Codes mit dem signierten Release. Bei einer Abweichung automatische Wartung, Trennung durch die Cloud-Firewall und eine Meldung des Vorfalls. Jede Stunde eine Testnachricht, die ein automatischer Job erstellt, liest und löschen lässt.',

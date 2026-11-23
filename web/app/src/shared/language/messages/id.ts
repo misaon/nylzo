@@ -370,8 +370,8 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype, dan golangci-lint, pengujian protokol dan hal-hal yang kami janjikan, serta pengujian data dari server yang dicuri. Setiap commit di branch utama ditandatangani.',
   'transparency.checks.ai.title': 'Pemeriksaan dengan agen AI',
   'transparency.checks.ai':
-    'Agen AI memeriksa kode dalam lima pemeriksaan keamanan mendalam: 25\u{A0}Oktober, 1\u{A0}November, 7\u{A0}November (klien web dan server), dan 8\u{A0}November 2026 (repositori). Temuannya sudah diperbaiki di pull request publik di {link}.',
-  'transparency.checks.ai.link': 'GitHub',
+    'Agen AI memeriksa kode dalam lima pemeriksaan keamanan mendalam: 25\u{A0}Oktober, 1\u{A0}November, 7\u{A0}November (klien web dan server), dan 8\u{A0}November 2026 (repositori). Temuannya sudah diperbaiki di {link}.',
+  'transparency.checks.ai.link': 'pull request di GitHub',
   'transparency.checks.watch.title': 'Pemantauan nylzo.com',
   'transparency.checks.watch':
     'Setiap 30\u{A0}menit, kode situs dibandingkan dengan rilis yang ditandatangani. Jika berbeda: mode pemeliharaan otomatis, pemutusan oleh firewall cloud, dan laporan insiden. Setiap jam, tugas otomatis membuat pesan uji, membacanya, lalu membiarkan server menghapusnya.',

@@ -77,7 +77,7 @@
     ? (['changes', 'ai', 'watch', 'ratings', 'audit'] as const)
     : (['changes', 'ai', 'ratings', 'audit'] as const);
   const PROOF_LINKS = {
-    ai: { href: `${REPOSITORY_URL}/pulls?q=is%3Apr+is%3Amerged`, label: 'transparency.checks.ai.link' },
+    ai: { href: `${REPOSITORY_URL}/pulls?q=is%3Apr+label%3Asecurity-review`, label: 'transparency.checks.ai.link' },
     ratings: { href: `${REPOSITORY_URL}#readme`, label: 'transparency.checks.ratings.link' },
   } as const satisfies Partial<Record<(typeof CHECKS)[number], { href: string; label: MessageKey }>>;
   const OTHERS = official ? (['hosting', 'client', 'analytics'] as const) : (['hosting', 'client'] as const);

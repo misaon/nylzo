@@ -360,8 +360,8 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype and golangci-lint, tests of the protocol and of what we promise, and a stolen-server data test. Every commit on the main branch is signed.',
   'transparency.checks.ai.title': 'Reviews with AI agents',
   'transparency.checks.ai':
-    'AI agents examined the code in five in-depth security reviews: 25 October, 1 November, 7 November (web and server) and 8 November 2026 (repository). The findings are fixed in public pull requests on {link}.',
-  'transparency.checks.ai.link': 'GitHub',
+    'AI agents examined the code in five in-depth security reviews: 25 October, 1 November, 7 November (web and server) and 8 November 2026 (repository). The findings are fixed in {link}.',
+  'transparency.checks.ai.link': 'pull requests on GitHub',
   'transparency.checks.watch.title': 'Watching nylzo.com',
   'transparency.checks.watch':
     'Every 30 minutes the site code is compared with the signed release. On a difference: automatic maintenance, a cloud firewall cut-off and an incident report. Every hour a job creates, reads and spends a test message.',

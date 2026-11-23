@@ -362,8 +362,8 @@ export const messages: Catalog = {
     'CodeQL, govulncheck, OSV-Scanner, Grype a\u{A0}golangci-lint, testy protokolu a\u{A0}toho, čo sľubujeme, a\u{A0}test dát z\u{A0}ukradnutého servera. Každý commit v\u{A0}hlavnej vetve je podpísaný.',
   'transparency.checks.ai.title': 'Kontroly s\u{A0}agentmi AI',
   'transparency.checks.ai':
-    'Agenti AI preverili kód v\u{A0}piatich hĺbkových bezpečnostných kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web aj server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitár). Nálezy sú opravené vo verejných pull requestoch na\u{A0}{link}.',
-  'transparency.checks.ai.link': 'GitHube',
+    'Agenti AI preverili kód v\u{A0}piatich hĺbkových bezpečnostných kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web aj server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitár). Nálezy sú opravené v\u{A0}{link}.',
+  'transparency.checks.ai.link': 'pull requestoch na GitHube',
   'transparency.checks.watch.title': 'Dohľad nad nylzo.com',
   'transparency.checks.watch':
     'Každých 30\u{A0}minút porovnanie kódu webu s\u{A0}podpísaným vydaním. Pri odchýlke automatická údržba, odpojenie cloudovým firewallom a\u{A0}hlásenie incidentu. Každú hodinu skúšobná správa, ktorú automat vytvorí, prečíta a\u{A0}nechá vymazať.',

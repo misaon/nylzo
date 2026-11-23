@@ -358,8 +358,8 @@ export const messages = {
     'CodeQL, govulncheck, OSV-Scanner, Grype a\u{A0}golangci-lint, testy protokolu a\u{A0}toho, co slibujeme, a\u{A0}test dat z\u{A0}ukradeného serveru. Každý commit v\u{A0}hlavní větvi je podepsaný.',
   'transparency.checks.ai.title': 'Kontroly s\u{A0}agenty AI',
   'transparency.checks.ai':
-    'Agenti AI prověřili kód v\u{A0}pěti hloubkových bezpečnostních kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web i\u{A0}server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitář). Nálezy jsou opravené ve veřejných pull requestech na\u{A0}{link}.',
-  'transparency.checks.ai.link': 'GitHubu',
+    'Agenti AI prověřili kód v\u{A0}pěti hloubkových bezpečnostních kontrolách: 25.\u{A0}10., 1.\u{A0}11., 7.\u{A0}11. (web i\u{A0}server) a\u{A0}8.\u{A0}11.\u{A0}2026 (repozitář). Nálezy jsou opravené v\u{A0}{link}.',
+  'transparency.checks.ai.link': 'pull requestech na GitHubu',
   'transparency.checks.watch.title': 'Hlídání nylzo.com',
   'transparency.checks.watch':
     'Každých 30\u{A0}minut porovnání kódu webu s\u{A0}podepsaným vydáním. Při odchylce automatická údržba, odpojení cloudovým firewallem a\u{A0}hlášení incidentu. Každou hodinu zkušební zpráva, kterou automat vytvoří, přečte a\u{A0}nechá smazat.',

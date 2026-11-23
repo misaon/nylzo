@@ -341,8 +341,8 @@ export const messages: Catalog = {
     'CodeQL、govulncheck、OSV-Scanner、Grype 和 golangci-lint，协议及各项承诺的测试，以及被盗服务器数据测试。主分支上的每个 commit 都经过签名。',
   'transparency.checks.ai.title': '借助 AI 智能体的检查',
   'transparency.checks.ai':
-    'AI 智能体在 5 次深度安全检查中审查了代码：2026 年 10 月 25 日、11 月 1 日、11 月 7 日（网页端和服务器）以及 11 月 8 日（代码库）。发现的问题已修复，修复记录在 {link} 的公开拉取请求中。',
-  'transparency.checks.ai.link': 'GitHub',
+    'AI 智能体在 5 次深度安全检查中审查了代码：2026 年 10 月 25 日、11 月 1 日、11 月 7 日（网页端和服务器）以及 11 月 8 日（代码库）。发现的问题已修复，修复记录在 {link} 中。',
+  'transparency.checks.ai.link': 'GitHub 上的拉取请求',
   'transparency.checks.watch.title': '监控 nylzo.com',
   'transparency.checks.watch':
     '每 30 分钟将网站代码与已签名发行版比对一次。一旦出现偏差，自动进入维护状态，由云防火墙切断服务，并上报事件。每小时由自动任务创建、读取并删除一条测试消息。',

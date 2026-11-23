@@ -366,8 +366,8 @@ export const messages: Catalog = {
     'CodeQL、govulncheck、OSV-Scanner、Grype、golangci-lint、プロトコルと約束内容のテスト、そして盗まれたサーバーのデータを調べるテスト。メインブランチのコミットはすべて署名されています。',
   'transparency.checks.ai.title': 'AIエージェントによるチェック',
   'transparency.checks.ai':
-    'AIエージェントが、5回の詳細なセキュリティチェックでコードを調べました。実施日は2026年10月25日、11月1日、11月7日（Webとサーバー）、11月8日（リポジトリ）です。見つかった問題は修正済みで、修正は{link}の公開プルリクエストにあります。',
-  'transparency.checks.ai.link': 'GitHub',
+    'AIエージェントが、5回の詳細なセキュリティチェックでコードを調べました。実施日は2026年10月25日、11月1日、11月7日（Webとサーバー）、11月8日（リポジトリ）です。見つかった問題は修正済みで、修正は{link}にあります。',
+  'transparency.checks.ai.link': 'GitHubのプルリクエスト',
   'transparency.checks.watch.title': 'nylzo.comの監視',
   'transparency.checks.watch':
     '30分ごとに、サイトのコードを署名されたリリースと比較します。違いがあれば、自動でメンテナンスに切り替え、クラウドファイアウォールで遮断し、インシデントを報告します。1時間ごとに、自動ジョブがテスト用のメッセージを作成して読み取り、削除させます。',
