@@ -827,7 +827,7 @@ export const messages: Catalog = {
   'tech.web.text': 'Svelte\u{A0}5 i\u{A0}odciski SHA\u{2011}384, bez plików cookie',
   'tech.release.title': 'Rozwój i\u{A0}wydania',
   'tech.release.text': 'Podpisane wydania i\u{A0}automatyczne poprawki',
-  'tech.tests.title': 'Niezależne testy',
+  'tech.tests.title': 'Niezależne testy nylzo.com',
 
   'host.eyebrow': 'Terminal i\u{A0}własny serwer',
   'host.title': 'Nylzo w\u{A0}terminalu i\u{A0}na własnym serwerze',

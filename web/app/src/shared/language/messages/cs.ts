@@ -776,7 +776,7 @@ export const messages = {
   'tech.web.text': 'Svelte\u{A0}5, otisky SHA\u{2011}384 a\u{A0}žádné cookies',
   'tech.release.title': 'Vývoj a\u{A0}vydání',
   'tech.release.text': 'Podepsaná vydání a\u{A0}automatické opravy',
-  'tech.tests.title': 'Nezávislé testy',
+  'tech.tests.title': 'Nezávislé testy nylzo.com',
 
   'host.eyebrow': 'Terminál a\u{A0}vlastní server',
   'host.title': 'Nylzo v\u{A0}terminálu i\u{A0}na vlastním serveru',

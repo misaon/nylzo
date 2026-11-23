@@ -733,7 +733,7 @@ export const messages: Catalog = {
   'tech.web.text': 'Svelte 5、SHA\u{2011}384 哈希，不使用 Cookie',
   'tech.release.title': '开发与发布',
   'tech.release.text': '已签名的发行版和自动修复',
-  'tech.tests.title': '独立测试',
+  'tech.tests.title': 'nylzo.com 的独立测试',
 
   'host.eyebrow': '终端与自托管',
   'host.title': '在终端和自己的服务器上使用 Nylzo',
