@@ -739,7 +739,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'Zrušenie na diaľku',
   'promise.cancel.text':
     'Poslali ste odkaz omylom niekomu inému? Keď správu sledujete v\u{A0}Odoslaných, zrušíte ju tam a\u{A0}uvidíte, či ju už niekto otvoril.',
-  'promise.cancel.verify': 'Odoslané',
+  'promise.cancel.link': 'Prejsť do Odoslaných',
   'promise.open.title': 'Otvorený kód a\u{A0}overiteľné zostavenie',
   'promise.open.text':
     'Kód, špecifikácia protokolu aj testovacie vektory sú na GitHube pod licenciou MIT. Z\u{A0}rovnakého zdroja vznikne bajt po bajte rovnaká binárka, takže vydanie môže overiť ktokoľvek.',

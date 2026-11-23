@@ -746,7 +746,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'Batalkan dari jauh',
   'promise.cancel.text':
     'Tidak sengaja mengirim tautan ke orang lain? Jika Anda memantau pesan di Terkirim, Anda bisa membatalkannya di sana dan melihat apakah sudah ada yang membukanya.',
-  'promise.cancel.verify': 'Terkirim',
+  'promise.cancel.link': 'Ke halaman Terkirim',
   'promise.open.title': 'Kode terbuka dan build yang dapat diverifikasi',
   'promise.open.text':
     'Kode, spesifikasi protokol, dan vektor uji ada di GitHub dengan lisensi MIT. Dari sumber yang sama dihasilkan biner yang identik byte demi byte, sehingga siapa pun dapat memverifikasi rilis.',

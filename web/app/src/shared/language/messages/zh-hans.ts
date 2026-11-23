@@ -693,7 +693,7 @@ export const messages: Catalog = {
   'promise.cancel.title': '远程撤销',
   'promise.cancel.text':
     '不小心把链接发错了人？如果你在“已发送”中跟踪这条消息，就可以在那里撤销它，并查看是否已经有人打开。',
-  'promise.cancel.verify': '已发送',
+  'promise.cancel.link': '前往“已发送”',
   'promise.open.title': '开源代码，可验证的构建',
   'promise.open.text':
     '代码、协议规范和测试向量都以 MIT 许可证发布在 GitHub 上。同样的源代码会生成逐字节相同的二进制文件，因此任何人都可以验证发行版。',

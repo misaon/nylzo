@@ -783,7 +783,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'Zdalne anulowanie',
   'promise.cancel.text':
     'Link trafił przez pomyłkę do kogoś innego? Jeśli śledzisz wiadomość w\u{A0}Wysłanych, anulujesz ją tam i\u{A0}zobaczysz, czy ktoś już ją otworzył.',
-  'promise.cancel.verify': 'Wysłane',
+  'promise.cancel.link': 'Przejdź do Wysłanych',
   'promise.open.title': 'Otwarty kod i\u{A0}weryfikowalne kompilacje',
   'promise.open.text':
     'Kod, specyfikacja protokołu i\u{A0}wektory testowe są na GitHubie na licencji MIT. Z\u{A0}tego samego źródła powstaje bajt w\u{A0}bajt identyczny plik binarny, więc każdy może zweryfikować wydanie.',

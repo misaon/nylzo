@@ -745,7 +745,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'Annullamento a distanza',
   'promise.cancel.text':
     'Hai mandato il link alla persona sbagliata? Se segui il messaggio in Inviati, lo annulli da lì e vedi se qualcuno lo ha già aperto.',
-  'promise.cancel.verify': 'Inviati',
+  'promise.cancel.link': 'Vai a Inviati',
   'promise.open.title': 'Codice aperto e build verificabili',
   'promise.open.text':
     'Il codice, la specifica del protocollo e i vettori di test sono su GitHub con licenza MIT. Dallo stesso sorgente si ottiene un binario identico byte per byte, quindi chiunque può verificare una release.',

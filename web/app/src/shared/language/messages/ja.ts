@@ -739,7 +739,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'リモートで取り消し',
   'promise.cancel.text':
     'リンクを間違った相手に送ってしまったら？「送信済み」でメッセージを追跡していれば、そこから取り消せて、すでに誰かが開封したかどうかも確認できます。',
-  'promise.cancel.verify': '送信済み',
+  'promise.cancel.link': '「送信済み」へ移動',
   'promise.open.title': 'オープンなコードと再現可能なビルド',
   'promise.open.text':
     'コード、プロトコル仕様、テストベクターはMITライセンスでGitHubに公開しています。同じソースからはバイト単位で同一のバイナリが作られるため、誰でもリリースを検証できます。',

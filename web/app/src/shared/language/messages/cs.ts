@@ -733,7 +733,7 @@ export const messages = {
   'promise.cancel.title': 'Zrušení na dálku',
   'promise.cancel.text':
     'Poslali jste odkaz omylem někomu jinému? Když zprávu sledujete v\u{A0}Odeslaných, zrušíte ji tam a\u{A0}uvidíte, jestli ji už někdo otevřel.',
-  'promise.cancel.verify': 'Odeslané',
+  'promise.cancel.link': 'Přejít do Odeslaných',
   'promise.open.title': 'Otevřený kód a\u{A0}ověřitelné sestavení',
   'promise.open.text':
     'Kód, specifikace protokolu i\u{A0}testovací vektory jsou na GitHubu pod licencí MIT. Ze stejného zdroje vznikne bajt po bajtu stejná binárka, takže vydání může ověřit kdokoli.',

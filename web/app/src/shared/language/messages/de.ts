@@ -753,7 +753,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'Widerruf aus der Ferne',
   'promise.cancel.text':
     'Link versehentlich an die falsche Person geschickt? Wenn Sie die Nachricht unter Gesendet verfolgen, widerrufen Sie sie dort und sehen, ob sie schon jemand geöffnet hat.',
-  'promise.cancel.verify': 'Gesendet',
+  'promise.cancel.link': 'Gesendet öffnen',
   'promise.open.title': 'Offener Code und überprüfbare Builds',
   'promise.open.text':
     'Code, Protokollspezifikation und Testvektoren liegen unter der MIT-Lizenz auf GitHub. Aus derselben Quelle entsteht Byte für Byte dieselbe Binärdatei, deshalb kann jeder ein Release überprüfen.',

@@ -730,7 +730,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'Cancel from afar',
   'promise.cancel.text':
     'Sent the link to the wrong person? If you track the message in Sent, you can cancel it there and see whether anyone has opened it.',
-  'promise.cancel.verify': 'Sent',
+  'promise.cancel.link': 'Go to Sent',
   'promise.open.title': 'Open code and reproducible builds',
   'promise.open.text':
     'The code, the protocol specification and the test vectors are on GitHub under the MIT license. The same source produces a byte-for-byte identical binary, so anyone can check a release.',
