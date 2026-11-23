@@ -85,7 +85,9 @@ describe('traffic', () => {
   }
 
   function labels(list: string): string[] {
-    return [...target.querySelectorAll(`ul[aria-label="${list}"] .truncate`)].map((label) => text(label));
+    return [...target.querySelectorAll(`ul[aria-label="${list}"] li span.flex > span:first-child`)].map((label) =>
+      text(label),
+    );
   }
 
   describe('section', () => {

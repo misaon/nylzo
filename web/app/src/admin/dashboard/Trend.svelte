@@ -21,15 +21,13 @@
 </script>
 
 {#if rounded !== undefined}
-  <p class="flex min-w-0 items-center gap-x-1.5 text-caption whitespace-nowrap">
+  <p class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-caption">
     <span class={['inline-flex items-center gap-1 font-medium tabular-nums', tone]}>
       {#if rounded !== 0}
         <Icon name="arrowRight" class={['size-3.5', rounded > 0 ? '-rotate-45' : 'rotate-45']} stroke={2.2} />
       {/if}
       {format.change(rounded / 100)}
     </span>
-    <span class="truncate text-ink-mute" title={translate(`dashboard.trend.${range}`)}>
-      {translate(`dashboard.trend.${range}`)}
-    </span>
+    <span class="text-ink-mute">{translate(`dashboard.trend.${range}`)}</span>
   </p>
 {/if}
