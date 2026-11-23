@@ -157,12 +157,13 @@ describe('access screens', () => {
     expect(client.signIn).toHaveBeenCalledOnce();
   });
 
-  it('confirms a sign-out on the sign-in screen only', async () => {
+  it('confirms a sign-out on the sign-in screen only and moves focus to it', async () => {
     show();
     await started();
     await area.signOut();
     flushSync();
     expect(statuses()).toContain(translate('access.notice.signedOut'));
+    expect(document.activeElement).toBe(target.querySelector('h1'));
 
     client.enrolled.mockRejectedValue(new ApiError(500, 'internal'));
     await started();
