@@ -1,8 +1,8 @@
 {
   "gh-amd64": {"package": "cli/cli", "version": "v2.105.0", "sha256": "79e7ab5db738c48777b696e374f8b428f0647debfb424f44d2f426370407fe2f"},
   "gh-arm64": {"package": "cli/cli", "version": "v2.105.0", "sha256": "b1278c75107423d818f1937fd92cafc9e5e9b606631568f68d7fb816f5885a02"},
-  "cosign-amd64": {"package": "sigstore/cosign", "version": "v3.1.4", "sha256": "424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa"},
-  "cosign-arm64": {"package": "sigstore/cosign", "version": "v3.1.4", "sha256": "ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2"},
+  "cosign-amd64": {"package": "sigstore/cosign", "version": "v3.1.5", "sha256": "912502def4baf810eaf36b210a4f51e1da214f9f6d664e2a9a2154cfc67ee0d6"},
+  "cosign-arm64": {"package": "sigstore/cosign", "version": "v3.1.5", "sha256": "516893301e9ec0f2594edfcf8f943ec3b3ba96f3aad2b507eff2b71e644e5fca"},
   "jq-amd64": {"package": "jqlang/jq", "version": "jq-1.8.2", "sha256": "b1c22172dd303f3be49e935aa56aa48a8b7a46e0bc838b4997d3bb451495870f"},
   "jq-arm64": {"package": "jqlang/jq", "version": "jq-1.8.2", "sha256": "8b85c817833814ddca00a144c33705546355afccf0cf39b188f3cdb48b852309"},
   "ignition-amd64": {"package": "coreos/ignition", "version": "v2.28.0", "sha256": "06d9d80280803137a4bfbeb1eb82a9dbf04aaf84e6b9c760323f5156724ea448"},
