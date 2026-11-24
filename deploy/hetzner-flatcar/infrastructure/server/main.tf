@@ -1,6 +1,6 @@
 language {
   compatible_with {
-    opentofu = "= 1.13.9"
+    opentofu = "= 1.13.10"
   }
 }
 
