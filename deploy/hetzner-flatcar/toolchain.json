@@ -6,9 +6,9 @@
     "arm64": "b1278c75107423d818f1937fd92cafc9e5e9b606631568f68d7fb816f5885a02"
   },
   "cosign": {
-    "version": "3.1.4",
-    "amd64": "424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa",
-    "arm64": "ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2"
+    "version": "3.1.5",
+    "amd64": "912502def4baf810eaf36b210a4f51e1da214f9f6d664e2a9a2154cfc67ee0d6",
+    "arm64": "516893301e9ec0f2594edfcf8f943ec3b3ba96f3aad2b507eff2b71e644e5fca"
   },
   "jq": {
     "version": "1.8.2",
