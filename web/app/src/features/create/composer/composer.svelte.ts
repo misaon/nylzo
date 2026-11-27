@@ -22,6 +22,7 @@ import { solvePowInWorker, stopRunningWorkers, stretchInWorker } from '../../../
 import { formatBytes, formatDuration, formatWait } from '../../../shared/language/format.ts';
 import type { Translator } from '../../../shared/language/translator.svelte.ts';
 import { instanceOrigin, servedByLocalClient } from '../../../shared/local-client/instance-origin.ts';
+import type { UnsavedWork } from '../../../shared/navigation/screen-work.ts';
 import { PacedTimeline } from '../../../shared/pipeline/paced-timeline.svelte.ts';
 import type { TimelineSettings } from '../../../shared/pipeline/paced-timeline.svelte.ts';
 import type { PipelineNode } from '../../../shared/pipeline/pipeline.ts';
@@ -134,6 +135,7 @@ export class Composer {
   left = $state(false);
   remembered = $state<Remembered>('off');
   kept = $state(false);
+  linkCopied = $state(false);
   trackingPanelLeft = $state(false);
   readonly focus = new FocusTargets<ComposerTarget>();
   readonly glide = new Glide();
@@ -144,6 +146,15 @@ export class Composer {
   readonly sealed = $derived(this.#state.phase === 'done' ? this.#state.sealed : undefined);
   readonly sealingWithPassphrase = $derived(this.#state.phase === 'encrypting' && this.#state.withPassphrase);
   readonly busy = $derived(this.phase !== 'compose');
+
+  readonly unsaved = $derived.by((): UnsavedWork | undefined => {
+    const state = this.#state;
+    const linkCreated = state.phase === 'done' || (state.phase === 'encrypting' && state.pending !== undefined);
+    if (!linkCreated) {
+      return this.text.trim() !== '' || this.file !== undefined ? 'draft' : undefined;
+    }
+    return this.linkCopied ? undefined : 'link';
+  });
 
   // A link of the final length lets the created panel take its size at the click, so nothing moves when it arrives.
   readonly placeholder = $derived(
@@ -256,8 +267,8 @@ export class Composer {
   });
 
   readonly problemNotice = $derived.by(() => {
-    const { content, text, file, ttl, opens } = this.problemOf;
-    return content ?? text ?? file ?? ttl ?? opens ?? '';
+    const { content, text, file, ttl, opens, passphrase } = this.problemOf;
+    return content ?? text ?? file ?? ttl ?? opens ?? (this.menu === 'security' ? undefined : passphrase) ?? '';
   });
 
   readonly notice = $derived(this.failureNotice || this.problemNotice);
@@ -468,6 +479,7 @@ export class Composer {
   #forgetTracking(): void {
     this.remembered = 'off';
     this.kept = false;
+    this.linkCopied = false;
     this.trackingPanelLeft = false;
   }
 
@@ -597,10 +609,13 @@ export class Composer {
   }
 
   async #showProblems(problems: readonly CreateProblem[]): Promise<void> {
+    const passphraseProblem = problems.some((problem) => problem.field === 'passphrase');
     this.problems = problems;
-    await tick();
-    if (problems.some((problem) => problem.field === 'passphrase')) {
+    if (passphraseProblem) {
       this.menu = 'security';
+    }
+    await tick();
+    if (passphraseProblem) {
       await this.focus.focusAfterUpdate('passphrase');
     } else if (problems.some((problem) => problem.field === 'content' || problem.field === 'text')) {
       this.focus.focus('text');

@@ -203,7 +203,7 @@ export const messages: Catalog = {
   'failure.too_large': 'Wiadomość jest za duża dla tej usługi. Skróć tekst albo wyślij mniejszy załącznik.',
   'failure.kdf':
     'To urządzenie nie poradziło sobie z\u{A0}szyfrowaniem hasłem. Spróbuj na innym urządzeniu albo wyślij wiadomość bez hasła.',
-  'failure.pow': 'Ochrona przed nadużyciami nie zdążyła się zakończyć. Spróbuj ponownie.',
+  'failure.pow': 'Ochrona przed przeciążeniem nie zdążyła się zakończyć. Spróbuj ponownie.',
   'failure.failed': 'Nie udało się utworzyć wiadomości. Tekst pozostał w\u{A0}polu, spróbuj ponownie.',
 
   'created.title': 'Link jest gotowy',
@@ -565,6 +565,13 @@ export const messages: Catalog = {
   'created.copy.short': 'Skopiuj',
   'created.copy_failed': 'Nie udało się skopiować. Link jest zaznaczony, skopiuj go ręcznie.',
   'created.once': 'Link widzisz tylko teraz. Nie otwieraj go samodzielnie, bo zużyjesz otwarcie.',
+  'leave.draft.title': 'Wyjść bez dokończenia wiadomości?',
+  'leave.draft.message': 'Nigdzie nie zapisujemy tekstu ani załącznika. Jeśli wyjdziesz, przepadną.',
+  'leave.link.title': 'Wyjść bez kopiowania linku?',
+  'leave.link.message':
+    'Link widzisz tylko teraz i\u{A0}nigdzie nie jest zapisywany. Bez niego nikt nie otworzy wiadomości.',
+  'leave.confirm': 'Wyjdź',
+  'leave.stay': 'Zostań',
   'created.passphrase.show': 'Pokaż hasło',
   'created.passphrase.hide': 'Ukryj hasło',
   'created.passphrase.copy': 'Skopiuj hasło',

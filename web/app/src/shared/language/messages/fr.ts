@@ -175,7 +175,7 @@ export const messages: Catalog = {
     'Le message est trop volumineux pour ce service. Raccourcissez le texte ou joignez un fichier plus petit.',
   'failure.kdf':
     'Cet appareil n’a pas réussi à chiffrer avec un mot de passe. Essayez un autre appareil ou envoyez le message sans mot de passe.',
-  'failure.pow': 'La protection contre les abus n’a pas pu se terminer à temps. Réessayez.',
+  'failure.pow': 'La protection anti-saturation n’a pas pu se terminer à temps. Réessayez.',
   'failure.failed': 'Impossible de créer le message. Le texte est resté dans le champ, réessayez.',
 
   'created.title': 'Le lien est prêt',
@@ -532,6 +532,13 @@ export const messages: Catalog = {
   'created.copy.short': 'Copier',
   'created.copy_failed': 'La copie a échoué. Le lien est sélectionné, copiez-le manuellement.',
   'created.once': 'Vous ne voyez le lien que maintenant. Ne l’ouvrez pas vous-même, vous consommeriez une ouverture.',
+  'leave.draft.title': 'Partir sans terminer le message\u{A0}?',
+  'leave.draft.message': 'Nous n’enregistrons ni le texte ni la pièce jointe. Si vous partez, ils seront perdus.',
+  'leave.link.title': 'Partir sans copier le lien\u{A0}?',
+  'leave.link.message':
+    'Vous ne voyez le lien que maintenant, et il n’est enregistré nulle part. Sans lui, personne ne pourra ouvrir le message.',
+  'leave.confirm': 'Partir',
+  'leave.stay': 'Rester',
   'created.passphrase.show': 'Afficher le mot de passe',
   'created.passphrase.hide': 'Masquer le mot de passe',
   'created.passphrase.copy': 'Copier le mot de passe',

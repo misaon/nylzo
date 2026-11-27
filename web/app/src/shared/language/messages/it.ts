@@ -173,7 +173,7 @@ export const messages: Catalog = {
     'Il messaggio è troppo grande per questo servizio. Accorcia il testo o invia un allegato più piccolo.',
   'failure.kdf':
     'Questo dispositivo non è riuscito a cifrare con la password. Prova con un altro dispositivo o invia il messaggio senza password.',
-  'failure.pow': 'La protezione contro gli abusi non si è completata in tempo. Riprova.',
+  'failure.pow': 'La protezione contro il sovraccarico non si è completata in tempo. Riprova.',
   'failure.failed': 'Impossibile creare il messaggio. Il testo è rimasto nel campo, riprova.',
 
   'created.title': 'Il link è pronto',
@@ -525,6 +525,13 @@ export const messages: Catalog = {
   'created.copy.short': 'Copia',
   'created.copy_failed': 'Copia non riuscita. Il link è selezionato, copialo a mano.',
   'created.once': 'Vedi il link solo ora. Non aprirlo tu, consumeresti un’apertura.',
+  'leave.draft.title': 'Uscire senza finire il messaggio?',
+  'leave.draft.message': 'Non salviamo il testo né l’allegato da nessuna parte. Se esci, li perdi.',
+  'leave.link.title': 'Uscire senza copiare il link?',
+  'leave.link.message':
+    'Vedi il link solo ora e non viene salvato da nessuna parte. Senza di esso nessuno può aprire il messaggio.',
+  'leave.confirm': 'Esci',
+  'leave.stay': 'Resta',
   'created.passphrase.show': 'Mostra password',
   'created.passphrase.hide': 'Nascondi password',
   'created.passphrase.copy': 'Copia password',

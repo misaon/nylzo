@@ -19,6 +19,7 @@ describe('created message panel', () => {
   const another = vi.fn<() => void>();
   const remember = vi.fn<(label: string) => void>();
   const trackingLeft = vi.fn<() => void>();
+  const copiedLink = vi.fn<() => void>();
   const writeText = vi.fn<(text: string) => Promise<void>>();
   const share = vi.fn<() => Promise<void>>();
   const canShare = vi.fn<() => boolean>();
@@ -49,6 +50,7 @@ describe('created message panel', () => {
         onremember: remember,
         ontrackingleft: trackingLeft,
         onanother: another,
+        oncopied: copiedLink,
       },
     });
     flushSync();
@@ -117,6 +119,7 @@ describe('created message panel', () => {
     await tick();
     expect(writeText).toHaveBeenCalledExactlyOnceWith(created.link);
     expect(status()).toBe(translator.translate('action.copied'));
+    expect(copiedLink).toHaveBeenCalledOnce();
   });
 
   it('selects the link for manual copy and says so if the clipboard API refuses', async () => {
@@ -128,6 +131,9 @@ describe('created message panel', () => {
     expect(target.querySelector('[role="alert"]')?.textContent.trim()).toBe(
       translator.translate('created.copy_failed'),
     );
+    expect(copiedLink).not.toHaveBeenCalled();
+    target.querySelector('input')?.dispatchEvent(new Event('copy'));
+    expect(copiedLink).toHaveBeenCalledOnce();
   });
 
   it('masks the passphrase until asked and copies it exactly', async () => {
@@ -197,6 +203,7 @@ describe('created message panel', () => {
     await tick();
     expect(share).toHaveBeenCalledExactlyOnceWith({ url: created.link });
     expect(target.querySelector('input')?.value).toBe(created.link);
+    expect(copiedLink).toHaveBeenCalledTimes(cancelled ? 0 : 1);
   });
 
   it.each([

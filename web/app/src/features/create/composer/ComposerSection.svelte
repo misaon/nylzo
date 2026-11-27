@@ -16,7 +16,9 @@
   const translator = getTranslator();
   const { translate } = translator;
   const composer = new Composer(translator, getSessionSentStore());
-  onDestroy(getScreenWork().watch(() => composer.phase === 'encrypting'));
+  const work = getScreenWork();
+  onDestroy(work.watch(() => composer.phase === 'encrypting'));
+  onDestroy(work.guard(() => composer.unsaved));
   const id = $props.id();
   const noticeId = `${id}-notice`;
   const HERO_PROOFS = [
@@ -31,6 +33,7 @@
     onremember: (label: string) => void composer.remember(label),
     ontrackingleft: () => (composer.trackingPanelLeft = true),
     onanother: () => void composer.another(),
+    oncopied: () => (composer.linkCopied = true),
   });
 </script>
 

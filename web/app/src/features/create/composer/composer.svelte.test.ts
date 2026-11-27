@@ -172,6 +172,9 @@ describe('message composer interactions', () => {
     expect(form.menu).toBe('security');
     expect(form.problems).toContainEqual({ field: 'passphrase', code: 'too_short' });
     expect(form.passphraseMessage).not.toBe('');
+    expect(form.notice).toBe('');
+    form.menu = undefined;
+    expect(form.notice).toBe(form.passphraseMessage);
     expect(createMessage).not.toHaveBeenCalled();
     await form.generatePassphrase();
     expect(form.problems).toEqual([]);
@@ -339,6 +342,23 @@ describe('message composer interactions', () => {
       expect(form.kept).toBe(stored);
     },
   );
+
+  it('counts a draft, or a link that was not copied even while Sent tracks it, as unsaved', async () => {
+    const form = composer();
+    form.text = '  ';
+    expect(form.unsaved).toBeUndefined();
+    form.text = 'draft';
+    expect(form.unsaved).toBe('draft');
+    await submit(form);
+    vi.advanceTimersByTime(5100);
+    expect(form.unsaved).toBe('link');
+    await form.remember('');
+    expect([form.remembered, form.kept, form.unsaved]).toEqual(['remembered', true, 'link']);
+    form.linkCopied = true;
+    expect(form.unsaved).toBeUndefined();
+    await form.another();
+    expect([form.linkCopied, form.unsaved]).toEqual([false, undefined]);
+  });
 
   it('keeps a message only in this tab when the page cannot keep it in the browser', async () => {
     const form = composer();

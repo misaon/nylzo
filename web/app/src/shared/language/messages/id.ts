@@ -171,7 +171,7 @@ export const messages: Catalog = {
   'failure.too_large': 'Pesan terlalu besar untuk layanan ini. Persingkat teks, atau kirim lampiran yang lebih kecil.',
   'failure.kdf':
     'Perangkat ini tidak mampu mengenkripsi dengan kata sandi. Coba perangkat lain, atau kirim pesan tanpa kata sandi.',
-  'failure.pow': 'Perlindungan terhadap penyalahgunaan tidak sempat selesai. Coba lagi.',
+  'failure.pow': 'Perlindungan dari beban berlebih tidak sempat selesai. Coba lagi.',
   'failure.failed': 'Pesan tidak dapat dibuat. Teks masih ada di kolom, coba lagi.',
 
   'created.title': 'Tautan sudah siap',
@@ -526,6 +526,13 @@ export const messages: Catalog = {
   'created.copy_failed': 'Gagal menyalin. Tautan sudah dipilih, salin secara manual.',
   'created.once':
     'Tautan ini hanya ditampilkan sekarang. Jangan membukanya sendiri, karena itu akan dihitung sebagai satu kali dibuka.',
+  'leave.draft.title': 'Keluar sebelum pesan selesai?',
+  'leave.draft.message': 'Kami tidak menyimpan teks atau lampiran di mana pun. Jika Anda keluar, semuanya hilang.',
+  'leave.link.title': 'Keluar tanpa menyalin tautan?',
+  'leave.link.message':
+    'Tautan ini hanya ditampilkan sekarang dan tidak disimpan di mana pun. Tanpanya, tidak ada yang bisa membuka pesan.',
+  'leave.confirm': 'Keluar',
+  'leave.stay': 'Tetap di sini',
   'created.passphrase.show': 'Tampilkan kata sandi',
   'created.passphrase.hide': 'Sembunyikan kata sandi',
   'created.passphrase.copy': 'Salin kata sandi',

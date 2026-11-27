@@ -167,7 +167,7 @@ export const messages: Catalog = {
     'このサービスで扱うにはメッセージが大きすぎます。テキストを短くするか、より小さいファイルを添付してください。',
   'failure.kdf':
     'この端末ではパスワードによる暗号化を完了できませんでした。別の端末を使うか、パスワードなしでメッセージを送ってください。',
-  'failure.pow': '不正利用対策の処理が時間内に終わりませんでした。もう一度お試しください。',
+  'failure.pow': '過負荷対策の処理が時間内に終わりませんでした。もう一度お試しください。',
   'failure.failed': 'メッセージを作成できませんでした。テキストは入力欄に残っています。もう一度お試しください。',
 
   'created.title': 'リンクの準備ができました',
@@ -520,6 +520,13 @@ export const messages: Catalog = {
   'created.copy.short': 'コピー',
   'created.copy_failed': 'コピーできませんでした。リンクを選択状態にしたので、手動でコピーしてください。',
   'created.once': 'リンクが表示されるのは今だけです。ご自身では開かないでください。開封回数を消費してしまいます。',
+  'leave.draft.title': '書きかけのメッセージを残して移動しますか？',
+  'leave.draft.message': 'テキストと添付ファイルはどこにも保存されません。移動すると失われます。',
+  'leave.link.title': 'リンクをコピーせずに移動しますか？',
+  'leave.link.message':
+    'リンクが表示されるのは今だけで、どこにも保存されません。リンクがないと誰もメッセージを開けません。',
+  'leave.confirm': '移動する',
+  'leave.stay': 'とどまる',
   'created.passphrase.show': 'パスワードを表示',
   'created.passphrase.hide': 'パスワードを隠す',
   'created.passphrase.copy': 'パスワードをコピー',

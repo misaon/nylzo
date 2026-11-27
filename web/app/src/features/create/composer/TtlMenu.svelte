@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { Attachment } from 'svelte/attachments';
+
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import type { Composer } from './composer.svelte.ts';
@@ -11,7 +13,14 @@
   const { composer }: Props = $props();
   const { translate } = getTranslator();
   const title = $derived(translate('compose.ttl.title'));
-  const LENGTHS = ['w-1/4', 'w-1/2', 'w-3/4', 'w-full'] as const;
+  const longest = $derived(Math.max(...composer.ttlOptions));
+
+  // The page policy blocks style attributes, which server rendering would emit for a style directive.
+  function sizeBar(seconds: number): Attachment<HTMLElement> {
+    return (bar) => {
+      bar.style.width = `${(Math.log(seconds) / Math.log(longest)) * 100}%`;
+    };
+  }
 
   function choose(seconds: number): void {
     composer.ttlSeconds = seconds;
@@ -31,7 +40,7 @@
 >
   <p class="px-3 pt-1.5 pb-1 text-caption text-ink-mute">{title}</p>
   <div class="grid gap-1">
-    {#each composer.ttlOptions as seconds, index (seconds)}
+    {#each composer.ttlOptions as seconds (seconds)}
       {const selected = $derived(composer.ttlSeconds === seconds)}
       <button
         type="button"
@@ -47,9 +56,9 @@
         <span class="flex-1 text-left">{composer.ttlLabel(seconds)}</span>
         <span class="h-1 w-14 shrink-0 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
           <span
+            {@attach sizeBar(seconds)}
             class={[
               'block h-full rounded-full bg-linear-to-r transition duration-300',
-              LENGTHS[index],
               selected ? 'from-aegis-500 to-aegis-300 shadow-glow' : 'from-white/25 to-white/25',
             ]}
           ></span>

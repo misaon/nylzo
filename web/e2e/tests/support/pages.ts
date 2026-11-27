@@ -42,6 +42,12 @@ export async function createdLink(page: Page): Promise<string> {
   return link.inputValue();
 }
 
+// A real keyboard copy: Playwright's synthetic copy event crashes the Firefox content process on this page.
+export async function copyLinkByKeyboard(page: Page): Promise<void> {
+  await page.getByLabel('Link to the message').focus();
+  await page.keyboard.press('ControlOrMeta+C');
+}
+
 async function openSecurityMenu(page: Page): Promise<void> {
   const menu = page.getByRole('button', { name: /^(?:No|With) passphrase$/u });
   if ((await menu.getAttribute('aria-expanded')) !== 'true') {

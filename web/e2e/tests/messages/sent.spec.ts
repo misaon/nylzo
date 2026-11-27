@@ -9,6 +9,7 @@ import {
 import { createMessageThroughApi } from '../support/messages.ts';
 import {
   chooseLanguage,
+  copyLinkByKeyboard,
   createdLink,
   createMessageInPage,
   expectMessageShown,
@@ -85,6 +86,7 @@ test(
   async ({ page }) => {
     const completedWrites = await countCompletedWrites(page);
     await createMessageInPage(page, { text: 'only this tab', remember: 'tab' });
+    await copyLinkByKeyboard(page);
     await page.evaluate(() => {
       Reflect.set(globalThis, 'sameDocument', true);
     });
@@ -107,6 +109,7 @@ test(
     expect(await databaseNames(page)).toEqual([]);
 
     await createMessageInPage(page, { text: 'left behind', remember: 'tab' });
+    await copyLinkByKeyboard(page);
     await page.getByRole('navigation', { name: 'Main', exact: true }).getByRole('link', { name: 'Sent' }).click();
     await expect(page).toHaveURL(/\/sent$/u);
     await expect(item.getByText('Waiting to be opened')).toBeVisible();
@@ -130,6 +133,7 @@ test('switching the language with motion while the tab tracks a message moves th
 }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await createMessageInPage(page, { text: 'language', remember: 'tab' });
+  await copyLinkByKeyboard(page);
   await chooseLanguage(page, 'Čeština');
   await expect(page).toHaveURL(/\/cs\/$/u);
   await expect(page.getByText('Tato karta si zprávu pamatuje nejdéle do zavření nebo obnovení.')).toBeVisible();

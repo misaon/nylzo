@@ -165,7 +165,7 @@ export const messages: Catalog = {
   'failure.too_large': 'The message is too large for this service. Shorten the text, or attach a smaller file.',
   'failure.kdf':
     'This device could not encrypt with a passphrase. Try another device, or send the message without a passphrase.',
-  'failure.pow': 'The abuse protection did not finish in time. Try again.',
+  'failure.pow': 'The anti-flooding check did not finish in time. Try again.',
   'failure.failed': 'The message could not be created. The text stayed in the field, try again.',
 
   'created.title': 'The link is ready',
@@ -513,6 +513,13 @@ export const messages: Catalog = {
   'created.copy.short': 'Copy',
   'created.copy_failed': 'Copying failed. The link is selected, copy it by hand.',
   'created.once': 'You see the link only now. Do not open it yourself, you would use up an open.',
+  'leave.draft.title': 'Leave the message you are writing?',
+  'leave.draft.message': 'We do not save the text or the attachment anywhere. If you leave, they are gone.',
+  'leave.link.title': 'Leave without copying the link?',
+  'leave.link.message':
+    'You see the link only now, and it is not saved anywhere. Without it nobody can open the message.',
+  'leave.confirm': 'Leave',
+  'leave.stay': 'Stay',
   'created.passphrase.show': 'Show passphrase',
   'created.passphrase.hide': 'Hide passphrase',
   'created.passphrase.copy': 'Copy passphrase',

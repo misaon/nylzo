@@ -57,6 +57,8 @@ interface Navigation {
   readonly hashChange?: boolean;
   readonly downloadRequest?: string | null;
   readonly formData?: FormData | null;
+  readonly info?: unknown;
+  readonly cancelable?: boolean;
 }
 
 type Intercept = (options: NavigationInterceptOptions) => void;
@@ -94,6 +96,12 @@ function choose(language: Language): void {
   flushSync();
 }
 
+function unloadPrevented(): boolean {
+  const event = new Event('beforeunload', { cancelable: true });
+  dispatchEvent(event);
+  return event.defaultPrevented;
+}
+
 function drag(type: 'dragover' | 'drop', source: EventTarget, types?: readonly string[]): boolean {
   const event = Object.assign(new Event(type, { bubbles: true, cancelable: true }), {
     dataTransfer: types ? { types } : null,
@@ -114,16 +122,16 @@ describe('app shell', () => {
     flushSync();
   }
 
-  function navigate(options: Navigation): ReturnType<typeof vi.fn<Intercept>> {
+  function navigate({ cancelable = true, ...options }: Navigation): ReturnType<typeof vi.fn<Intercept>> {
     const intercept = vi.fn<Intercept>();
-    const event = Object.assign(new Event('navigate'), {
+    const event = Object.assign(new Event('navigate', { cancelable }), {
       canIntercept: true,
       hashChange: false,
       downloadRequest: null,
       formData: null,
       navigationType: 'push',
       ...options,
-      destination: { url: new URL(options.url, location.origin).href },
+      destination: { url: new URL(options.url, location.origin).href, key: 'destination' },
       intercept,
     });
     navigation.dispatchEvent(event);
@@ -246,6 +254,62 @@ describe('app shell', () => {
       const title = document.title;
       expect(navigate(options)).not.toHaveBeenCalled();
       expect(document.title).toBe(title);
+    });
+
+    it.each([
+      { unsaved: 'draft', navigationType: 'push' },
+      { unsaved: 'link', navigationType: 'traverse' },
+    ] as const)(
+      'asks before a switch drops an unsaved $unsaved and goes on only once confirmed',
+      async ({ unsaved, navigationType }) => {
+        const navigateAgain = vi.fn<(url: string, options: NavigationNavigateOptions) => void>();
+        const traverseAgain = vi.fn<(key: string, options: NavigationOptions) => void>();
+        Object.assign(navigation, { navigate: navigateAgain, traverseTo: traverseAgain });
+        show('/terms');
+        holdMessages();
+        screenWork().guard(() => unsaved);
+        const answer = async (index: number) => {
+          const dialog = document.querySelector('dialog');
+          expect(dialog?.textContent).toContain(translated('en', `leave.${unsaved}.title`));
+          dialog?.querySelectorAll('button')[index]?.click();
+          await tick();
+          flushSync();
+        };
+
+        expect(navigate({ url: '/agents', navigationType })).not.toHaveBeenCalled();
+        await answer(0);
+        expect(document.querySelector('dialog')).toBeNull();
+        expect([navigateAgain, traverseAgain].flatMap((repeat) => repeat.mock.calls)).toEqual([]);
+
+        expect(navigate({ url: '/agents', navigationType })).not.toHaveBeenCalled();
+        await answer(1);
+        const repeated = navigationType === 'push' ? navigateAgain : traverseAgain;
+        expect(repeated).toHaveBeenCalledOnce();
+        const info: unknown = repeated.mock.calls[0]?.[1].info;
+        await intercepted(navigate({ url: '/agents', navigationType, info }));
+        expect(document.title).toBe(translated('en', 'title.agents'));
+      },
+    );
+
+    it('drops the question when the browser leaves without letting the page ask', async () => {
+      show('/terms');
+      holdMessages();
+      screenWork().guard(() => 'draft');
+      navigate({ url: '/agents' });
+      expect(document.querySelector('dialog')).not.toBeNull();
+      await intercepted(navigate({ url: '/agents', cancelable: false }));
+      expect(document.querySelector('dialog')).toBeNull();
+      expect(document.title).toBe(translated('en', 'title.agents'));
+    });
+
+    it('asks before unload while work is unsaved, and does not ask again when WebKit then fires navigate', async () => {
+      show('/terms');
+      holdMessages();
+      expect(unloadPrevented()).toBe(false);
+      screenWork().guard(() => 'link');
+      expect(unloadPrevented()).toBe(true);
+      await intercepted(navigate({ url: '/agents' }));
+      expect(document.querySelector('dialog')).toBeNull();
     });
 
     it('leaves a navigation to the browser while this tab tracks no message', () => {

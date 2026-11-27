@@ -16,17 +16,24 @@
   import type { Language } from '../shared/language/language.ts';
   import { setTranslator, Translator } from '../shared/language/translator.svelte.ts';
   import { ScreenWork, setScreenWork } from '../shared/navigation/screen-work.ts';
+  import type { UnsavedWork } from '../shared/navigation/screen-work.ts';
   import { sessionSentStore, setSessionSentStore } from '../shared/sent-records/session-sent-store.ts';
   import SiteFooter from '../shared/shell/SiteFooter.svelte';
   import SiteHeader from '../shared/shell/SiteHeader.svelte';
   import Sky from '../shared/shell/Sky.svelte';
   import Button from '../shared/ui/button/Button.svelte';
+  import ConfirmDialog from '../shared/ui/dialog/ConfirmDialog.svelte';
   import Icon from '../shared/ui/icon/Icon.svelte';
   import { SCREEN_TITLES, screenOf } from './pages.ts';
   import type { Screen } from './pages.ts';
 
   interface Props {
     readonly start: { readonly path: string; readonly language: Language };
+  }
+
+  interface LeaveRequest {
+    readonly unsaved: UnsavedWork;
+    readonly proceed: () => void;
   }
 
   const HEADER_VARIANTS = {
@@ -49,6 +56,7 @@
   } as const satisfies Record<Screen, Component | undefined>;
   // Screens that hold no message secret, so the page can switch between them without loading a new document.
   const SWITCHABLE: ReadonlySet<Screen> = new Set(['agents', 'create', 'sent', 'terms', 'transparency']);
+  const LEAVE_CONFIRMED = Symbol('leave confirmed');
 
   const { start }: Props = $props();
   const { path: startPath, language: startLanguage } = untrack(() => start);
@@ -56,6 +64,8 @@
   let visit = $state(0);
   let replacingUrl = false;
   let main: HTMLElement | undefined;
+  let unloadAsked = false;
+  let leaving = $state<LeaveRequest>();
   const screen = $derived(screenOf(path));
   const translator = setTranslator(new Translator(startLanguage));
   const tracked = setSessionSentStore(sessionSentStore());
@@ -95,6 +105,7 @@
 
   // Messages tracked only in this tab live in its memory: moving between screens keeps the document, leaving Nylzo forgets them.
   function keepTrackedMessages(event: NavigateEvent) {
+    leaving = undefined;
     // A screen still sending a message keeps the old behaviour: a new document cancels the request.
     if (
       replacingUrl ||
@@ -122,6 +133,12 @@
       });
       return;
     }
+    const { unsaved } = work;
+    if (unsaved && event.cancelable && event.info !== LEAVE_CONFIRMED && !unloadAsked) {
+      event.preventDefault();
+      leaving = { unsaved, proceed: repeatNavigation(event) };
+      return;
+    }
     // A home page keeps the language shown, as a reload would through the saved choice.
     path = destination.pathname;
     visit++;
@@ -140,6 +157,43 @@
       main = undefined;
     };
   };
+
+  function repeatNavigation(event: NavigateEvent): () => void {
+    const { navigationType, destination } = event;
+    const options = { info: LEAVE_CONFIRMED };
+    if (navigationType === 'traverse') {
+      return () => {
+        navigation.traverseTo(destination.key, options);
+      };
+    }
+    const history = navigationType === 'replace' ? 'replace' : 'push';
+    return () => {
+      navigation.navigate(destination.url, { ...options, history });
+    };
+  }
+
+  // WebKit asks before unload and only then fires navigate, so one navigation must not ask twice.
+  function askBeforeUnload(event: BeforeUnloadEvent) {
+    if (!work.unsaved) {
+      return;
+    }
+    event.preventDefault();
+    unloadAsked = true;
+    setTimeout(() => {
+      unloadAsked = false;
+    }, 0);
+  }
+
+  // A dialog still fading out answers for its own question, never for a newer one.
+  function answer(request: LeaveRequest, confirmed: boolean) {
+    if (leaving !== request) {
+      return;
+    }
+    leaving = undefined;
+    if (confirmed) {
+      request.proceed();
+    }
+  }
 
   const listenForNavigation: Attachment = () => {
     if (typeof navigation === 'undefined') {
@@ -196,6 +250,7 @@
 <svelte:window
   onpopstate={returned}
   onpagehide={() => void tracked.clear()}
+  onbeforeunload={askBeforeUnload}
   ondragover={keepPageOnFileDrop}
   ondrop={keepPageOnFileDrop}
 />
@@ -248,3 +303,17 @@
     <SiteFooter compact={screen === 'read'} current={screen} {onlanguage} />
   </div>
 </div>
+
+{#each leaving ? [leaving] : [] as request (request)}
+  <ConfirmDialog
+    id="leave-confirm"
+    tone="warning"
+    icon="warning"
+    title={translate(request.unsaved === 'draft' ? 'leave.draft.title' : 'leave.link.title')}
+    message={translate(request.unsaved === 'draft' ? 'leave.draft.message' : 'leave.link.message')}
+    confirmLabel={translate('leave.confirm')}
+    dismissLabel={translate('leave.stay')}
+    onconfirm={() => answer(request, true)}
+    onclose={() => answer(request, false)}
+  />
+{/each}
