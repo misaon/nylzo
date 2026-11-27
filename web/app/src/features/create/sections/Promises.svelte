@@ -46,9 +46,11 @@
             {translate(`${promise.key}.text`, { days: forgotten })}
           </p>
           <a
-            href={promise.verify}
+            href={promise.link.href}
             class={[TEXT_LINK, 'mt-3 -mb-2.5 inline-flex min-h-11 items-center gap-1.5 text-caption']}
-            >{translate('promise.verify', { target: translate(`${promise.key}.verify`) })}</a
+            >{promise.link.kind === 'proof'
+              ? translate('promise.verify', { target: translate(promise.link.target) })
+              : translate(promise.link.label)}</a
           >
         </article>
       {/each}

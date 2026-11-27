@@ -600,7 +600,7 @@ export const messages: Catalog = {
   'how.chip.key': '链接中的密钥',
   'how.deleted': '最后一次打开后，服务器会删除消息。',
   'how.link.title': '链接里有什么',
-  'how.link.sub': '链接由四个部分组成。点击任一部分，了解它的作用。',
+  'how.link.sub': '链接由四个部分组成。选择任一部分，了解它的作用。',
   'how.link.host.title': '服务器地址',
   'how.link.host.meta': '服务器和网络都能看到',
   'how.link.host.body':
@@ -702,7 +702,7 @@ export const messages: Catalog = {
   'promise.cancel.title': '远程撤销',
   'promise.cancel.text':
     '不小心把链接发错了人？如果你在“已发送”中跟踪这条消息，就可以在那里撤销它，并查看是否已经有人打开。',
-  'promise.cancel.verify': '已发送',
+  'promise.cancel.link': '前往“已发送”',
   'promise.open.title': '开源代码，可验证的构建',
   'promise.open.text':
     '代码、协议规范和测试向量都以 MIT 许可证发布在 GitHub 上。同样的源代码会生成逐字节相同的二进制文件，因此任何人都可以验证发行版。',
@@ -743,6 +743,8 @@ export const messages: Catalog = {
   'tech.release.title': '开发与发布',
   'tech.release.text': '已签名的发行版和自动修复',
   'tech.tests.title': '独立测试',
+  'tech.tests.site': 'nylzo.com 网站的测试',
+  'tech.tests.repository': 'GitHub 仓库的测试',
 
   'host.eyebrow': '终端与自托管',
   'host.title': '在终端和自己的服务器上使用 Nylzo',
@@ -770,8 +772,8 @@ export const messages: Catalog = {
   'compare.part': '部分',
   'compare.row.client': '在你的浏览器中加密',
   'compare.row.preview': '链接预览不消耗次数',
-  'compare.row.passphrase': '密码参与加密',
-  'compare.row.secret': '链接中的秘密',
+  'compare.row.passphrase': '消息密码参与加密',
+  'compare.row.secret': '链接中的密钥',
   'compare.row.verify': '监控网站与发行版是否一致',
   'compare.row.length': '把长度填充到完整的块',
   'compare.row.id': '仅凭 ID 打不开消息',
@@ -786,7 +788,8 @@ export const messages: Catalog = {
   'compare.note.every30': '每 30 分钟',
   'operations.eyebrow': '运维',
   'operations.title': '我们也监控 nylzo.com 服务器',
-  'operations.sub': '加密保护的是消息内容。服务器、连接和网站代码由我们另外监控，一旦出现异常，服务会自行下线。',
+  'operations.sub':
+    '加密保护的是消息内容。服务器、连接和网站代码由我们另外监控，一旦网站代码与发行版不一致，服务会切换到维护状态。',
   'operations.diagram': '我们每 30 分钟将 nylzo.com 上的代码与已签名发行版比对一次。如有不同，服务会切换到维护状态。',
   'operations.release': 'GitHub 上的发行版',
   'operations.instance': 'nylzo.com',
@@ -838,7 +841,7 @@ export const messages: Catalog = {
   'faq.save.answer': '能，可以复制或拍照。只发送给你信任的人。',
   'faq.operator.question': '运营者能读取消息吗？',
   'faq.operator.answer':
-    '从服务器上的数据读不出来：服务器只收到密文，永远看不到链接中的密钥。此外，我们每 30 分钟将网站代码与已签名发行版比对一次，一旦出现偏差，服务会自行关闭。最敏感的数据可以通过已验证应用发送，它完全不从服务器加载代码。',
+    '从服务器上的数据读不出来：服务器只收到密文，永远看不到链接中的密钥。此外，我们每 30 分钟将网站代码与已签名发行版比对一次，一旦出现偏差，服务会切换到维护状态。最敏感的数据可以通过已验证应用发送，它完全不从服务器加载代码。',
   'faq.opened.question': '我能知道消息是否已被打开吗？',
   'faq.opened.answer': '能，前提是你在“已发送”中跟踪它。你可以在那里看到它首次被打开的时间，并可以撤销它。',
   'faq.intercepted.question': '如果链接被别人打开了怎么办？',
@@ -851,7 +854,7 @@ export const messages: Catalog = {
   'faq.verify.answer':
     '代码、协议规范和测试向量都是公开的。每次变更都要经过协议测试、静态分析、依赖项检查和被盗服务器数据测试。发行版经过签名，并且可复现。检查结果见“透明度”页面。',
   'cta.title': '有不该发在聊天里的内容？',
-  'cta.text': '发在聊天里的密码会一直留在历史记录中，直到有人删除。通过 Nylzo 发送的消息在打开后就会被删除。',
+  'cta.text': '发在聊天里的密码会一直留在历史记录中，直到有人删除。通过 Nylzo 发送的消息在最后一次打开后就会被删除。',
   'cta.button': '写一条消息',
   'host.domain': 'your-domain.cn',
   'host.terminal': 'bash — nylzo',

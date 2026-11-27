@@ -63,11 +63,11 @@
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div class="overflow-x-auto outline-none" role="region" aria-labelledby="compare-title" tabindex="0">
         <table
-          class="w-full min-w-182 table-fixed border-collapse text-left [--reveal-delay:150ms] [--reveal-step:45ms] md:min-w-0"
+          class="w-full min-w-170 table-fixed border-collapse text-left [--reveal-delay:150ms] [--reveal-step:45ms] md:min-w-0"
         >
           <caption class="sr-only">{translate('compare.caption')}</caption>
           <colgroup>
-            <col class="w-48 md:w-[38%]" />
+            <col class="w-36 md:w-[38%]" />
             <col class="w-30 md:w-[14%]" />
             {#each PRODUCTS as product (product)}
               <col class="w-26 md:w-[12%]" />

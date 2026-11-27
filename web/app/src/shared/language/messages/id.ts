@@ -651,7 +651,7 @@ export const messages: Catalog = {
   'how.chip.key': 'kunci di tautan',
   'how.deleted': 'Setelah terakhir kali dibuka, server menghapus pesan.',
   'how.link.title': 'Apa isi tautan',
-  'how.link.sub': 'Tautan terdiri dari empat bagian. Klik salah satunya untuk melihat fungsinya.',
+  'how.link.sub': 'Tautan terdiri dari empat bagian. Pilih salah satunya untuk melihat fungsinya.',
   'how.link.host.title': 'Alamat server',
   'how.link.host.meta': 'terlihat oleh server dan jaringan',
   'how.link.host.body':
@@ -758,7 +758,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'Batalkan dari jauh',
   'promise.cancel.text':
     'Tidak sengaja mengirim tautan ke orang lain? Jika Anda memantau pesan di Terkirim, Anda bisa membatalkannya di sana dan melihat apakah sudah ada yang membukanya.',
-  'promise.cancel.verify': 'Terkirim',
+  'promise.cancel.link': 'Ke halaman Terkirim',
   'promise.open.title': 'Kode terbuka dan build yang dapat diverifikasi',
   'promise.open.text':
     'Kode, spesifikasi protokol, dan vektor uji ada di GitHub dengan lisensi MIT. Dari sumber yang sama dihasilkan biner yang identik byte demi byte, sehingga siapa pun dapat memverifikasi rilis.',
@@ -803,6 +803,8 @@ export const messages: Catalog = {
   'tech.release.title': 'Pengembangan dan rilis',
   'tech.release.text': 'Rilis bertanda tangan dan perbaikan otomatis',
   'tech.tests.title': 'Pengujian independen',
+  'tech.tests.site': 'pengujian situs nylzo.com',
+  'tech.tests.repository': 'pengujian repositori GitHub',
 
   'host.eyebrow': 'Terminal dan server sendiri',
   'host.title': 'Nylzo di terminal dan di server Anda sendiri',
@@ -830,8 +832,8 @@ export const messages: Catalog = {
   'compare.part': 'Sebagian',
   'compare.row.client': 'Enkripsi di browser Anda',
   'compare.row.preview': 'Pratinjau tautan tidak dihitung dibuka',
-  'compare.row.passphrase': 'Kata sandi menjadi bagian dari enkripsi',
-  'compare.row.secret': 'Rahasia ada di tautan',
+  'compare.row.passphrase': 'Kata sandi pesan menjadi bagian dari enkripsi',
+  'compare.row.secret': 'Kunci ada di tautan',
   'compare.row.verify': 'Mengawasi kesesuaian situs dengan rilis',
   'compare.row.length': 'Membulatkan panjang ke blok penuh',
   'compare.row.id': 'ID saja tidak membuka pesan',
@@ -847,7 +849,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Operasional',
   'operations.title': 'Kami juga mengawasi server nylzo.com',
   'operations.sub':
-    'Enkripsi melindungi isi pesan. Server, koneksi, dan kode situs kami awasi secara terpisah, dan jika ada yang tidak beres, layanan otomatis offline.',
+    'Enkripsi melindungi isi pesan. Server, koneksi, dan kode situs kami awasi secara terpisah, dan jika kode situs tidak sesuai dengan rilis, layanan beralih ke mode pemeliharaan.',
   'operations.diagram':
     'Setiap 30\u{A0}menit kami membandingkan kode di nylzo.com dengan rilis yang ditandatangani. Jika berbeda, layanan beralih ke mode pemeliharaan.',
   'operations.release': 'Rilis di GitHub',
@@ -906,7 +908,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'Ya, dengan menyalin atau memotretnya. Kirim pesan hanya kepada orang yang Anda percayai.',
   'faq.operator.question': 'Bisakah operator membaca pesan?',
   'faq.operator.answer':
-    'Tidak dari data di server: server hanya menerima data terenkripsi dan tidak pernah melihat kunci di tautan. Selain itu, setiap 30\u{A0}menit kami membandingkan kode situs dengan rilis yang ditandatangani, dan jika ada perbedaan, layanan otomatis berhenti. Data yang paling sensitif bisa Anda kirim melalui aplikasi terverifikasi, yang sama sekali tidak memuat kode dari server.',
+    'Tidak dari data di server: server hanya menerima data terenkripsi dan tidak pernah melihat kunci di tautan. Selain itu, setiap 30\u{A0}menit kami membandingkan kode situs dengan rilis yang ditandatangani, dan jika ada perbedaan, layanan beralih ke mode pemeliharaan. Data yang paling sensitif bisa Anda kirim melalui aplikasi terverifikasi, yang sama sekali tidak memuat kode dari server.',
   'faq.opened.question': 'Apakah saya akan tahu jika pesan sudah dibuka?',
   'faq.opened.answer':
     'Ya, jika Anda memantaunya di Terkirim. Di sana Anda akan melihat kapan pesan pertama kali dibuka, dan Anda bisa membatalkannya.',
@@ -921,7 +923,7 @@ export const messages: Catalog = {
     'Kode, spesifikasi protokol, dan vektor uji terbuka untuk umum. Setiap perubahan diperiksa oleh pengujian protokol, analisis statis, pemeriksaan dependensi, dan pengujian data dari server yang dicuri. Rilis ditandatangani dan dapat direproduksi. Hasil pemeriksaannya ada di halaman Transparansi.',
   'cta.title': 'Punya sesuatu yang tidak seharusnya ada di chat?',
   'cta.text':
-    'Kata sandi di chat tetap tersimpan di riwayat sampai seseorang menghapusnya. Pesan yang dikirim lewat Nylzo akan dihapus setelah dibuka.',
+    'Kata sandi di chat tetap tersimpan di riwayat sampai seseorang menghapusnya. Pesan yang dikirim lewat Nylzo akan dihapus setelah terakhir kali dibuka.',
   'cta.button': 'Tulis pesan',
   'host.domain': 'domain-anda.id',
   'host.terminal': 'bash — nylzo',

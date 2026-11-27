@@ -694,7 +694,7 @@ export const messages: Catalog = {
   'how.chip.key': 'klucz w\u{A0}linku',
   'how.deleted': 'Po ostatnim otwarciu serwer usuwa wiadomość.',
   'how.link.title': 'Co jest w\u{A0}linku',
-  'how.link.sub': 'Link ma cztery części. Kliknij dowolną, aby zobaczyć, do czego służy.',
+  'how.link.sub': 'Link ma cztery części. Wybierz dowolną, aby zobaczyć, do czego służy.',
   'how.link.host.title': 'Adres serwera',
   'how.link.host.meta': 'widzą go serwer i\u{A0}sieć',
   'how.link.host.body':
@@ -800,7 +800,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'Zdalne anulowanie',
   'promise.cancel.text':
     'Link trafił przez pomyłkę do kogoś innego? Jeśli śledzisz wiadomość w\u{A0}Wysłanych, anulujesz ją tam i\u{A0}zobaczysz, czy ktoś już ją otworzył.',
-  'promise.cancel.verify': 'Wysłane',
+  'promise.cancel.link': 'Przejdź do Wysłanych',
   'promise.open.title': 'Otwarty kod i\u{A0}weryfikowalne kompilacje',
   'promise.open.text':
     'Kod, specyfikacja protokołu i\u{A0}wektory testowe są na GitHubie na licencji MIT. Z\u{A0}tego samego źródła powstaje bajt w\u{A0}bajt identyczny plik binarny, więc każdy może zweryfikować wydanie.',
@@ -845,6 +845,8 @@ export const messages: Catalog = {
   'tech.release.title': 'Rozwój i\u{A0}wydania',
   'tech.release.text': 'Podpisane wydania i\u{A0}automatyczne poprawki',
   'tech.tests.title': 'Niezależne testy',
+  'tech.tests.site': 'test strony nylzo.com',
+  'tech.tests.repository': 'test repozytorium na GitHubie',
 
   'host.eyebrow': 'Terminal i\u{A0}własny serwer',
   'host.title': 'Nylzo w\u{A0}terminalu i\u{A0}na własnym serwerze',
@@ -872,8 +874,8 @@ export const messages: Catalog = {
   'compare.part': 'Częściowo',
   'compare.row.client': 'Szyfruje w\u{A0}twojej przeglądarce',
   'compare.row.preview': 'Podgląd linku niczego nie zużywa',
-  'compare.row.passphrase': 'Hasło jest częścią szyfrowania',
-  'compare.row.secret': 'Sekret w\u{A0}linku',
+  'compare.row.passphrase': 'Hasło do wiadomości jest częścią szyfrowania',
+  'compare.row.secret': 'Klucz w\u{A0}linku',
   'compare.row.verify': 'Pilnuje zgodności strony z\u{A0}wydaniem',
   'compare.row.length': 'Zaokrągla długość do pełnych bloków',
   'compare.row.id': 'Samo ID nie otwiera wiadomości',
@@ -889,7 +891,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Działanie usługi',
   'operations.title': 'Pilnujemy też serwera nylzo.com',
   'operations.sub':
-    'Szyfrowanie chroni treść wiadomości. Serwera, połączenia i\u{A0}kodu strony pilnujemy osobno, a\u{A0}gdy coś się nie zgadza, usługa sama się odłącza.',
+    'Szyfrowanie chroni treść wiadomości. Serwera, połączenia i\u{A0}kodu strony pilnujemy osobno, a\u{A0}gdy kod strony nie zgadza się z\u{A0}wydaniem, usługa przechodzi w\u{A0}tryb prac technicznych.',
   'operations.diagram':
     'Co 30\u{A0}minut porównujemy kod na nylzo.com z\u{A0}podpisanym wydaniem. Jeśli się różni, usługa przechodzi w\u{A0}tryb prac technicznych.',
   'operations.release': 'Wydanie na GitHubie',
@@ -947,7 +949,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'Tak, może ją skopiować lub sfotografować. Wysyłaj ją tylko do osób, którym ufasz.',
   'faq.operator.question': 'Czy operator może przeczytać wiadomość?',
   'faq.operator.answer':
-    'Z\u{A0}danych na serwerze nie: serwer dostaje tylko szyfrogram i\u{A0}nigdy nie widzi klucza z\u{A0}linku. Co 30\u{A0}minut porównujemy też kod strony z\u{A0}podpisanym wydaniem, a\u{A0}przy rozbieżności usługa sama się wyłącza. Najbardziej wrażliwe dane możesz wysłać przez zweryfikowaną aplikację, która w\u{A0}ogóle nie wczytuje kodu z\u{A0}serwera.',
+    'Z\u{A0}danych na serwerze nie: serwer dostaje tylko szyfrogram i\u{A0}nigdy nie widzi klucza z\u{A0}linku. Co 30\u{A0}minut porównujemy też kod strony z\u{A0}podpisanym wydaniem, a\u{A0}przy rozbieżności usługa przechodzi w\u{A0}tryb prac technicznych. Najbardziej wrażliwe dane możesz wysłać przez zweryfikowaną aplikację, która w\u{A0}ogóle nie wczytuje kodu z\u{A0}serwera.',
   'faq.opened.question': 'Czy dowiem się, że ktoś otworzył wiadomość?',
   'faq.opened.answer':
     'Tak, jeśli śledzisz ją w\u{A0}Wysłanych. Zobaczysz tam, kiedy ktoś pierwszy raz ją otworzył, i\u{A0}możesz ją anulować.',
@@ -962,7 +964,7 @@ export const messages: Catalog = {
     'Kod, specyfikacja protokołu i\u{A0}wektory testowe są publiczne. Każdą zmianę sprawdzają testy protokołu, analiza statyczna, kontrola zależności i\u{A0}test danych ze skradzionego serwera. Wydania są podpisane i\u{A0}odtwarzalne. Wyniki kontroli pokazuje strona Przejrzystość.',
   'cta.title': 'Masz coś, co nie powinno trafić do czatu?',
   'cta.text':
-    'Hasło w\u{A0}czacie zostaje w\u{A0}historii, dopóki ktoś go nie usunie. Wiadomość wysłana przez Nylzo zostaje usunięta po otwarciu.',
+    'Hasło w\u{A0}czacie zostaje w\u{A0}historii, dopóki ktoś go nie usunie. Wiadomość wysłana przez Nylzo zostaje usunięta po ostatnim otwarciu.',
   'cta.button': 'Napisz wiadomość',
   'host.domain': 'twoja-domena.pl',
   'host.terminal': 'bash — nylzo',

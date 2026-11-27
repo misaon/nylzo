@@ -77,6 +77,7 @@
                 ]}
                 type="button"
                 aria-pressed={active}
+                aria-describedby={`how-link-body-${part.id}`}
                 onclick={() => (selected = index)}
               >
                 <span class="flex w-fit max-w-full flex-col">
@@ -101,7 +102,8 @@
                   class={[
                     'mt-3 reveal-focus text-body transition-colors duration-500 [--reveal-blur:4px] [--reveal-delay:480ms] [--reveal-y:6px]',
                     active ? 'text-ink' : 'text-ink-soft',
-                  ]}>{translate(part.title)}</span
+                  ]}
+                  aria-hidden="true">{translate(part.title)}</span
                 >
                 <span
                   class="mt-0.5 reveal-focus text-caption text-ink-mute [--reveal-blur:4px] [--reveal-delay:540ms] [--reveal-y:6px]"
@@ -119,6 +121,7 @@
         <div class="mt-5 stack items-start border-t border-white/8 pt-5 max-lg:hidden lg:items-center">
           {#each LINK_PARTS as part, index (part.id)}
             <p
+              id={`how-link-body-${part.id}`}
               class={[
                 'text-body text-pretty text-ink-soft transition-opacity duration-500',
                 selected === index ? 'opacity-100' : 'pointer-events-none opacity-0',

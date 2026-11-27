@@ -634,7 +634,7 @@ export const messages: Catalog = {
   'how.chip.key': 'key in the link',
   'how.deleted': 'After the last opening, the server deletes the message.',
   'how.link.title': "What's in the link",
-  'how.link.sub': 'The link has four parts. Click any of them to see what it does.',
+  'how.link.sub': 'The link has four parts. Select any of them to see what it does.',
   'how.link.host.title': 'Server address',
   'how.link.host.meta': 'the server and the network see it',
   'how.link.host.body':
@@ -740,7 +740,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'Cancel from afar',
   'promise.cancel.text':
     'Sent the link to the wrong person? If you track the message in Sent, you can cancel it there and see whether anyone has opened it.',
-  'promise.cancel.verify': 'Sent',
+  'promise.cancel.link': 'Go to Sent',
   'promise.open.title': 'Open code and reproducible builds',
   'promise.open.text':
     'The code, the protocol specification and the test vectors are on GitHub under the MIT license. The same source produces a byte-for-byte identical binary, so anyone can check a release.',
@@ -784,6 +784,8 @@ export const messages: Catalog = {
   'tech.release.title': 'Development and releases',
   'tech.release.text': 'Signed releases and automatic fixes',
   'tech.tests.title': 'Independent tests',
+  'tech.tests.site': 'test of the nylzo.com website',
+  'tech.tests.repository': 'test of the GitHub repository',
 
   'host.eyebrow': 'Terminal and self-hosting',
   'host.title': 'Nylzo in your terminal and on your own server',
@@ -811,8 +813,8 @@ export const messages: Catalog = {
   'compare.part': 'Partly',
   'compare.row.client': 'Encrypts in your browser',
   'compare.row.preview': 'Link previews use up nothing',
-  'compare.row.passphrase': 'Passphrase is part of the encryption',
-  'compare.row.secret': 'Secret in the link',
+  'compare.row.passphrase': 'Message passphrase is part of the encryption',
+  'compare.row.secret': 'Key in the link',
   'compare.row.verify': 'Watches that the site matches the release',
   'compare.row.length': 'Pads the length to whole blocks',
   'compare.row.id': 'The ID alone does not open the message',
@@ -828,7 +830,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Operations',
   'operations.title': 'We watch the nylzo.com server too',
   'operations.sub':
-    'Encryption protects the content of a message. We watch the server, the connection and the site code separately, and when something is off, the service takes itself offline.',
+    'Encryption protects the content of a message. We watch the server, the connection and the site code separately, and when the site code does not match the release, the service switches to maintenance.',
   'operations.diagram':
     'Every 30 minutes we compare the code on nylzo.com with the signed release. If it differs, the service switches to maintenance.',
   'operations.release': 'Release on GitHub',
@@ -886,7 +888,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'Yes, they can copy it or take a photo of it. Send it only to someone you trust.',
   'faq.operator.question': 'Can the operator read the message?',
   'faq.operator.answer':
-    'Not from the data on the server: it receives only ciphertext and never sees the key in the link. We also compare the site code with the signed release every 30 minutes, and on any difference the service shuts itself off. For the most sensitive data you can use the verified app, which loads no code from the server at all.',
+    'Not from the data on the server: it receives only ciphertext and never sees the key in the link. We also compare the site code with the signed release every 30 minutes, and on any difference the service switches to maintenance. For the most sensitive data you can use the verified app, which loads no code from the server at all.',
   'faq.opened.question': 'Will I know someone opened the message?',
   'faq.opened.answer':
     'Yes, if you track it in Sent. You will see there when someone first opened it, and you can cancel it.',
@@ -901,7 +903,7 @@ export const messages: Catalog = {
     'The code, the protocol specification and the test vectors are public. Every change goes through protocol tests, static analysis, dependency checks and a stolen-server data test. Releases are signed and reproducible. The Transparency page shows the results of the checks.',
   'cta.title': 'Got something that does not belong in a chat?',
   'cta.text':
-    'A password in a chat stays in the history until someone deletes it. A message sent through Nylzo is deleted after it is opened.',
+    'A password in a chat stays in the history until someone deletes it. A message sent through Nylzo is deleted after the last opening.',
   'cta.button': 'Write a message',
   'host.domain': 'your-domain.example',
   'host.terminal': 'bash — nylzo',

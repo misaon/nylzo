@@ -4,7 +4,7 @@
   import Button from '../../../../shared/ui/button/Button.svelte';
   import CopyButton from '../../../../shared/ui/button/CopyButton.svelte';
   import { FocusTargets } from '../../../../shared/ui/focus/focus.ts';
-  import { arrowTarget } from '../../../../shared/ui/focus/roving-focus.ts';
+  import { rovingTarget } from '../../../../shared/ui/focus/roving-focus.ts';
   import Icon from '../../../../shared/ui/icon/Icon.svelte';
   import { pauseOffscreen } from '../../../../shared/ui/reveal/offscreen.ts';
   import { reveal, REVEAL_INDEXES } from '../../../../shared/ui/reveal/reveal.ts';
@@ -25,7 +25,7 @@
   const domain = $derived(translate('host.domain'));
 
   function onkeydown(event: KeyboardEvent) {
-    const next = arrowTarget(event.key, { index, count: tabs.length });
+    const next = rovingTarget(event.key, { index, count: tabs.length });
     const target = next === undefined ? undefined : tabs[next];
     if (target === undefined) {
       return;
@@ -68,13 +68,13 @@
         class="flex reveal-focus flex-col gap-2 [--reveal-blur:4px] [--reveal-delay:420ms] sm:flex-row sm:items-center sm:justify-between"
       >
         <div
-          class="relative grid grid-cols-4 rounded-pane bg-white/4 p-1 shadow-rim ring-1 ring-white/8"
+          class="relative grid grid-cols-2 gap-1 rounded-pane bg-white/4 p-1 shadow-rim ring-1 ring-white/8 sm:grid-cols-4 sm:gap-0"
           role="tablist"
           aria-label={translate('host.tabs')}
         >
           <span
             class={[
-              'absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-control bg-white/10 shadow-rim ring-1 ring-white/12 transition-transform duration-(--duration-spring) ease-spring',
+              'absolute inset-y-1 left-1 w-[calc((100%-0.5rem)/4)] rounded-control bg-white/10 shadow-rim ring-1 ring-white/12 transition-transform duration-(--duration-spring) ease-spring max-sm:hidden',
               indicator[index],
             ]}
             aria-hidden="true"
@@ -93,7 +93,9 @@
               {onkeydown}
               class={[
                 'relative z-10 h-11 rounded-control px-3.5 text-ui transition md:h-9',
-                selected ? 'text-ink' : 'text-ink-mute hover:text-ink',
+                selected
+                  ? 'text-ink max-sm:bg-white/10 max-sm:shadow-rim max-sm:ring-1 max-sm:ring-white/12'
+                  : 'text-ink-mute hover:text-ink',
               ]}
             >
               {translate(`host.${id}`)}

@@ -644,7 +644,7 @@ export const messages = {
   'how.chip.key': 'klíč v\u{A0}odkazu',
   'how.deleted': 'Po posledním otevření server zprávu smaže.',
   'how.link.title': 'Co je v\u{A0}odkazu',
-  'how.link.sub': 'Odkaz má čtyři části. Kliknutím na kteroukoli zjistíte, k\u{A0}čemu slouží.',
+  'how.link.sub': 'Odkaz má čtyři části. Vyberte kteroukoli a\u{A0}zjistíte, k\u{A0}čemu slouží.',
   'how.link.host.title': 'Adresa serveru',
   'how.link.host.meta': 'vidí ji server i\u{A0}síť',
   'how.link.host.body':
@@ -749,7 +749,7 @@ export const messages = {
   'promise.cancel.title': 'Zrušení na dálku',
   'promise.cancel.text':
     'Poslali jste odkaz omylem někomu jinému? Když zprávu sledujete v\u{A0}Odeslaných, zrušíte ji tam a\u{A0}uvidíte, jestli ji už někdo otevřel.',
-  'promise.cancel.verify': 'Odeslané',
+  'promise.cancel.link': 'Přejít do Odeslaných',
   'promise.open.title': 'Otevřený kód a\u{A0}ověřitelné sestavení',
   'promise.open.text':
     'Kód, specifikace protokolu i\u{A0}testovací vektory jsou na GitHubu pod licencí MIT. Ze stejného zdroje vznikne bajt po bajtu stejná binárka, takže vydání může ověřit kdokoli.',
@@ -793,6 +793,8 @@ export const messages = {
   'tech.release.title': 'Vývoj a\u{A0}vydání',
   'tech.release.text': 'Podepsaná vydání a\u{A0}automatické opravy',
   'tech.tests.title': 'Nezávislé testy',
+  'tech.tests.site': 'test webu nylzo.com',
+  'tech.tests.repository': 'test repozitáře na GitHubu',
 
   'host.eyebrow': 'Terminál a\u{A0}vlastní server',
   'host.title': 'Nylzo v\u{A0}terminálu i\u{A0}na vlastním serveru',
@@ -820,8 +822,8 @@ export const messages = {
   'compare.part': 'Částečně',
   'compare.row.client': 'Šifruje se ve vašem prohlížeči',
   'compare.row.preview': 'Náhled odkazu nic nespotřebuje',
-  'compare.row.passphrase': 'Heslo je součástí šifrování',
-  'compare.row.secret': 'Tajemství v\u{A0}odkazu',
+  'compare.row.passphrase': 'Heslo ke zprávě je součástí šifrování',
+  'compare.row.secret': 'Klíč v\u{A0}odkazu',
   'compare.row.verify': 'Hlídá, že web odpovídá vydání',
   'compare.row.length': 'Zaokrouhlí délku na celé bloky',
   'compare.row.id': 'Samotné ID zprávu neotevře',
@@ -837,7 +839,7 @@ export const messages = {
   'operations.eyebrow': 'Provoz',
   'operations.title': 'Hlídáme i\u{A0}server nylzo.com',
   'operations.sub':
-    'Šifrování chrání obsah zprávy. Server, spojení i\u{A0}kód webu hlídáme zvlášť, a\u{A0}když něco nesedí, služba se sama odpojí.',
+    'Šifrování chrání obsah zprávy. Server, spojení i\u{A0}kód webu hlídáme zvlášť, a\u{A0}když kód webu neodpovídá vydání, služba přejde do údržby.',
   'operations.diagram':
     'Každých 30\u{A0}minut porovnáváme kód na nylzo.com s\u{A0}podepsaným vydáním. Když se liší, služba přejde do údržby.',
   'operations.release': 'Vydání na GitHubu',
@@ -892,7 +894,7 @@ export const messages = {
   'faq.save.answer': 'Ano, zkopírovat ji nebo vyfotit. Posílejte ji jen tomu, komu věříte.',
   'faq.operator.question': 'Může provozovatel zprávu přečíst?',
   'faq.operator.answer':
-    'Z\u{A0}dat na serveru ne: server dostane jen šifru a\u{A0}klíč z\u{A0}odkazu nikdy neuvidí. Kód webu navíc každých 30\u{A0}minut porovnáváme s\u{A0}podepsaným vydáním a\u{A0}při odchylce se služba sama vypne. Nejcitlivější data můžete poslat přes ověřenou aplikaci, která kód ze serveru vůbec nenačítá.',
+    'Z\u{A0}dat na serveru ne: server dostane jen šifru a\u{A0}klíč z\u{A0}odkazu nikdy neuvidí. Kód webu navíc každých 30\u{A0}minut porovnáváme s\u{A0}podepsaným vydáním a\u{A0}při odchylce služba přejde do údržby. Nejcitlivější data můžete poslat přes ověřenou aplikaci, která kód ze serveru vůbec nenačítá.',
   'faq.opened.question': 'Poznám, že zprávu někdo otevřel?',
   'faq.opened.answer':
     'Ano, když ji budete sledovat v\u{A0}Odeslaných. Uvidíte tam, kdy ji někdo poprvé otevřel, a\u{A0}můžete ji zrušit.',
@@ -907,7 +909,7 @@ export const messages = {
     'Kód, specifikace protokolu i\u{A0}testovací vektory jsou veřejné. Každou změnu prověří testy protokolu, statická analýza, kontrola závislostí a\u{A0}test dat z\u{A0}ukradeného serveru. Vydání jsou podepsaná a\u{A0}reprodukovatelná. Výsledky kontrol ukazuje stránka Transparentnost.',
   'cta.title': 'Máte něco, co nepatří do chatu?',
   'cta.text':
-    'Heslo v\u{A0}chatu zůstane v\u{A0}historii, dokud ho někdo nesmaže. Zpráva poslaná přes Nylzo se po otevření smaže.',
+    'Heslo v\u{A0}chatu zůstane v\u{A0}historii, dokud ho někdo nesmaže. Zpráva poslaná přes Nylzo se po posledním otevření smaže.',
   'cta.button': 'Napsat zprávu',
   'host.domain': 'vase-domena.cz',
   'host.terminal': 'bash — nylzo',

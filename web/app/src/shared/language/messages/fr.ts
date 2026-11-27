@@ -658,7 +658,7 @@ export const messages: Catalog = {
   'how.chip.key': 'clé dans le lien',
   'how.deleted': 'Après la dernière ouverture, le serveur supprime le message.',
   'how.link.title': 'Ce que contient le lien',
-  'how.link.sub': 'Le lien comporte quatre parties. Cliquez sur l’une d’elles pour savoir à quoi elle sert.',
+  'how.link.sub': 'Le lien comporte quatre parties. Choisissez-en une pour savoir à quoi elle sert.',
   'how.link.host.title': 'Adresse du serveur',
   'how.link.host.meta': 'visible par le serveur et le réseau',
   'how.link.host.body':
@@ -765,7 +765,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'Annulation à distance',
   'promise.cancel.text':
     'Vous avez envoyé le lien à la mauvaise personne\u{A0}? Si vous suivez le message dans Envoyés, vous pouvez l’y annuler et voir si quelqu’un l’a déjà ouvert.',
-  'promise.cancel.verify': 'Envoyés',
+  'promise.cancel.link': 'Aller dans Envoyés',
   'promise.open.title': 'Code ouvert et compilation vérifiable',
   'promise.open.text':
     'Le code, la spécification du protocole et les vecteurs de test sont sur GitHub sous licence MIT. La même source produit un binaire identique octet pour octet, n’importe qui peut donc vérifier une version publiée.',
@@ -811,6 +811,8 @@ export const messages: Catalog = {
   'tech.release.title': 'Développement et publication',
   'tech.release.text': 'Versions signées et correctifs automatiques',
   'tech.tests.title': 'Tests indépendants',
+  'tech.tests.site': 'test du site nylzo.com',
+  'tech.tests.repository': 'test du dépôt GitHub',
 
   'host.eyebrow': 'Terminal et auto-hébergement',
   'host.title': 'Nylzo dans votre terminal et sur votre propre serveur',
@@ -838,8 +840,8 @@ export const messages: Catalog = {
   'compare.part': 'Partiellement',
   'compare.row.client': 'Chiffrement dans votre navigateur',
   'compare.row.preview': 'L’aperçu du lien ne consomme rien',
-  'compare.row.passphrase': 'Le mot de passe fait partie du chiffrement',
-  'compare.row.secret': 'Secret dans le lien',
+  'compare.row.passphrase': 'Le mot de passe du message fait partie du chiffrement',
+  'compare.row.secret': 'Clé dans le lien',
   'compare.row.verify': 'Vérifie que le site correspond à la version publiée',
   'compare.row.length': 'Arrondit la longueur à des blocs entiers',
   'compare.row.id': 'L’ID seul n’ouvre pas le message',
@@ -855,7 +857,7 @@ export const messages: Catalog = {
   'operations.eyebrow': 'Exploitation',
   'operations.title': 'Nous surveillons aussi le serveur nylzo.com',
   'operations.sub':
-    'Le chiffrement protège le contenu du message. Nous surveillons séparément le serveur, la connexion et le code du site, et si quelque chose ne correspond pas, le service se met lui-même hors ligne.',
+    'Le chiffrement protège le contenu du message. Nous surveillons séparément le serveur, la connexion et le code du site, et si le code du site ne correspond pas à la version publiée, le service passe en maintenance.',
   'operations.diagram':
     'Toutes les 30\u{A0}minutes, nous comparons le code de nylzo.com avec la version signée. S’il diffère, le service passe en maintenance.',
   'operations.release': 'Version sur GitHub',
@@ -917,7 +919,7 @@ export const messages: Catalog = {
     'Oui, il peut le copier ou le photographier. N’envoyez le message qu’à quelqu’un en qui vous avez confiance.',
   'faq.operator.question': 'L’exploitant peut-il lire le message\u{A0}?',
   'faq.operator.answer':
-    'Pas à partir des données du serveur\u{A0}: le serveur ne reçoit que des données chiffrées et ne voit jamais la clé du lien. Toutes les 30\u{A0}minutes, nous comparons en outre le code du site avec la version signée, et en cas d’écart le service s’arrête de lui-même. Vous pouvez envoyer les données les plus sensibles avec l’application vérifiée, qui ne charge aucun code depuis le serveur.',
+    'Pas à partir des données du serveur\u{A0}: le serveur ne reçoit que des données chiffrées et ne voit jamais la clé du lien. Toutes les 30\u{A0}minutes, nous comparons en outre le code du site avec la version signée, et en cas d’écart le service passe en maintenance. Vous pouvez envoyer les données les plus sensibles avec l’application vérifiée, qui ne charge aucun code depuis le serveur.',
   'faq.opened.question': 'Saurai-je que quelqu’un a ouvert le message\u{A0}?',
   'faq.opened.answer':
     'Oui, si vous le suivez dans Envoyés. Vous y verrez quand quelqu’un l’a ouvert pour la première fois, et vous pourrez l’annuler.',
@@ -932,7 +934,7 @@ export const messages: Catalog = {
     'Le code, la spécification du protocole et les vecteurs de test sont publics. Chaque modification passe par les tests du protocole, l’analyse statique, le contrôle des dépendances et le test des données d’un serveur volé. Les versions sont signées et reproductibles. La page Transparence présente les résultats des contrôles.',
   'cta.title': 'Vous avez quelque chose qui n’a pas sa place dans une messagerie\u{A0}?',
   'cta.text':
-    'Un mot de passe envoyé dans une messagerie reste dans l’historique jusqu’à ce que quelqu’un le supprime. Un message envoyé via Nylzo est supprimé après son ouverture.',
+    'Un mot de passe envoyé dans une messagerie reste dans l’historique jusqu’à ce que quelqu’un le supprime. Un message envoyé via Nylzo est supprimé après la dernière ouverture.',
   'cta.button': 'Écrire un message',
   'host.domain': 'votre-domaine.fr',
   'host.terminal': 'bash — nylzo',

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { getTranslator } from '../../../shared/language/translator.svelte.ts';
+  import { REPOSITORY_URL } from '../../../shared/shell/repository.ts';
   import Icon from '../../../shared/ui/icon/Icon.svelte';
   import { pauseOffscreen } from '../../../shared/ui/reveal/offscreen.ts';
   import { reveal } from '../../../shared/ui/reveal/reveal.ts';
@@ -34,11 +35,12 @@
       depth: 'z-10 [--reveal-index:3]',
     },
   ] as const;
+  const TEST_REPORTS_URL = `${REPOSITORY_URL}#security`;
   const tests = [
-    { grade: 'A+', name: 'securityheaders.com' },
-    { grade: 'A+', name: 'Mozilla Observatory' },
-    { grade: '100', name: 'PageSpeed Insights' },
-    { grade: undefined, name: 'OpenSSF Scorecard' },
+    { grade: 'A+', name: 'securityheaders.com', subject: 'tech.tests.site' },
+    { grade: 'A+', name: 'Mozilla Observatory', subject: 'tech.tests.site' },
+    { grade: '100', name: 'PageSpeed Insights', subject: 'tech.tests.site' },
+    { grade: undefined, name: 'OpenSSF Scorecard', subject: 'tech.tests.repository' },
   ] as const;
 </script>
 
@@ -106,21 +108,33 @@
       class="reveal-focus [--reveal-blur:4px] [--reveal-index:3] lg:col-start-1 lg:row-start-2 lg:self-start"
       {@attach reveal}
     >
-      <p class="text-caption text-ink-soft">{translate('tech.tests.title')}</p>
+      <h3 class="text-caption text-ink-soft">{translate('tech.tests.title')}</h3>
       <ul role="list" class="mt-2 grid grid-cols-2 overflow-hidden rounded-pane well">
         {#each tests as test (test.name)}
-          <li class="flex flex-col gap-2 border-white/8 px-5 py-4 odd:border-r nth-[-n+2]:border-b">
-            {#if test.grade}
+          <li class="border-white/8 odd:border-r nth-[-n+2]:border-b">
+            <a
+              href={TEST_REPORTS_URL}
+              rel="noreferrer"
+              class="group flex h-full flex-col gap-2 px-5 py-4 transition hover:bg-white/4 focus-visible:-outline-offset-2"
+            >
+              {#if test.grade}
+                <span
+                  class="font-display text-[1.75rem] leading-none font-light tracking-[-0.03em] text-aegis-200 tabular-nums"
+                  >{test.grade}</span
+                >
+              {:else}
+                <span class="grid h-7 items-center text-aegis-200">
+                  <Icon name="gauge" viewBox="3.2 4.6 17.6 12.8" class="h-5 w-7" stroke={1.2} />
+                </span>
+              {/if}
               <span
-                class="font-display text-[1.75rem] leading-none font-light tracking-[-0.03em] text-aegis-200 tabular-nums"
-                >{test.grade}</span
+                class="flex items-center gap-1.5 text-micro wrap-anywhere text-ink-soft transition group-hover:text-ink"
+                >{test.name}<span class="sr-only">: {translate(test.subject)}</span><Icon
+                  name="external"
+                  class="size-3 shrink-0"
+                /></span
               >
-            {:else}
-              <span class="grid h-7 items-center text-aegis-200">
-                <Icon name="gauge" viewBox="3.2 4.6 17.6 12.8" class="h-5 w-7" stroke={1.2} />
-              </span>
-            {/if}
-            <span class="text-micro wrap-anywhere text-ink-soft">{test.name}</span>
+            </a>
           </li>
         {/each}
       </ul>

@@ -645,7 +645,7 @@ export const messages: Catalog = {
   'how.chip.key': 'リンク内の鍵',
   'how.deleted': '最後の開封の後、サーバーはメッセージを削除します。',
   'how.link.title': 'リンクの中身',
-  'how.link.sub': 'リンクは4つの部分からなります。各部分をクリックすると、その役割が分かります。',
+  'how.link.sub': 'リンクは4つの部分からなります。各部分を選ぶと、その役割が分かります。',
   'how.link.host.title': 'サーバーのアドレス',
   'how.link.host.meta': 'サーバーとネットワークから見える',
   'how.link.host.body':
@@ -751,7 +751,7 @@ export const messages: Catalog = {
   'promise.cancel.title': 'リモートで取り消し',
   'promise.cancel.text':
     'リンクを間違った相手に送ってしまったら？「送信済み」でメッセージを追跡していれば、そこから取り消せて、すでに誰かが開封したかどうかも確認できます。',
-  'promise.cancel.verify': '送信済み',
+  'promise.cancel.link': '「送信済み」へ移動',
   'promise.open.title': 'オープンなコードと再現可能なビルド',
   'promise.open.text':
     'コード、プロトコル仕様、テストベクターはMITライセンスでGitHubに公開しています。同じソースからはバイト単位で同一のバイナリが作られるため、誰でもリリースを検証できます。',
@@ -795,6 +795,8 @@ export const messages: Catalog = {
   'tech.release.title': '開発とリリース',
   'tech.release.text': '署名付きリリースと修正の自動適用',
   'tech.tests.title': '第三者によるテスト',
+  'tech.tests.site': 'nylzo.comサイトのテスト',
+  'tech.tests.repository': 'GitHubリポジトリのテスト',
 
   'host.eyebrow': 'ターミナルとセルフホスト',
   'host.title': 'ターミナルでも自分のサーバーでも使えるNylzo',
@@ -822,8 +824,8 @@ export const messages: Catalog = {
   'compare.part': '一部',
   'compare.row.client': 'ブラウザ内で暗号化',
   'compare.row.preview': 'リンクのプレビューでは消費されない',
-  'compare.row.passphrase': 'パスワードが暗号化の一部',
-  'compare.row.secret': 'リンク内の秘密',
+  'compare.row.passphrase': 'メッセージのパスワードが暗号化の一部',
+  'compare.row.secret': 'リンク内の鍵',
   'compare.row.verify': 'サイトがリリースと一致するか監視',
   'compare.row.length': '長さをブロック単位に丸める',
   'compare.row.id': 'IDだけではメッセージを開封できない',
@@ -839,7 +841,7 @@ export const messages: Catalog = {
   'operations.eyebrow': '運用',
   'operations.title': 'nylzo.comのサーバーも監視しています',
   'operations.sub':
-    '暗号化はメッセージの内容を守ります。サーバー、通信、サイトのコードは別に監視しており、異常があればサービスは自動的にオフラインになります。',
+    '暗号化はメッセージの内容を守ります。サーバー、通信、サイトのコードは別に監視しており、サイトのコードがリリースと一致しなければ、サービスはメンテナンスに切り替わります。',
   'operations.diagram':
     '30分ごとに、nylzo.comのコードを署名されたリリースと比較します。違いがあれば、サービスはメンテナンスに切り替わります。',
   'operations.release': 'GitHubのリリース',
@@ -896,7 +898,7 @@ export const messages: Catalog = {
   'faq.save.answer': 'はい。コピーしたり、写真に撮ったりできます。信頼できる相手にだけ送ってください。',
   'faq.operator.question': '運営者はメッセージを読めますか？',
   'faq.operator.answer':
-    'サーバー上のデータからは読めません。サーバーが受け取るのは暗号文だけで、リンクの鍵を目にすることはありません。さらに、サイトのコードを30分ごとに署名されたリリースと比較し、違いがあればサービスは自動的に停止します。最も機密性の高いデータは、サーバーからコードを一切読み込まない検証済みアプリで送れます。',
+    'サーバー上のデータからは読めません。サーバーが受け取るのは暗号文だけで、リンクの鍵を目にすることはありません。さらに、サイトのコードを30分ごとに署名されたリリースと比較し、違いがあればサービスはメンテナンスに切り替わります。最も機密性の高いデータは、サーバーからコードを一切読み込まない検証済みアプリで送れます。',
   'faq.opened.question': 'メッセージが開封されたら分かりますか？',
   'faq.opened.answer':
     'はい、「送信済み」で追跡していれば分かります。そこで最初に開封された日時を確認でき、メッセージを取り消すこともできます。',
@@ -911,7 +913,7 @@ export const messages: Catalog = {
     'コード、プロトコル仕様、テストベクターは公開されています。すべての変更は、プロトコルのテスト、静的解析、依存関係のチェック、盗まれたサーバーのデータを調べるテストで確認しています。リリースは署名されており、再現可能です。チェックの結果は「透明性」ページで確認できます。',
   'cta.title': 'チャットに残したくないもの、ありますか？',
   'cta.text':
-    'チャットに書いたパスワードは、誰かが削除するまで履歴に残ります。Nylzoで送ったメッセージは、開封後に削除されます。',
+    'チャットに書いたパスワードは、誰かが削除するまで履歴に残ります。Nylzoで送ったメッセージは、最後の開封の後に削除されます。',
   'cta.button': 'メッセージを作成',
   'host.domain': 'your-domain.jp',
   'host.terminal': 'bash — nylzo',
