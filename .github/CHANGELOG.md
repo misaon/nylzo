@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.15.0](https://github.com/misaon/nylzo/compare/v0.14.0...v0.15.0) (2026-11-27)
+
+
+### Fixes
+
+* **admin:** resolve the admin and UI kit UX review findings ([#548](https://github.com/misaon/nylzo/issues/548)) ([8720700](https://github.com/misaon/nylzo/commit/872070094162f19675f9ee2dd0032190e5d5ba44))
+* **client:** keep the origin of a server address parseable ([#547](https://github.com/misaon/nylzo/issues/547)) ([52ad35a](https://github.com/misaon/nylzo/commit/52ad35a69a00f354a84b5866e3449e3e8a48eec2))
+* **core:** refuse a text whose escaped meta outgrows the limit ([#546](https://github.com/misaon/nylzo/issues/546)) ([caa629a](https://github.com/misaon/nylzo/commit/caa629a27696d0cdd20da58ff1d858ea049f6311))
+* **web:** make opening a message recoverable and clear ([#549](https://github.com/misaon/nylzo/issues/549)) ([43c1963](https://github.com/misaon/nylzo/commit/43c196307ce6e6188cf8f76050e428eb6eae481f))
+* **web:** shorten the French and Polish search snippets ([#541](https://github.com/misaon/nylzo/issues/541)) ([861225b](https://github.com/misaon/nylzo/commit/861225b7f182a9aaf4156ac64fe5fa427829e9dc))
+* **web:** UX fixes for Sent, Transparency, status pages and the app shell ([#552](https://github.com/misaon/nylzo/issues/552)) ([824756e](https://github.com/misaon/nylzo/commit/824756e1fdba0437adbfd579587244deb725df98))
+
+
+### Build
+
+* **infrastructure:** update infrastructure dependencies (main) ([#562](https://github.com/misaon/nylzo/issues/562)) ([3e59a0b](https://github.com/misaon/nylzo/commit/3e59a0baaab1d359d6237c18e90a6f83f9f005a6))
+* **infrastructure:** update infrastructure dependencies to v1.13.10 (main) ([#543](https://github.com/misaon/nylzo/issues/543)) ([c0bb5bc](https://github.com/misaon/nylzo/commit/c0bb5bc3ab82ff74fbc14dc260c3635f9f2338d5))
+* **infrastructure:** update infrastructure dependencies to v3.1.5 (main) ([#554](https://github.com/misaon/nylzo/issues/554)) ([a98aa75](https://github.com/misaon/nylzo/commit/a98aa75ecb3470f25e0acddfcb373dd545b4cbdc))
+
+
+### CI
+
+* **deps:** update ci dependencies (main) ([#534](https://github.com/misaon/nylzo/issues/534)) ([77987e5](https://github.com/misaon/nylzo/commit/77987e5aa09033038c4e4083d29a7bcbef9145f1))
+* **deps:** update ci dependencies (main) ([#553](https://github.com/misaon/nylzo/issues/553)) ([f833167](https://github.com/misaon/nylzo/commit/f833167deeba51530baf92f9a86301c3de166bcc))
+* **deps:** update ci dependencies (main) ([#565](https://github.com/misaon/nylzo/issues/565)) ([ad49167](https://github.com/misaon/nylzo/commit/ad49167fd3a86814bc8e7cb69ed7f6530c570cec))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.261.1 (main) ([#555](https://github.com/misaon/nylzo/issues/555)) ([7ebaf17](https://github.com/misaon/nylzo/commit/7ebaf1720bac255c47e56d85e16a1e2e744cc47a))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.261.2 (main) ([#556](https://github.com/misaon/nylzo/issues/556)) ([991b1b3](https://github.com/misaon/nylzo/commit/991b1b3b00323378b18f4a6d8141615e36ac4afa))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.262.1 (main) ([#558](https://github.com/misaon/nylzo/issues/558)) ([dc25b63](https://github.com/misaon/nylzo/commit/dc25b63936c876bba778933fa9888f24ed66b441))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.262.2 (main) ([#559](https://github.com/misaon/nylzo/issues/559)) ([854cf67](https://github.com/misaon/nylzo/commit/854cf67e6102380d90e14b70cb203b967942dcec))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.263.5 (main) ([#561](https://github.com/misaon/nylzo/issues/561)) ([3e55b72](https://github.com/misaon/nylzo/commit/3e55b7241c27edc90dafdf467493bce5efd0ac21))
+* **deps:** update ghcr.io/renovatebot/renovate docker tag to v44.263.6 (main) ([#564](https://github.com/misaon/nylzo/issues/564)) ([64e73b9](https://github.com/misaon/nylzo/commit/64e73b9174974952e8ce5e6abed3d33d3fd1cc7c))
+* **deps:** update renovatebot/github-action action to v46.3.15 (main) ([#569](https://github.com/misaon/nylzo/issues/569)) ([43724f1](https://github.com/misaon/nylzo/commit/43724f1b078d3405dcf3f63fdfa09c8386b763ee))
+
+
+### Tests
+
+* cover the Go and web code close to 100 % ([#542](https://github.com/misaon/nylzo/issues/542)) ([c25a475](https://github.com/misaon/nylzo/commit/c25a47571a990057b9c95bdc5c80b22abdadf941))
+* **web:** give the client startup tests time for a cold first boot ([#545](https://github.com/misaon/nylzo/issues/545)) ([e3c40a8](https://github.com/misaon/nylzo/commit/e3c40a88443b7edade372dd93af109ccb593c9cf))
+
+
+### Maintenance
+
+* **deploy:** validate new servers against v0.14.0 ([#539](https://github.com/misaon/nylzo/issues/539)) ([c2a830e](https://github.com/misaon/nylzo/commit/c2a830e94b21ec45fc005b8969b81c1aa651050e))
+
 ## [0.14.0](https://github.com/misaon/nylzo/compare/v0.13.0...v0.14.0) (2026-11-23)
 
 
