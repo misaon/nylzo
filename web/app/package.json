@@ -16,17 +16,17 @@
     "@fontsource-variable/geist": "5.3.0",
     "@fontsource-variable/sora": "5.3.0",
     "@nylzo/core": "workspace:*",
-    "svelte": "5.57.3"
+    "svelte": "5.59.1"
   },
   "devDependencies": {
-    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@sveltejs/vite-plugin-svelte": "7.3.2",
     "@tailwindcss/vite": "4.3.5",
     "@types/d3-geo": "3.1.1",
-    "@types/node": "26.6.6",
+    "@types/node": "26.6.10",
     "@types/topojson-client": "3.1.5",
     "@types/topojson-specification": "1.0.5",
     "@typescript/native": "npm:typescript@7.0.2",
-    "@vitest/coverage-istanbul": "5.1.0",
+    "@vitest/coverage-istanbul": "5.1.1",
     "acorn": "8.19.0",
     "d3-geo": "3.1.2",
     "fake-indexeddb": "6.2.8",
@@ -39,7 +39,7 @@
     "topojson-client": "3.1.0",
     "typescript": "6.0.3",
     "vite": "8.3.8",
-    "vitest": "5.1.0",
+    "vitest": "5.1.1",
     "world-atlas": "2.0.2"
   }
 }
