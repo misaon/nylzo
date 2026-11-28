@@ -9,10 +9,10 @@
     "typecheck": "bun run --bun tsc -p ."
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.14.0",
+    "@axe-core/playwright": "4.14.1",
     "@nylzo/core": "workspace:*",
     "@playwright/test": "1.65.1",
-    "@types/node": "26.6.6",
+    "@types/node": "26.6.10",
     "lightningcss": "1.33.0",
     "typescript": "7.0.2"
   }
